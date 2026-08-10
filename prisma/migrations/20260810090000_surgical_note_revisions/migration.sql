@@ -62,7 +62,12 @@ SELECT
   1,
   n.title,
   n.content,
-  md5(n.title || E'\n--- voxen note content ---\n' || n.content),
+  encode(
+    sha256(
+      convert_to(n.title, 'UTF8') || decode('00', 'hex') || convert_to(n.content, 'UTF8')
+    ),
+    'hex'
+  ),
   'SYSTEM'::"NoteRevisionActor",
   'Initial revision backfilled during migration',
   n."createdAt"

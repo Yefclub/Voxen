@@ -61,11 +61,12 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
     {
       title: 'Listar revisões de uma nota',
       description:
-        'Lista até 100 snapshots imutáveis de título/conteúdo. Use revision com ' +
-        'voxen_read_note_revision para inspecionar antes de restaurar.',
+        'Lista snapshots imutáveis de título/conteúdo em páginas. Passe nextBefore como ' +
+        'before_revision para continuar e use revision com voxen_read_note_revision para inspecionar.',
       inputSchema: {
         note_id: z.string().min(1),
         limit: z.number().int().min(1).max(100).optional(),
+        before_revision: z.number().int().min(2).optional(),
       },
       outputSchema: {
         revisions: z.array(
@@ -78,6 +79,7 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
             createdAt: z.string(),
           }),
         ),
+        nextBefore: z.number().nullable(),
       },
       annotations: { ...READ_ONLY, title: 'Listar revisões de uma nota' },
     },
@@ -87,10 +89,15 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
         select: { id: true },
       });
       if (!note) return fail('Nota não encontrada (ou fora do escopo do token).');
+      const limit = bounded(args.limit, 30, 1, 100);
       const rows = await db.noteRevision.findMany({
-        where: { noteId: note.id, userId },
+        where: {
+          noteId: note.id,
+          userId,
+          ...(args.before_revision === undefined ? {} : { revision: { lt: args.before_revision } }),
+        },
         orderBy: { revision: 'desc' },
-        take: bounded(args.limit, 30, 1, 100),
+        take: limit + 1,
         select: {
           revision: true,
           title: true,
@@ -100,8 +107,11 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
           createdAt: true,
         },
       });
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
       return ok({
-        revisions: rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+        revisions: page.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+        nextBefore: hasMore ? (page.at(-1)?.revision ?? null) : null,
       });
     },
   );

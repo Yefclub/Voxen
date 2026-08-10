@@ -2,6 +2,18 @@ export const ptBrNoteVersioningMessages = {
   'chat.hitlProposePatch': 'Editar nota “{title}”',
   'chat.hitlPatchHint':
     'A alteração será aplicada somente se a revisão ainda for a mesma. Confira antes de continuar.',
+  'chat.hitlPatchLine': 'linha {line}',
+  'chat.hitlPatchOccurrence': 'ocorrência {occurrence}',
+  'chat.hitlPatchOperation.replace': 'Substituir trecho exato',
+  'chat.hitlPatchOperation.insertBefore': 'Inserir antes do trecho exato',
+  'chat.hitlPatchOperation.insertAfter': 'Inserir depois do trecho exato',
+  'chat.hitlPatchOperation.prepend': 'Inserir no início da nota',
+  'chat.hitlPatchOperation.append': 'Inserir no fim da nota',
+  'chat.hitlPatchTarget': 'Trecho atual',
+  'chat.hitlPatchReplacement': 'Novo trecho',
+  'chat.hitlPatchResult': 'Contexto resultante',
+  'chat.hitlPatchPreviewUnavailable':
+    'A prévia validada não está disponível. Atualize a conversa antes de aprovar.',
   'tools.search_note_content': 'Busca dentro da nota',
   'tools.propose_patch_note': 'Proposta de edição da nota',
   'notes.revisionLabel': 'Rev. {revision}',
@@ -10,6 +22,7 @@ export const ptBrNoteVersioningMessages = {
   'notes.historyDescription':
     'Cada edição cria uma revisão imutável. Restaurar preserva o histórico e cria uma nova revisão.',
   'notes.historyError': 'Não foi possível carregar o histórico.',
+  'notes.loadOlderRevisions': 'Carregar revisões anteriores',
   'notes.selectRevision': 'Selecione uma revisão para inspecionar.',
   'notes.current': 'Atual',
   'notes.restore': 'Restaurar revisão',
@@ -28,6 +41,18 @@ export const enNoteVersioningMessages = {
   'chat.hitlProposePatch': 'Edit note “{title}”',
   'chat.hitlPatchHint':
     'The change is applied only if the note revision is still current. Review before continuing.',
+  'chat.hitlPatchLine': 'line {line}',
+  'chat.hitlPatchOccurrence': 'occurrence {occurrence}',
+  'chat.hitlPatchOperation.replace': 'Replace exact passage',
+  'chat.hitlPatchOperation.insertBefore': 'Insert before exact passage',
+  'chat.hitlPatchOperation.insertAfter': 'Insert after exact passage',
+  'chat.hitlPatchOperation.prepend': 'Insert at the start of the note',
+  'chat.hitlPatchOperation.append': 'Insert at the end of the note',
+  'chat.hitlPatchTarget': 'Current passage',
+  'chat.hitlPatchReplacement': 'New passage',
+  'chat.hitlPatchResult': 'Resulting context',
+  'chat.hitlPatchPreviewUnavailable':
+    'The validated preview is unavailable. Refresh the conversation before approving.',
   'tools.search_note_content': 'Search within note',
   'tools.propose_patch_note': 'Note edit proposal',
   'notes.revisionLabel': 'Rev. {revision}',
@@ -36,6 +61,7 @@ export const enNoteVersioningMessages = {
   'notes.historyDescription':
     'Every edit creates an immutable revision. Restoring keeps history and creates a new revision.',
   'notes.historyError': 'Could not load note history.',
+  'notes.loadOlderRevisions': 'Load older revisions',
   'notes.selectRevision': 'Select a revision to inspect.',
   'notes.current': 'Current',
   'notes.restore': 'Restore revision',

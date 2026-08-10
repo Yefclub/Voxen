@@ -564,11 +564,59 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       TOKEN,
     );
     const revisions = (await history.json()) as {
-      result?: { structuredContent?: { revisions?: Array<{ revision: number }> } };
+      result?: {
+        structuredContent?: {
+          revisions?: Array<{ revision: number }>;
+          nextBefore?: number | null;
+        };
+      };
     };
     expect(revisions.result?.structuredContent?.revisions?.map((item) => item.revision)).toEqual([
       2, 1,
     ]);
+    expect(revisions.result?.structuredContent?.nextBefore).toBeNull();
+
+    const firstHistoryPage = await call(
+      {
+        jsonrpc: '2.0',
+        id: 751,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_list_note_revisions',
+          arguments: { note_id: noteId, limit: 1 },
+        },
+      },
+      TOKEN,
+    );
+    const firstHistoryBody = (await firstHistoryPage.json()) as {
+      result?: {
+        structuredContent?: {
+          revisions?: Array<{ revision: number }>;
+          nextBefore?: number | null;
+        };
+      };
+    };
+    expect(firstHistoryBody.result?.structuredContent).toMatchObject({
+      revisions: [{ revision: 2 }],
+      nextBefore: 2,
+    });
+
+    const olderHistoryPage = await call(
+      {
+        jsonrpc: '2.0',
+        id: 752,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_list_note_revisions',
+          arguments: { note_id: noteId, limit: 1, before_revision: 2 },
+        },
+      },
+      TOKEN,
+    );
+    const olderHistoryBody = (await olderHistoryPage.json()) as {
+      result?: { structuredContent?: { revisions?: Array<{ revision: number }> } };
+    };
+    expect(olderHistoryBody.result?.structuredContent?.revisions).toMatchObject([{ revision: 1 }]);
 
     const restore = await call(
       {

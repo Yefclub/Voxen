@@ -54,7 +54,9 @@ export function NoteHistoryDialog({
 }: NoteHistoryDialogProps): React.ReactElement {
   const { t } = useI18n();
   const [history, setHistory] = useState<NoteRevisionSummary[]>([]);
+  const [nextBefore, setNextBefore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<NoteRevisionDetail | null>(null);
   const [restoring, setRestoring] = useState(false);
 
@@ -85,9 +87,13 @@ export function NoteHistoryDialog({
     void fetch(`/api/notes/${noteId}/revisions`, { credentials: 'include' })
       .then(async (res) => {
         if (!res.ok) throw new Error(t('notes.historyError'));
-        const body = (await res.json()) as { revisions: NoteRevisionSummary[] };
+        const body = (await res.json()) as {
+          revisions: NoteRevisionSummary[];
+          nextBefore: number | null;
+        };
         if (!active) return;
         setHistory(body.revisions);
+        setNextBefore(body.nextBefore);
         const first = body.revisions[0];
         if (first) await inspectRevision(first.revision);
       })
@@ -101,6 +107,32 @@ export function NoteHistoryDialog({
       active = false;
     };
   }, [inspectRevision, noteId, open, t]);
+
+  const loadMore = useCallback(async (): Promise<void> => {
+    if (nextBefore === null || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/notes/${noteId}/revisions?before=${nextBefore}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(t('notes.historyError'));
+      const body = (await res.json()) as {
+        revisions: NoteRevisionSummary[];
+        nextBefore: number | null;
+      };
+      setHistory((current) => [
+        ...current,
+        ...body.revisions.filter(
+          (candidate) => !current.some((item) => item.revision === candidate.revision),
+        ),
+      ]);
+      setNextBefore(body.nextBefore);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('common.error'));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, nextBefore, noteId, t]);
 
   const restoreRevision = useCallback(async (): Promise<void> => {
     if (!selected || dirty || restoring) return;
@@ -183,6 +215,17 @@ export function NoteHistoryDialog({
                     </span>
                   </button>
                 ))}
+                {nextBefore !== null ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? <Spinner size={14} /> : t('notes.loadOlderRevisions')}
+                  </Button>
+                ) : null}
               </div>
             )}
           </div>

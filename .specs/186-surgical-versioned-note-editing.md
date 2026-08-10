@@ -60,7 +60,12 @@ evidence remain authoritative and must not be discarded by an editorial change.
   the local draft, explain the conflict, and offer an explicit reload rather
   than overwriting either copy.
 - When the chat proposes a note mutation, the system shall expose the bounded
-  change for human confirmation and apply it only after approval.
+  change for human confirmation and apply it only after approval. The preview
+  and displayed note title shall be validated from the current user-scoped
+  server state, never trusted directly from model input.
+- When revision history exceeds one response page, HTTP, MCP, and the browser
+  shall expose a stable descending cursor until every historical revision is
+  discoverable and restorable.
 - When graph write coordination is temporarily unavailable after a committed
   note edit, the system shall return a pending graph-sync state while preserving
   the committed revision for later reconciliation.
@@ -98,13 +103,14 @@ evidence remain authoritative and must not be discarded by an editorial change.
 - [x] Concurrent writes with the same expected revision result in one commit and
       one conflict, with no duplicate revision number.
 - [x] HTTP endpoints support targeted search, preview/apply, revision history,
-      restore, and conflict responses with user isolation.
+      paginated restore, and conflict responses with user isolation.
 - [x] Existing full note saves become versioned and concurrency-safe without
       dropping source links or anchors.
 - [x] MCP exposes revision-aware read/search, surgical edit, history, restore,
       and a compatibility-safe full update contract.
 - [x] Chat can search inside a note and propose a surgical edit that requires
-      human approval; stale approval cannot overwrite a newer revision.
+      human approval with a server-validated bounded diff; stale approval cannot
+      overwrite a newer revision.
 - [x] The notes UI shows the current revision, preserves drafts on conflict, and
       can inspect and restore history in PT-BR and English.
 - [x] Tests prove a successful edit refreshes only its source note, preserves

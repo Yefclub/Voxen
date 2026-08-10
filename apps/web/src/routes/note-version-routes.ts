@@ -180,10 +180,17 @@ noteVersionRoutes.get('/:id/revisions', async (c) => {
   const id = c.req.param('id');
   const note = await db.note.findFirst({ where: { id, userId }, select: { id: true } });
   if (!note) return c.json({ error: 'Nota não encontrada.' }, 404);
-  const revisions = await db.noteRevision.findMany({
-    where: { noteId: id, userId },
+  const requestedLimit = Number(c.req.query('limit') ?? 30);
+  const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 30;
+  const requestedBefore = c.req.query('before');
+  const before = requestedBefore === undefined ? undefined : Number(requestedBefore);
+  if (before !== undefined && (!Number.isInteger(before) || before < 2)) {
+    return c.json({ error: 'Cursor inválido.' }, 400);
+  }
+  const rows = await db.noteRevision.findMany({
+    where: { noteId: id, userId, ...(before === undefined ? {} : { revision: { lt: before } }) },
     orderBy: { revision: 'desc' },
-    take: 100,
+    take: limit + 1,
     select: {
       revision: true,
       title: true,
@@ -193,7 +200,12 @@ noteVersionRoutes.get('/:id/revisions', async (c) => {
       createdAt: true,
     },
   });
-  return c.json({ revisions });
+  const hasMore = rows.length > limit;
+  const revisions = hasMore ? rows.slice(0, limit) : rows;
+  return c.json({
+    revisions,
+    nextBefore: hasMore ? (revisions.at(-1)?.revision ?? null) : null,
+  });
 });
 
 noteVersionRoutes.get('/:id/revisions/:revision', async (c) => {

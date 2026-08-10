@@ -30,8 +30,9 @@ describe('contrato HITL resume + always-allow (spec 132)', () => {
 
   test('UI expõe Confirmar e Sempre permitir e consome stream do approve', () => {
     const chat = read('src/client/pages/chat.tsx');
-    expect(chat).toContain('chat.hitlAlwaysAllow');
-    expect(chat).toContain('alwaysAllow: true');
+    const confirmBar = read('src/client/components/chat/hitl-confirm-bar.tsx');
+    expect(confirmBar).toContain('chat.hitlAlwaysAllow');
+    expect(confirmBar).toContain('alwaysAllow: true');
     expect(chat).toContain("fetch('/api/chat/approve'");
     expect(chat).toContain("accept: 'text/event-stream'");
   });

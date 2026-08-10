@@ -25,6 +25,7 @@ import {
   shouldRequireHitlApproval,
 } from '../src/lib/chat/hitl-policy';
 import { commitNoteVersion, recordInitialNoteRevision } from '../src/lib/note-versioning';
+import { prepareChatPatchApproval } from '../src/lib/chat/note-approval-preview';
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -298,9 +299,22 @@ describeIfDb('chat de sessão única', () => {
       noteId: note.id,
       noteTitle: note.title,
       expectedRevision: 1,
-      operation: { kind: 'replace', target: 'Target', text: 'Revisado' },
+      operation: { kind: 'replace' as const, target: 'Target', text: 'Revisado' },
       changeSummary: 'Corrigir o trecho central',
     };
+    const prepared = await prepareChatPatchApproval(user.id, {
+      ...payload,
+      noteTitle: 'Título inventado pelo modelo',
+    });
+    expect(prepared.payload.noteTitle).toBe(note.title);
+    expect(prepared.payload.previewProof).toMatch(/^[a-f0-9]{64}$/);
+    expect(prepared.preview).toMatchObject({
+      target: 'Target',
+      replacement: 'Revisado',
+      line: 1,
+      changeSummary: 'Corrigir o trecho central',
+    });
+    expect(prepared.preview.context).toContain('Antes Revisado Depois');
     await db.chatMessage.create({
       data: {
         conversationId: conversation.id,
@@ -311,7 +325,12 @@ describeIfDb('chat de sessão única', () => {
             id: 'tool-patch',
             name: 'propose_patch_note',
             state: 'approval-required',
-            output: { ...payload, approvalRequired: true, approvalId, title: note.title },
+            output: {
+              ...prepared.payload,
+              approvalRequired: true,
+              approvalId,
+              title: note.title,
+            },
           },
         ],
       },
@@ -322,7 +341,7 @@ describeIfDb('chat de sessão única', () => {
         conversationId: conversation.id,
         providerApprovalId: approvalId,
         action: HITL_ACTION_PATCH_NOTE,
-        payload,
+        payload: prepared.payload,
         expiresAt: null,
       },
     });
@@ -357,9 +376,10 @@ describeIfDb('chat de sessão única', () => {
       noteId: note.id,
       noteTitle: note.title,
       expectedRevision: 1,
-      operation: { kind: 'replace', target: 'Target', text: 'Chat' },
+      operation: { kind: 'replace' as const, target: 'Target', text: 'Chat' },
       changeSummary: 'Editar via chat',
     };
+    const prepared = await prepareChatPatchApproval(user.id, payload);
     await db.chatMessage.create({
       data: {
         conversationId: conversation.id,
@@ -370,7 +390,12 @@ describeIfDb('chat de sessão única', () => {
             id: 'tool-conflict',
             name: 'propose_patch_note',
             state: 'approval-required',
-            output: { ...payload, approvalRequired: true, approvalId, title: note.title },
+            output: {
+              ...prepared.payload,
+              approvalRequired: true,
+              approvalId,
+              title: note.title,
+            },
           },
         ],
       },
@@ -381,7 +406,7 @@ describeIfDb('chat de sessão única', () => {
         conversationId: conversation.id,
         providerApprovalId: approvalId,
         action: HITL_ACTION_PATCH_NOTE,
-        payload,
+        payload: prepared.payload,
         expiresAt: null,
       },
     });
@@ -409,6 +434,75 @@ describeIfDb('chat de sessão única', () => {
     expect(await db.note.findUniqueOrThrow({ where: { id: note.id } })).toMatchObject({
       revision: 2,
       content: 'Newer version',
+    });
+  });
+
+  it('recusa aprovação direta ou recuperada sem a prévia validada persistida', async () => {
+    const user = await db.user.create({
+      data: {
+        email: 'chat-test-patch-no-preview@voxen.local',
+        name: 'No preview',
+        status: 'APPROVED',
+      },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const note = await db.$transaction(async (tx) => {
+      const created = await tx.note.create({
+        data: { userId: user.id, kind: 'NOTE', title: 'Protegida', content: 'Target' },
+      });
+      await recordInitialNoteRevision(tx, created, 'USER');
+      return created;
+    });
+    const rawPayload = {
+      action: HITL_ACTION_PATCH_NOTE,
+      noteId: note.id,
+      noteTitle: note.title,
+      expectedRevision: 1,
+      operation: { kind: 'replace', target: 'Target', text: 'Bypass' },
+      changeSummary: 'Tentativa sem prévia',
+    };
+    const directApprovalId = `patch-no-preview:${crypto.randomUUID()}`;
+    await db.chatApproval.create({
+      data: {
+        userId: user.id,
+        conversationId: conversation.id,
+        providerApprovalId: directApprovalId,
+        action: HITL_ACTION_PATCH_NOTE,
+        payload: rawPayload,
+        expiresAt: null,
+      },
+    });
+    await expect(approveChatAction(user.id, directApprovalId)).rejects.toThrow(
+      'Confirmação inválida',
+    );
+
+    const recoveredApprovalId = `patch-recovery-no-preview:${crypto.randomUUID()}`;
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'legacy-patch',
+            name: 'propose_patch_note',
+            state: 'approval-required',
+            output: {
+              ...rawPayload,
+              approvalRequired: true,
+              approvalId: recoveredApprovalId,
+              title: note.title,
+            },
+          },
+        ],
+      },
+    });
+    await expect(approveChatAction(user.id, recoveredApprovalId)).rejects.toThrow(
+      'Confirmação não encontrada',
+    );
+    expect(await db.note.findUniqueOrThrow({ where: { id: note.id } })).toMatchObject({
+      revision: 1,
+      content: 'Target',
     });
   });
 

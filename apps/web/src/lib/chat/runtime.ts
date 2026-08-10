@@ -51,6 +51,7 @@ import {
   normalizeApprovalMutationError,
   recoverApprovalPayloadFromMessages,
 } from './note-editing';
+import { prepareChatApprovalInput } from './note-approval-preview';
 import {
   HITL_ACTION_CREATE_NOTE,
   HITL_ACTION_PATCH_NOTE,
@@ -1803,18 +1804,17 @@ export async function streamAssistantReply(options: {
             : toolName === 'propose_patch_note'
               ? HITL_ACTION_PATCH_NOTE
               : toolName;
+        const { trustedInput, patchPreview } = await prepareChatApprovalInput(
+          userId,
+          action,
+          inputRecord,
+        );
         const output = {
-          ...inputRecord,
+          ...trustedInput,
           approvalRequired: true,
           approvalId,
           action,
-          title:
-            typeof inputRecord.title === 'string'
-              ? inputRecord.title
-              : typeof inputRecord.noteTitle === 'string'
-                ? inputRecord.noteTitle
-                : undefined,
-          content: typeof inputRecord.content === 'string' ? inputRecord.content : undefined,
+          ...(patchPreview ? { patchPreview } : {}),
         };
         const current = tools.find((event) => event.id === toolCallId);
         const event: StoredToolEvent = {
@@ -1832,7 +1832,7 @@ export async function streamAssistantReply(options: {
             providerApprovalId: approvalId,
             action,
             payload: {
-              ...inputRecord,
+              ...trustedInput,
               approvalId,
               action,
               approvalRequired: true,

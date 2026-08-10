@@ -143,6 +143,69 @@ describeIfDb('versioned and surgical notes API', () => {
     expect(await db.noteRevision.count({ where: { noteId } })).toBe(3);
   });
 
+  test('history pagination exposes every revision beyond the first 100', async () => {
+    const pagedNote = await db.note.create({
+      data: {
+        userId: owner.id,
+        kind: 'NOTE',
+        title: 'Long history',
+        content: 'Current content',
+        revision: 105,
+      },
+    });
+    await db.noteRevision.createMany({
+      data: Array.from({ length: 105 }, (_, index) => {
+        const revision = index + 1;
+        return {
+          id: crypto.randomUUID(),
+          userId: owner.id,
+          noteId: pagedNote.id,
+          revision,
+          title: 'Long history',
+          content: `Revision ${revision}`,
+          checksum: `checksum-${revision}`,
+          actor: 'USER' as const,
+          changeSummary: `Revision ${revision}`,
+        };
+      }),
+    });
+
+    const first = await request(`/api/notes/${pagedNote.id}/revisions?limit=40`, owner.cookie);
+    const firstBody = (await first.json()) as {
+      revisions: Array<{ revision: number }>;
+      nextBefore: number | null;
+    };
+    expect(firstBody.revisions).toHaveLength(40);
+    expect(firstBody.revisions[0]?.revision).toBe(105);
+    expect(firstBody.revisions.at(-1)?.revision).toBe(66);
+    expect(firstBody.nextBefore).toBe(66);
+
+    const second = await request(
+      `/api/notes/${pagedNote.id}/revisions?limit=40&before=${firstBody.nextBefore}`,
+      owner.cookie,
+    );
+    const secondBody = (await second.json()) as {
+      revisions: Array<{ revision: number }>;
+      nextBefore: number | null;
+    };
+    expect(secondBody.revisions[0]?.revision).toBe(65);
+    expect(secondBody.revisions.at(-1)?.revision).toBe(26);
+    expect(secondBody.nextBefore).toBe(26);
+
+    const third = await request(
+      `/api/notes/${pagedNote.id}/revisions?limit=40&before=${secondBody.nextBefore}`,
+      owner.cookie,
+    );
+    const thirdBody = (await third.json()) as {
+      revisions: Array<{ revision: number }>;
+      nextBefore: number | null;
+    };
+    expect(thirdBody.revisions.map((revision) => revision.revision)).toEqual(
+      Array.from({ length: 25 }, (_, index) => 25 - index),
+    );
+    expect(thirdBody.nextBefore).toBeNull();
+  });
+
   test('foreign users cannot discover search, revisions, preview, or mutation', async () => {
     const responses = await Promise.all([
       request(`/api/notes/${noteId}/search?q=target`, foreign.cookie),
