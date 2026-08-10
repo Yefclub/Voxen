@@ -16,7 +16,14 @@ def _summary_enrichment_state(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         summary.db,
         "start_summary_enrichment",
-        AsyncMock(return_value={"summaryAttempt": 1, "correctionRevision": 0}),
+        AsyncMock(
+            return_value={
+                "summaryAttempt": 1,
+                "correctionRevision": 0,
+                "sourceVersion": 0,
+                "sourceChecksum": None,
+            }
+        ),
     )
     monkeypatch.setattr(summary.db, "finish_summary_enrichment", AsyncMock(return_value=None))
     monkeypatch.setattr(summary.db, "complete_summary_enrichment", AsyncMock(return_value=True))
@@ -209,6 +216,8 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         "t1",
         claim_attempt=1,
         correction_revision=0,
+        source_version=0,
+        source_checksum=None,
         summary_md="## Em poucas linhas\nfoo",
     )
     insert_cost.assert_awaited()

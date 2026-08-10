@@ -212,6 +212,8 @@ async def _run_tag_with_sem(sem: asyncio.Semaphore, item: dict[str, Any]) -> Non
                 already_claimed=True,
                 claim_attempt=int(item["taggingAttempt"]),
                 correction_revision=int(item["correctionRevision"]),
+                source_version=int(item["sourceVersion"]),
+                source_checksum=str(item["sourceChecksum"]) if item.get("sourceChecksum") else None,
             )
         except asyncio.CancelledError:
             raise
@@ -247,6 +249,8 @@ async def _run_summary_with_sem(sem: asyncio.Semaphore, item: dict[str, Any]) ->
                 already_claimed=True,
                 claim_attempt=int(item["summaryAttempt"]),
                 correction_revision=int(item["correctionRevision"]),
+                source_version=int(item["sourceVersion"]),
+                source_checksum=str(item["sourceChecksum"]) if item.get("sourceChecksum") else None,
             )
         except asyncio.CancelledError:
             raise

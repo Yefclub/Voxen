@@ -27,7 +27,14 @@ async def extract_grounded_brain(
         row = await db.get_transcript_title_content_md_path(user_id, transcript_id)
         if not row:
             return
-        title, fallback_content, md_path = row
+        (
+            title,
+            fallback_content,
+            md_path,
+            correction_revision,
+            source_version,
+            source_checksum,
+        ) = row
         if refresh_embedding:
             from .pipeline import _maybe_store_embedding
 
@@ -44,13 +51,21 @@ async def extract_grounded_brain(
                 )
         if len((content or "").strip()) < 80:
             await brain_compilation_db.mark_transcript_compilation_skipped(
-                user_id=user_id, transcript_id=transcript_id
+                user_id=user_id,
+                transcript_id=transcript_id,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
             )
             return
         segments = brain_extract.segment_content(content)
         if not segments:
             await brain_compilation_db.mark_transcript_compilation_skipped(
-                user_id=user_id, transcript_id=transcript_id
+                user_id=user_id,
+                transcript_id=transcript_id,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
             )
             return
         segment_payload: list[dict[str, Any]] = [
@@ -67,20 +82,31 @@ async def extract_grounded_brain(
         content_hash = sha256(
             f"v{brain_extract.BRAIN_GROUNDED_EXTRACT_VERSION}\0{title}\0{content}".encode()
         ).hexdigest()
-        compilation_id, pending_rows = await db.prepare_grounded_brain_compilation(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            content_hash=content_hash,
-            segments=segment_payload,
-        )
+        try:
+            compilation_id, pending_rows = await db.prepare_grounded_brain_compilation(
+                user_id=user_id,
+                transcript_id=transcript_id,
+                content_hash=content_hash,
+                segments=segment_payload,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
+            )
+        except db.GroundedCompilationClaimLostError:
+            log.info("brain-extract-stale-content", transcript_id=transcript_id)
+            return
         due_keys = {str(row["segmentKey"]) for row in pending_rows}
         if not due_keys:
             log.info("brain-extract-already-complete", transcript_id=transcript_id)
             return
         config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
         if not config.api_key or not config.model:
-            await brain_compilation_db.mark_compilation_skipped(
-                user_id=user_id, compilation_id=compilation_id
+            await brain_compilation_db.mark_transcript_compilation_skipped(
+                user_id=user_id,
+                transcript_id=transcript_id,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
             )
             log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
             return
@@ -170,6 +196,9 @@ async def extract_grounded_brain(
                         lease=lease,
                         worker_id=claim_owner,
                         content_hash=content_hash,
+                        correction_revision=correction_revision,
+                        source_version=source_version,
+                        source_checksum=source_checksum,
                     )
                     total_items += len(payload)
             except Exception as exc:  # noqa: BLE001 -- one segment cannot invalidate others

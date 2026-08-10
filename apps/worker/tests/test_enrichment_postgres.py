@@ -581,6 +581,8 @@ async def test_claims_only_eligible_rows_and_never_exceeds_six_attempts(
         error="sexta tentativa falhou",
         claim_attempt=6,
         correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
     exhausted = await postgres.fetchrow(
         """
@@ -624,6 +626,8 @@ async def test_tag_operations_enforce_workspace_ownership(
         status="COMPLETE",
         claim_attempt=1,
         correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
     assert (
         await db.apply_tags_to_transcript(
@@ -633,6 +637,8 @@ async def test_tag_operations_enforce_workspace_ownership(
             current_folder_id=None,
             claim_attempt=1,
             correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
         == []
     )
@@ -679,6 +685,8 @@ async def test_tag_operations_enforce_workspace_ownership(
         current_folder_id=None,
         claim_attempt=int(claim["taggingAttempt"]),
         correction_revision=int(claim["correctionRevision"]),
+        source_version=int(claim["sourceVersion"]),
+        source_checksum=(str(claim["sourceChecksum"]) if claim["sourceChecksum"] else None),
     )
     assert applied == ["Permitida"]
     assert await db.list_transcript_tag_names("user-1", "transcript-1") == ["Permitida"]
@@ -714,7 +722,12 @@ async def test_tag_claim_cannot_write_after_a_transcript_correction(
     await _insert_user(postgres, "user-1")
     await _insert_transcript(postgres, transcript_id="corrected", user_id="user-1")
     claim = await db.start_tag_enrichment("user-1", "corrected")
-    assert claim == {"taggingAttempt": 1, "correctionRevision": 0}
+    assert claim == {
+        "taggingAttempt": 1,
+        "correctionRevision": 0,
+        "sourceVersion": 0,
+        "sourceChecksum": None,
+    }
     await postgres.execute(
         """
         UPDATE "Transcript"
@@ -733,6 +746,8 @@ async def test_tag_claim_cannot_write_after_a_transcript_correction(
             current_folder_id=None,
             claim_attempt=1,
             correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
         == []
     )
@@ -742,6 +757,8 @@ async def test_tag_claim_cannot_write_after_a_transcript_correction(
         status="COMPLETE",
         claim_attempt=1,
         correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
     state = await postgres.fetchrow(
         'SELECT "taggingStatus", "correctionRevision" FROM "Transcript" WHERE id = $1',

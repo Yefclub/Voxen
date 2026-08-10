@@ -30,6 +30,8 @@ export async function getTranscriptBrief(
       correctedPlainText: true,
       correctionState: true,
       correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
       summaryMd: true,
       folderId: true,
       tags: { select: { tag: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
@@ -47,6 +49,8 @@ export async function getTranscriptBrief(
         title: transcript.title,
         plainText: effectivePlainText,
         correctionRevision: transcript.correctionRevision,
+        sourceVersion: transcript.sourceVersion,
+        sourceChecksum: transcript.sourceChecksum,
         abortSignal: options.abortSignal,
       });
     } catch (error) {
@@ -78,6 +82,8 @@ export async function getTranscriptBrief(
           id: transcript.id,
           folderId: transcript.folderId,
           correctionRevision: transcript.correctionRevision,
+          sourceVersion: transcript.sourceVersion,
+          sourceChecksum: transcript.sourceChecksum,
         },
         generated.tags,
       );

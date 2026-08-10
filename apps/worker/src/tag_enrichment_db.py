@@ -7,7 +7,7 @@ from typing import Any
 from . import db
 
 
-async def start_tag_enrichment(user_id: str, transcript_id: str) -> dict[str, int] | None:
+async def start_tag_enrichment(user_id: str, transcript_id: str) -> dict[str, Any] | None:
     async with db.connection() as conn:
         row = await conn.fetchrow(
             """
@@ -24,7 +24,8 @@ async def start_tag_enrichment(user_id: str, transcript_id: str) -> dict[str, in
                 SELECT 1 FROM "TranscriptTag" tt
                 WHERE tt."transcriptId" = "Transcript".id
               )
-            RETURNING "taggingAttempts" AS "taggingAttempt", "correctionRevision"
+            RETURNING "taggingAttempts" AS "taggingAttempt", "correctionRevision",
+              "sourceVersion", "sourceChecksum"
             """,
             user_id,
             transcript_id,
@@ -76,7 +77,7 @@ async def claim_pending_tag_enrichments(limit: int = 10) -> list[dict[str, Any]]
                 "taggingStartedAt" = NOW(), "taggingError" = NULL
             FROM candidates WHERE t.id = candidates.id
             RETURNING t.id, t."userId", t."taggingAttempts" AS "taggingAttempt",
-              t."correctionRevision", (
+              t."correctionRevision", t."sourceVersion", t."sourceChecksum", (
                 SELECT j.id FROM "Job" j WHERE j."transcriptId" = t.id LIMIT 1
               ) AS "jobId"
             """,
@@ -93,6 +94,8 @@ async def finish_tag_enrichment(
     error: str | None = None,
     claim_attempt: int,
     correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
 ) -> None:
     async with db.connection() as conn:
         await conn.execute(
@@ -111,6 +114,7 @@ async def finish_tag_enrichment(
             WHERE "userId" = $1 AND id = $2
               AND "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
               AND "taggingAttempts" = $5 AND "correctionRevision" = $6
+              AND "sourceVersion" = $7 AND "sourceChecksum" IS NOT DISTINCT FROM $8
             """,
             user_id,
             transcript_id,
@@ -118,6 +122,8 @@ async def finish_tag_enrichment(
             (error or "")[:500] or None,
             claim_attempt,
             correction_revision,
+            source_version,
+            source_checksum,
         )
 
 
@@ -127,22 +133,28 @@ async def get_transcript_title_summary_folder(
     *,
     claim_attempt: int | None = None,
     correction_revision: int | None = None,
-) -> tuple[str, str, str | None, int] | None:
+    source_version: int | None = None,
+    source_checksum: str | None = None,
+) -> tuple[str, str, str | None, int, int, str | None] | None:
     async with db.connection() as conn:
         row = await conn.fetchrow(
             """
             SELECT title, "plainText", "correctedPlainText", "correctionState",
-                   "summaryMd", "folderId", "correctionRevision"
+                   "summaryMd", "folderId", "correctionRevision",
+                   "sourceVersion", "sourceChecksum"
             FROM "Transcript" WHERE "userId" = $1 AND id = $2
               AND ($3::integer IS NULL OR (
                 "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
                 AND "taggingAttempts" = $3 AND "correctionRevision" = $4
+                AND "sourceVersion" = $5 AND "sourceChecksum" IS NOT DISTINCT FROM $6
               ))
             """,
             user_id,
             transcript_id,
             claim_attempt,
             correction_revision,
+            source_version,
+            source_checksum,
         )
     if not row:
         return None
@@ -155,4 +167,12 @@ async def get_transcript_title_summary_folder(
     )
     content = summary or (plain or "").strip()
     folder_id = row["folderId"]
-    return title, content, (str(folder_id) if folder_id else None), int(row["correctionRevision"])
+    source_checksum_value = row["sourceChecksum"]
+    return (
+        title,
+        content,
+        str(folder_id) if folder_id else None,
+        int(row["correctionRevision"]),
+        int(row["sourceVersion"]),
+        str(source_checksum_value) if source_checksum_value else None,
+    )

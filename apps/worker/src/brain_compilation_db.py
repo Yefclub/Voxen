@@ -225,18 +225,52 @@ async def mark_compilation_skipped(*, user_id: str, compilation_id: str) -> None
             await refresh_compilation(conn, compilation_id, user_id)
 
 
-async def mark_transcript_compilation_skipped(*, user_id: str, transcript_id: str) -> None:
+async def mark_transcript_compilation_skipped(
+    *,
+    user_id: str,
+    transcript_id: str,
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
+) -> bool:
     """Complete durable placeholder work when content is too short to segment."""
     from . import db
 
-    async with db.connection() as conn:
+    async with db.connection() as conn, conn.transaction():
         row = await conn.fetchrow(
-            'SELECT id FROM "BrainCompilation" WHERE "userId" = $1 AND "transcriptId" = $2',
+            """
+            SELECT compilation.id
+            FROM "Transcript" transcript
+            JOIN "BrainCompilation" compilation
+              ON compilation."transcriptId" = transcript.id
+             AND compilation."userId" = transcript."userId"
+            WHERE transcript."userId" = $1 AND transcript.id = $2
+              AND transcript."correctionRevision" = $3
+              AND transcript."sourceVersion" = $4
+              AND transcript."sourceChecksum" IS NOT DISTINCT FROM $5
+            FOR UPDATE OF transcript, compilation
+            """,
             user_id,
             transcript_id,
+            correction_revision,
+            source_version,
+            source_checksum,
         )
-    if row is not None:
-        await mark_compilation_skipped(user_id=user_id, compilation_id=str(row["id"]))
+        if row is None:
+            return False
+        compilation_id = str(row["id"])
+        await conn.execute(
+            """
+            UPDATE "BrainCompilationSegment"
+            SET status = 'SKIPPED'::"BrainCompilationStatus",
+                "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
+                "nextAttemptAt" = NULL, error = NULL, "updatedAt" = NOW()
+            WHERE "compilationId" = $1
+            """,
+            compilation_id,
+        )
+        await refresh_compilation(conn, compilation_id, user_id)
+    return True
 
 
 async def mark_segment_failed(

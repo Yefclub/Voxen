@@ -22,7 +22,7 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
 
     await mark_reviewable_derivatives_stale(conn, "user-1", "transcript-1", 4, "checksum-4")
 
-    assert len(conn.calls) == 5
+    assert len(conn.calls) == 11
     anchor_query, anchor_args = conn.calls[1]
     assert 'UPDATE "NoteTranscriptAnchor"' in anchor_query
     assert '"userId" = $1' in anchor_query
@@ -49,6 +49,22 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
     assert 'DELETE FROM "BrainNode"' in enrichment_brain_query
     assert "'EXTERNAL_ENRICHMENT'" in enrichment_brain_query
     assert enrichment_brain_args == ("user-1", "transcript-1")
+
+    grounded_source_query, grounded_source_args = conn.calls[5]
+    assert 'DELETE FROM "BrainSource"' in grounded_source_query
+    assert "llm-grounded%" in grounded_source_query
+    assert grounded_source_args == ("user-1", "transcript-1")
+
+    compilation_query, compilation_args = conn.calls[10]
+    assert 'INSERT INTO "BrainCompilation"' in compilation_query
+    assert 'INSERT INTO "BrainCompilationSegment"' in compilation_query
+    assert 'ON CONFLICT ("transcriptId") DO UPDATE' in compilation_query
+    assert compilation_args[1:4] == (
+        "user-1",
+        "transcript-1",
+        "source-pending:4:checksum-4",
+    )
+    assert compilation_args[5] == "source:4"
 
 
 @pytest.mark.skipif(
@@ -200,10 +216,32 @@ async def test_stale_anchor_withdraws_only_its_brain_evidence() -> None:
         enrichment_brain_count = await conn.fetchval(
             'SELECT COUNT(*) FROM "BrainNode" WHERE id = $1', enrichment_brain_node_id
         )
+        compilation = await conn.fetchrow(
+            """
+            SELECT id, "contentHash", status::text, "completedSegments"
+            FROM "BrainCompilation" WHERE "transcriptId" = $1
+            """,
+            transcript_id,
+        )
+        assert compilation is not None
+        pending_segment = await conn.fetchrow(
+            """
+            SELECT "segmentKey", status::text, attempts
+            FROM "BrainCompilationSegment"
+            WHERE "compilationId" = $1 AND "segmentKey" = 'source:2'
+            """,
+            compilation["id"],
+        )
         assert status == "STALE"
         assert evidence_count == 0
         assert enrichment_stale_reason == "source-version-changed"
         assert enrichment_brain_count == 0
+        assert compilation["contentHash"] == "source-pending:2:checksum-2"
+        assert compilation["status"] == "PENDING"
+        assert compilation["completedSegments"] == 0
+        assert pending_segment is not None
+        assert pending_segment["status"] == "PENDING"
+        assert pending_segment["attempts"] == 0
         assert await conn.fetchval('SELECT COUNT(*) FROM "Note" WHERE id = $1', note_id) == 1
         assert (
             await conn.fetchval('SELECT COUNT(*) FROM "Transcript" WHERE id = $1', transcript_id)

@@ -17,6 +17,8 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
                 "jobId": "job-1",
                 "taggingAttempt": 1,
                 "correctionRevision": 2,
+                "sourceVersion": 5,
+                "sourceChecksum": "source-5",
             },
             {
                 "id": "transcript-2",
@@ -24,6 +26,8 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
                 "jobId": None,
                 "taggingAttempt": 3,
                 "correctionRevision": 4,
+                "sourceVersion": 6,
+                "sourceChecksum": None,
             },
         ]
     )
@@ -46,6 +50,8 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
         already_claimed=True,
         claim_attempt=1,
         correction_revision=2,
+        source_version=5,
+        source_checksum="source-5",
     )
     generate.assert_any_await(
         user_id="user-2",
@@ -55,4 +61,6 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
         already_claimed=True,
         claim_attempt=3,
         correction_revision=4,
+        source_version=6,
+        source_checksum=None,
     )

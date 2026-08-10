@@ -287,6 +287,8 @@ async def test_summary_enrichment_is_reclaimed_independently_from_job(
                     "jobId": "j1",
                     "summaryAttempt": 2,
                     "correctionRevision": 3,
+                    "sourceVersion": 2,
+                    "sourceChecksum": "source-2",
                 }
             ]
         ),
@@ -305,6 +307,8 @@ async def test_summary_enrichment_is_reclaimed_independently_from_job(
         already_claimed=True,
         claim_attempt=2,
         correction_revision=3,
+        source_version=2,
+        source_checksum="source-2",
     )
 
 
@@ -337,6 +341,8 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
             "jobId": None,
             "summaryAttempt": 1,
             "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
         },
         {
             "id": "s2",
@@ -344,11 +350,29 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
             "jobId": None,
             "summaryAttempt": 1,
             "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
         },
     ]
     tag_queue = [
-        {"id": "t1", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0},
-        {"id": "t2", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0},
+        {
+            "id": "t1",
+            "userId": "u1",
+            "jobId": None,
+            "taggingAttempt": 1,
+            "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
+        },
+        {
+            "id": "t2",
+            "userId": "u1",
+            "jobId": None,
+            "taggingAttempt": 1,
+            "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
+        },
     ]
 
     async def claim_summaries(limit: int) -> list[dict[str, Any]]:
@@ -413,10 +437,20 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
             "jobId": None,
             "summaryAttempt": 1,
             "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
         }
     ]
     tag_queue = [
-        {"id": "t1", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0}
+        {
+            "id": "t1",
+            "userId": "u1",
+            "jobId": None,
+            "taggingAttempt": 1,
+            "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
+        }
     ]
     research_queue = [{"id": "r1", "userId": "u1", "attempt": 1}]
     brain_queue = [{"userId": "u1", "transcriptId": "b1"}]

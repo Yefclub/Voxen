@@ -70,6 +70,8 @@ export async function generateAndPersistTranscriptSummary(input: {
   title: string;
   plainText: string;
   correctionRevision: number;
+  sourceVersion: number;
+  sourceChecksum: string | null;
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const settings = await getSettings([
@@ -187,6 +189,8 @@ export async function generateAndPersistTranscriptSummary(input: {
         id: input.transcriptId,
         userId: input.userId,
         correctionRevision: input.correctionRevision,
+        sourceVersion: input.sourceVersion,
+        sourceChecksum: input.sourceChecksum,
       },
       data: { summaryMd: summary },
     });

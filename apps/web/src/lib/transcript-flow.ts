@@ -73,6 +73,8 @@ export async function generateAndPersistTranscriptFlow(input: {
   summaryMd: string | null;
   plainText: string;
   correctionRevision: number;
+  sourceVersion: number;
+  sourceChecksum: string | null;
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const settings = await getSettings([
@@ -179,6 +181,8 @@ export async function generateAndPersistTranscriptFlow(input: {
         userId: input.userId,
         status: { not: 'TRASH' },
         correctionRevision: input.correctionRevision,
+        sourceVersion: input.sourceVersion,
+        sourceChecksum: input.sourceChecksum,
       },
       data: { flowchartMd: validation.code },
     });

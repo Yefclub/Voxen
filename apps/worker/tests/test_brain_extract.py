@@ -165,7 +165,7 @@ async def test_short_corrected_content_completes_durable_placeholder(
     monkeypatch.setattr(
         brain_compilation.db,
         "get_transcript_title_content_md_path",
-        AsyncMock(return_value=("Título", "curto", None)),
+        AsyncMock(return_value=("Título", "curto", None, 1, 2, "source-2")),
     )
     skipped = AsyncMock()
     monkeypatch.setattr(brain_compilation_db, "mark_transcript_compilation_skipped", skipped)
@@ -176,7 +176,13 @@ async def test_short_corrected_content_completes_durable_placeholder(
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
     )
 
-    skipped.assert_awaited_once_with(user_id="user-1", transcript_id="transcript-1")
+    skipped.assert_awaited_once_with(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        correction_revision=1,
+        source_version=2,
+        source_checksum="source-2",
+    )
 
 
 async def test_segment_failure_keeps_following_segment_and_records_retry(
@@ -187,7 +193,7 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
     monkeypatch.setattr(
         brain_compilation.db,
         "get_transcript_title_content_md_path",
-        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None, 1, 2, "source-2")),
     )
     monkeypatch.setattr(brain_extract, "segment_content", lambda _: [first, second])
     prepared = AsyncMock(
@@ -269,7 +275,7 @@ async def test_grounded_model_runs_before_short_write_lease_and_contention_retri
     monkeypatch.setattr(
         brain_compilation.db,
         "get_transcript_title_content_md_path",
-        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None, 1, 2, "source-2")),
     )
     monkeypatch.setattr(brain_extract, "segment_content", lambda _: [segment])
     monkeypatch.setattr(

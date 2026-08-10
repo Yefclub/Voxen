@@ -1,6 +1,3 @@
-// Voxen — Transcripts routes
-// All endpoints are scoped by userId; canonical Markdown uses the configured private storage.
-
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
@@ -421,8 +418,6 @@ const TRANSCRIPT_LIST_SELECT = {
   createdAt: true,
 } as const;
 
-// Carrega as tags (id/name/slug) de um conjunto de transcripts, escopadas por
-// userId, e devolve um mapa transcriptId -> tags (ordenadas por nome).
 async function loadTagsForTranscripts(
   userId: string,
   transcriptIds: string[],
@@ -447,7 +442,6 @@ async function loadTagsForTranscripts(
   return map;
 }
 
-// Anexa `tags` a cada item de uma lista de transcripts (in-place funcional).
 async function withTags<T extends { id: string }>(
   userId: string,
   items: T[],
@@ -535,8 +529,6 @@ transcriptsRoutes.get('/:id', async (c) => {
   });
 });
 
-// POST /api/transcripts/:id/refresh — consulta novamente uma fonte WEB sem
-// duplicar sua identidade. O worker compara checksum e só reprocessa se mudou.
 transcriptsRoutes.post('/:id/refresh', async (c) => {
   const userId = c.get('userId');
   const transcriptId = c.req.param('id');
@@ -993,6 +985,8 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       summaryMd: true,
       folderId: true,
       correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -1048,6 +1042,8 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       id: transcript.id,
       folderId: transcript.folderId,
       correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
     },
     result.tags,
   );
@@ -1094,7 +1090,6 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
   return c.json({ transcript });
 });
 
-// DELETE /api/transcripts/:id — purge definitivo.
 // Por segurança, exige que a transcrição esteja na lixeira antes do hard delete.
 transcriptsRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId');
@@ -1169,6 +1164,8 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       correctionState: true,
       summaryMd: true,
       correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -1194,6 +1191,8 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       title: transcript.title,
       plainText: effectivePlainText,
       correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
     });
     return c.json({ summaryMd });
   } catch (err) {

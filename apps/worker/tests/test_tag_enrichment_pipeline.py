@@ -7,7 +7,12 @@ import pytest
 
 from src import pipeline, tags
 
-TAG_CLAIM = {"claim_attempt": 1, "correction_revision": 0}
+TAG_CLAIM = {
+    "claim_attempt": 1,
+    "correction_revision": 0,
+    "source_version": 0,
+    "source_checksum": None,
+}
 
 
 class _Logger:
@@ -28,7 +33,14 @@ def _install_common(monkeypatch: pytest.MonkeyPatch) -> None:
         pipeline.db,
         "get_transcript_title_summary_folder",
         AsyncMock(
-            return_value=("Título", "Conteúdo suficientemente longo para gerar tags.", None, 0)
+            return_value=(
+                "Título",
+                "Conteúdo suficientemente longo para gerar tags.",
+                None,
+                0,
+                0,
+                None,
+            )
         ),
     )
     monkeypatch.setattr(

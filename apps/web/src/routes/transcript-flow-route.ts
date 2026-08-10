@@ -24,6 +24,8 @@ export async function generateTranscriptFlowRoute(c: TranscriptRouteContext): Pr
       summaryMd: true,
       flowchartMd: true,
       correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -56,6 +58,8 @@ export async function generateTranscriptFlowRoute(c: TranscriptRouteContext): Pr
       summaryMd: transcript.summaryMd,
       plainText: effectivePlainText,
       correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
     });
     return c.json({ flowchartMd });
   } catch (error) {

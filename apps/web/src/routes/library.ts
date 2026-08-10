@@ -460,10 +460,6 @@ libraryRoutes.post('/regenerate-titles', async (c) => {
   });
 });
 
-// POST /api/library/generate-tags — gera tags via IA só para conteúdo ACTIVE que
-// ainda não tem NENHUMA tag (spec 075). Processa em lote por request; a UI
-// chama em loop até drenar. Cada tag garante uma pasta e, se o conteúdo não tem
-// pasta, herda a da primeira tag. Best-effort: falha de item não derruba o lote.
 libraryRoutes.post('/generate-tags', async (c) => {
   const userId = c.get('userId');
   if (!(await isSetupComplete())) {
@@ -500,6 +496,8 @@ libraryRoutes.post('/generate-tags', async (c) => {
       correctedPlainText: true,
       correctionState: true,
       correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
       summaryMd: true,
       folderId: true,
     },
@@ -548,7 +546,13 @@ libraryRoutes.post('/generate-tags', async (c) => {
       }
       const applied = await applyTagsToTranscript(
         userId,
-        { id: item.id, folderId: item.folderId, correctionRevision: item.correctionRevision },
+        {
+          id: item.id,
+          folderId: item.folderId,
+          correctionRevision: item.correctionRevision,
+          sourceVersion: item.sourceVersion,
+          sourceChecksum: item.sourceChecksum,
+        },
         result.tags,
       );
       for (const t of applied) existingTagNames.add(t.name);
@@ -565,8 +569,6 @@ libraryRoutes.post('/generate-tags', async (c) => {
   return c.json({ processed: batch.length, tagged, skipped, failed, remaining, pendingTotal });
 });
 
-// Limpa TODAS as pastas do usuário: conteúdos ficam (folderId → null via onDelete SetNull).
-// Libera de novo o "Organizar com IA" (só classifica folderId null).
 // Brain cleanup é best-effort e NÃO bloqueia a resposta (evita 502 por timeout
 // quando há dezenas de pastas/conteúdos e reindex síncrono estoura o proxy).
 libraryRoutes.post('/folders/clear', async (c) => {

@@ -406,6 +406,8 @@ describeIfDb('versioned transcript correction commits', () => {
 
   test('creates durable semantic work when no compilation existed yet', async () => {
     const suffix = crypto.randomUUID();
+    const staleTagName = `Stale generated ${suffix}`;
+    const staleRefreshTagName = `Stale refresh ${suffix}`;
     const markdown = '# New source\n\nOriginal knowledge for a later semantic compilation.';
     const plainText = transcriptMarkdownToPlainText(markdown);
     const transcript = await db.transcript.create({
@@ -455,10 +457,40 @@ describeIfDb('versioned transcript correction commits', () => {
     expect(
       await applyTagsToTranscript(
         userId,
-        { id: transcript.id, folderId: null, correctionRevision: 0 },
-        ['Stale generated tag'],
+        {
+          id: transcript.id,
+          folderId: null,
+          correctionRevision: 0,
+          sourceVersion: 0,
+          sourceChecksum: null,
+        },
+        [staleTagName],
+      ),
+    ).toEqual([]);
+    await db.transcript.update({
+      where: { id: transcript.id },
+      data: { sourceVersion: 1, sourceChecksum: 'refreshed-source' },
+    });
+    expect(
+      await applyTagsToTranscript(
+        userId,
+        {
+          id: transcript.id,
+          folderId: null,
+          correctionRevision: 1,
+          sourceVersion: 0,
+          sourceChecksum: null,
+        },
+        [staleRefreshTagName],
       ),
     ).toEqual([]);
     expect(await db.transcriptTag.count({ where: { transcriptId: transcript.id } })).toBe(0);
+    expect(await db.tag.count({ where: { userId, name: staleTagName } })).toBe(0);
+    expect(await db.tag.count({ where: { userId, name: staleRefreshTagName } })).toBe(0);
+    expect(
+      await db.libraryFolder.count({
+        where: { userId, name: staleTagName },
+      }),
+    ).toBe(0);
   });
 });
