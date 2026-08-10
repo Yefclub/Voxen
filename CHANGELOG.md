@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.14.5-dev.1786366281 — 2026-08-10 · Dev
+
+### ✨ Safe background deletion across the knowledge base
+
+Knowledge deletion now runs through Voxen's durable job queue instead of holding
+the browser, internal assistant, or MCP request open while storage and graph data
+are removed. Transcripts, notes and note trees, saved media, library folders, and
+reviewable transcript context share the same observable and retryable workflow.
+
+The internal assistant always presents a destructive confirmation before
+enqueueing a deletion. MCP clients receive a write-scoped deletion tool that
+requires the user-owned target identifier, its exact current title, and an
+explicit confirmation flag. Cross-workspace targets remain indistinguishable
+from missing content. Transcript hard deletion requires the content to remain in
+trash and is serialized against source refresh; folder cascades reject corrupted
+cross-workspace trees.
+
+The queue and job detail views now show deletion-specific progress and terminal
+feedback. Graph cleanup is source-scoped, preserves unrelated manual evidence,
+and invalidates the user's graph snapshot only after the background mutation.
+
 ## v0.14.5-dev.1786354871 — 2026-08-10 · Dev
 
 ### 🎨 Explore Mermaid diagrams with an interactive canvas
