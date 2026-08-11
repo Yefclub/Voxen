@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786428747 — 2026-08-11 · Dev
+
+### 🎨 Searchable library filters and numbered pages
+
+The Library now keeps its search, page, period, status, inbox, folder, and tag
+filters in the URL. Folder and tag discovery is visible and searchable, active
+filters can be cleared together, and numbered pagination replaces the previous
+load-more flow while preserving filters across browser navigation and shared
+links.
+
 ## v0.14.5-dev.1786427252 — 2026-08-11 · Dev
 
 ### 🔒 Smaller worker runtime attack surface

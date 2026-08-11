@@ -1,6 +1,6 @@
 {
   "name": "voxen",
-  "version": "0.14.5-dev.1786427252",
+  "version": "0.14.5-dev.1786428747",
   "private": true,
   "description": "Voxen — a self-hosted multimodal knowledge base with agentic search",
   "engines": {
