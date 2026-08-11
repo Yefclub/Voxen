@@ -59,16 +59,16 @@ atuais de leitura e não cria fatos, arestas ou comunidades persistentes.
 
 ## Critérios de Aceite
 
-- [ ] Dois grupos densos unidos por uma ponte são separados em comunidades distintas.
-- [ ] Cada comunidade Leiden retornada é conectada e cada nó aparece no máximo uma vez.
-- [ ] Pesos de confiança, evidência e tipo de relação alteram a influência das ligações de forma testável.
-- [ ] Ligações paralelas e recíprocas são agregadas por par de nós.
-- [ ] A mesma entrada produz IDs, ordem, rótulos e métricas idênticos em execuções repetidas.
-- [ ] A API inclui configuração do algoritmo, qualidade da partição e métricas explicáveis por comunidade.
-- [ ] O layout 2D/3D e os cartões de insights consomem a mesma partição retornada pelo servidor.
-- [ ] Nós isolados continuam visíveis e não poluem a lista de comunidades relevantes.
-- [ ] Entradas vazias, inválidas e uma falha controlada do detector usam fallback sem derrubar a rota.
-- [ ] Testes provam isolamento de recorte, conectividade, determinismo, ponderação e compatibilidade retroativa.
+- [x] Dois grupos densos unidos por uma ponte são separados em comunidades distintas.
+- [x] Cada comunidade Leiden retornada é conectada e cada nó aparece no máximo uma vez.
+- [x] Pesos de confiança, evidência e tipo de relação alteram a influência das ligações de forma testável.
+- [x] Ligações paralelas e recíprocas são agregadas por par de nós.
+- [x] A mesma entrada produz IDs, ordem, rótulos e métricas idênticos em execuções repetidas.
+- [x] A API inclui configuração do algoritmo, qualidade da partição e métricas explicáveis por comunidade.
+- [x] O layout 2D/3D e os cartões de insights consomem a mesma partição retornada pelo servidor.
+- [x] Nós isolados continuam visíveis e não poluem a lista de comunidades relevantes.
+- [x] Entradas vazias, inválidas e uma falha controlada do detector usam fallback sem derrubar a rota.
+- [x] Testes provam isolamento de recorte, conectividade, determinismo, ponderação e compatibilidade retroativa.
 
 ## Fora de Escopo
 

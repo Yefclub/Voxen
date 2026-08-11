@@ -46,6 +46,7 @@ import {
   writeOwnedGraphIndexStatus,
 } from '../lib/graph-index-coordinator';
 import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
+import { detectGraphCommunities } from '../lib/graph-community-detection';
 import {
   GraphIndexRunError,
   createGraphIndexFailureStatus,
@@ -54,6 +55,7 @@ import {
 import { parseGraphHops, parseGraphView } from '../lib/graph-slice';
 import { createSubscriber, getRedisPublisher } from '../lib/redis';
 import { graphIndexCoverage, type GraphIndexStatus } from '../shared/graph-index';
+import type { GraphCommunity, GraphCommunityDetection } from '../shared/graph-community';
 
 type Vars = { userId: string };
 
@@ -85,7 +87,8 @@ interface GraphHub {
 
 interface GraphInsights {
   hubs: GraphHub[];
-  communities: Array<{ id: number; size: number; label: string; nodeIds: string[] }>;
+  communities: GraphCommunity[];
+  communityDetection: GraphCommunityDetection;
   edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
@@ -525,57 +528,7 @@ function buildInsights(
     .sort((a, b) => b.degree - a.degree)
     .slice(0, 12);
 
-  // Comunidades: Union-Find em arestas RELATED_TO/MENTIONS (componentes conexos).
-  const parent = new Map<string, string>();
-  const find = (x: string): string => {
-    let p = parent.get(x) ?? x;
-    if (p !== x) {
-      p = find(p);
-      parent.set(x, p);
-    }
-    return p;
-  };
-  const union = (a: string, b: string): void => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
-  };
-  for (const n of nodes) parent.set(n.id, n.id);
-  for (const e of edges) {
-    if (e.kind === 'related_to' || e.kind === 'mentions' || e.kind === 'belongs_to') {
-      union(e.from, e.to);
-    }
-  }
-  const groups = new Map<string, string[]>();
-  for (const n of nodes) {
-    const root = find(n.id);
-    const list = groups.get(root) ?? [];
-    list.push(n.id);
-    groups.set(root, list);
-  }
-  const labelById = new Map(nodes.map((n) => [n.id, n.label]));
-  const communities = [...groups.entries()]
-    .map(([, ids], i) => {
-      // label = nó de maior grau no cluster
-      let best = ids[0] ?? '';
-      let bestDeg = -1;
-      for (const id of ids) {
-        const d = degree.get(id) ?? 0;
-        if (d > bestDeg) {
-          bestDeg = d;
-          best = id;
-        }
-      }
-      return {
-        id: i,
-        size: ids.length,
-        label: labelById.get(best) ?? best,
-        nodeIds: ids.slice(0, 40),
-      };
-    })
-    .filter((c) => c.size >= 2)
-    .sort((a, b) => b.size - a.size)
-    .slice(0, 20);
+  const communityResult = detectGraphCommunities(nodes, edges);
 
   const edgeEvidence = { extracted: 0, inferred: 0, ambiguous: 0 };
   for (const e of edges) {
@@ -584,5 +537,10 @@ function buildInsights(
     else edgeEvidence.ambiguous += 1;
   }
 
-  return { hubs, communities, edgeEvidence };
+  return {
+    hubs,
+    communities: communityResult.communities,
+    communityDetection: communityResult.detection,
+    edgeEvidence,
+  };
 }
