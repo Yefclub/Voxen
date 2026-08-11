@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786484273",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explainable personal interest horizons",
+    "body": "Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.\n\nTemporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile.",
+    "pr": 750,
+    "author": "Kalyel",
+    "date": "2026-08-11T18:37:41-03:00",
+    "translations": {
+      "en": {
+        "title": "Explainable personal interest horizons",
+        "body": "Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.\n\nTemporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile."
+      },
+      "pt-BR": {
+        "title": "Horizontes explicáveis de interesse pessoal",
+        "body": "A Voxen agora constrói projeções separadas de curto, médio e longo prazo a partir da atividade pessoal nas transcrições. Cada tópico, entidade, tag, pasta, autor, canal ou fonte projetada mantém a preferência explícita e o interesse inferido como pontuações distintas, com evidências limitadas.\n\nA intenção temporária da sessão passa a ter um armazenamento próprio, isolado por usuário e com expiração. Assim, um desvio momentâneo de pesquisa pode orientar a sessão atual sem reescrever silenciosamente o perfil pessoal durável."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/750"
+  },
+  {
     "version": "0.14.5-dev.1786480831",
     "channel": "dev",
     "type": "feat",
