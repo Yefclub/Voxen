@@ -32,3 +32,11 @@ class PermanentError(Exception):
 
 class TransientError(Exception):
     """Erro retentável (rede, 5xx)."""
+
+
+class DeferredJobError(Exception):
+    """Signals that a durable job must return to the queue without failing."""
+
+    def __init__(self, detail: str, *, retry_after_seconds: int) -> None:
+        super().__init__(detail)
+        self.retry_after_seconds = max(1, retry_after_seconds)

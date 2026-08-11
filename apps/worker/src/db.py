@@ -174,10 +174,11 @@ async def claim_job(job_id: str, worker_id: str) -> dict[str, Any] | None:
                        "savedMediaId", "transcriptId", attempt, "progressStage",
                        "deletionTargetType", "deletionTargetId", "deletionTargetTitle"
                 FROM "Job"
-                WHERE id = $1 AND status = 'QUEUED'
+                WHERE id = $1 AND status = 'QUEUED' AND "queuedAt" <= $2
                 FOR UPDATE SKIP LOCKED
                 """,
                 job_id,
+                _utcnow_naive(),
             )
             if not row:
                 return None
@@ -472,10 +473,11 @@ async def list_queued_job_ids(limit: int = 50) -> list[str]:
         rows = await conn.fetch(
             """
             SELECT id FROM "Job"
-            WHERE status = 'QUEUED'
+            WHERE status = 'QUEUED' AND "queuedAt" <= $1
             ORDER BY "queuedAt" ASC
-            LIMIT $1
+            LIMIT $2
             """,
+            _utcnow_naive(),
             limit,
         )
         return [r["id"] for r in rows]

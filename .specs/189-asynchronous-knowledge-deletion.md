@@ -76,6 +76,9 @@ steps can be retried without corrupting the knowledge graph.
   excluded from active retrieval.
 - While saved media awaits deletion, it shall remain in its deleting lifecycle
   state and shall not be processable.
+- While the user's graph lease is temporarily unavailable, the deletion request
+  shall return to the durable queue with a bounded delay and release its worker
+  execution slot.
 - While a credential lacks MCP write scope, the deletion tool shall not be
   registered or executable.
 
@@ -92,6 +95,9 @@ steps can be retried without corrupting the knowledge graph.
   and shall not falsely report completion.
 - If a worker loses its lease, then stale work shall not mark the request done or
   publish authoritative completion.
+- If graph lease acquisition reaches its bounded contention limit, then the
+  system shall preserve the target lifecycle state, publish no terminal failure,
+  and make the job claimable only after its scheduled queue time.
 - If a deletion request targets an active saved-media download or transcription,
   then the system shall reject it until that processing is terminal.
 - If a note-folder or library-folder target contains descendants, then the
@@ -121,6 +127,8 @@ steps can be retried without corrupting the knowledge graph.
       claiming that it already finished.
 - [x] Unit and integration tests cover ownership, duplicate requests, stale
       confirmation, active-processing rejection, retries, and graph cleanup.
+- [x] Graph contention defers the leased attempt without failure or worker-slot
+      starvation, and future-queued jobs cannot be claimed early.
 - [x] Migration replay, lint, typecheck, full tests, and production builds pass.
 
 ## Out of scope
@@ -144,3 +152,7 @@ steps can be retried without corrupting the knowledge graph.
 > 2026-08-10: approved from the owner's explicit request to expose safe deletion
 > through internal AI and MCP and to move knowledge/graph removal into the
 > durable background queue.
+
+> 2026-08-11: temporary graph lease contention now defers deletion in the durable
+> queue because production logs showed valid concurrent deletions becoming
+> terminal failures after an arbitrary local wait.

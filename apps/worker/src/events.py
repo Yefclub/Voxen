@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from typing import Any
 
 import redis.asyncio as aredis
@@ -87,6 +88,32 @@ async def publish_job_event(
         transcript_id=transcript_id,
         error_msg=error_msg,
     )
+    await publish_recorded_job_event(
+        user_id,
+        job_id,
+        stage,
+        event_id=event_id,
+        created_at=created_at,
+        percent=percent,
+        chunk_index=chunk_index,
+        transcript_id=transcript_id,
+        error_msg=error_msg,
+    )
+
+
+async def publish_recorded_job_event(
+    user_id: str,
+    job_id: str,
+    stage: str,
+    *,
+    event_id: str,
+    created_at: datetime,
+    percent: int | None = None,
+    chunk_index: int | None = None,
+    transcript_id: str | None = None,
+    error_msg: str | None = None,
+) -> None:
+    """Publish an event already persisted atomically with its state change."""
     payload: dict[str, Any] = {
         "id": event_id,
         "jobId": job_id,

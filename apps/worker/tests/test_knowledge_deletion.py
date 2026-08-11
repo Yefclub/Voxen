@@ -34,6 +34,42 @@ async def test_storage_cleanup_deduplicates_exact_non_empty_keys(
 
 
 @pytest.mark.asyncio
+async def test_graph_lease_contention_waits_until_the_lease_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease = Mock(spec=knowledge_deletion.GraphIndexLease)
+    acquire = AsyncMock(side_effect=[None, None, lease])
+    sleep = AsyncMock()
+    monkeypatch.setattr(knowledge_deletion, "acquire_graph_index_lease", acquire)
+    monkeypatch.setattr(knowledge_deletion.asyncio, "sleep", sleep)
+
+    acquired = await knowledge_deletion._acquire_graph_lease("user-1")
+
+    assert acquired is lease
+    assert acquire.await_count == 3
+    assert sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_graph_lease_contention_defers_after_the_bounded_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        knowledge_deletion,
+        "acquire_graph_index_lease",
+        AsyncMock(return_value=None),
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(knowledge_deletion.asyncio, "sleep", sleep)
+
+    with pytest.raises(knowledge_deletion.DeferredJobError) as raised:
+        await knowledge_deletion._acquire_graph_lease("user-1")
+
+    assert raised.value.retry_after_seconds == 30
+    assert sleep.await_count == knowledge_deletion.GRAPH_LEASE_ACQUIRE_ATTEMPTS
+
+
+@pytest.mark.asyncio
 async def test_owned_note_tree_rejects_cross_workspace_relations() -> None:
     conn = FetchConnection(
         [

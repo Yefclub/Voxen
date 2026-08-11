@@ -5,11 +5,14 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
 
-from src import db
+from src import db, job_defer_db, knowledge_deletion, pipeline
+from src.job_lease import JobLeaseLostError, JobLeaseToken, activate_job_lease
+from src.pipeline_errors import DeferredJobError
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -79,6 +82,88 @@ async def test_multiworker_claim_and_expired_restart_recovery() -> None:
         )
         assert row is not None
         assert dict(row) == {"status": "RUNNING", "workerId": "worker-c", "attempt": 2}
+    finally:
+        await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
+        await conn.close()
+
+
+async def test_deferred_job_is_not_claimable_before_its_queue_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert os.environ.get("DATABASE_URL")
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    suffix = uuid.uuid4().hex
+    user_id = f"deferred-user-{suffix}"
+    job_id = f"deferred-job-{suffix}"
+    now = datetime.now(UTC).replace(tzinfo=None)
+    try:
+        await conn.execute(
+            """
+            INSERT INTO "User" (id, email, name, status, role, "createdAt", "updatedAt")
+            VALUES ($1, $2, 'Deferred Test', 'APPROVED', 'USER', $3, $3)
+            """,
+            user_id,
+            f"deferred-{suffix}@example.test",
+            now,
+        )
+        await conn.execute(
+            """
+            INSERT INTO "Job" (
+              id, "userId", type, status, "sourceUrl", "queuedAt",
+              "deletionTargetType", "deletionTargetId", "deletionTargetTitle"
+            ) VALUES ($1, $2, 'DELETE_KNOWLEDGE', 'QUEUED', $3, $4, 'NOTE', $5, 'Note')
+            """,
+            job_id,
+            user_id,
+            f"voxen://delete/note/{suffix}",
+            now,
+            f"note-{suffix}",
+        )
+
+        monkeypatch.setattr(pipeline, "is_cancelled", lambda _job_id: False)
+        monkeypatch.setattr(
+            knowledge_deletion,
+            "run",
+            AsyncMock(side_effect=DeferredJobError("graph busy", retry_after_seconds=30)),
+        )
+        publish = AsyncMock(return_value=None)
+        monkeypatch.setattr(pipeline.events, "publish_recorded_job_event", publish)
+
+        await pipeline.process_job(job_id, "worker-a")
+
+        row = await conn.fetchrow(
+            'SELECT status, "queuedAt", "workerId", "leaseExpiresAt" FROM "Job" WHERE id = $1',
+            job_id,
+        )
+        assert row is not None
+        assert row["status"] == "QUEUED"
+        assert row["queuedAt"] >= now + timedelta(seconds=25)
+        assert row["workerId"] is None
+        assert row["leaseExpiresAt"] is None
+        progress = await conn.fetch(
+            'SELECT stage, percent, "userId" FROM "JobProgressEvent" '
+            'WHERE "jobId" = $1 ORDER BY "createdAt", id',
+            job_id,
+        )
+        assert [dict(event) for event in progress] == [
+            {"stage": "running", "percent": 0, "userId": user_id},
+            {"stage": "queued", "percent": 0, "userId": user_id},
+        ]
+        assert [call.args[2] for call in publish.await_args_list] == ["running", "queued"]
+        stale_token = JobLeaseToken(job_id, "worker-a", 1)
+        with activate_job_lease(stale_token), pytest.raises(JobLeaseLostError):
+            await job_defer_db.defer_job_lease(job_id, user_id, delay_seconds=30)
+        assert await db.claim_job(job_id, "worker-early") is None
+        assert job_id not in await db.list_queued_job_ids()
+
+        await conn.execute(
+            'UPDATE "Job" SET "queuedAt" = $2 WHERE id = $1',
+            job_id,
+            now - timedelta(seconds=1),
+        )
+        retry = await db.claim_job(job_id, "worker-b")
+        assert retry is not None
+        assert retry["attempt"] == 2
     finally:
         await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
         await conn.close()

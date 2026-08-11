@@ -8,6 +8,7 @@ from typing import Any
 
 from . import db, events, storage
 from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
+from .pipeline_errors import DeferredJobError
 
 _GRAPH_SOURCE_TYPE = {
     "TRANSCRIPT": "TRANSCRIPT",
@@ -16,14 +17,20 @@ _GRAPH_SOURCE_TYPE = {
     "TRANSCRIPT_ENRICHMENT": "EXTERNAL_ENRICHMENT",
 }
 
+GRAPH_LEASE_ACQUIRE_ATTEMPTS = 5
+GRAPH_LEASE_RETRY_AFTER_SECONDS = 30
+
 
 async def _acquire_graph_lease(user_id: str) -> GraphIndexLease:
-    for attempt in range(40):
+    for attempt in range(GRAPH_LEASE_ACQUIRE_ATTEMPTS):
         lease = await acquire_graph_index_lease(user_id)
         if lease is not None:
             return lease
         await asyncio.sleep(min(0.25 + attempt * 0.05, 1.0))
-    raise RuntimeError("knowledge graph is busy; retry deletion")
+    raise DeferredJobError(
+        "knowledge graph lease is temporarily unavailable",
+        retry_after_seconds=GRAPH_LEASE_RETRY_AFTER_SECONDS,
+    )
 
 
 async def _assert_graph_lease(lease: GraphIndexLease) -> None:
