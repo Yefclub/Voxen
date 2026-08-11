@@ -16,6 +16,7 @@ import {
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
 } from '../src/client/lib/graph-renderer';
+import { graphFocusFromSearch } from '../src/client/lib/graph-node-path';
 
 const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
 const GRAPH_PAGE_SOURCE = readFileSync(
@@ -309,6 +310,15 @@ describe('nodePath', () => {
     expect(nodePath(makeNode({ sourceType: null, sourceId: 's1' }))).toBeNull();
     // sem sourceId → null
     expect(nodePath(makeNode({ sourceType: 'TRANSCRIPT', sourceId: null }))).toBeNull();
+  });
+});
+
+describe('graphFocusFromSearch', () => {
+  test('reads, trims, and bounds the requested initial graph focus', () => {
+    expect(graphFocusFromSearch('?focus=node-1')).toBe('node-1');
+    expect(graphFocusFromSearch('?focus=%20node-2%20')).toBe('node-2');
+    expect(graphFocusFromSearch(`?focus=${'x'.repeat(200)}`)).toHaveLength(160);
+    expect(graphFocusFromSearch('?view=full')).toBeNull();
   });
 });
 
