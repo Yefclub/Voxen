@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from src import pipeline, safe_diagnostics
+from src import knowledge_deletion, pipeline, safe_diagnostics
 
 
 class _BoundLogger:
@@ -129,6 +130,56 @@ async def test_unexpected_job_failure_never_publishes_filename_or_exception_cont
     )
     assert "Cliente-Acme-Fusao-Secreta.pdf" not in diagnostics
     assert private_path not in diagnostics
+
+
+async def test_graph_contention_defers_deletion_without_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_logger = _install_job_dependencies(
+        monkeypatch,
+        source_url="voxen://delete/note/note-1",
+    )
+    pipeline.db.claim_job.return_value.update(
+        {
+            "type": "DELETE_KNOWLEDGE",
+            "deletionTargetType": "NOTE",
+            "deletionTargetId": "note-1",
+        }
+    )
+    deferred = pipeline.DeferredJobError("graph busy", retry_after_seconds=30)
+    monkeypatch.setattr(knowledge_deletion, "run", AsyncMock(side_effect=deferred))
+    queued_at = datetime(2026, 8, 11, tzinfo=UTC)
+    monkeypatch.setattr(
+        pipeline.job_defer_db,
+        "defer_job_lease",
+        AsyncMock(return_value=("event-1", queued_at)),
+    )
+    monkeypatch.setattr(
+        pipeline.events,
+        "publish_recorded_job_event",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(pipeline.db, "fail_knowledge_deletion", AsyncMock(return_value=None))
+
+    await pipeline.process_job("job-1")
+
+    pipeline.job_defer_db.defer_job_lease.assert_awaited_once_with(
+        "job-1",
+        "user-1",
+        delay_seconds=30,
+    )
+    pipeline.db.fail_knowledge_deletion.assert_not_awaited()
+    pipeline.db.mark_job_failed.assert_not_awaited()
+    pipeline.events.publish_recorded_job_event.assert_awaited_once_with(
+        "user-1",
+        "job-1",
+        "queued",
+        event_id="event-1",
+        created_at=queued_at,
+        percent=0,
+    )
+    deferred_log = next(entry for entry in root_logger.bound.entries if entry[1] == "job-deferred")
+    assert deferred_log[2] == {"retry_after_seconds": 30}
 
 
 def test_error_diagnostic_is_allowlisted_instead_of_redacting_a_denylist() -> None:

@@ -20,6 +20,7 @@ from . import (
     db,
     document_ingest,
     events,
+    job_defer_db,
     saved_media,
     storage,
     summary,
@@ -53,6 +54,7 @@ from .openrouter import (
 )
 from .pipeline_errors import (
     GENERIC_JOB_FAILURE_MESSAGE,
+    DeferredJobError,
     PermanentError,
     TransientError,
 )
@@ -222,6 +224,21 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         )
         if refresh_transcript_id:
             await db.clear_source_refresh_check(user_id, refresh_transcript_id)
+    except DeferredJobError as e:
+        log.info("job-deferred", retry_after_seconds=e.retry_after_seconds)
+        event_id, created_at = await job_defer_db.defer_job_lease(
+            job_id,
+            user_id,
+            delay_seconds=e.retry_after_seconds,
+        )
+        await events.publish_recorded_job_event(
+            user_id,
+            job_id,
+            "queued",
+            event_id=event_id,
+            created_at=created_at,
+            percent=0,
+        )
     except JobLeaseLostError:
         # O novo dono decide o estado; esta tentativa não pode publicar FAILED.
         raise
