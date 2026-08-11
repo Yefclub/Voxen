@@ -59,16 +59,16 @@ canônica; a página apresenta apenas projeções locais e fundamentadas.
 
 ## Critérios de Aceite
 
-- [ ] A API oferece os recortes `content` e `connections` para uma transcrição.
-- [ ] O recorte `content` contém somente o foco e conhecimento sustentado pela fonte atual.
-- [ ] O recorte `connections` é limitado a no máximo dois saltos e aos limites defensivos do Brain.
-- [ ] A resposta informa foco, recorte, truncamento, compilação e estado visual.
-- [ ] Evidências retornam trecho, linhas e timestamps sem expor dados de outro usuário.
-- [ ] A página de detalhe possui canvas 2D, lista acessível, seletor de recorte e inspetor.
-- [ ] Evidências navegam para a passagem da transcrição.
-- [ ] A abertura do grafo global preserva o foco.
-- [ ] Estados de carregamento, não indexado, parcial e falho possuem mensagens em PT-BR e inglês.
-- [ ] Testes cobrem isolamento, seleção dos recortes, estado da compilação e âncoras.
+- [x] A API oferece os recortes `content` e `connections` para uma transcrição.
+- [x] O recorte `content` contém somente o foco e conhecimento sustentado pela fonte atual.
+- [x] O recorte `connections` é limitado a no máximo dois saltos e aos limites defensivos do Brain.
+- [x] A resposta informa foco, recorte, truncamento, compilação e estado visual.
+- [x] Evidências retornam trecho, linhas e timestamps sem expor dados de outro usuário.
+- [x] A página de detalhe possui canvas 2D, lista acessível, seletor de recorte e inspetor.
+- [x] Evidências navegam para a passagem da transcrição.
+- [x] A abertura do grafo global preserva o foco.
+- [x] Estados de carregamento, não indexado, parcial e falho possuem mensagens em PT-BR e inglês.
+- [x] Testes cobrem isolamento, seleção dos recortes, estado da compilação e âncoras.
 
 ## Fora de Escopo
 

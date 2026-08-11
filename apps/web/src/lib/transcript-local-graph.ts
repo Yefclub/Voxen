@@ -197,7 +197,12 @@ export async function readTranscriptLocalGraph(input: {
   }
   const boundedNodeIds = [...nodeIds].slice(0, CONTENT_NODE_LIMIT);
   const nodes = await db.brainNode.findMany({
-    where: { id: { in: boundedNodeIds }, userId: input.userId, status: 'ACTIVE' },
+    where: {
+      id: { in: boundedNodeIds },
+      userId: input.userId,
+      status: 'ACTIVE',
+      OR: [{ id: focus.id }, { type: { in: ['ENTITY', 'TOPIC', 'CLAIM', 'EVENT', 'CLUSTER'] } }],
+    },
     orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
   });
   const visibleIds = new Set(nodes.map((node) => node.id));
