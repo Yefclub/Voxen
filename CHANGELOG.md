@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1786478001 — 2026-08-11 · Dev
+
+### ✨ Explore the knowledge graph of each transcript
+
+Transcript pages now show the concepts and grounded relations extracted from that source. Switch between the knowledge inside the transcript and its connections to the wider library, inspect confidence and evidence, jump to supported passages, or continue exploring from the same focus in the global graph.
+
 ## v0.14.5-dev.1786430065 — 2026-08-11 · Dev
 
 ### 🐛 Reliable deletion during graph activity
