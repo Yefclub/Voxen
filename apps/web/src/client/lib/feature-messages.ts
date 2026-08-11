@@ -12,6 +12,10 @@ import {
   enTranscriptLocalGraphMessages,
   ptBrTranscriptLocalGraphMessages,
 } from './transcript-local-graph-i18n';
+import {
+  enPersonalInterestMessages,
+  ptBrPersonalInterestMessages,
+} from './personal-interest-signals-i18n';
 
 export const ptBrFeatureMessages = {
   ...ptBrKnowledgeFeatureMessages,
@@ -19,6 +23,7 @@ export const ptBrFeatureMessages = {
   ...ptBrBatchIngestMessages,
   ...ptBrLibraryNavigationMessages,
   ...ptBrTranscriptLocalGraphMessages,
+  ...ptBrPersonalInterestMessages,
 } as const;
 
 export const enFeatureMessages: Record<keyof typeof ptBrFeatureMessages, string> = {
@@ -27,4 +32,5 @@ export const enFeatureMessages: Record<keyof typeof ptBrFeatureMessages, string>
   ...enBatchIngestMessages,
   ...enLibraryNavigationMessages,
   ...enTranscriptLocalGraphMessages,
+  ...enPersonalInterestMessages,
 };

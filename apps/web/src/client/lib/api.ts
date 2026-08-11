@@ -51,5 +51,8 @@ export const apiPost = <T = unknown>(path: string, data?: unknown): Promise<T> =
 export const apiPatch = <T = unknown>(path: string, data?: unknown): Promise<T> =>
   api<T>(path, { method: 'PATCH', body: data ? JSON.stringify(data) : undefined });
 
+export const apiPut = <T = unknown>(path: string, data?: unknown): Promise<T> =>
+  api<T>(path, { method: 'PUT', body: data ? JSON.stringify(data) : undefined });
+
 export const apiDelete = <T = unknown>(path: string): Promise<T> =>
   api<T>(path, { method: 'DELETE' });

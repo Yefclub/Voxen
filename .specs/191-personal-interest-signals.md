@@ -62,14 +62,14 @@ posteriores.
 
 ## Critérios de Aceite
 
-- [ ] O schema persiste eventos pessoais com origem, tipo, sinal, data, vínculo ao usuário e exclusão em cascata com a transcrição.
-- [ ] A API autenticada registra visualizações de forma idempotente e retorna o feedback explícito atual.
-- [ ] A API alterna entre feedback positivo, negativo e limpo sem converter visualizações em preferência.
-- [ ] Transcrições de outro usuário e itens na lixeira não expõem nem aceitam sinais.
-- [ ] O detalhe da transcrição mostra controles acessíveis de “mais”, “menos” e limpeza em PT-BR e inglês.
-- [ ] A falha de telemetria observada nunca impede a leitura do conteúdo.
-- [ ] Testes cobrem isolamento, idempotência diária, alternância explícita, ordenação do estado e exclusão em cascata.
-- [ ] A interface é validada em desktop e smartphone, incluindo estados selecionado, carregando e erro.
+- [x] O schema persiste eventos pessoais com origem, tipo, sinal, data, vínculo ao usuário e exclusão em cascata com a transcrição.
+- [x] A API autenticada registra visualizações de forma idempotente e retorna o feedback explícito atual.
+- [x] A API alterna entre feedback positivo, negativo e limpo sem converter visualizações em preferência.
+- [x] Transcrições de outro usuário e itens na lixeira não expõem nem aceitam sinais.
+- [x] O detalhe da transcrição mostra controles acessíveis de “mais”, “menos” e limpeza em PT-BR e inglês.
+- [x] A falha de telemetria observada nunca impede a leitura do conteúdo.
+- [x] Testes cobrem isolamento, idempotência diária, alternância explícita, ordenação do estado e exclusão em cascata.
+- [x] A interface é validada em desktop e smartphone, incluindo estados selecionado, carregando e erro.
 
 ## Fora de Escopo
 

@@ -71,6 +71,7 @@ model User {
   researchArtifacts             ResearchArtifact[]
   transcriptEnrichments         TranscriptEnrichment[]
   transcriptCorrectionRevisions TranscriptCorrectionRevision[]
+  interestEvents                InterestEvent[]
   costEvents                    CostEvent[]
   conversations                 Conversation[]
   chatApprovals                 ChatApproval[]
@@ -460,6 +461,18 @@ enum ContentStatus {
   TRASH
 }
 
+enum InterestEventOrigin {
+  OBSERVED
+  EXPLICIT
+}
+
+enum InterestEventKind {
+  TRANSCRIPT_VIEWED
+  PREFERENCE_MORE
+  PREFERENCE_LESS
+  PREFERENCE_CLEARED
+}
+
 enum EnrichmentStatus {
   PENDING
   RUNNING
@@ -568,10 +581,12 @@ model Transcript {
   noteSources              NoteTranscriptSource[]
   transcriptEnrichments    TranscriptEnrichment[]
   correctionRevisions      TranscriptCorrectionRevision[]
+  interestEvents           InterestEvent[]
   brainCompilation         BrainCompilation?
   savedMedia               SavedMedia?
   // Índice GIN no tsvector criado via SQL na migration
 
+  @@unique([id, userId])
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
   @@index([userId, folderId])
@@ -580,6 +595,25 @@ model Transcript {
   @@index([summaryStatus, summaryNextAttemptAt])
   @@index([taggingStatus, taggingNextAttemptAt])
   @@index([userId, sourceRefreshStatus])
+}
+
+model InterestEvent {
+  id           String              @id @default(cuid())
+  userId       String
+  transcriptId String
+  origin       InterestEventOrigin
+  kind         InterestEventKind
+  signal       Int
+  dedupeKey    String?
+  metadata     Json                @default("{}")
+  occurredAt   DateTime            @default(now())
+  createdAt    DateTime            @default(now())
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript   Transcript          @relation(fields: [transcriptId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, transcriptId, occurredAt(sort: Desc)])
+  @@index([userId, origin, occurredAt(sort: Desc)])
 }
 
 model TranscriptCorrectionRevision {
