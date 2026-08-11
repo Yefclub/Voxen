@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786427252",
+    "channel": "dev",
+    "type": "security",
+    "title": "Smaller worker runtime attack surface",
+    "body": "The production worker image no longer includes the unused global Python package\ninstaller and its vendored dependencies. Runtime dependencies remain locked in\nthe uv-managed virtual environment, while image vulnerability scans now inspect\nonly packages that the worker can execute.",
+    "pr": 741,
+    "author": "Kalyel",
+    "date": "2026-08-11T02:47:17-03:00",
+    "translations": {
+      "en": {
+        "title": "Smaller worker runtime attack surface",
+        "body": "The production worker image no longer includes the unused global Python package\ninstaller and its vendored dependencies. Runtime dependencies remain locked in\nthe uv-managed virtual environment, while image vulnerability scans now inspect\nonly packages that the worker can execute."
+      },
+      "pt-BR": {
+        "title": "Menor superfície de ataque no runtime do worker",
+        "body": "A imagem de produção do worker não inclui mais o instalador global de pacotes\nPython, que não era utilizado, nem suas dependências incorporadas. As\ndependências de runtime continuam travadas no ambiente virtual gerenciado pelo\nuv, enquanto a análise de vulnerabilidades passa a considerar somente os\npacotes que o worker pode executar."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/741"
+  },
+  {
     "version": "0.14.5-dev.1786366281",
     "channel": "dev",
     "type": "feat",

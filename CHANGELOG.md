@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786427252 — 2026-08-11 · Dev
+
+### 🔒 Smaller worker runtime attack surface
+
+The production worker image no longer includes the unused global Python package
+installer and its vendored dependencies. Runtime dependencies remain locked in
+the uv-managed virtual environment, while image vulnerability scans now inspect
+only packages that the worker can execute.
+
 ## v0.14.5-dev.1786366281 — 2026-08-10 · Dev
 
 ### ✨ Safe background deletion across the knowledge base
