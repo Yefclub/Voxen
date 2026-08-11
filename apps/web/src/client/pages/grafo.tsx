@@ -61,7 +61,7 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
-import { nodePath } from '../lib/graph-node-path';
+import { graphFocusFromSearch, nodePath } from '../lib/graph-node-path';
 import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
@@ -205,7 +205,7 @@ export function GrafoPage(): React.ReactElement {
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
-  const [focusedGraphId, setFocusedGraphId] = useState<string | null>(null);
+  const [focusedGraphId, setFocusedGraphId] = useState<string | null>(graphFocusFromSearch);
   const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
     () => new Set(ALL_GRAPH_NODE_TYPES),
   );
