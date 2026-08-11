@@ -96,22 +96,24 @@ export async function readGraphSlice(input: {
   view: GraphSliceView;
   focusId?: string | null;
   hops: number;
+  includeArchived?: boolean;
 }): Promise<GraphReadResult> {
   const { userId, view, hops } = input;
   const focusId = input.focusId?.trim() || null;
+  const visibleStatus = input.includeArchived ? { not: 'TRASH' as const } : ('ACTIVE' as const);
   const [candidateNodes, candidateEdges] = await Promise.all([
-    db.brainNode.count({ where: { userId, status: 'ACTIVE' } }),
+    db.brainNode.count({ where: { userId, status: visibleStatus } }),
     db.brainEdge.count({
       where: {
         userId,
-        status: 'ACTIVE',
-        from: { status: 'ACTIVE', userId },
-        to: { status: 'ACTIVE', userId },
+        status: visibleStatus,
+        from: { status: visibleStatus, userId },
+        to: { status: visibleStatus, userId },
       },
     }),
   ]);
   const bounded = focusId
-    ? await readFocusedRecords(userId, focusId, hops)
+    ? await readFocusedRecords(userId, focusId, hops, input.includeArchived ?? false)
     : await readRepresentativeRecords(userId);
   const degree = new Map<string, number>();
   for (const edge of bounded.edges) {
@@ -188,9 +190,11 @@ async function readFocusedRecords(
   userId: string,
   focusId: string,
   hops: number,
+  includeArchived: boolean,
 ): Promise<{ nodes: RawNode[]; edges: RawEdge[]; truncated: boolean }> {
+  const visibleStatus = includeArchived ? { not: 'TRASH' as const } : ('ACTIVE' as const);
   const focus = await db.brainNode.findFirst({
-    where: { id: focusId, userId, status: 'ACTIVE' },
+    where: { id: focusId, userId, status: visibleStatus },
     select: graphNodeSelect,
   });
   if (!focus) return { nodes: [], edges: [], truncated: false };
@@ -207,11 +211,11 @@ async function readFocusedRecords(
     const batch = await db.brainEdge.findMany({
       where: {
         userId,
-        status: 'ACTIVE',
+        status: visibleStatus,
         ...(edges.size > 0 ? { id: { notIn: [...edges.keys()] } } : {}),
         OR: [{ fromNodeId: { in: frontier } }, { toNodeId: { in: frontier } }],
-        from: { status: 'ACTIVE', userId },
-        to: { status: 'ACTIVE', userId },
+        from: { status: visibleStatus, userId },
+        to: { status: visibleStatus, userId },
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
       take: remainingEdges + 1,
@@ -234,7 +238,11 @@ async function readFocusedRecords(
     frontier = [...next];
   }
   const neighbors = await db.brainNode.findMany({
-    where: { id: { in: [...nodeIds].filter((id) => id !== focus.id) }, userId, status: 'ACTIVE' },
+    where: {
+      id: { in: [...nodeIds].filter((id) => id !== focus.id) },
+      userId,
+      status: visibleStatus,
+    },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
     select: graphNodeSelect,
   });

@@ -48,6 +48,7 @@ describeIfDb('transcript local graph persistence and isolation', () => {
   let transcriptId = '';
   let focusId = '';
   let topicId = '';
+  let groundedEdgeId = '';
 
   beforeAll(async () => {
     const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -116,6 +117,17 @@ describeIfDb('transcript local graph persistence and isolation', () => {
         confidence: 0.91,
       },
     });
+    groundedEdgeId = edge.id;
+    await db.brainEdge.create({
+      data: {
+        userId: ownerId,
+        fromNodeId: focusId,
+        toNodeId: topicId,
+        kind: 'RELATED_TO',
+        method: 'inferred',
+        confidence: 0.55,
+      },
+    });
     await Promise.all([
       db.brainSource.create({
         data: {
@@ -169,6 +181,7 @@ describeIfDb('transcript local graph persistence and isolation', () => {
     expect(graph?.focusId).toBe(focusId);
     expect(graph?.state).toBe('PARTIAL');
     expect(graph?.nodes.map((node) => node.id).sort()).toEqual([focusId, topicId].sort());
+    expect(graph?.edges.map((edge) => edge.id)).toEqual([groundedEdgeId]);
     expect(graph?.evidence.find((item) => item.nodeId === topicId)?.anchor).toBe('#l=4-5');
   });
 
@@ -181,5 +194,31 @@ describeIfDb('transcript local graph persistence and isolation', () => {
         hops: 2,
       }),
     ).toBeNull();
+  });
+
+  test('keeps an archived transcript graph explorable in both local views', async () => {
+    await db.$transaction([
+      db.transcript.update({ where: { id: transcriptId }, data: { status: 'ARCHIVED' } }),
+      db.brainNode.update({ where: { id: focusId }, data: { status: 'ARCHIVED' } }),
+      db.brainEdge.update({ where: { id: groundedEdgeId }, data: { status: 'ARCHIVED' } }),
+    ]);
+
+    const content = await readTranscriptLocalGraph({
+      userId: ownerId,
+      transcriptId,
+      scope: 'content',
+      hops: 1,
+    });
+    const connections = await readTranscriptLocalGraph({
+      userId: ownerId,
+      transcriptId,
+      scope: 'connections',
+      hops: 2,
+    });
+
+    expect(content?.focusId).toBe(focusId);
+    expect(content?.edges.some((edge) => edge.id === groundedEdgeId)).toBeTrue();
+    expect(connections?.focusId).toBe(focusId);
+    expect(connections?.nodes.some((node) => node.id === topicId)).toBeTrue();
   });
 });

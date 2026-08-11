@@ -100,11 +100,12 @@ export async function readTranscriptLocalGraph(input: {
     db.brainNode.findFirst({
       where: {
         userId: input.userId,
+        key: `TRANSCRIPT:${input.transcriptId}`,
+        type: 'CONTENT',
         sourceType: 'TRANSCRIPT',
         sourceId: input.transcriptId,
-        status: 'ACTIVE',
+        status: { not: 'TRASH' },
       },
-      orderBy: [{ type: 'asc' }, { updatedAt: 'desc' }],
     }),
     db.brainCompilation.findFirst({
       where: { userId: input.userId, transcriptId: input.transcriptId },
@@ -142,6 +143,7 @@ export async function readTranscriptLocalGraph(input: {
       view: 'full',
       focusId: focus.id,
       hops: input.hops,
+      includeArchived: true,
     });
     const evidence = await readEvidence(
       input.userId,
@@ -181,10 +183,11 @@ export async function readTranscriptLocalGraph(input: {
           where: {
             id: { in: evidencedEdgeIds },
             userId: input.userId,
-            status: 'ACTIVE',
-            from: { userId: input.userId, status: 'ACTIVE' },
-            to: { userId: input.userId, status: 'ACTIVE' },
+            status: { not: 'TRASH' },
+            from: { userId: input.userId, status: { not: 'TRASH' } },
+            to: { userId: input.userId, status: { not: 'TRASH' } },
           },
+          orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
           take: CONTENT_EDGE_LIMIT,
         });
   const nodeIds = new Set<string>([focus.id]);
@@ -200,24 +203,15 @@ export async function readTranscriptLocalGraph(input: {
     where: {
       id: { in: boundedNodeIds },
       userId: input.userId,
-      status: 'ACTIVE',
+      status: { not: 'TRASH' },
       OR: [{ id: focus.id }, { type: { in: ['ENTITY', 'TOPIC', 'CLAIM', 'EVENT', 'CLUSTER'] } }],
     },
     orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
   });
   const visibleIds = new Set(nodes.map((node) => node.id));
-  const edges = await db.brainEdge.findMany({
-    where: {
-      userId: input.userId,
-      status: 'ACTIVE',
-      fromNodeId: { in: [...visibleIds] },
-      toNodeId: { in: [...visibleIds] },
-      from: { userId: input.userId, status: 'ACTIVE' },
-      to: { userId: input.userId, status: 'ACTIVE' },
-    },
-    orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-    take: CONTENT_EDGE_LIMIT,
-  });
+  const edges = evidencedEdges.filter(
+    (edge) => visibleIds.has(edge.fromNodeId) && visibleIds.has(edge.toNodeId),
+  );
   const degree = new Map<string, number>();
   for (const edge of edges) {
     degree.set(edge.fromNodeId, (degree.get(edge.fromNodeId) ?? 0) + 1);

@@ -246,6 +246,7 @@ export function TranscriptKnowledgeGraph({
             </div>
 
             <GraphInspector
+              transcriptId={transcriptId}
               node={selectedNode}
               edges={selectedEdges}
               allNodes={data.nodes}
@@ -331,6 +332,7 @@ function GraphStatus({
 }
 
 function GraphInspector({
+  transcriptId,
   node,
   edges,
   allNodes,
@@ -338,6 +340,7 @@ function GraphInspector({
   onSelect,
   onOpenEvidence,
 }: {
+  transcriptId: string;
   node: GraphNode | null;
   edges: GraphEdge[];
   allNodes: GraphNode[];
@@ -415,7 +418,7 @@ function GraphInspector({
                 “{item.excerpt}”
               </p>
             )}
-            {item.anchor && item.sourceType === 'TRANSCRIPT' && (
+            {item.anchor && item.sourceType === 'TRANSCRIPT' && item.sourceId === transcriptId && (
               <button
                 type="button"
                 onClick={() => onOpenEvidence(item.anchor!)}
