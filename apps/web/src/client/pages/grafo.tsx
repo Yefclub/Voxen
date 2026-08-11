@@ -757,7 +757,7 @@ function GraphExplorer({
                 />
                 <span className="min-w-0 flex-1 truncate text-xs font-medium">{hub.label}</span>
                 <span className="rounded-md bg-[var(--color-app-bg)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-app-muted)]">
-                  {hub.degree}
+                  {Math.round((hub.weightedDegreeCentrality ?? 0) * 100)}%
                 </span>
               </button>
             ))}

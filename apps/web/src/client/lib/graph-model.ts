@@ -4,7 +4,12 @@ import type { AppTheme } from './theme';
 import type { TranslateFn } from './i18n';
 import type { GraphIndexStatus } from '../../shared/graph-index';
 import type { GraphCommunity, GraphCommunityDetection } from '../../shared/graph-community';
+import type {
+  GraphCentralityMetadata,
+  GraphCentralityNodeScore,
+} from '../../shared/graph-centrality';
 import { buildGraphCommunitiesFromResponse, representativeFirst } from './graph-community-model';
+import { buildClientGraphCentrality } from './graph-centrality-model';
 
 export type { GraphCommunity } from '../../shared/graph-community';
 
@@ -59,7 +64,7 @@ export interface GraphEdge {
   evidence?: GraphEvidence;
 }
 
-export interface GraphHub {
+export interface GraphHub extends Partial<Omit<GraphCentralityNodeScore, 'id'>> {
   id: string;
   label: string;
   type: GraphNodeType;
@@ -70,6 +75,8 @@ export interface GraphInsights {
   hubs: GraphHub[];
   communities: GraphCommunity[];
   communityDetection?: GraphCommunityDetection;
+  nodeCentrality?: GraphCentralityNodeScore[];
+  centrality?: GraphCentralityMetadata;
   edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
@@ -344,17 +351,7 @@ export function buildGraphCommunities(data: GraphResp): GraphCommunity[] {
 }
 
 export function buildGraphInsights(data: GraphResp): GraphInsights {
-  const degree = graphDegrees(data.edges);
-  const hubs = [...data.nodes]
-    .map<GraphHub>((node) => ({
-      id: node.id,
-      label: node.label,
-      type: node.type,
-      degree: degree.get(node.id) ?? 0,
-    }))
-    .filter((hub) => hub.degree > 0)
-    .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label))
-    .slice(0, 12);
+  const centrality = buildClientGraphCentrality(data);
   const edgeEvidence = { extracted: 0, inferred: 0, ambiguous: 0 };
   for (const edge of data.edges) {
     const evidence = edge.evidence ?? inferEdgeEvidence(edge);
@@ -363,11 +360,13 @@ export function buildGraphInsights(data: GraphResp): GraphInsights {
     else edgeEvidence.ambiguous += 1;
   }
   return {
-    hubs,
+    hubs: centrality.hubs,
     communities: buildGraphCommunities(data),
     ...(data.insights?.communityDetection
       ? { communityDetection: data.insights.communityDetection }
       : {}),
+    ...(centrality.nodeCentrality ? { nodeCentrality: centrality.nodeCentrality } : {}),
+    ...(centrality.centrality ? { centrality: centrality.centrality } : {}),
     edgeEvidence,
   };
 }

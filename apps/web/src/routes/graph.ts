@@ -48,6 +48,10 @@ import {
 import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
 import { detectGraphCommunities } from '../lib/graph-community-detection';
 import {
+  loadGraphPersonalization,
+  type GraphPersonalizationContext,
+} from '../lib/graph-personalization';
+import {
   GraphIndexRunError,
   createGraphIndexFailureStatus,
   reportGraphIndexRunFailure,
@@ -56,6 +60,8 @@ import { parseGraphHops, parseGraphView } from '../lib/graph-slice';
 import { createSubscriber, getRedisPublisher } from '../lib/redis';
 import { graphIndexCoverage, type GraphIndexStatus } from '../shared/graph-index';
 import type { GraphCommunity, GraphCommunityDetection } from '../shared/graph-community';
+import type { GraphCentralityMetadata, GraphCentralityNodeScore } from '../shared/graph-centrality';
+import { calculateGraphCentrality } from '../shared/graph-ranking';
 
 type Vars = { userId: string };
 
@@ -83,12 +89,19 @@ interface GraphHub {
   label: string;
   type: GraphNode['type'];
   degree: number;
+  weightedDegree: number;
+  weightedDegreeCentrality: number;
+  pageRank: number;
+  personalizedPageRank: number;
+  personalizationLift: number;
 }
 
 interface GraphInsights {
   hubs: GraphHub[];
   communities: GraphCommunity[];
   communityDetection: GraphCommunityDetection;
+  nodeCentrality: GraphCentralityNodeScore[];
+  centrality: GraphCentralityMetadata;
   edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
@@ -180,9 +193,10 @@ graphRoutes.get('/', async (c) => {
   const view = parseGraphView(c.req.query('view'));
   const focusId = c.req.query('focus')?.trim().slice(0, 160) || null;
   const hops = parseGraphHops(c.req.query('hops'));
+  const personalization = await loadGraphPersonalization(userId);
 
   // Cache em Redis 60s — chave por view/focus para não misturar recortes.
-  const cacheKey = `${graphCacheKey(userId)}:${view}${focusId ? `:f:${focusId}:h${hops}` : ''}`;
+  const cacheKey = `${graphCacheKey(userId)}:${view}${focusId ? `:f:${focusId}:h${hops}` : ''}:p:${personalization.cacheFragment}`;
   if (!force && !refresh) {
     try {
       const cached = await getRedisPublisher().get(cacheKey);
@@ -205,13 +219,7 @@ graphRoutes.get('/', async (c) => {
     hops,
   });
 
-  const sliceDegree = new Map<string, number>();
-  for (const edge of sliced.edges) {
-    sliceDegree.set(edge.from, (sliceDegree.get(edge.from) ?? 0) + 1);
-    sliceDegree.set(edge.to, (sliceDegree.get(edge.to) ?? 0) + 1);
-  }
-
-  const insights = buildInsights(sliced.nodes, sliced.edges, sliceDegree);
+  const insights = buildInsights(sliced.nodes, sliced.edges, personalization, sliced.truncated);
   const latestStatus = await currentGraphIndexStatus(userId);
   const indexing = indexStatus.state === 'running' || latestStatus.state === 'running';
   const response = {
@@ -515,17 +523,32 @@ export async function reconcileGraphUsers(): Promise<void> {
 function buildInsights(
   nodes: GraphNode[],
   edges: GraphEdge[],
-  degree: Map<string, number>,
+  personalization: GraphPersonalizationContext,
+  snapshotTruncated: boolean,
 ): GraphInsights {
+  const centralityResult = calculateGraphCentrality({
+    nodes,
+    edges,
+    personalSeeds: personalization.seeds,
+    personalization,
+    snapshotTruncated,
+  });
+  const centralityById = new Map(centralityResult.nodes.map((score) => [score.id, score]));
   const hubs = [...nodes]
-    .map((n) => ({
-      id: n.id,
-      label: n.label,
-      type: n.type,
-      degree: degree.get(n.id) ?? 0,
+    .map((node) => ({
+      ...(centralityById.get(node.id) ?? emptyCentrality(node.id)),
+      label: node.label,
+      type: node.type,
     }))
     .filter((h) => h.degree > 0)
-    .sort((a, b) => b.degree - a.degree)
+    .sort(
+      (left, right) =>
+        right.weightedDegreeCentrality - left.weightedDegreeCentrality ||
+        right.personalizedPageRank - left.personalizedPageRank ||
+        right.pageRank - left.pageRank ||
+        left.label.localeCompare(right.label) ||
+        left.id.localeCompare(right.id),
+    )
     .slice(0, 12);
 
   const communityResult = detectGraphCommunities(nodes, edges);
@@ -541,6 +564,20 @@ function buildInsights(
     hubs,
     communities: communityResult.communities,
     communityDetection: communityResult.detection,
+    nodeCentrality: centralityResult.nodes,
+    centrality: centralityResult.metadata,
     edgeEvidence,
+  };
+}
+
+function emptyCentrality(id: string): GraphCentralityNodeScore {
+  return {
+    id,
+    degree: 0,
+    weightedDegree: 0,
+    weightedDegreeCentrality: 0,
+    pageRank: 0,
+    personalizedPageRank: 0,
+    personalizationLift: 0,
   };
 }

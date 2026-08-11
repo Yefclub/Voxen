@@ -1,6 +1,11 @@
 import JavaRandom from 'java-random';
 import { Clustering, LeidenAlgorithm, Network } from 'networkanalysis-ts';
 import type { GraphCommunity, GraphCommunityResult } from '../shared/graph-community';
+import {
+  aggregateWeightedUndirectedEdges,
+  effectiveGraphEdgeWeight,
+  type WeightedGraphEdge,
+} from '../shared/graph-edge-weighting';
 
 export const GRAPH_COMMUNITY_ALGORITHM_VERSION = 'leiden-modularity-v1';
 export const GRAPH_COMMUNITY_RESOLUTION = 1;
@@ -19,12 +24,6 @@ interface CommunityEdge {
   evidence?: string;
 }
 
-interface WeightedEdge {
-  from: string;
-  to: string;
-  weight: number;
-}
-
 interface DetectorResult {
   membership: number[];
   quality: number;
@@ -32,36 +31,12 @@ interface DetectorResult {
 
 type MembershipDetector = (
   nodeCount: number,
-  edges: WeightedEdge[],
+  edges: WeightedGraphEdge[],
   nodeIndex: Map<string, number>,
 ) => DetectorResult;
 
-const EVIDENCE_FACTORS: Readonly<Record<string, number>> = {
-  EXTRACTED: 1,
-  INFERRED: 0.65,
-  AMBIGUOUS: 0.4,
-};
-
-const KIND_FACTORS: Readonly<Record<string, number>> = {
-  same_as: 1.15,
-  belongs_to: 1.1,
-  part_of: 1.1,
-  supports: 1,
-  mentions: 0.9,
-  links_to: 0.85,
-  related_to: 0.7,
-  next_to: 0.45,
-  contradicts: 0.35,
-};
-
 export function effectiveCommunityEdgeWeight(edge: CommunityEdge): number {
-  const parsedConfidence = Number(edge.confidence);
-  const confidence = Number.isFinite(parsedConfidence) ? clamp(parsedConfidence, 0, 1) : 0.5;
-  const evidenceFactor =
-    EVIDENCE_FACTORS[edge.evidence ?? 'AMBIGUOUS'] ?? EVIDENCE_FACTORS.AMBIGUOUS!;
-  const kindFactor = KIND_FACTORS[edge.kind.toLowerCase()] ?? 0.5;
-  const weighted = confidence * evidenceFactor * kindFactor;
-  return Number.isFinite(weighted) ? round(clamp(weighted, 0, 1)) : 0;
+  return effectiveGraphEdgeWeight(edge);
 }
 
 export function detectGraphCommunities(
@@ -71,7 +46,7 @@ export function detectGraphCommunities(
 ): GraphCommunityResult {
   const orderedNodes = dedupeNodes(nodes);
   const nodeById = new Map(orderedNodes.map((node) => [node.id, node]));
-  const weightedEdges = aggregateWeightedEdges(nodeById, edges);
+  const weightedEdges = aggregateWeightedUndirectedEdges(new Set(nodeById.keys()), edges);
   const eligibleIds = new Set<string>();
   for (const edge of weightedEdges) {
     eligibleIds.add(edge.from);
@@ -137,7 +112,7 @@ export function detectGraphCommunities(
 
 function runLeiden(
   nodeCount: number,
-  edges: WeightedEdge[],
+  edges: WeightedGraphEdge[],
   nodeIndex: Map<string, number>,
 ): DetectorResult {
   const network = new Network({
@@ -184,32 +159,9 @@ function dedupeNodes(nodes: CommunityNode[]): CommunityNode[] {
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function aggregateWeightedEdges(
-  nodeById: Map<string, CommunityNode>,
-  edges: CommunityEdge[],
-): WeightedEdge[] {
-  const pairs = new Map<string, WeightedEdge>();
-  for (const edge of edges) {
-    if (edge.from === edge.to || !nodeById.has(edge.from) || !nodeById.has(edge.to)) continue;
-    const weight = effectiveCommunityEdgeWeight(edge);
-    if (weight <= 0) continue;
-    const [from, to] = edge.from < edge.to ? [edge.from, edge.to] : [edge.to, edge.from];
-    const key = `${from}\u0000${to}`;
-    const current = pairs.get(key);
-    pairs.set(key, {
-      from,
-      to,
-      weight: round(1 - (1 - (current?.weight ?? 0)) * (1 - weight)),
-    });
-  }
-  return [...pairs.values()].sort(
-    (left, right) => left.from.localeCompare(right.from) || left.to.localeCompare(right.to),
-  );
-}
-
 function connectedComponentMembership(
   nodes: CommunityNode[],
-  edges: WeightedEdge[],
+  edges: WeightedGraphEdge[],
   nodeIndex: Map<string, number>,
 ): number[] {
   const parent = nodes.map((_, index) => index);
@@ -238,7 +190,7 @@ function connectedComponentMembership(
 
 function splitDisconnectedGroups(
   nodes: CommunityNode[],
-  edges: WeightedEdge[],
+  edges: WeightedGraphEdge[],
   membership: number[],
 ): string[][] {
   const clusterByNode = new Map(nodes.map((node, index) => [node.id, membership[index]!]));
@@ -273,7 +225,7 @@ function splitDisconnectedGroups(
 function buildCommunities(
   groups: string[][],
   nodeById: Map<string, CommunityNode>,
-  edges: WeightedEdge[],
+  edges: WeightedGraphEdge[],
 ): GraphCommunity[] {
   const communities = groups
     .filter((group) => group.length >= 2)
@@ -345,10 +297,6 @@ function detectionMetadata(input: {
     singletonNodes: input.singletonNodes,
     fallbackReason: input.fallbackReason,
   };
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function round(value: number): number {

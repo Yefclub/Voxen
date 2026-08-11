@@ -69,6 +69,19 @@ interface GraphTestResponse {
     source?: string;
   }>;
   edges: Array<{ from: string; to: string; kind: string; method: string }>;
+  insights?: {
+    nodeCentrality: Array<{
+      id: string;
+      pageRank: number;
+      personalizedPageRank: number;
+      weightedDegreeCentrality: number;
+    }>;
+    centrality: {
+      personalizationMode: 'durable-interest' | 'uniform';
+      projectionAvailable: boolean;
+      snapshotTruncated: boolean;
+    };
+  };
 }
 
 async function waitForGraphReindex(cookie: string, force = true): Promise<GraphTestResponse> {
@@ -735,6 +748,7 @@ describeIfDb('brain indexer', () => {
     expect(snapshot.candidateNodes).toBe(502);
     expect(snapshot.candidateEdges).toBe(1);
     expect(snapshot.truncated).toBe(true);
+    expect(snapshot.insights?.centrality.snapshotTruncated).toBe(true);
     expect(snapshot.nodes.some((node) => node.id === targetId)).toBe(false);
 
     const searchResponse = await app.fetch(
@@ -763,12 +777,25 @@ describeIfDb('brain indexer', () => {
     expect(focused.nodes.map((node) => node.id)).toEqual(
       expect.arrayContaining([targetId, neighborId]),
     );
+    expect(focused.insights?.nodeCentrality.map((node) => node.id)).toEqual(
+      expect.arrayContaining([targetId, neighborId]),
+    );
+    expect(focused.insights?.nodeCentrality.every((node) => Number.isFinite(node.pageRank))).toBe(
+      true,
+    );
+    expect(focused.insights?.centrality).toMatchObject({
+      personalizationMode: 'uniform',
+      projectionAvailable: true,
+      snapshotTruncated: false,
+    });
     const foreignFocus = await app.fetch(
       new Request(`http://localhost/api/graph?view=full&focus=graph-foreign-${foreign.id}`, {
         headers: { cookie },
       }),
     );
-    expect(((await foreignFocus.json()) as GraphTestResponse).nodes).toEqual([]);
+    const foreignFocused = (await foreignFocus.json()) as GraphTestResponse;
+    expect(foreignFocused.nodes).toEqual([]);
+    expect(foreignFocused.insights?.nodeCentrality).toEqual([]);
   });
 
   it('preserves a real second hop after a dense first-hop relation set', async () => {
