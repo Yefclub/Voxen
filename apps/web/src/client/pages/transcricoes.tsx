@@ -8,9 +8,11 @@ import {
   Inbox,
   Library,
   Loader2,
-  MoreHorizontal,
+  ChevronLeft,
+  ChevronRight,
   Network,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Tags,
   Trash2,
@@ -41,13 +43,20 @@ import {
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { LibrarySearch } from '../components/library/library-search';
+import { TagFilterMenu } from '../components/library/tag-filter-menu';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import { sourceHostname } from '../lib/source-url';
+import {
+  buildLibraryPageItems,
+  isCurrentLibraryResponse,
+  libraryPageStateFromParams,
+  normalizeLibraryRequestQuery,
+  updateLibraryParams,
+} from '../lib/library-query-state';
 
 const PAGE_SIZE = 24;
 const TAG_CHIP_LIMIT = 6;
-const TAG_DISCOVERY_PAGE_SIZE = 24;
 
 interface TranscriptSummary {
   id: string;
@@ -98,13 +107,17 @@ interface LibraryTag {
   count: number;
 }
 
+type LibraryTagIdentity = Pick<LibraryTag, 'id' | 'name' | 'slug'>;
+
 interface TagsResponse {
   tags: LibraryTag[];
   total: number;
   limit: number;
   offset: number;
   query: string;
+  status: 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL';
   hasMore: boolean;
+  selectedTag: LibraryTagIdentity | null;
 }
 
 type StatusFilter = 'active' | 'archived' | 'trash';
@@ -128,7 +141,9 @@ export function TranscricoesPage(): React.ReactElement {
   const folderFilter = inbox ? null : normalizeFolderFilter(searchParams.get('folderId'));
   const tagFilter = normalizeTagFilter(searchParams.get('tagId'));
   const period = normalizePeriodFilter(searchParams.get('period'));
-  const [q, setQ] = useState('');
+  const q = normalizeSearchQuery(searchParams.get('q'));
+  const pageState = libraryPageStateFromParams(searchParams);
+  const currentPage = pageState.page;
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [reorganizing, setReorganizing] = useState(false);
@@ -137,17 +152,14 @@ export function TranscricoesPage(): React.ReactElement {
   const [clearingFolders, setClearingFolders] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [confirmRetitleOpen, setConfirmRetitleOpen] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const [items, setItems] = useState<TranscriptSummary[]>([]);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const debouncedQ = useDebounced(q, 250);
+  const requestQ = normalizeLibraryRequestQuery(debouncedQ);
   const periodBounds = useMemo(() => libraryWeekBounds(period), [period]);
+  const offset = (currentPage - 1) * PAGE_SIZE;
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams();
-    if (debouncedQ) params.set('q', debouncedQ);
+    if (requestQ) params.set('q', requestQ);
     if (status !== 'active') params.set('status', status);
     if (inbox) params.set('view', 'inbox');
     else if (folderFilter === 'none') params.set('folderId', 'none');
@@ -161,75 +173,111 @@ export function TranscricoesPage(): React.ReactElement {
     params.set('limit', String(PAGE_SIZE));
     params.set('offset', String(offset));
     return `/api/transcripts?${params.toString()}`;
-  }, [debouncedQ, folderFilter, inbox, offset, period, periodBounds, status, tagFilter]);
+  }, [folderFilter, inbox, offset, period, periodBounds, requestQ, status, tagFilter]);
 
-  const { data, loading, error, refresh: refreshTranscripts } = useFetch<SearchResponse>(listUrl);
+  const {
+    data,
+    resolvedPath,
+    loading,
+    error,
+    refresh: refreshTranscripts,
+  } = useFetch<SearchResponse>(listUrl);
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
+  const tagParams = new URLSearchParams({ limit: String(TAG_CHIP_LIMIT), status });
+  if (tagFilter) tagParams.set('selectedId', tagFilter);
   const { data: tagsData, refresh: refreshTags } = useFetch<TagsResponse>(
-    `/api/library/tags?limit=${TAG_CHIP_LIMIT}`,
+    `/api/library/tags?${tagParams.toString()}`,
   );
   const folders = foldersData?.folders ?? [];
   const tags = tagsData?.tags ?? [];
   const tagTotal = tagsData?.total ?? tags.length;
-  const isSearching = debouncedQ.length > 0;
+  const selectedTag = tagsData?.selectedTag ?? tags.find((tag) => tag.id === tagFilter) ?? null;
+  const isSearching = requestQ.length > 0;
   const queryChanging = q !== debouncedQ;
+  const responseMatches = isCurrentLibraryResponse({
+    resolvedPath,
+    requestedPath: listUrl,
+    responseQuery: data?.query,
+    requestedQuery: requestQ,
+    responseOffset: data?.offset,
+    requestedOffset: offset,
+  });
+  const items = responseMatches ? (data?.transcripts ?? []) : [];
+  const total = responseMatches ? (data?.total ?? items.length) : 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Acumula páginas (carregar mais) ou substitui na primeira página / troca de filtro.
   useEffect(() => {
-    if (!data) return;
-    const page = data.transcripts ?? [];
-    setTotal(data.total ?? page.length);
-    setHasMore(Boolean(data.hasMore));
-    setItems((prev) => (offset === 0 ? page : mergeById(prev, page)));
-    setLoadingMore(false);
-  }, [data, offset]);
+    if (pageState.isCanonical) return;
+    setSearchParams(
+      updateLibraryParams(searchParams, { page: pageState.page }, { resetPage: false }),
+      { replace: true },
+    );
+  }, [pageState.isCanonical, pageState.page, searchParams, setSearchParams]);
 
-  // Reset paginação ao mudar filtros/busca.
   useEffect(() => {
-    setOffset(0);
-    setItems([]);
-  }, [debouncedQ, folderFilter, inbox, period, status, tagFilter]);
+    if (!responseMatches || currentPage <= totalPages) return;
+    setSearchParams(updateLibraryParams(searchParams, { page: totalPages }, { resetPage: false }), {
+      replace: true,
+    });
+  }, [currentPage, responseMatches, searchParams, setSearchParams, totalPages]);
+
+  function patchFilters(
+    patch: Parameters<typeof updateLibraryParams>[1],
+    options: { replace?: boolean } = {},
+  ): void {
+    setSearchParams(updateLibraryParams(searchParams, patch), {
+      replace: options.replace ?? false,
+    });
+  }
+
+  function setQuery(next: string): void {
+    patchFilters({ q: next.slice(0, 240) }, { replace: true });
+  }
 
   function setStatus(next: StatusFilter): void {
-    const params = new URLSearchParams(searchParams);
-    if (next === 'active') params.delete('status');
-    else params.set('status', next);
-    setSearchParams(params, { replace: true });
+    patchFilters({ status: next === 'active' ? null : next });
   }
 
   function setFolder(next: FolderFilter): void {
-    const params = new URLSearchParams(searchParams);
-    params.delete('view');
-    if (next === null) params.delete('folderId');
-    else if (next === 'none') params.set('folderId', 'none');
-    else params.set('folderId', next);
-    setSearchParams(params, { replace: true });
+    patchFilters({ view: null, folderId: next });
   }
 
   function setInbox(next: boolean): void {
-    const params = new URLSearchParams(searchParams);
-    if (next) {
-      params.set('view', 'inbox');
-      params.delete('folderId');
-    } else {
-      params.delete('view');
-    }
-    setSearchParams(params, { replace: true });
+    patchFilters({ view: next ? 'inbox' : null, folderId: null });
   }
 
   function setTag(next: string | null): void {
-    const params = new URLSearchParams(searchParams);
-    if (next) params.set('tagId', next);
-    else params.delete('tagId');
-    setSearchParams(params, { replace: true });
+    patchFilters({ tagId: next });
   }
 
   function setPeriod(next: LibraryPeriod): void {
-    const params = new URLSearchParams(searchParams);
-    if (next === 'all') params.delete('period');
-    else params.set('period', next);
-    setSearchParams(params, { replace: true });
+    patchFilters({ period: next === 'all' ? null : next });
+  }
+
+  function setPage(next: number): void {
+    const page = Math.min(totalPages, Math.max(1, Math.floor(next)));
+    setSearchParams(updateLibraryParams(searchParams, { page }, { resetPage: false }), {
+      replace: false,
+    });
+    document
+      .getElementById('library-results')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function clearFilters(): void {
+    setSearchParams(
+      updateLibraryParams(searchParams, {
+        q: null,
+        page: null,
+        period: null,
+        status: null,
+        view: null,
+        folderId: null,
+        tagId: null,
+      }),
+      { replace: false },
+    );
   }
 
   async function createFolder(): Promise<void> {
@@ -265,7 +313,6 @@ export function TranscricoesPage(): React.ReactElement {
       setFolder(null);
       refreshFolders();
       refreshTags();
-      setOffset(0);
       refreshTranscripts();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('library.clearFoldersError'));
@@ -318,7 +365,7 @@ export function TranscricoesPage(): React.ReactElement {
       }
       refreshFolders();
       refreshTags();
-      setOffset(0);
+      patchFilters({ page: null }, { replace: true });
       refreshTranscripts();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('library.reorgError'));
@@ -370,7 +417,7 @@ export function TranscricoesPage(): React.ReactElement {
       }
       refreshFolders();
       refreshTags();
-      setOffset(0);
+      patchFilters({ page: null }, { replace: true });
       refreshTranscripts();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('library.tagsError'));
@@ -427,7 +474,7 @@ export function TranscricoesPage(): React.ReactElement {
           toast.success(t('library.retitlePartial', { changed: totalChanged }));
         }
       }
-      setOffset(0);
+      patchFilters({ page: null }, { replace: true });
       refreshTranscripts();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('library.retitleError'));
@@ -436,13 +483,7 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
-  function loadMore(): void {
-    if (!hasMore || loading || loadingMore) return;
-    setLoadingMore(true);
-    setOffset((n) => n + PAGE_SIZE);
-  }
-
-  const pageLoading = loading && offset === 0 && items.length === 0;
+  const pageLoading = loading && !responseMatches;
   const sortedFolders = useMemo(
     () => [...folders].sort((a, b) => a.name.localeCompare(b.name, locale)),
     [folders, locale],
@@ -455,8 +496,18 @@ export function TranscricoesPage(): React.ReactElement {
     folderFilter !== null &&
     folderFilter !== 'none' &&
     overflowFolders.some((folder) => folder.id === folderFilter);
+  const selectedFolder =
+    typeof folderFilter === 'string' && folderFilter !== 'none'
+      ? (sortedFolders.find((folder) => folder.id === folderFilter) ?? null)
+      : null;
   const activeTagHidden = tagFilter !== null && !tags.some((tag) => tag.id === tagFilter);
   const captureWeeks = useMemo(() => groupByCaptureWeek(items), [items]);
+  const activeFilterCount =
+    Number(Boolean(q)) +
+    Number(period !== 'all') +
+    Number(status !== 'active') +
+    Number(inbox || folderFilter !== null) +
+    Number(Boolean(tagFilter));
 
   return (
     <PageShell width="wide">
@@ -557,169 +608,205 @@ export function TranscricoesPage(): React.ReactElement {
         onConfirm={regenerateTitles}
       />
 
-      <LibrarySearch value={q} changing={queryChanging} onChange={setQ} onClear={() => setQ('')} />
+      <LibrarySearch
+        value={q}
+        changing={queryChanging}
+        onChange={setQuery}
+        onClear={() => setQuery('')}
+      />
 
-      <ContentIngestCard />
-
-      <section className="space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-          {t('library.added')}
-        </p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(['all', 'this-week', 'previous-week'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setPeriod(item)}
-              aria-pressed={period === item}
-              className={[
-                'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-                period === item
-                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                  : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
-              ].join(' ')}
-            >
-              {item === 'all'
-                ? t('library.allPeriods')
-                : item === 'this-week'
-                  ? t('library.thisWeek')
-                  : t('library.previousWeek')}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Organização — Inbox e pastas em uma superfície única. */}
-      <section className="space-y-2">
+      <section
+        className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-3 sm:p-4"
+        aria-labelledby="library-filters-title"
+      >
         <div className="flex flex-wrap items-center gap-2">
-          <FolderChip
-            active={inbox}
-            onClick={() => setInbox(!inbox)}
-            icon={<Inbox className="h-3 w-3 text-violet-400" />}
-            label={t('library.inbox')}
-          />
-          <FolderChip
-            active={!inbox && folderFilter === null}
-            onClick={() => setFolder(null)}
-            icon={<FolderOpen className="h-3 w-3" />}
-            label={t('library.allFolders')}
-          />
-          {visibleFolders.map((folder) => (
-            <FolderChip
-              key={folder.id}
-              active={!inbox && folderFilter === folder.id}
-              onClick={() => setFolder(folder.id)}
-              icon={<Folder className="h-3 w-3 text-amber-500/80" />}
-              label={folder.name}
-              count={folder._count.transcripts}
-            />
-          ))}
-          {overflowFolders.length > 0 && (
-            <FolderOverflowMenu
-              folders={sortedFolders}
-              hiddenCount={overflowFolders.length}
-              active={activeFolderHidden}
-              activeFolderId={folderFilter}
-              onSelect={setFolder}
-              translate={t}
-            />
+          <SlidersHorizontal className="h-4 w-4 text-violet-400" aria-hidden />
+          <h2 id="library-filters-title" className="text-sm font-semibold">
+            {t('library.filtersTitle')}
+          </h2>
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-violet-300">
+              {t('library.activeFilters', { count: activeFilterCount })}
+            </span>
+          )}
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+            >
+              <X className="h-3 w-3" />
+              {t('library.clearFilters')}
+            </button>
           )}
         </div>
-        <div className="flex min-w-0 gap-2">
-          <input
-            type="text"
-            value={newFolderName}
-            onChange={(event) => setNewFolderName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void createFolder();
-            }}
-            placeholder={t('library.newFolderPlaceholder')}
-            className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
-            disabled={creatingFolder}
-            maxLength={120}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={creatingFolder || newFolderName.trim().length === 0}
-            onClick={() => void createFolder()}
-            className="h-8 px-2.5 text-xs"
-          >
-            {creatingFolder ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <FolderPlus className="h-3 w-3" />
-            )}
-            <span className="hidden sm:inline">{t('library.createFolder')}</span>
-          </Button>
-        </div>
-      </section>
 
-      {tagTotal > 0 && (
         <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-              {t('library.tagsLabel')}
-            </p>
-            {tagFilter && (
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+            {t('library.added')}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(['all', 'this-week', 'previous-week'] as const).map((item) => (
               <button
+                key={item}
                 type="button"
-                onClick={() => setTag(null)}
-                className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                onClick={() => setPeriod(item)}
+                aria-pressed={period === item}
+                className={[
+                  'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                  period === item
+                    ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
+                ].join(' ')}
               >
-                <X className="h-2.5 w-2.5" />
-                {t('library.clearTagFilter')}
+                {item === 'all'
+                  ? t('library.allPeriods')
+                  : item === 'this-week'
+                    ? t('library.thisWeek')
+                    : t('library.previousWeek')}
               </button>
-            )}
+            ))}
           </div>
+        </section>
+
+        {/* Organização — Inbox e pastas em uma superfície única. */}
+        <section className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            {tags.map((tag) => (
+            <FolderChip
+              active={inbox}
+              onClick={() => setInbox(!inbox)}
+              icon={<Inbox className="h-3 w-3 text-violet-400" />}
+              label={t('library.inbox')}
+            />
+            <FolderChip
+              active={!inbox && folderFilter === null}
+              onClick={() => setFolder(null)}
+              icon={<FolderOpen className="h-3 w-3" />}
+              label={t('library.allFolders')}
+            />
+            {visibleFolders.map((folder) => (
               <FolderChip
-                key={tag.id}
-                active={tagFilter === tag.id}
-                onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
-                icon={<Tags className="h-3 w-3 text-violet-400" />}
-                label={tag.name}
-                count={tag.count}
+                key={folder.id}
+                active={!inbox && folderFilter === folder.id}
+                onClick={() => setFolder(folder.id)}
+                icon={<Folder className="h-3 w-3 text-amber-500/80" />}
+                label={folder.name}
+                count={folder._count.transcripts}
               />
             ))}
-            {tagTotal > tags.length && (
-              <TagOverflowMenu
-                hiddenCount={tagTotal - tags.length}
-                active={activeTagHidden}
-                activeTagId={tagFilter}
-                onSelect={setTag}
+            {sortedFolders.length > 0 && (
+              <FolderOverflowMenu
+                folders={sortedFolders}
+                active={activeFolderHidden}
+                activeFolderId={folderFilter}
+                selectedFolder={selectedFolder}
+                onSelect={setFolder}
                 translate={t}
               />
             )}
           </div>
+          <div className="flex min-w-0 gap-2">
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void createFolder();
+              }}
+              placeholder={t('library.newFolderPlaceholder')}
+              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
+              disabled={creatingFolder}
+              maxLength={120}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={creatingFolder || newFolderName.trim().length === 0}
+              onClick={() => void createFolder()}
+              className="h-8 px-2.5 text-xs"
+            >
+              {creatingFolder ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FolderPlus className="h-3 w-3" />
+              )}
+              <span className="hidden sm:inline">{t('library.createFolder')}</span>
+            </Button>
+          </div>
         </section>
-      )}
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {(['active', 'archived', 'trash'] as const).map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setStatus(item)}
-            className={[
-              'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-              status === item
-                ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
-            ].join(' ')}
-          >
-            {statusFilterLabel(item, t)}
-          </button>
-        ))}
-        {!pageLoading && total > 0 && (
-          <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
-            {items.length}
-            {total > items.length ? ` / ${total}` : ''}
-          </span>
+        {(tagTotal > 0 || tagFilter) && (
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+                {t('library.tagsLabel')}
+              </p>
+              {tagFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTag(null)}
+                  className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                >
+                  <X className="h-2.5 w-2.5" />
+                  {t('library.clearTagFilter')}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {tags.map((tag) => (
+                <FolderChip
+                  key={tag.id}
+                  active={tagFilter === tag.id}
+                  onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
+                  icon={<Tags className="h-3 w-3 text-violet-400" />}
+                  label={tag.name}
+                  count={tag.count}
+                />
+              ))}
+              <TagFilterMenu
+                active={activeTagHidden}
+                activeTagId={tagFilter}
+                selectedTag={selectedTag}
+                status={status}
+                onSelect={setTag}
+                translate={t}
+              />
+            </div>
+          </section>
         )}
-      </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-app-border)] pt-3">
+          {(['active', 'archived', 'trash'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setStatus(item)}
+              className={[
+                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                status === item
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
+              ].join(' ')}
+            >
+              {statusFilterLabel(item, t)}
+            </button>
+          ))}
+          {!pageLoading && total > 0 && (
+            <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
+              {t('library.resultsRange', {
+                from: offset + 1,
+                to: offset + items.length,
+                total,
+              })}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <ContentIngestCard />
+
+      <div id="library-results" className="scroll-mt-6" />
 
       {isSearching && !pageLoading && (
         <p className="text-[11px] text-[var(--color-app-muted)] -mt-2">
@@ -792,22 +879,61 @@ export function TranscricoesPage(): React.ReactElement {
         </div>
       )}
 
-      {hasMore && (
-        <div className="flex justify-center pt-2">
+      {!pageLoading && totalPages > 1 && (
+        <nav
+          className="flex flex-wrap items-center justify-center gap-1 border-t border-[var(--color-app-border)] pt-4"
+          aria-label={t('library.pagination', { page: currentPage, pages: totalPages })}
+        >
           <Button
             type="button"
             variant="outline"
             size="sm"
-            disabled={loadingMore || loading}
-            onClick={loadMore}
-            className="h-8 text-xs"
+            disabled={currentPage <= 1 || loading}
+            onClick={() => setPage(currentPage - 1)}
+            className="mr-1 h-9 px-2 text-xs sm:px-3"
           >
-            {loadingMore || (loading && offset > 0) ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : null}
-            {t('library.loadMore')}
+            <ChevronLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('library.previousPage')}</span>
           </Button>
-        </div>
+          {buildLibraryPageItems(currentPage, totalPages).map((item) =>
+            typeof item === 'number' ? (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setPage(item)}
+                aria-current={item === currentPage ? 'page' : undefined}
+                aria-label={t('library.goToPage', { page: item })}
+                className={[
+                  'inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                  item === currentPage
+                    ? 'border-violet-500/35 bg-violet-500/10 text-violet-200'
+                    : 'border-transparent text-[var(--color-app-muted)] hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
+                ].join(' ')}
+              >
+                {item}
+              </button>
+            ) : (
+              <span
+                key={item}
+                aria-hidden
+                className="inline-flex h-9 min-w-7 items-center justify-center text-xs text-[var(--color-app-muted)]"
+              >
+                …
+              </span>
+            ),
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages || loading}
+            onClick={() => setPage(currentPage + 1)}
+            className="ml-1 h-9 px-2 text-xs sm:px-3"
+          >
+            <span className="hidden sm:inline">{t('library.nextPage')}</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </nav>
       )}
     </PageShell>
   );
@@ -855,16 +981,16 @@ function FolderChip({
  */
 function FolderOverflowMenu({
   folders,
-  hiddenCount,
   active,
   activeFolderId,
+  selectedFolder,
   onSelect,
   translate,
 }: {
   folders: LibraryFolder[];
-  hiddenCount: number;
   active: boolean;
   activeFolderId: FolderFilter;
+  selectedFolder: LibraryFolder | null;
   onSelect: (id: string) => void;
   translate: TranslateFn;
 }): React.ReactElement {
@@ -887,7 +1013,8 @@ function FolderOverflowMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          title={translate('library.moreFolders', { count: hiddenCount })}
+          title={translate('library.filterFolders')}
+          aria-label={translate('library.filterFolders')}
           aria-pressed={active}
           className={[
             'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
@@ -897,8 +1024,10 @@ function FolderOverflowMenu({
             'data-[state=open]:bg-[var(--color-app-surface-hover)] data-[state=open]:text-[var(--color-app-fg)]',
           ].join(' ')}
         >
-          <MoreHorizontal className="h-3 w-3 shrink-0" />
-          <span>{translate('library.moreFolders', { count: hiddenCount })}</span>
+          <Search className="h-3 w-3 shrink-0" />
+          <span className="max-w-[160px] truncate">
+            {active && selectedFolder ? selectedFolder.name : translate('library.filterFolders')}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0">
@@ -942,149 +1071,6 @@ function FolderOverflowMenu({
               </span>
             </button>
           ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function TagOverflowMenu({
-  hiddenCount,
-  active,
-  activeTagId,
-  onSelect,
-  translate,
-}: {
-  hiddenCount: number;
-  active: boolean;
-  activeTagId: string | null;
-  onSelect: (id: string) => void;
-  translate: TranslateFn;
-}): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [offset, setOffset] = useState(0);
-  const [tags, setTags] = useState<LibraryTag[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const debouncedQuery = useDebounced(query, 200);
-  const normalizedQuery = debouncedQuery.trim().slice(0, 120);
-  const listUrl = useMemo(() => {
-    if (!open) return null;
-    const params = new URLSearchParams({
-      limit: String(TAG_DISCOVERY_PAGE_SIZE),
-      offset: String(offset),
-    });
-    if (normalizedQuery) params.set('q', normalizedQuery);
-    return `/api/library/tags?${params.toString()}`;
-  }, [normalizedQuery, offset, open]);
-  const { data, loading, error } = useFetch<TagsResponse>(listUrl);
-
-  useEffect(() => {
-    if (!data || data.offset !== offset || data.query !== normalizedQuery) return;
-    setTags((previous) => (offset === 0 ? data.tags : mergeById(previous, data.tags)));
-    setHasMore(data.hasMore);
-  }, [data, normalizedQuery, offset]);
-
-  function handleOpenChange(next: boolean): void {
-    setOpen(next);
-    setOffset(0);
-    setTags([]);
-    setHasMore(false);
-    if (!next) setQuery('');
-  }
-
-  function setSearchQuery(next: string): void {
-    setQuery(next);
-    setOffset(0);
-    setTags([]);
-    setHasMore(false);
-  }
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          title={translate('library.moreTags', { count: hiddenCount })}
-          aria-pressed={active}
-          className={[
-            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-            active
-              ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-              : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
-          ].join(' ')}
-        >
-          <MoreHorizontal className="h-3 w-3 shrink-0" />
-          <span>{translate('library.moreTags', { count: hiddenCount })}</span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-0">
-        <div className="border-b border-[var(--color-app-border)] p-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--color-app-muted)]" />
-            <input
-              type="text"
-              autoFocus
-              value={query}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={translate('library.tagSearchPlaceholder')}
-              aria-label={translate('library.tagSearchLabel')}
-              autoComplete="off"
-              spellCheck={false}
-              className="h-8 w-full rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-7 pr-2 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
-            />
-          </div>
-        </div>
-        <div className="max-h-64 overflow-y-auto p-1">
-          {loading && tags.length === 0 && (
-            <div className="flex justify-center px-2 py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-[var(--color-app-muted)]" />
-            </div>
-          )}
-          {!loading && error && (
-            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
-              {translate('library.tagLoadError')}
-            </p>
-          )}
-          {!loading && !error && tags.length === 0 && (
-            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
-              {translate('library.tagSearchEmpty')}
-            </p>
-          )}
-          {tags.map((tag) => (
-            <button
-              key={tag.id}
-              type="button"
-              aria-pressed={activeTagId === tag.id}
-              onClick={() => {
-                onSelect(tag.id);
-                setOpen(false);
-              }}
-              className={[
-                'flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-                activeTagId === tag.id
-                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                  : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
-              ].join(' ')}
-            >
-              <Tags className="h-3 w-3 shrink-0 text-violet-400" />
-              <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-              <span className="shrink-0 tabular-nums text-[10px] text-[var(--color-app-muted)]">
-                {tag.count}
-              </span>
-            </button>
-          ))}
-          {hasMore && (
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => setOffset(tags.length)}
-              className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] disabled:opacity-60"
-            >
-              {loading && <Loader2 className="h-3 w-3 animate-spin" />}
-              {translate('library.loadMore')}
-            </button>
-          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -1205,21 +1191,13 @@ function TranscriptRow({
   );
 }
 
-function mergeById<T extends { id: string }>(prev: T[], next: T[]): T[] {
-  const seen = new Set(prev.map((t) => t.id));
-  const merged = [...prev];
-  for (const item of next) {
-    if (!seen.has(item.id)) {
-      seen.add(item.id);
-      merged.push(item);
-    }
-  }
-  return merged;
-}
-
 function normalizeStatusFilter(value: string | null): StatusFilter {
   if (value === 'archived' || value === 'trash') return value;
   return 'active';
+}
+
+function normalizeSearchQuery(value: string | null): string {
+  return (value ?? '').slice(0, 240);
 }
 
 function normalizeFolderFilter(value: string | null): FolderFilter {

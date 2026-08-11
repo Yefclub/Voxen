@@ -22,11 +22,13 @@ export function useMe() {
 // ============================================================================
 export function useFetch<T>(path: string | null): {
   data: T | null;
+  resolvedPath: string | null;
   loading: boolean;
   error: string | null;
   refresh: () => void;
 } {
   const [data, setData] = useState<T | null>(null);
+  const [resolvedPath, setResolvedPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -55,6 +57,7 @@ export function useFetch<T>(path: string | null): {
   useEffect(() => {
     if (path === null) {
       setData(null);
+      setResolvedPath(null);
       setLoading(false);
       resumeRefreshInFlight.current = false;
       return;
@@ -69,6 +72,7 @@ export function useFetch<T>(path: string | null): {
         if (!cancelled) {
           loadedPath.current = path;
           setData(d);
+          setResolvedPath(path);
         }
       })
       .catch((e: unknown) => {
@@ -83,7 +87,7 @@ export function useFetch<T>(path: string | null): {
     };
   }, [path, tick]);
 
-  return { data, loading, error, refresh };
+  return { data, resolvedPath, loading, error, refresh };
 }
 
 // ============================================================================
