@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786428747",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Searchable library filters and numbered pages",
+    "body": "The Library now keeps its search, page, period, status, inbox, folder, and tag\nfilters in the URL. Folder and tag discovery is visible and searchable, active\nfilters can be cleared together, and numbered pagination replaces the previous\nload-more flow while preserving filters across browser navigation and shared\nlinks.",
+    "pr": 740,
+    "author": "Kalyel",
+    "date": "2026-08-11T03:12:06-03:00",
+    "translations": {
+      "en": {
+        "title": "Searchable library filters and numbered pages",
+        "body": "The Library now keeps its search, page, period, status, inbox, folder, and tag\nfilters in the URL. Folder and tag discovery is visible and searchable, active\nfilters can be cleared together, and numbered pagination replaces the previous\nload-more flow while preserving filters across browser navigation and shared\nlinks."
+      },
+      "pt-BR": {
+        "title": "Filtros pesquisáveis e páginas numeradas na biblioteca",
+        "body": "A Biblioteca agora mantém busca, página, período, status, inbox, pasta e tag na\nURL. A descoberta de pastas e tags ficou visível e pesquisável, os filtros ativos\npodem ser limpos de uma vez e a paginação numerada substitui o antigo fluxo de\ncarregar mais, preservando os filtros ao navegar pelo navegador ou compartilhar\nlinks."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/740"
+  },
+  {
     "version": "0.14.5-dev.1786427252",
     "channel": "dev",
     "type": "security",
