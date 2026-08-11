@@ -72,6 +72,7 @@ model User {
   transcriptEnrichments         TranscriptEnrichment[]
   transcriptCorrectionRevisions TranscriptCorrectionRevision[]
   interestEvents                InterestEvent[]
+  interestProjections           InterestProjection[]
   costEvents                    CostEvent[]
   conversations                 Conversation[]
   chatApprovals                 ChatApproval[]
@@ -473,6 +474,12 @@ enum InterestEventKind {
   PREFERENCE_CLEARED
 }
 
+enum InterestProjectionHorizon {
+  SHORT
+  MEDIUM
+  LONG
+}
+
 enum EnrichmentStatus {
   PENDING
   RUNNING
@@ -614,6 +621,23 @@ model InterestEvent {
   @@unique([userId, dedupeKey])
   @@index([userId, transcriptId, occurredAt(sort: Desc)])
   @@index([userId, origin, occurredAt(sort: Desc)])
+}
+
+model InterestProjection {
+  id               String                    @id @default(cuid())
+  userId           String
+  horizon          InterestProjectionHorizon
+  algorithmVersion String
+  windowDays       Int
+  halfLifeDays     Int
+  items            Json                      @default("[]")
+  eventCount       Int                       @default(0)
+  eventWatermark   DateTime?
+  computedAt       DateTime                  @default(now())
+  user             User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, horizon])
+  @@index([userId, computedAt(sort: Desc)])
 }
 
 model TranscriptCorrectionRevision {
