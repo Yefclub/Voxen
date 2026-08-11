@@ -62,6 +62,7 @@ import {
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
 import { graphFocusFromSearch, nodePath } from '../lib/graph-node-path';
+import { communitySelectionId } from '../lib/graph-community-model';
 import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
@@ -94,7 +95,6 @@ export {
   resolveNodeRadiusBounds,
 } from '../lib/graph-model';
 export type { GraphResp } from '../lib/graph-model';
-
 type GraphCanvasComponent = typeof GraphCanvasType;
 interface ReagraphModule {
   GraphCanvas: GraphCanvasComponent;
@@ -778,7 +778,7 @@ function GraphExplorer({
               <button
                 key={community.id}
                 type="button"
-                onClick={() => community.nodeIds[0] && onSelect(community.nodeIds[0])}
+                onClick={() => onSelect(communitySelectionId(community))}
                 className="flex w-full items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left transition hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]">
