@@ -93,6 +93,16 @@ export function representativeFirst(community: GraphCommunity): string[] {
   ].filter((nodeId, index, values) => Boolean(nodeId) && values.indexOf(nodeId) === index);
 }
 
+export function communitySelectionId(community: GraphCommunity): string {
+  if (
+    community.representativeNodeId &&
+    community.nodeIds.includes(community.representativeNodeId)
+  ) {
+    return community.representativeNodeId;
+  }
+  return community.nodeIds[0] ?? '';
+}
+
 function projectDetectedCommunities<Node extends CommunityNode>(
   data: CommunityGraphData<Node>,
 ): GraphCommunity[] | null {

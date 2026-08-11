@@ -16,7 +16,7 @@ interface CommunityEdge {
   to: string;
   kind: string;
   confidence: string | number;
-  evidence?: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+  evidence?: string;
 }
 
 interface WeightedEdge {
@@ -36,7 +36,7 @@ type MembershipDetector = (
   nodeIndex: Map<string, number>,
 ) => DetectorResult;
 
-const EVIDENCE_FACTORS: Record<NonNullable<CommunityEdge['evidence']>, number> = {
+const EVIDENCE_FACTORS: Readonly<Record<string, number>> = {
   EXTRACTED: 1,
   INFERRED: 0.65,
   AMBIGUOUS: 0.4,
@@ -57,9 +57,11 @@ const KIND_FACTORS: Readonly<Record<string, number>> = {
 export function effectiveCommunityEdgeWeight(edge: CommunityEdge): number {
   const parsedConfidence = Number(edge.confidence);
   const confidence = Number.isFinite(parsedConfidence) ? clamp(parsedConfidence, 0, 1) : 0.5;
-  const evidenceFactor = EVIDENCE_FACTORS[edge.evidence ?? 'AMBIGUOUS'];
+  const evidenceFactor =
+    EVIDENCE_FACTORS[edge.evidence ?? 'AMBIGUOUS'] ?? EVIDENCE_FACTORS.AMBIGUOUS!;
   const kindFactor = KIND_FACTORS[edge.kind.toLowerCase()] ?? 0.5;
-  return round(clamp(confidence * evidenceFactor * kindFactor, 0, 1));
+  const weighted = confidence * evidenceFactor * kindFactor;
+  return Number.isFinite(weighted) ? round(clamp(weighted, 0, 1)) : 0;
 }
 
 export function detectGraphCommunities(

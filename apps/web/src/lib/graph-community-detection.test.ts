@@ -87,9 +87,24 @@ describe('weighted Leiden graph communities', () => {
       confidence: 'not-a-number',
       evidence: 'AMBIGUOUS',
     });
+    const invalidEvidence = effectiveCommunityEdgeWeight({
+      from: 'a',
+      to: 'b',
+      kind: 'supports',
+      confidence: '0.8',
+      evidence: 'BROKEN',
+    });
     expect(extractedHierarchy).toBe(0.88);
     expect(inferredRelation).toBe(0.364);
     expect(invalidConfidence).toBe(0.1);
+    expect(invalidEvidence).toBe(0.32);
+    expect(Number.isFinite(invalidEvidence)).toBe(true);
+
+    const malformedResult = detectGraphCommunities(nodes.slice(0, 2), [
+      { ...strongEdge('a', 'b'), evidence: 'BROKEN' },
+    ]);
+    expect(Number.isFinite(malformedResult.communities[0]!.internalWeight)).toBe(true);
+    expect(JSON.parse(JSON.stringify(malformedResult)).communities[0].internalWeight).toBe(0.4);
   });
 
   test('aggregates parallel and reciprocal edges before detection', () => {

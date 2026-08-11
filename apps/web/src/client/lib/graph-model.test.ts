@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { GraphCommunityDetection } from '../../shared/graph-community';
+import { communitySelectionId } from './graph-community-model';
 import {
   buildGraphCommunities,
   filterGraphData,
@@ -90,6 +91,14 @@ const response = (): GraphResp => {
 };
 
 describe('graph community projection', () => {
+  test('selects the representative even when stable membership order starts elsewhere', () => {
+    const community = response().insights!.communities[0]!;
+    community.representativeNodeId = 'c';
+
+    expect(community.nodeIds[0]).toBe('a');
+    expect(communitySelectionId(community)).toBe('c');
+  });
+
   test('preserves the server Leiden partition despite a bridge between communities', () => {
     expect(buildGraphCommunities(response()).map((community) => community.nodeIds)).toEqual([
       ['a', 'b', 'c'],
