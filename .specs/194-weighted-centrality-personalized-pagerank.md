@@ -68,16 +68,16 @@ de respostas do Guia, chat e MCP.
 
 ## Critérios de Aceite
 
-- [ ] O grau ponderado diferencia relações fortes de relações ambíguas ou fracas.
-- [ ] PageRank estrutural e PPR retornam distribuições finitas normalizadas para grafos conectados, desconectados e com isolados.
-- [ ] Uma semente pessoal eleva deterministicamente o próprio nó e sua vizinhança no PPR sem sobrescrever o PageRank estrutural.
-- [ ] Projeções negativas e itens sem `brainNodeId` não se tornam sementes positivas.
-- [ ] Sementes ausentes do recorte ativam fallback uniforme explicitamente identificado.
-- [ ] A API expõe métricas por nó e metadados explicáveis do algoritmo e da personalização.
-- [ ] Os hubs do cliente usam centralidade ponderada e continuam compatíveis com respostas antigas.
-- [ ] O cache do grafo varia com watermark e versão da projeção pessoal.
-- [ ] Entradas vazias ou inválidas não produzem `NaN`, `Infinity`, `null` acidental ou falha da rota.
-- [ ] Testes provam determinismo, ponderação, personalização, fallback e isolamento do recorte.
+- [x] O grau ponderado diferencia relações fortes de relações ambíguas ou fracas.
+- [x] PageRank estrutural e PPR retornam distribuições finitas normalizadas para grafos conectados, desconectados e com isolados.
+- [x] Uma semente pessoal eleva deterministicamente o próprio nó e sua vizinhança no PPR sem sobrescrever o PageRank estrutural.
+- [x] Projeções negativas e itens sem `brainNodeId` não se tornam sementes positivas.
+- [x] Sementes ausentes do recorte ativam fallback uniforme explicitamente identificado.
+- [x] A API expõe métricas por nó e metadados explicáveis do algoritmo e da personalização.
+- [x] Os hubs do cliente usam centralidade ponderada e continuam compatíveis com respostas antigas.
+- [x] O cache do grafo varia com watermark e versão da projeção pessoal.
+- [x] Entradas vazias ou inválidas não produzem `NaN`, `Infinity`, `null` acidental ou falha da rota.
+- [x] Testes provam determinismo, ponderação, personalização, fallback e isolamento do recorte.
 
 ## Fora de Escopo
 
