@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786480831 — 2026-08-11 · Dev
+
+### ✨ Personal interest signals
+
+- Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.
+- Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.
+- Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted.
+
 ## v0.14.5-dev.1786478001 — 2026-08-11 · Dev
 
 ### ✨ Explore the knowledge graph of each transcript
