@@ -134,7 +134,7 @@ registerTranscriptCorrectionRoutes(transcriptsRoutes);
 
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const query = (c.req.query('q') ?? '').trim();
+  const query = (c.req.query('q') ?? '').trim().slice(0, 240);
   const status = normalizeStatus(c.req.query('status'));
   const inbox = c.req.query('view') === 'inbox';
   const folderId = inbox ? null : normalizeFolderId(c.req.query('folderId'));
@@ -1216,6 +1216,7 @@ function parseCreatedAtBound(value: string | undefined): Date | undefined {
 
 const DEFAULT_LIST_LIMIT = 24;
 const MAX_LIST_LIMIT = 50;
+const MAX_LIST_OFFSET = 239_976; // 10,000 numbered pages at the default page size.
 
 function parseListLimit(value: string | undefined): number {
   const n = Number.parseInt(value ?? '', 10);
@@ -1226,7 +1227,7 @@ function parseListLimit(value: string | undefined): number {
 function parseListOffset(value: string | undefined): number {
   const n = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(n, 10_000);
+  return Math.min(n, MAX_LIST_OFFSET);
 }
 
 function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name: string } | null } {

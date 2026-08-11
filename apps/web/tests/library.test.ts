@@ -279,6 +279,25 @@ describeIfDb('library organization API', () => {
         },
       });
     }
+    const archivedTag = await db.tag.create({
+      data: { userId: owner.id, name: 'Pesquisa Arquivada', slug: 'pesquisa-arquivada' },
+    });
+    await db.transcript.create({
+      data: {
+        userId: owner.id,
+        source: 'WEB',
+        url: 'https://example.com/tag-search-archived',
+        title: 'Conteúdo arquivado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${owner.id}/transcripts/tag-search-archived.md`,
+        plainText: 'conteúdo arquivado',
+        frontmatter: {},
+        status: 'ARCHIVED',
+        tags: { create: { tagId: archivedTag.id } },
+      },
+    });
 
     const foreign = await db.user.create({
       data: { email: 'tags-foreign@voxen.local', name: 'Tags Foreign', status: 'APPROVED' },
@@ -328,6 +347,28 @@ describeIfDb('library organization API', () => {
     expect(bodies[0]).toMatchObject({ total: 2, hasMore: true, limit: 1, offset: 0 });
     expect(bodies[1]).toMatchObject({ total: 2, hasMore: false, limit: 1, offset: 1 });
     expect(bodies.flatMap((body) => body.tags).every((tag) => tag.count === 1)).toBe(true);
+
+    const archived = await app.fetch(
+      new Request(
+        `http://localhost/api/library/tags?status=archived&selectedId=${archivedTag.id}`,
+        { headers: { cookie } },
+      ),
+    );
+    expect(archived.status).toBe(200);
+    expect(await archived.json()).toMatchObject({
+      status: 'ARCHIVED',
+      total: 1,
+      tags: [{ id: archivedTag.id, name: 'Pesquisa Arquivada', count: 1 }],
+      selectedTag: { id: archivedTag.id, name: 'Pesquisa Arquivada' },
+    });
+
+    const foreignSelection = await app.fetch(
+      new Request(`http://localhost/api/library/tags?selectedId=${foreignTag.id}`, {
+        headers: { cookie },
+      }),
+    );
+    expect(foreignSelection.status).toBe(200);
+    expect(await foreignSelection.json()).toMatchObject({ selectedTag: null });
   });
 
   it('expõe Inbox, tags e período sem cruzar workspaces', async () => {
@@ -830,6 +871,21 @@ describeIfDb('library organization API', () => {
     expect(body2.transcripts).toHaveLength(2);
     expect(body2.hasMore).toBe(true);
     expect(body2.transcripts[0]?.id).not.toBe(body1.transcripts[0]?.id);
+
+    const highPage = await app.fetch(
+      new Request('http://localhost/api/transcripts?limit=24&offset=23976', {
+        headers: { cookie },
+      }),
+    );
+    expect(highPage.status).toBe(200);
+    const highPageBody = (await highPage.json()) as {
+      transcripts: { id: string }[];
+      total: number;
+      offset: number;
+      hasMore: boolean;
+    };
+    expect(highPageBody).toMatchObject({ total: 5, offset: 23976, hasMore: false });
+    expect(highPageBody.transcripts).toEqual([]);
   });
 
   it('rejects POST /api/notes linked to a foreign or nonexistent transcript', async () => {
