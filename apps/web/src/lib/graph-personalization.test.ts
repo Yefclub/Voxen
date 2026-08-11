@@ -82,4 +82,21 @@ describe('durable graph personalization context', () => {
     expect(context.requestedSeedNodes).toBe(0);
     expect(context.ignoredNegativeItems).toBe(1);
   });
+
+  test('changes the cache fragment when effective scores change at the same watermark', () => {
+    const first = buildGraphPersonalization([
+      snapshot('SHORT', '2026-08-11T12:00:00.000Z', [
+        item({ key: 'agents', brainNodeId: 'topic-agents', score: 0.8 }),
+      ]),
+    ]);
+    const decayed = buildGraphPersonalization([
+      snapshot('SHORT', '2026-08-11T12:00:00.000Z', [
+        item({ key: 'agents', brainNodeId: 'topic-agents', score: 0.4 }),
+      ]),
+    ]);
+
+    expect(first.projectionWatermark).toBe(decayed.projectionWatermark);
+    expect(first.projectionAlgorithmVersions).toEqual(decayed.projectionAlgorithmVersions);
+    expect(first.cacheFragment).not.toBe(decayed.cacheFragment);
+  });
 });

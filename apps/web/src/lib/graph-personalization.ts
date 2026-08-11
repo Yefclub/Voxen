@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { InterestProjectionSnapshot } from './personal-interest-projections';
 import { getPersonalInterestProjections } from './personal-interest-projections';
 import {
@@ -67,12 +68,26 @@ export function buildGraphPersonalization(
     projectionWatermark,
     requestedSeedNodes: seeds.length,
     ignoredNegativeItems,
-    cacheFragment: cacheFragment(projectionAlgorithmVersions, projectionWatermark),
+    cacheFragment: cacheFragment(
+      projectionAlgorithmVersions,
+      projectionWatermark,
+      seeds,
+      ignoredNegativeItems,
+    ),
   };
 }
 
-function cacheFragment(algorithmVersions: string[], watermark: string | null): string {
+function cacheFragment(
+  algorithmVersions: string[],
+  watermark: string | null,
+  seeds: GraphPersonalSeed[],
+  ignoredNegativeItems: number,
+): string {
   const version = algorithmVersions.join('+').replaceAll(/[^A-Za-z0-9_.+-]/g, '_') || 'none';
   const event = (watermark ?? 'none').replaceAll(/[^A-Za-z0-9_.-]/g, '_');
-  return `${version}:${event}`;
+  const effectiveStateDigest = createHash('sha256')
+    .update(JSON.stringify({ seeds, ignoredNegativeItems }))
+    .digest('hex')
+    .slice(0, 16);
+  return `${version}:${event}:${effectiveStateDigest}`;
 }
