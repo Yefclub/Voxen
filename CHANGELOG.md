@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786430065 — 2026-08-11 · Dev
+
+### 🐛 Reliable deletion during graph activity
+
+Background knowledge deletion now returns to the durable queue with a short
+delay while another operation holds the user's graph lease. Temporary graph
+activity no longer turns a valid deletion into a failed job or blocks unrelated
+worker tasks indefinitely.
+
 ## v0.14.5-dev.1786428747 — 2026-08-11 · Dev
 
 ### 🎨 Searchable library filters and numbered pages
