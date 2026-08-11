@@ -24,10 +24,13 @@ WORKDIR /app
 # libudev1) que já têm fix upstream mas vêm desatualizadas na tag slim.
 # Cachebuster explícito: a disponibilidade de patches APT muda sem alterar o
 # digest da instrução; atualize a data quando o scanner apontar fix disponível.
+# Runtime dependencies are copied from the uv-managed virtualenv below. The
+# global pip bundle is unnecessary in production and ships vendored packages.
 ARG VOXEN_APT_SECURITY_REFRESH=2026-08-03
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && python -m pip uninstall --yes pip \
     && groupadd --system voxen \
     && useradd --system --gid voxen --uid 1001 --home-dir /app voxen \
     && mkdir -p /data/storage \
