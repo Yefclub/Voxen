@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786487522 — 2026-08-11 · Dev
+
+### ✨ Knowledge graph communities now reveal cohesive themes
+
+Voxen now detects weighted Leiden communities in each authorized knowledge-graph view. Confidence, evidence quality, and relationship semantics influence the partition, so a weak bridge no longer collapses two dense themes into one group. The graph API also reports deterministic algorithm metadata and explainable cohesion metrics, while the 2D and 3D views use the same server partition.
+
+Isolated nodes remain visible without being promoted as meaningful themes. If Leiden cannot run, the graph remains available through a deterministic connected-components fallback identified in the response.
+
 ## v0.14.5-dev.1786484273 — 2026-08-11 · Dev
 
 ### ✨ Explainable personal interest horizons
