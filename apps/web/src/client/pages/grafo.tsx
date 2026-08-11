@@ -205,7 +205,10 @@ export function GrafoPage(): React.ReactElement {
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
-  const [focusedGraphId, setFocusedGraphId] = useState<string | null>(null);
+  const [focusedGraphId, setFocusedGraphId] = useState<string | null>(() => {
+    const focus = new URLSearchParams(window.location.search).get('focus')?.trim();
+    return focus ? focus.slice(0, 160) : null;
+  });
   const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
     () => new Set(ALL_GRAPH_NODE_TYPES),
   );

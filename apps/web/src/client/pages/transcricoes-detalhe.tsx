@@ -61,6 +61,7 @@ import {
 } from '../components/library/transcript-derived-content';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 import { TranscriptCorrectionsCard } from '../components/library/transcript-corrections-card';
+import { TranscriptKnowledgeGraph } from '../components/library/transcript-knowledge-graph';
 
 interface TranscriptDetail {
   id: string;
@@ -667,6 +668,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               readOnly={!canUseContextualActions}
               t={translate}
             />
+            {canUseContextualActions && <TranscriptKnowledgeGraph transcriptId={t.id} />}
             <AdditionalContextBlock
               enrichments={enrichmentsData?.enrichments ?? []}
               researchMode={enrichmentsData?.researchMode ?? 'OFF'}

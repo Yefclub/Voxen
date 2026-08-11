@@ -36,6 +36,11 @@ import {
   TRANSCRIPT_GRAPH_RANK_BOOST,
 } from '../lib/transcript-graph-search';
 import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
+import {
+  parseTranscriptGraphHops,
+  parseTranscriptGraphScope,
+  readTranscriptLocalGraph,
+} from '../lib/transcript-local-graph';
 import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
 import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
 import {
@@ -452,6 +457,17 @@ async function withTags<T extends { id: string }>(
   );
   return items.map((i) => ({ ...i, tags: map.get(i.id) ?? [] }));
 }
+
+transcriptsRoutes.get('/:id/graph', async (c) => {
+  const graph = await readTranscriptLocalGraph({
+    userId: c.get('userId'),
+    transcriptId: c.req.param('id'),
+    scope: parseTranscriptGraphScope(c.req.query('scope')),
+    hops: parseTranscriptGraphHops(c.req.query('hops')),
+  });
+  if (!graph) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  return c.json(graph);
+});
 
 transcriptsRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');

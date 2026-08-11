@@ -264,7 +264,7 @@ export function toGraphReadNode(node: RawNode, degree = 0): GraphReadNode {
   };
 }
 
-function toGraphReadEdge(edge: RawEdge): GraphReadEdge {
+export function toGraphReadEdge(edge: RawEdge): GraphReadEdge {
   return {
     id: edge.id,
     from: edge.fromNodeId,
