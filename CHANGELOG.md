@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786484273 — 2026-08-11 · Dev
+
+### ✨ Explainable personal interest horizons
+
+Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.
+
+Temporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile.
+
 ## v0.14.5-dev.1786480831 — 2026-08-11 · Dev
 
 ### ✨ Personal interest signals
