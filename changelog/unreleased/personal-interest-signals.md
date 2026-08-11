@@ -1,19 +1,14 @@
 ---
-title: Personal interest signals
-title_pt_br: Sinais pessoais de interesse
-summary: Separate observed transcript views from explicit, reversible preferences that will power the personal Guide.
-summary_pt_br: Separa visualizações observadas de preferências explícitas e reversíveis que alimentarão o Guia pessoal.
-type: feature
-audience: all
+tipo: feat
+titulo_en: Personal interest signals
+titulo_pt_br: Sinais pessoais de interesse
 ---
-
-## English
 
 - Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.
 - Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.
 - Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted.
 
-## Português (Brasil)
+<!-- pt-BR -->
 
 - Adicionamos um card acessível “Ajuste seu Guia” ao detalhe da transcrição, com escolhas reversíveis de “Mais como isto” e “Menos como isto”.
 - Armazenamos visualizações observadas e preferências explícitas como eventos separados por usuário, evitando transformar a simples abertura de um conteúdo em preferência declarada.
