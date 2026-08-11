@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786430065",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Reliable deletion during graph activity",
+    "body": "Background knowledge deletion now returns to the durable queue with a short\ndelay while another operation holds the user's graph lease. Temporary graph\nactivity no longer turns a valid deletion into a failed job or blocks unrelated\nworker tasks indefinitely.",
+    "pr": 743,
+    "author": "Kalyel",
+    "date": "2026-08-11T03:34:10-03:00",
+    "translations": {
+      "en": {
+        "title": "Reliable deletion during graph activity",
+        "body": "Background knowledge deletion now returns to the durable queue with a short\ndelay while another operation holds the user's graph lease. Temporary graph\nactivity no longer turns a valid deletion into a failed job or blocks unrelated\nworker tasks indefinitely."
+      },
+      "pt-BR": {
+        "title": "Exclusão confiável durante atividades do grafo",
+        "body": "A exclusão de conhecimento em segundo plano agora retorna para a fila durável\ncom um pequeno atraso enquanto outra operação mantém o lease do grafo do\nusuário. Atividades temporárias do grafo não transformam mais uma exclusão\nválida em falha nem bloqueiam indefinidamente outras tarefas do worker."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/743"
+  },
+  {
     "version": "0.14.5-dev.1786428747",
     "channel": "dev",
     "type": "ui",
