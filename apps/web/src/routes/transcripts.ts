@@ -43,6 +43,7 @@ import {
 } from '../lib/transcript-local-graph';
 import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
 import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
+import { registerTranscriptInterestRoutes } from './transcript-interest';
 import {
   effectiveTranscriptPlainText,
   loadTranscriptSourceVersions,
@@ -136,6 +137,7 @@ transcriptsRoutes.use('*', async (c, next) => {
 });
 
 registerTranscriptCorrectionRoutes(transcriptsRoutes);
+registerTranscriptInterestRoutes(transcriptsRoutes);
 
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');

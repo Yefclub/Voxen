@@ -62,6 +62,7 @@ import {
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 import { TranscriptCorrectionsCard } from '../components/library/transcript-corrections-card';
 import { TranscriptKnowledgeGraph } from '../components/library/transcript-knowledge-graph';
+import { TranscriptInterestFeedback } from '../components/library/transcript-interest-feedback';
 
 interface TranscriptDetail {
   id: string;
@@ -740,7 +741,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               )}
             </Card>
 
-            <Card elevated className="order-3 lg:order-none">
+            {canUseContextualActions && (
+              <TranscriptInterestFeedback key={t.id} transcriptId={t.id} />
+            )}
+
+            <Card elevated className="order-4 lg:order-none">
               <CardContent className="pt-5 pb-5 space-y-4">
                 <LibraryFolderControl
                   folders={foldersData?.folders ?? []}
@@ -816,7 +821,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             </Card>
 
             {canUseContextualActions && (
-              <div className="order-4 lg:order-none">
+              <div className="order-5 lg:order-none">
                 <LinkedNotesCard
                   notes={linkedNotesData?.notes ?? []}
                   loading={linkedNotesLoading}
