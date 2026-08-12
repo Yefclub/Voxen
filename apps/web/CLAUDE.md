@@ -5,22 +5,24 @@ Regras globais do repositório continuam no `CLAUDE.md` da raiz.
 
 ## Implementação de UI/UX
 
-Tailwind v4 + shadcn/ui, com design system próprio (spec 073) — **não** o tema padrão do shadcn.
+Tailwind v4 + shadcn/ui, com design system próprio — **não** o tema padrão do shadcn.
 
 **Quatro packs de tema**, escolhidos por `documentElement[data-theme]`: `linear` (default), `zinc`, `emerald` e `light`. `zinc` é um pack entre quatro, não "a paleta" — e a escala crua `zinc-50…zinc-950` do Tailwind não é fonte de verdade de nada.
+
+Histórico, porque a atribuição erra fácil: a spec 073 criou o sistema de temas com `zinc` como padrão; foi a **115** que introduziu o `linear` e o tornou default, e a **129** trocou só o rótulo exibido para "Voxen", mantendo o identificador. Citar a 073 pelo estado atual manda o leitor a um documento que diz `zinc (padrão)`.
 
 **Tokens semânticos são a fonte de verdade.** Superfície, texto e borda saem de `--color-app-*`; destaque sai de `--color-accent-*`. Há também escalas próprias de `--radius-*`, `--ease-*` e o trio de fontes. Os valores vivem em `src/client/index.css` — ler de lá, não daqui, porque valor copiado envelhece.
 
 ```tsx
 // certo
 <div className="bg-[var(--color-app-surface)] text-[var(--color-app-fg)]" />
-// errado — ignora data-theme, quebra em três dos quatro packs
+// errado — não bate com token em pack nenhum, e quebra visualmente em `light`
 <div className="bg-zinc-800 text-zinc-100" />
 ```
 
-**Proibido escala crua de cor** (`zinc-*`, `neutral-*`, `slate-*` e afins) para superfície, texto ou borda: ela não responde a `data-theme`, então nasce quebrada nos outros packs. O sintoma é silencioso — parece certo no pack em que você desenvolveu.
+**Proibida cor de superfície, texto ou borda que não venha de token.** Vale para escala crua do Tailwind (`zinc-*`, `neutral-*`, `slate-*`) e igualmente para literal em JS ou CSS-in-JS (`#18181b`, `rgb(...)`, `oklch(...)`) — tema de editor e config de biblioteca contam. Nada disso responde a `data-theme`, e o sintoma é silencioso: parece certo no pack em que você desenvolveu.
 
-**Exceção:** cor de destaque deliberadamente independente de tema continua permitida — `button.tsx` usa `emerald`, `violet` e `rose` de propósito, e cor categórica de gráfico segue a mesma lógica. Se for uma dessas, é escolha; caso contrário, é token.
+**Exceção — teste, não rótulo.** A cor pode ser fixa se **carrega significado próprio** (ação, estado, categoria) **e** não deveria mudar entre packs. É o caso de `button.tsx` (`emerald`, `violet`, `rose`), do mapa de origem dos badges de ingestão e das séries de gráfico. Foco e borda **não** passam nesse teste: são afordância, não significado — e o idioma de foco do repo já é `ring-violet-500/40`, não cinza. Acento novo fora dos `--color-accent-*` existentes: confirmar com o owner antes.
 
 Além disso:
 
