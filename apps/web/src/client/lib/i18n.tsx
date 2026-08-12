@@ -28,7 +28,6 @@ import {
   ptBrTranscriptAnnotationMessages,
 } from './transcript-annotations-i18n';
 import { enTranscriptFlowMessages, ptBrTranscriptFlowMessages } from './transcript-flow-i18n';
-import { enPersonalGuideMessages, ptBrPersonalGuideMessages } from './personal-guide-i18n';
 export type Locale = 'pt-BR' | 'en';
 export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> = {
   'pt-BR': { nativeName: 'Português (Brasil)', shortName: 'PT-BR' },
@@ -46,7 +45,6 @@ const ptBRMessages = {
   ...ptBrNoteVersioningMessages,
   ...ptBrMermaidCanvasMessages,
   ...ptBrKnowledgeDeletionMessages,
-  ...ptBrPersonalGuideMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -1431,7 +1429,6 @@ const enMessages: Record<I18nKey, string> = {
   ...enTranscriptAnnotationMessages,
   ...featureMessages.enFeatureMessages,
   ...enKnowledgeDeletionMessages,
-  ...enPersonalGuideMessages,
   ...enResearchPolicyMessages,
   ...enChatReferenceCanvasMessages,
   ...enTranscriptFlowMessages,
