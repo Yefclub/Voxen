@@ -7,32 +7,30 @@ export interface MemoryShadowRedis {
   eval(script: string, numberOfKeys: number, ...args: Array<string | number>): Promise<unknown>;
 }
 
-export interface MemoryShadowFenceStore {
-  exists(userId: string): Promise<boolean>;
-  place(userId: string, owner: string): Promise<void>;
-  clear(userId: string, owner: string): Promise<void>;
-}
-
-export interface MemoryShadowUserStore {
-  exists(userId: string): Promise<boolean>;
+export interface MemoryShadowCoordinationStore {
+  registerWriter(userId: string, writerId: string): Promise<boolean>;
+  finishWriter(writerId: string): Promise<void>;
+  placeFence(userId: string, owner: string): Promise<void>;
+  clearFence(userId: string, owner: string): Promise<void>;
+  waitForWriters(userId: string): Promise<boolean>;
 }
 
 export interface MemoryShadowWriteOptions {
   redis?: MemoryShadowRedis;
-  fenceStore?: MemoryShadowFenceStore;
-  userStore?: MemoryShadowUserStore;
-  compensate?: () => Promise<void>;
+  store?: MemoryShadowCoordinationStore;
 }
 
 export interface MemoryShadowDeletionOptions {
   redis?: MemoryShadowRedis;
-  fenceStore?: MemoryShadowFenceStore;
+  store?: MemoryShadowCoordinationStore;
 }
 
 const LOCK_TTL_MS = 120_000;
 const LOCK_RENEW_MS = 30_000;
 const WRITE_WAIT_MS = 5_000;
 const DELETE_WAIT_MS = 45_000;
+const WRITER_STALE_MS = 60_000;
+const WRITER_DRAIN_WAIT_MS = 65_000;
 const RETRY_MS = 50;
 
 const RELEASE_LOCK_SCRIPT = `
@@ -53,25 +51,52 @@ function redisClient(): MemoryShadowRedis {
   return getRedisPublisher() as unknown as MemoryShadowRedis;
 }
 
-const prismaFenceStore: MemoryShadowFenceStore = {
-  async exists(userId) {
-    return (await db.memoryShadowFence.count({ where: { userId } })) > 0;
-  },
-  async place(userId, owner) {
-    await db.memoryShadowFence.upsert({
-      where: { userId },
-      create: { userId, owner },
-      update: { owner },
+async function advisoryUserLock(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  userId: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 198))`;
+}
+
+const prismaCoordinationStore: MemoryShadowCoordinationStore = {
+  async registerWriter(userId, writerId) {
+    return db.$transaction(async (tx) => {
+      await advisoryUserLock(tx, userId);
+      const [fenced, userExists] = await Promise.all([
+        tx.memoryShadowFence.count({ where: { userId } }),
+        tx.user.count({ where: { id: userId } }),
+      ]);
+      if (fenced > 0 || userExists === 0) return false;
+      await tx.memoryShadowWriter.create({ data: { id: writerId, userId } });
+      return true;
     });
   },
-  async clear(userId, owner) {
+  async finishWriter(writerId) {
+    await db.memoryShadowWriter.deleteMany({ where: { id: writerId } });
+  },
+  async placeFence(userId, owner) {
+    await db.$transaction(async (tx) => {
+      await advisoryUserLock(tx, userId);
+      await tx.memoryShadowFence.upsert({
+        where: { userId },
+        create: { userId, owner },
+        update: { owner },
+      });
+    });
+  },
+  async clearFence(userId, owner) {
     await db.memoryShadowFence.deleteMany({ where: { userId, owner } });
   },
-};
-
-const prismaUserStore: MemoryShadowUserStore = {
-  async exists(userId) {
-    return (await db.user.count({ where: { id: userId } })) > 0;
+  async waitForWriters(userId) {
+    const deadline = Date.now() + WRITER_DRAIN_WAIT_MS;
+    do {
+      await db.memoryShadowWriter.deleteMany({
+        where: { userId, updatedAt: { lt: new Date(Date.now() - WRITER_STALE_MS) } },
+      });
+      if ((await db.memoryShadowWriter.count({ where: { userId } })) === 0) return true;
+      await delay(RETRY_MS);
+    } while (Date.now() < deadline);
+    return false;
   },
 };
 
@@ -113,11 +138,7 @@ async function acquireDistributedUserLock(
   return null;
 }
 
-/**
- * Runs a best-effort write under the same distributed per-user mutex used by
- * account deletion. A write waiting behind a deletion rechecks canonical rows
- * only after the account has been removed, so it cannot recreate remote data.
- */
+/** Runs a best-effort write registered durably before external network I/O. */
 export function scheduleUserMemoryShadowWrite(
   userId: string,
   operation: () => Promise<void>,
@@ -125,23 +146,24 @@ export function scheduleUserMemoryShadowWrite(
 ): void {
   void (async () => {
     const redis = options.redis ?? redisClient();
-    const fenceStore = options.fenceStore ?? prismaFenceStore;
-    const userStore = options.userStore ?? prismaUserStore;
+    const store = options.store ?? prismaCoordinationStore;
+    const writerId = randomUUID();
+    let registered = false;
     let release: (() => Promise<void>) | null = null;
     try {
       release = await acquireDistributedUserLock(userId, WRITE_WAIT_MS, redis);
       if (!release) return;
-      if (await fenceStore.exists(userId)) return;
+      registered = await store.registerWriter(userId, writerId);
+      if (!registered) return;
       await operation();
-      // A Redis lease may be lost while the remote write is running. Recheck
-      // durable state afterwards and remove the late write if deletion started
-      // or the canonical user disappeared in the meantime.
-      if ((await fenceStore.exists(userId)) || !(await userStore.exists(userId))) {
-        await options.compensate?.();
-      }
     } catch {
       console.warn('[memory-shadow] scheduled write failed');
     } finally {
+      if (registered) {
+        await store.finishWriter(writerId).catch(() => {
+          console.warn('[memory-shadow] writer lease release failed');
+        });
+      }
       await release?.().catch(() => {
         console.warn('[memory-shadow] distributed lock release failed');
       });
@@ -150,8 +172,8 @@ export function scheduleUserMemoryShadowWrite(
 }
 
 /**
- * Acquires the distributed user mutex, deletes remote memory, and returns a
- * release function that the caller holds through canonical account deletion.
+ * Fences new writes, drains every durably registered writer, deletes remote
+ * memory, and keeps the fence through canonical account deletion.
  */
 export async function acquireUserMemoryShadowDeletionFence(
   userId: string,
@@ -159,19 +181,22 @@ export async function acquireUserMemoryShadowDeletionFence(
   options: MemoryShadowDeletionOptions = {},
 ): Promise<(canonicalDeleted: boolean) => Promise<void>> {
   const redis = options.redis ?? redisClient();
-  const fenceStore = options.fenceStore ?? prismaFenceStore;
+  const store = options.store ?? prismaCoordinationStore;
   const release = await acquireDistributedUserLock(userId, DELETE_WAIT_MS, redis);
   if (!release) throw new Error('Timed out waiting for the memory shadow deletion fence');
   const owner = randomUUID();
   try {
-    await fenceStore.place(userId, owner);
+    await store.placeFence(userId, owner);
+    if (!(await store.waitForWriters(userId))) {
+      throw new Error('Timed out draining memory shadow writers');
+    }
     await deleteRemote();
-    return async (canonicalDeleted) => {
-      if (!canonicalDeleted) await fenceStore.clear(userId, owner);
+    return async (_canonicalDeleted) => {
+      await store.clearFence(userId, owner);
       await release();
     };
   } catch (error) {
-    await fenceStore.clear(userId, owner).catch(() => {});
+    await store.clearFence(userId, owner).catch(() => {});
     await release();
     throw error;
   }

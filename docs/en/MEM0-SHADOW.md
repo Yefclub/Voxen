@@ -69,6 +69,11 @@ Pin the Mem0 image by digest and record that digest plus the exact extraction
 model in the two provenance variables. Shadow memories expire after 30 days by
 default; the supported retention range is 1–365 days.
 
+`MEM0_SCOPE_SECRET` permanently defines the opaque user namespace. On first
+use, Voxen pins its fingerprint in PostgreSQL and then refuses silent rotation.
+Back up the secret: to rotate it, first clean every Mem0 subject while the
+current secret is available, then deliberately restart the experiment.
+
 ## Live evaluation
 
 After configuration, run:
@@ -108,17 +113,16 @@ states and must be evaluated separately before any future controlled mode.
 - Chat writes are best-effort. A Mem0 outage cannot fail a canonical reply.
 - Aborted, failed, and tool-approval-paused turns are not written.
 - A Redis per-user mutex serializes shadow writes and account deletion across
-  application replicas. A persistent PostgreSQL fencing token remains effective
-  even if a Redis lease is lost. Writers recheck the token and canonical account
-  after the remote call and compensating-delete any late write, preventing data
-  from being recreated.
+  application replicas. Every writer registers a durable PostgreSQL lease before
+  network I/O; deletion pins a fence, blocks new writers, and drains all leases
+  before deleting the remote subject, even if the Redis lease is lost.
 - Account deletion is strict: if enabled Mem0 cannot delete the remote subject,
   Voxen keeps the canonical account instead of orphaning derived personal data.
 - Set `VOXEN_MEMORY_PROVIDER=disabled` (or remove it) to stop all network calls.
   No database migration or canonical-data rollback is required.
-- If the process crashes during account deletion, the persistent token blocks
-  new writes fail-closed. Retry account deletion to resume; do not remove the
-  token manually before confirming that Mem0 has been cleaned.
+- If a process crashes during a write, deletion stays fail-closed until its lease
+  expires. Retry account deletion to resume; do not remove the fence or secret
+  fingerprint manually before confirming that Mem0 has been cleaned.
 - Removing Mem0 storage does not remove transcripts, notes, Brain facts, chat
   history, or user-controlled preferences from Voxen.
 

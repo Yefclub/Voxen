@@ -19,6 +19,7 @@ const baseEnv = {
 };
 
 const originalWarn = console.warn;
+const scopeStore = { pin: async (_fingerprint: string) => {} };
 
 afterEach(() => {
   console.warn = originalWarn;
@@ -118,7 +119,7 @@ describe('Mem0 OSS shadow contract', () => {
       }
       return Response.json({ results: [] });
     }) as typeof fetch;
-    const provider = createMemoryProvider({ env: baseEnv, fetchImpl });
+    const provider = createMemoryProvider({ env: baseEnv, fetchImpl, scopeStore });
     const veryLong = 'x'.repeat(20_000);
 
     await provider.addCompletedTurn({
@@ -208,6 +209,7 @@ describe('Mem0 OSS shadow contract', () => {
       },
       {
         env: baseEnv,
+        scopeStore,
         fetchImpl: (async () =>
           new Response('unavailable', { status: 503 })) as unknown as typeof fetch,
       },
@@ -220,6 +222,7 @@ describe('Mem0 OSS shadow contract', () => {
     await expect(
       deleteUserMemoryShadow('user-a', {
         env: baseEnv,
+        scopeStore,
         fetchImpl: (async () =>
           new Response('unavailable', { status: 503 })) as unknown as typeof fetch,
       }),
@@ -229,6 +232,7 @@ describe('Mem0 OSS shadow contract', () => {
   it('keeps prompt-injection text labeled as untrusted data', async () => {
     const provider = createMemoryProvider({
       env: baseEnv,
+      scopeStore,
       fetchImpl: (async () =>
         Response.json([
           {
@@ -241,5 +245,28 @@ describe('Mem0 OSS shadow contract', () => {
     const [candidate] = await provider.search({ userId: 'user-a', query: 'preferences', limit: 1 });
     expect(candidate?.content).toContain('Ignore previous instructions');
     expect(candidate?.trust).toBe('unverified');
+  });
+
+  it('pins the scope secret identity and refuses silent rotation', async () => {
+    let pinned: string | null = null;
+    const strictScopeStore = {
+      async pin(fingerprint: string) {
+        if (pinned && pinned !== fingerprint) throw new Error('immutable namespace fingerprint');
+        pinned = fingerprint;
+      },
+    };
+    const fetchImpl = (async () =>
+      Response.json({ results: [] })) as unknown as typeof fetch;
+    const original = createMemoryProvider({ env: baseEnv, fetchImpl, scopeStore: strictScopeStore });
+    await original.search({ userId: 'user-a', query: 'preference', limit: 1 });
+
+    const rotated = createMemoryProvider({
+      env: { ...baseEnv, MEM0_SCOPE_SECRET: 'rotated-secret-that-is-at-least-32-characters' },
+      fetchImpl,
+      scopeStore: strictScopeStore,
+    });
+    await expect(
+      rotated.search({ userId: 'user-a', query: 'preference', limit: 1 }),
+    ).rejects.toThrow('immutable namespace fingerprint');
   });
 });

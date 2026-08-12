@@ -68,6 +68,12 @@ Fixe a imagem do Mem0 por digest e registre esse digest e o modelo de extração
 exato nas duas variáveis de proveniência. As memórias expiram em 30 dias por
 padrão; o intervalo aceito é de 1 a 365 dias.
 
+`MEM0_SCOPE_SECRET` define permanentemente o namespace opaco dos usuários. Na
+primeira operação, a Voxen fixa sua impressão digital no PostgreSQL e passa a
+recusar rotação silenciosa. Guarde o segredo em backup: para rotacioná-lo,
+primeiro limpe todos os sujeitos no Mem0 com o segredo vigente e reinicie
+deliberadamente o experimento.
+
 ## Avaliação ao vivo
 
 Depois da configuração, execute:
@@ -106,17 +112,16 @@ estados e precisa de avaliação separada antes de qualquer modo controlado futu
 - Escritas do chat são best-effort; indisponibilidade do Mem0 não falha a resposta.
 - Turnos interrompidos, falhos ou pausados para aprovação não são gravados.
 - Um mutex Redis por usuário serializa escritas shadow e exclusão de conta entre
-  réplicas da aplicação. Um fencing token persistente no PostgreSQL continua
-  valendo mesmo se a lease Redis for perdida. A escrita revalida o token e a
-  conta depois da chamada remota e apaga compensatoriamente qualquer escrita
-  tardia, impedindo recriação dos dados.
+  réplicas da aplicação. Cada escrita registra antes da rede uma lease durável no
+  PostgreSQL; a exclusão fixa um fence, bloqueia novos escritores e drena todas
+  as leases antes de apagar o sujeito remoto, mesmo se a lease Redis for perdida.
 - Exclusão de conta é estrita: se o Mem0 habilitado não remover o sujeito remoto,
   a Voxen mantém a conta canônica para não abandonar dados pessoais derivados.
 - Use `VOXEN_MEMORY_PROVIDER=disabled` (ou remova a variável) para zerar chamadas
   de rede. Não há migration nem rollback de dados canônicos.
-- Se o processo cair durante uma exclusão, o token persistente bloqueia novas
-  escritas por segurança. Repetir a exclusão da conta retoma a operação; não
-  remova manualmente o token sem antes confirmar a limpeza no Mem0.
+- Se o processo cair durante uma escrita, a exclusão permanece fail-closed até a
+  lease expirar. Repetir a exclusão retoma a operação; não remova manualmente o
+  fence nem a impressão do segredo sem confirmar a limpeza no Mem0.
 - Apagar o storage do Mem0 não remove transcrições, notas, fatos Brain, histórico
   de chat ou preferências controladas pelo usuário na Voxen.
 

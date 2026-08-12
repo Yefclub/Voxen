@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { db } from '../db';
 import { acquireUserMemoryShadowDeletionFence } from './memory-shadow-coordinator';
 
 export const MEMORY_SHADOW_ALGORITHM_VERSION = 'voxen-mem0-oss-shadow-v1';
@@ -60,10 +61,32 @@ export type MemoryProviderConfig =
       timeoutMs: number;
     };
 
+export interface MemoryScopeStore {
+  pin(fingerprint: string): Promise<void>;
+}
+
 interface MemoryProviderDependencies {
   env?: MemoryEnvironment;
   fetchImpl?: typeof fetch;
+  scopeStore?: MemoryScopeStore;
 }
+
+const SCOPE_CONFIG_ID = 'mem0-shadow-v1';
+
+const prismaMemoryScopeStore: MemoryScopeStore = {
+  async pin(fingerprint) {
+    await db.memoryShadowConfig.createMany({
+      data: [{ id: SCOPE_CONFIG_ID, scopeFingerprint: fingerprint }],
+      skipDuplicates: true,
+    });
+    const pinned = await db.memoryShadowConfig.findUnique({ where: { id: SCOPE_CONFIG_ID } });
+    if (!pinned || pinned.scopeFingerprint !== fingerprint) {
+      throw new Error(
+        'MEM0_SCOPE_SECRET does not match the immutable namespace fingerprint; restore the original secret',
+      );
+    }
+  },
+};
 
 function required(env: MemoryEnvironment, name: string): string {
   const value = env[name]?.trim();
@@ -214,7 +237,15 @@ class Mem0ShadowProvider implements MemoryProvider {
   constructor(
     private readonly config: Extract<MemoryProviderConfig, { kind: 'mem0-shadow' }>,
     private readonly fetchImpl: typeof fetch,
+    private readonly scopeStore: MemoryScopeStore,
   ) {}
+
+  private async assertScopeIdentity(): Promise<void> {
+    const fingerprint = createHmac('sha256', this.config.scopeSecret)
+      .update('voxen-memory-scope-v1', 'utf8')
+      .digest('hex');
+    await this.scopeStore.pin(fingerprint);
+  }
 
   private subject(userId: string): string {
     return opaqueMemorySubject(userId, this.config.scopeSecret);
@@ -237,6 +268,7 @@ class Mem0ShadowProvider implements MemoryProvider {
   }
 
   async addCompletedTurn(turn: CompletedMemoryTurn): Promise<void> {
+    await this.assertScopeIdentity();
     const expiresAt = new Date(turn.completedAt);
     expiresAt.setUTCDate(expiresAt.getUTCDate() + this.config.retentionDays);
     const metadata = {
@@ -264,6 +296,7 @@ class Mem0ShadowProvider implements MemoryProvider {
   }
 
   async search(input: MemorySearchInput): Promise<MemoryCandidate[]> {
+    await this.assertScopeIdentity();
     const query = input.query.trim().slice(0, MAX_QUERY_CHARS);
     if (!query) return [];
     const response = await this.request('/search', {
@@ -279,6 +312,7 @@ class Mem0ShadowProvider implements MemoryProvider {
   }
 
   async deleteUser(userId: string): Promise<void> {
+    await this.assertScopeIdentity();
     const subject = encodeURIComponent(this.subject(userId));
     await this.request(`/memories?user_id=${subject}`, { method: 'DELETE' });
   }
@@ -289,7 +323,11 @@ export function createMemoryProvider(
 ): MemoryProvider {
   const config = resolveMemoryProviderConfig(dependencies.env ?? process.env);
   if (config.kind === 'disabled') return new DisabledMemoryProvider();
-  return new Mem0ShadowProvider(config, dependencies.fetchImpl ?? fetch);
+  return new Mem0ShadowProvider(
+    config,
+    dependencies.fetchImpl ?? fetch,
+    dependencies.scopeStore ?? prismaMemoryScopeStore,
+  );
 }
 
 function diagnosticReason(error: unknown): string {

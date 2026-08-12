@@ -20,6 +20,7 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
   model prompt or a user-visible factual answer.
 - Derive a stable opaque Mem0 subject from the authenticated Voxen `userId` and
   a dedicated secret. Callers cannot supply or override the remote subject.
+- Pin the scope-secret fingerprint on first use and reject silent secret rotation.
 - Preserve conversation/message provenance and an algorithm version in metadata.
 - Delete the remote subject before irreversibly deleting a Voxen user.
 - Keep Mem0 outside the unified Voxen image and Compose defaults.
@@ -47,8 +48,8 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
 - When an administrator deletes a user while Mem0 shadow mode is enabled, remote
   deletion shall succeed before canonical user deletion proceeds.
 - When account deletion overlaps a shadow write on another application replica,
-  a durable per-user fence shall block or compensating-delete the late write
-  even if the Redis lease is lost.
+  a durable per-user fence shall block new writers and drain every registered
+  writer before remote deletion, even if the Redis lease is lost.
 
 ### State-driven
 
@@ -87,6 +88,7 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
 - [x] Failures are soft for chat writes and strict for account deletion.
 - [x] Cross-replica deletion fencing survives Redis lease loss and prevents late
       remote data recreation.
+- [x] Scope-secret identity is pinned and accidental rotation fails closed.
 - [x] Search candidates are explicitly unverified and never injected in prompts.
 - [x] Configuration rejects unsafe URLs, credentials in URLs, and unbounded values.
 - [x] A live evaluation command reports recall, false-memory rate, isolation,

@@ -1,7 +1,6 @@
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import {
-  deleteUserMemoryShadow,
   memoryShadowWriteEnabled,
   recordCompletedTurnInMemoryShadow,
 } from '../memory/memory-provider';
@@ -63,6 +62,5 @@ export function scheduleCompletedTurnMemoryShadow(input: {
         completedAt: new Date(),
       });
     },
-    { compensate: () => deleteUserMemoryShadow(input.userId) },
   );
 }
