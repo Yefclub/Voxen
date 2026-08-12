@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree
 from unittest.mock import AsyncMock
 
-from src import youtube_captions, ytdl
+from src import youtube_captions
 from src.ytdl import VideoProbe, parse_vtt_or_srt, pick_subtitle_lang
 
 VTT_SAMPLE = """WEBVTT
@@ -199,7 +199,8 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
     monkeypatch.setattr(youtube_captions, "YouTubeTranscriptApi", FakeApi)
     monkeypatch.setattr(youtube_captions, "_runtime_options", AsyncMock(return_value={}))
     monkeypatch.setattr(
-        youtube_captions, "_fetch_youtube_oembed",
+        youtube_captions,
+        "_fetch_youtube_oembed",
         lambda video_id, proxy_url: {
             "title": "Video de teste",
             "author_name": "Canal",
@@ -224,7 +225,9 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
 async def test_fetch_youtube_transcript_ignores_non_youtube(monkeypatch) -> None:
     monkeypatch.setattr(youtube_captions, "_runtime_options", AsyncMock(return_value={}))
 
-    result = await youtube_captions.fetch_youtube_transcript("https://example.com/watch?v=dQw4w9WgXcQ")
+    result = await youtube_captions.fetch_youtube_transcript(
+        "https://example.com/watch?v=dQw4w9WgXcQ"
+    )
 
     assert result is None
 
@@ -267,7 +270,10 @@ async def test_fetch_youtube_transcript_reports_why_it_gave_up(monkeypatch, capl
 
     events: list[tuple[str, dict]] = []
     monkeypatch.setattr(
-        youtube_captions.logger, "info", lambda event, **kw: events.append((event, kw)), raising=False
+        youtube_captions.logger,
+        "info",
+        lambda event, **kw: events.append((event, kw)),
+        raising=False,
     )
 
     assert await youtube_captions.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ") is None
