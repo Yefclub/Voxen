@@ -16,7 +16,8 @@ from typing import Any
 import asyncpg
 import structlog
 
-from . import brain_compilation_db
+from . import brain_compilation_db, brain_temporal_store
+from .entity_resolution import normalize_entity_type
 from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
 from .job_lease import JobLeaseLostError, JobLeaseToken, current_job_lease
 
@@ -1290,43 +1291,6 @@ def _require_grounded_compilation_lease(lease: GraphIndexLease) -> None:
         raise GroundedCompilationLeaseLostError("lease de compilação do Brain perdido")
 
 
-async def _upsert_grounded_evidence_source(
-    conn: asyncpg.Connection,
-    *,
-    user_id: str,
-    transcript_id: str,
-    edge_id: str,
-    segment: dict[str, Any],
-    evidence_key: str,
-    excerpt: str,
-) -> None:
-    await conn.execute(
-        """
-        INSERT INTO "BrainSource" (
-            id, "userId", "edgeId", "sourceType", "sourceId", "startLine", "endLine",
-            "startSec", "endSec", "segmentKey", "evidenceKey", excerpt, "createdAt"
-        ) VALUES (
-            $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, $6,
-            $7, $8, $9, $10, $11, NOW()
-        ) ON CONFLICT ("userId", "evidenceKey") DO UPDATE SET
-            "startLine" = EXCLUDED."startLine", "endLine" = EXCLUDED."endLine",
-            "startSec" = EXCLUDED."startSec", "endSec" = EXCLUDED."endSec",
-            excerpt = EXCLUDED.excerpt
-        """,
-        generate_cuid(),
-        user_id,
-        edge_id,
-        transcript_id,
-        segment["start_line"],
-        segment["end_line"],
-        segment.get("start_sec"),
-        segment.get("end_sec"),
-        segment["key"],
-        evidence_key,
-        _truncate(excerpt, 600),
-    )
-
-
 async def upsert_grounded_brain_items(
     *,
     user_id: str,
@@ -1348,7 +1312,9 @@ async def upsert_grounded_brain_items(
         async with conn.transaction():
             claim = await conn.fetchrow(
                 """
-                SELECT segment.id
+                SELECT segment.id,
+                       COALESCE(transcript."sourceCollectedAt", transcript."createdAt")
+                         AS "observedAt"
                 FROM "BrainCompilation" compilation
                 JOIN "BrainCompilationSegment" segment
                   ON segment."compilationId" = compilation.id
@@ -1380,6 +1346,7 @@ async def upsert_grounded_brain_items(
             )
             if not claim:
                 raise GroundedCompilationClaimLostError("semantic segment claim is no longer valid")
+            observed_at = claim.get("observedAt") or _utcnow_naive()
             content = await conn.fetchrow(
                 """
                 SELECT id FROM "BrainNode"
@@ -1407,6 +1374,30 @@ async def upsert_grounded_brain_items(
                 transcript_id,
                 segment["key"],
             )
+            await conn.execute(
+                """
+                DELETE FROM "BrainEntityAlias"
+                WHERE "userId" = $1
+                  AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+                  AND "sourceId" = $2
+                  AND "segmentKey" = $3
+                  AND method = 'llm-grounded-alias'
+                """,
+                user_id,
+                transcript_id,
+                segment["key"],
+            )
+            await conn.execute(
+                """
+                DELETE FROM "BrainFact" fact
+                WHERE fact."userId" = $1
+                  AND fact.method = 'llm-grounded-temporal'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
+                  )
+                """,
+                user_id,
+            )
             _require_grounded_compilation_lease(lease)
             concepts: dict[str, tuple[str, str]] = {}
             for item in items:
@@ -1416,17 +1407,45 @@ async def upsert_grounded_brain_items(
                 excerpt = str(item.get("excerpt") or "").strip()
                 conf = float(item.get("confidence") or 0.7)
                 slug = str(item.get("slug") or "")
+                entity_type = normalize_entity_type(str(item.get("entity_type") or "OTHER"))
+                aliases = tuple(
+                    str(alias).strip()
+                    for alias in (item.get("aliases") or [])
+                    if str(alias).strip()
+                )
                 if not label or not excerpt or not slug:
                     continue
                 node_type = "CLAIM" if kind == "claim" else "ENTITY"
-                key_prefix = "CLAIM" if kind == "claim" else "ENTITY"
-                concept_id = await _upsert_grounded_concept_node(
-                    conn,
-                    user_id=user_id,
-                    key=f"{key_prefix}:{slug}",
-                    node_type=node_type,
-                    label=label,
-                )
+                if kind == "claim":
+                    concept_id = await brain_temporal_store.upsert_concept_node(
+                        conn,
+                        user_id=user_id,
+                        key=f"CLAIM:{slug}",
+                        node_type=node_type,
+                        label=label,
+                    )
+                else:
+                    concept_id = await brain_temporal_store.resolve_entity_node(
+                        conn,
+                        user_id=user_id,
+                        transcript_id=transcript_id,
+                        segment_key=segment["key"],
+                        label=label,
+                        entity_type=entity_type,
+                        aliases=aliases,
+                        excerpt=excerpt,
+                    )
+                    await brain_temporal_store.upsert_entity_aliases(
+                        conn,
+                        user_id=user_id,
+                        transcript_id=transcript_id,
+                        segment_key=segment["key"],
+                        entity_node_id=concept_id,
+                        label=label,
+                        aliases=aliases,
+                        entity_type=entity_type,
+                        confidence=conf,
+                    )
                 concepts[slug] = (concept_id, kind)
                 edge_kind = "SUPPORTS" if kind == "claim" else "MENTIONS"
                 edge_row = await conn.fetchrow(
@@ -1462,11 +1481,12 @@ async def upsert_grounded_brain_items(
                 if not edge_row:
                     continue
                 _require_grounded_compilation_lease(lease)
-                await _upsert_grounded_evidence_source(
+                await brain_temporal_store.upsert_evidence_source(
                     conn,
                     user_id=user_id,
                     transcript_id=transcript_id,
                     edge_id=edge_row["id"],
+                    fact_id=None,
                     segment=segment,
                     evidence_key=_grounded_evidence_key(
                         transcript_id, segment["key"], f"item:{slug}", excerpt
@@ -1548,22 +1568,51 @@ async def upsert_grounded_brain_items(
                     ),
                 )
                 if edge_row:
+                    predicate = str(relation.get("predicate") or relation_kind).strip()
+                    fact_id = await brain_temporal_store.upsert_fact(
+                        conn,
+                        user_id=user_id,
+                        edge_id=str(edge_row["id"]),
+                        from_node_id=subject[0],
+                        to_node_id=obj[0],
+                        kind=relation_kind,
+                        predicate=predicate,
+                        valid_from=(
+                            str(relation["valid_from"]) if relation.get("valid_from") else None
+                        ),
+                        valid_to=(str(relation["valid_to"]) if relation.get("valid_to") else None),
+                        observed_at=observed_at,
+                        confidence=float(relation.get("confidence") or 0.7),
+                    )
                     relation_evidence_key = _grounded_evidence_key(
                         transcript_id,
                         segment["key"],
                         f"relation:{subject_slug}:{relation_kind}:{object_slug}",
                         excerpt,
                     )
-                    await _upsert_grounded_evidence_source(
+                    await brain_temporal_store.upsert_evidence_source(
                         conn,
                         user_id=user_id,
                         transcript_id=transcript_id,
                         edge_id=edge_row["id"],
+                        fact_id=fact_id,
                         segment=segment,
                         evidence_key=relation_evidence_key,
                         excerpt=excerpt,
                     )
                     created += 1
+            _require_grounded_compilation_lease(lease)
+            await conn.execute(
+                """
+                DELETE FROM "BrainFact" fact
+                WHERE fact."userId" = $1
+                  AND fact.method = 'llm-grounded-temporal'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
+                  )
+                """,
+                user_id,
+            )
             _require_grounded_compilation_lease(lease)
             await conn.execute(
                 """
@@ -1597,42 +1646,6 @@ async def upsert_grounded_brain_items(
             await brain_compilation_db.refresh_compilation(conn, compilation_id, user_id)
             _require_grounded_compilation_lease(lease)
     return created
-
-
-async def _upsert_grounded_concept_node(
-    conn: asyncpg.Connection,
-    *,
-    user_id: str,
-    key: str,
-    node_type: str,
-    label: str,
-) -> str:
-    row = await conn.fetchrow(
-        """
-        INSERT INTO "BrainNode" (
-            id, "userId", key, type, label, description, status, metadata,
-            "sourceType", "sourceId", "createdAt", "updatedAt"
-        ) VALUES (
-            $1, $2, $3, $4::"BrainNodeType", $5, $6, 'ACTIVE'::"ContentStatus",
-            $7::jsonb, NULL, NULL, NOW(), NOW()
-        )
-        ON CONFLICT ("userId", key) DO UPDATE SET
-            type = EXCLUDED.type,
-            label = EXCLUDED.label,
-            description = EXCLUDED.description,
-            metadata = EXCLUDED.metadata,
-            "updatedAt" = NOW()
-        RETURNING id
-        """,
-        generate_cuid(),
-        user_id,
-        key,
-        node_type,
-        label,
-        "Conceito extraído com grounding (trecho literal no conteúdo).",
-        json.dumps({"method": "llm-grounded"}),
-    )
-    return str(row["id"])
 
 
 async def store_content_embedding(

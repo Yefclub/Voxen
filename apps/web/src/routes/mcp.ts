@@ -35,6 +35,7 @@ import {
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
+import { registerBrainTimelineTool } from './mcp-brain-timeline-tool';
 import {
   registerTranscriptEnrichmentTools,
   registerTranscriptEnrichmentWriteTools,
@@ -78,6 +79,8 @@ const VOXEN_INSTRUCTIONS = [
   '6. Use tags e resumo para decidir relevância; relacione com docs/tópicos próximos:',
   '   voxen_related e voxen_brain_*',
   '   (neighbors, sources, path até 3 hops, hubs).',
+  '   Para estado atual, histórico ou mudança no tempo, use voxen_brain_timeline e abra',
+  '   as evidências retornadas antes de afirmar o fato.',
   '7. Para perguntas personalizadas, use voxen_personal_context. Ele separa feedback explícito',
   '   de interesse inferido e recomenda fontes via grafo, mas é apenas um guia de navegação:',
   '   abra e verifique cada fonte antes de usá-la como evidência factual.',
@@ -303,7 +306,7 @@ function buildVoxenMcpServer(
   publicOrigin: string,
 ): McpServer {
   const server = new McpServer(
-    { name: 'voxen-mcp', version: '0.5.0' },
+    { name: 'voxen-mcp', version: '0.6.0' },
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
@@ -1033,6 +1036,8 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
 }
 
 function registerBrainTools(server: McpServer, userId: string): void {
+  registerBrainTimelineTool(server, userId);
+
   server.registerTool(
     'voxen_brain_search',
     {
@@ -1156,6 +1161,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
           id: true,
           nodeId: true,
           edgeId: true,
+          factId: true,
           sourceType: true,
           sourceId: true,
           chunkId: true,
@@ -1164,6 +1170,18 @@ function registerBrainTools(server: McpServer, userId: string): void {
           startSec: true,
           endSec: true,
           excerpt: true,
+          fact: {
+            select: {
+              factKey: true,
+              predicate: true,
+              validFrom: true,
+              validTo: true,
+              observedAt: true,
+              invalidatedAt: true,
+              confidence: true,
+              method: true,
+            },
+          },
         },
       });
       const contradiction = await db.brainEdge.findFirst({

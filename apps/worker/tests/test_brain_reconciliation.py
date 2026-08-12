@@ -10,7 +10,7 @@ from typing import Any, cast
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, db
+from src import brain_compilation_db, brain_temporal_store, db
 
 
 class _FakeLease:
@@ -356,6 +356,8 @@ class _RelationConnection:
         if 'INSERT INTO "BrainEdge"' in query:
             self._edge_number += 1
             return {"id": f"edge-{self._edge_number}"}
+        if 'INSERT INTO "BrainFact"' in query:
+            return {"id": "fact-1"}
         raise AssertionError(f"Unexpected fetchrow query: {query}")
 
     async def execute(self, query: str, *args: object) -> str:
@@ -427,7 +429,7 @@ async def test_contradiction_requires_two_independent_grounded_sources(
         return f"node-{kwargs['key']}"
 
     monkeypatch.setattr(db, "connection", relation_connection)
-    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
 
     await db.upsert_grounded_brain_items(
         user_id="user-1",
@@ -480,7 +482,7 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
         return f"node-{kwargs['key']}"
 
     monkeypatch.setattr(db, "connection", relation_connection)
-    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
 
     await db.upsert_grounded_brain_items(
         user_id="user-1",
@@ -513,6 +515,8 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
         and args[4] == "CONTRADICTS"
         for query, args in conn.fetchrow_calls
     )
+    assert any('INSERT INTO "BrainFact"' in query for query, _args in conn.fetchrow_calls)
+    assert any('"factId"' in query for query, _args in conn.execute_calls)
 
 
 async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) -> None:

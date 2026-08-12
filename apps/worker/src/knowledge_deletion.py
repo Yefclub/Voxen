@@ -72,6 +72,27 @@ async def _delete_graph_sources(
         source_type,
         ids,
     )
+    await conn.execute(
+        """
+        DELETE FROM "BrainEntityAlias"
+        WHERE "userId" = $1
+          AND "sourceType" = $2::"BrainSourceType"
+          AND "sourceId" = ANY($3::text[])
+        """,
+        user_id,
+        source_type,
+        ids,
+    )
+    await conn.execute(
+        """
+        DELETE FROM "BrainFact" fact
+        WHERE fact."userId" = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
+          )
+        """,
+        user_id,
+    )
     affected_edge_ids = [str(row["edgeId"]) for row in edge_ids if row["edgeId"]]
     if affected_edge_ids:
         await conn.execute(

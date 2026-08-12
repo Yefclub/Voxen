@@ -305,6 +305,21 @@ async function deferGroundedCompilation(
       AND edge.method LIKE 'llm-grounded%'
   `;
   await tx.$executeRaw`
+    DELETE FROM "BrainEntityAlias"
+    WHERE "userId" = ${userId}
+      AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+      AND "sourceId" = ${transcriptId}
+      AND method = 'llm-grounded-alias'
+  `;
+  await tx.$executeRaw`
+    DELETE FROM "BrainFact" fact
+    WHERE fact."userId" = ${userId}
+      AND fact.method = 'llm-grounded-temporal'
+      AND NOT EXISTS (
+        SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
+      )
+  `;
+  await tx.$executeRaw`
     DELETE FROM "BrainEdge" edge
     WHERE edge."userId" = ${userId}
       AND edge.method LIKE 'llm-grounded%'

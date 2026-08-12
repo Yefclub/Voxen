@@ -113,6 +113,71 @@ def test_parse_grounded_relations_requires_evidence_and_confident_alias() -> Non
     ]
 
 
+def test_parse_grounded_entities_keeps_only_literal_aliases_and_known_types() -> None:
+    source = "A OpenAI, também chamada Open AI, desenvolve o ChatGPT."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "label": "OpenAI",
+                    "entity_type": "organization",
+                    "aliases": ["Open AI", "Invented Labs"],
+                    "excerpt": "A OpenAI, também chamada Open AI, desenvolve o ChatGPT",
+                    "confidence": 0.94,
+                }
+            ]
+        }
+    )
+
+    [entity] = parse_grounded_payload(raw, source)
+
+    assert entity.entity_type == "ORGANIZATION"
+    assert entity.aliases == ("Open AI",)
+
+
+def test_parse_grounded_relation_keeps_valid_iso_interval_and_rejects_reversed_one() -> None:
+    source = (
+        "Ana trabalhou na Acme desde 2022-01-01 até 2024-06-30. "
+        "Depois Ana entrou na Beta em 2024-07-01."
+    )
+    raw = json.dumps(
+        {
+            "entities": [
+                {"label": "Ana", "excerpt": "Ana trabalhou na Acme"},
+                {"label": "Acme", "excerpt": "Ana trabalhou na Acme"},
+                {"label": "Beta", "excerpt": "Ana entrou na Beta"},
+            ],
+            "relations": [
+                {
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana trabalhou na Acme desde 2022-01-01 até 2024-06-30",
+                    "valid_from": "2022-01-01T00:00:00Z",
+                    "valid_to": "2024-07-01T00:00:00Z",
+                },
+                {
+                    "subject": "Ana",
+                    "predicate": "joined",
+                    "object": "Beta",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana entrou na Beta em 2024-07-01",
+                    "valid_from": "2025-01-01T00:00:00Z",
+                    "valid_to": "2024-01-01T00:00:00Z",
+                },
+            ],
+        }
+    )
+    items = parse_grounded_payload(raw, source)
+
+    relations = parse_grounded_relations(raw, source, items)
+
+    assert len(relations) == 1
+    assert relations[0].valid_from == "2022-01-01T00:00:00Z"
+    assert relations[0].valid_to == "2024-07-01T00:00:00Z"
+
+
 def test_segment_content_covers_long_markdown_with_lines_and_timestamps() -> None:
     content = "\n".join(
         [

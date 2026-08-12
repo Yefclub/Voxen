@@ -39,6 +39,20 @@ result also reports algorithm versions, the projection watermark, and whether
 the graph or context snapshot was truncated. Write-only tokens do not discover
 this tool.
 
+`voxen_brain_timeline` retrieves evidence-backed temporal relations. With no
+time argument it returns facts that have no recorded end of validity; `as_of`
+performs a point-in-time lookup, while `from`/`to` finds overlapping validity
+windows. Domain validity (`validFrom`/`validTo`) is kept separate from
+`observedAt`, the time represented by the source episode. Missing domain time
+stays unknown—it is never inferred from ingestion time. Entity aliases improve
+search recall but remain reversible observations; Voxen never merges two
+identities merely because their normalized names match.
+
+Temporal relations are extracted knowledge, not proof by themselves. Every
+result includes bounded source evidence, and a client must read/verify that
+evidence before presenting the relation as factual. Overlapping or conflicting
+relations should be shown as uncertainty, not silently collapsed.
+
 ## Safe note editing workflow
 
 Note reads return a monotonic `revision` and an opaque `checksum`. Agents should

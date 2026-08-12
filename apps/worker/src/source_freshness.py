@@ -26,6 +26,28 @@ async def _defer_grounded_compilation(
     )
     await conn.execute(
         """
+        DELETE FROM "BrainEntityAlias"
+        WHERE "userId" = $1
+          AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+          AND "sourceId" = $2
+          AND method = 'llm-grounded-alias'
+        """,
+        user_id,
+        transcript_id,
+    )
+    await conn.execute(
+        """
+        DELETE FROM "BrainFact" fact
+        WHERE fact."userId" = $1
+          AND fact.method = 'llm-grounded-temporal'
+          AND NOT EXISTS (
+            SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
+          )
+        """,
+        user_id,
+    )
+    await conn.execute(
+        """
         DELETE FROM "BrainEdge" edge
         WHERE edge."userId" = $1
           AND edge.method LIKE 'llm-grounded%'

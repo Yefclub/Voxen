@@ -22,7 +22,7 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
 
     await mark_reviewable_derivatives_stale(conn, "user-1", "transcript-1", 4, "checksum-4")
 
-    assert len(conn.calls) == 11
+    assert len(conn.calls) == 13
     anchor_query, anchor_args = conn.calls[1]
     assert 'UPDATE "NoteTranscriptAnchor"' in anchor_query
     assert '"userId" = $1' in anchor_query
@@ -55,11 +55,19 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
     assert "llm-grounded%" in grounded_source_query
     assert grounded_source_args == ("user-1", "transcript-1")
 
-    brain_marker_query, brain_marker_args = conn.calls[8]
+    alias_query, alias_args = conn.calls[6]
+    assert 'DELETE FROM "BrainEntityAlias"' in alias_query
+    assert alias_args == ("user-1", "transcript-1")
+
+    orphan_fact_query, orphan_fact_args = conn.calls[7]
+    assert 'DELETE FROM "BrainFact"' in orphan_fact_query
+    assert orphan_fact_args == ("user-1",)
+
+    brain_marker_query, brain_marker_args = conn.calls[10]
     assert "- 'topicIndexVersion' - 'brainIndexVersion'" in brain_marker_query
     assert brain_marker_args == ("user-1", "TRANSCRIPT:transcript-1")
 
-    compilation_query, compilation_args = conn.calls[10]
+    compilation_query, compilation_args = conn.calls[12]
     assert 'INSERT INTO "BrainCompilation"' in compilation_query
     assert 'INSERT INTO "BrainCompilationSegment"' in compilation_query
     assert 'ON CONFLICT ("transcriptId") DO UPDATE' in compilation_query

@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, db
+from src import brain_compilation_db, brain_temporal_store, db
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -207,6 +207,136 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         )
     finally:
         await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
+        await conn.close()
+
+
+async def test_temporal_facts_and_entity_aliases_are_idempotent_and_user_scoped() -> None:
+    assert os.environ.get("DATABASE_URL")
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    suffix = uuid.uuid4().hex
+    user_id = f"temporal-user-{suffix}"
+    foreign_user_id = f"temporal-foreign-{suffix}"
+    subject_id = f"temporal-subject-{suffix}"
+    object_id = f"temporal-object-{suffix}"
+    edge_id = f"temporal-edge-{suffix}"
+    observed_at = datetime.now(UTC)
+    now = observed_at.replace(tzinfo=None)
+    try:
+        await conn.executemany(
+            """
+            INSERT INTO "User" (id, email, name, status, role, "createdAt", "updatedAt")
+            VALUES ($1, $2, $3, 'APPROVED', 'USER', $4, $4)
+            """,
+            [
+                (user_id, f"{user_id}@example.test", "Temporal Owner", now),
+                (foreign_user_id, f"{foreign_user_id}@example.test", "Temporal Foreign", now),
+            ],
+        )
+        await conn.executemany(
+            """
+            INSERT INTO "BrainNode" (
+              id, "userId", key, type, label, status, metadata, "createdAt", "updatedAt"
+            ) VALUES ($1, $2, $3, 'ENTITY', $4, 'ACTIVE', $5::jsonb, $6, $6)
+            """,
+            [
+                (
+                    subject_id,
+                    user_id,
+                    f"ENTITY:person:ana:{suffix}",
+                    "Ana",
+                    '{"entityType":"PERSON"}',
+                    now,
+                ),
+                (
+                    object_id,
+                    user_id,
+                    f"ENTITY:organization:acme:{suffix}",
+                    "Acme",
+                    '{"entityType":"ORGANIZATION"}',
+                    now,
+                ),
+            ],
+        )
+        await conn.execute(
+            """
+            INSERT INTO "BrainEdge" (
+              id, "userId", "fromNodeId", "toNodeId", kind, method, "createdAt", "updatedAt"
+            ) VALUES ($1, $2, $3, $4, 'RELATED_TO', 'llm-grounded-relation', $5, $5)
+            """,
+            edge_id,
+            user_id,
+            subject_id,
+            object_id,
+            now,
+        )
+
+        first_id = await brain_temporal_store.upsert_fact(
+            conn,
+            user_id=user_id,
+            edge_id=edge_id,
+            from_node_id=subject_id,
+            to_node_id=object_id,
+            kind="RELATED_TO",
+            predicate="worked_at",
+            valid_from="2020-01-01T00:00:00Z",
+            valid_to="2022-01-01T00:00:00Z",
+            observed_at=observed_at,
+            confidence=0.7,
+        )
+        second_id = await brain_temporal_store.upsert_fact(
+            conn,
+            user_id=user_id,
+            edge_id=edge_id,
+            from_node_id=subject_id,
+            to_node_id=object_id,
+            kind="RELATED_TO",
+            predicate="worked_at",
+            valid_from="2020-01-01T00:00:00Z",
+            valid_to="2022-01-01T00:00:00Z",
+            observed_at=observed_at + timedelta(hours=1),
+            confidence=0.9,
+        )
+        await brain_temporal_store.upsert_entity_aliases(
+            conn,
+            user_id=user_id,
+            transcript_id=f"transcript-{suffix}",
+            segment_key="lines:1-10",
+            entity_node_id=subject_id,
+            label="Ana",
+            aliases=("Ana Maria",),
+            entity_type="PERSON",
+            confidence=0.92,
+        )
+
+        fact = await conn.fetchrow(
+            'SELECT id, confidence::float, "observedAt" FROM "BrainFact" WHERE id = $1',
+            first_id,
+        )
+        assert first_id == second_id
+        assert fact is not None
+        assert fact["confidence"] == pytest.approx(0.9)
+        assert abs(fact["observedAt"] - observed_at.replace(tzinfo=None)) < timedelta(
+            milliseconds=1
+        )
+        assert (
+            await conn.fetchval('SELECT COUNT(*) FROM "BrainFact" WHERE "userId" = $1', user_id)
+            == 1
+        )
+
+        owner_candidates = await brain_temporal_store.entity_alias_candidates(
+            conn, user_id=user_id, names=("Ana Maria",)
+        )
+        foreign_candidates = await brain_temporal_store.entity_alias_candidates(
+            conn, user_id=foreign_user_id, names=("Ana Maria",)
+        )
+        assert [(candidate.node_id, candidate.entity_type) for candidate in owner_candidates] == [
+            (subject_id, "PERSON")
+        ]
+        assert foreign_candidates == []
+    finally:
+        await conn.execute(
+            'DELETE FROM "User" WHERE id = ANY($1::text[])', [user_id, foreign_user_id]
+        )
         await conn.close()
 
 

@@ -10,6 +10,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
 from typing import Any
@@ -35,6 +36,8 @@ class GroundedItem:
     label: str
     excerpt: str
     confidence: float
+    entity_type: str = "OTHER"
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,8 @@ class GroundedRelation:
     kind: str
     excerpt: str
     confidence: float
+    valid_from: str | None = None
+    valid_to: str | None = None
 
 
 @dataclass(frozen=True)
@@ -169,6 +174,19 @@ def slugify_label(label: str) -> str:
     return slug.strip("-")[:80]
 
 
+def parse_iso_timestamp(value: object) -> str | None:
+    """Accept an explicit timezone-aware ISO timestamp and normalize it to UTC."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     """Parse JSON do modelo e filtra só itens groundable."""
     text = (raw or "").strip()
@@ -189,7 +207,14 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     out: list[GroundedItem] = []
     seen: set[str] = set()
 
-    def add(kind: str, label: object, excerpt: object, confidence: object = 0.7) -> None:
+    def add(
+        kind: str,
+        label: object,
+        excerpt: object,
+        confidence: object = 0.7,
+        entity_type: object = "OTHER",
+        aliases: object = None,
+    ) -> None:
         if not isinstance(label, str) or not isinstance(excerpt, str):
             return
         lab = " ".join(label.split()).strip()
@@ -204,8 +229,42 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
         conf = 0.7
         if isinstance(confidence, (int, float)):
             conf = max(0.4, min(0.95, float(confidence)))
+        normalized_entity_type = "OTHER"
+        literal_aliases: tuple[str, ...] = ()
+        if kind == "entity":
+            from .entity_resolution import normalize_entity_type
+
+            normalized_entity_type = normalize_entity_type(
+                entity_type if isinstance(entity_type, str) else None
+            )
+            if isinstance(aliases, list):
+                accepted: list[str] = []
+                source_normalized = normalize_for_grounding(source_text)
+                for raw_alias in aliases[:10]:
+                    if not isinstance(raw_alias, str):
+                        continue
+                    alias = " ".join(raw_alias.split()).strip()[:80]
+                    if (
+                        len(alias) >= 2
+                        and slugify_label(alias) != slug
+                        and normalize_for_grounding(alias) in source_normalized
+                        and alias not in accepted
+                    ):
+                        accepted.append(alias)
+                    if len(accepted) >= 5:
+                        break
+                literal_aliases = tuple(accepted)
         seen.add(slug)
-        out.append(GroundedItem(kind=kind, label=lab[:80], excerpt=exc[:400], confidence=conf))
+        out.append(
+            GroundedItem(
+                kind=kind,
+                label=lab[:80],
+                excerpt=exc[:400],
+                confidence=conf,
+                entity_type=normalized_entity_type,
+                aliases=literal_aliases,
+            )
+        )
 
     entities = parsed.get("entities")
     if isinstance(entities, list):
@@ -217,6 +276,8 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
                 item.get("label") or item.get("name"),
                 item.get("excerpt") or item.get("evidence"),
                 item.get("confidence", 0.75),
+                item.get("entity_type") or item.get("type"),
+                item.get("aliases"),
             )
             if sum(1 for x in out if x.kind == "entity") >= MAX_ENTITIES:
                 break
@@ -308,6 +369,10 @@ def parse_grounded_relations(
             or conf < ALIAS_CONFIDENCE_MIN
         ):
             continue
+        valid_from = parse_iso_timestamp(relation.get("valid_from") or relation.get("validAt"))
+        valid_to = parse_iso_timestamp(relation.get("valid_to") or relation.get("invalidAt"))
+        if valid_from and valid_to and valid_to <= valid_from:
+            continue
         key = (slugify_label(subject_item.label), kind, slugify_label(object_item.label))
         if key in seen:
             continue
@@ -320,6 +385,8 @@ def parse_grounded_relations(
                 kind=kind,
                 excerpt=evidence,
                 confidence=conf,
+                valid_from=valid_from,
+                valid_to=valid_to,
             )
         )
     return out
@@ -345,14 +412,17 @@ async def extract_grounded_concepts(
     if language == "en":
         system = (
             "Extract structured knowledge for a personal KB. Reply ONLY with JSON:\n"
-            '{"entities":[{"label":"...","excerpt":"verbatim quote from the text",'
+            '{"entities":[{"label":"...","entity_type":"PERSON|ORGANIZATION|PRODUCT|PROJECT|PLACE|CONCEPT|OTHER",'
+            '"aliases":["literal alias"],"excerpt":"verbatim quote from the text",'
             '"confidence":0.0-1.0}],'
             '"claims":[{"label":"short factual claim","excerpt":"verbatim quote",'
             '"confidence":0.0-1.0}],'
             '"relations":[{"subject":"exact extracted label","predicate":"...",'
             '"object":"exact extracted label",'
             '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
-            '"excerpt":"verbatim quote","confidence":0.0-1.0}]}\n'
+            '"excerpt":"verbatim quote","confidence":0.0-1.0,'
+            '"valid_from":"timezone-aware ISO-8601 or null",'
+            '"valid_to":"timezone-aware ISO-8601 or null"}]}\n'
             "excerpt MUST be a contiguous substring of the content. Max 8 entities, 6 claims. "
             "Relations must reference extracted labels. SAME_AS only for unambiguous aliases. "
             "No invented quotes."
@@ -361,14 +431,17 @@ async def extract_grounded_concepts(
     else:
         system = (
             "Extraia conhecimento estruturado para uma base pessoal. Responda SÓ JSON:\n"
-            '{"entities":[{"label":"...","excerpt":"trecho literal do texto",'
+            '{"entities":[{"label":"...","entity_type":"PERSON|ORGANIZATION|PRODUCT|PROJECT|PLACE|CONCEPT|OTHER",'
+            '"aliases":["alias literal"],"excerpt":"trecho literal do texto",'
             '"confidence":0.0-1.0}],'
             '"claims":[{"label":"afirmação curta","excerpt":"trecho literal",'
             '"confidence":0.0-1.0}],'
             '"relations":[{"subject":"rótulo extraído exato","predicate":"...",'
             '"object":"rótulo extraído exato",'
             '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
-            '"excerpt":"trecho literal","confidence":0.0-1.0}]}\n'
+            '"excerpt":"trecho literal","confidence":0.0-1.0,'
+            '"valid_from":"ISO-8601 com fuso ou null",'
+            '"valid_to":"ISO-8601 com fuso ou null"}]}\n'
             "excerpt DEVE ser substring contígua do conteúdo. Máx. 8 entidades, 6 claims. "
             "Relações devem usar rótulos extraídos. SAME_AS só para aliases sem ambiguidade. "
             "Sem citações inventadas."

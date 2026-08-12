@@ -1,7 +1,8 @@
-import type { Prisma } from '../../prisma-generated/client';
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import { normalizeEntityAlias } from './brain-temporal';
 
-type BrainSearchDb = Pick<typeof db, 'brainNode' | 'transcriptEnrichment'>;
+type BrainSearchDb = Pick<typeof db, 'brainNode' | 'transcriptEnrichment' | '$queryRaw'>;
 
 const brainSearchNodeSelect = {
   id: true,
@@ -28,7 +29,36 @@ export async function searchBrainNodes(
   const requestedLimit = Math.max(1, Math.min(120, Math.trunc(limit)));
   const batchSize = Math.max(20, Math.min(120, requestedLimit * 4));
   const results: BrainSearchNode[] = [];
+  const seenNodeIds = new Set<string>();
   let skip = 0;
+
+  const normalizedAlias = normalizeEntityAlias(query);
+  if (normalizedAlias) {
+    const aliases = await client.$queryRaw<Array<{ entityNodeId: string }>>(Prisma.sql`
+      SELECT DISTINCT alias."entityNodeId"
+      FROM "BrainEntityAlias" alias
+      JOIN "BrainNode" node
+        ON node.id = alias."entityNodeId"
+       AND node."userId" = alias."userId"
+       AND node.status = 'ACTIVE'::"ContentStatus"
+      WHERE alias."userId" = ${userId}
+        AND alias."normalizedAlias" = ${normalizedAlias}
+      ORDER BY alias."entityNodeId"
+      LIMIT ${requestedLimit}
+    `);
+    if (aliases.length > 0) {
+      const aliasNodes = await client.brainNode.findMany({
+        where: { userId, status: 'ACTIVE', id: { in: aliases.map((item) => item.entityNodeId) } },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        select: brainSearchNodeSelect,
+      });
+      for (const node of aliasNodes) {
+        if (seenNodeIds.has(node.id)) continue;
+        seenNodeIds.add(node.id);
+        results.push(node);
+      }
+    }
+  }
 
   while (results.length < requestedLimit) {
     const candidates = await client.brainNode.findMany({
@@ -53,7 +83,11 @@ export async function searchBrainNodes(
       node.sourceType === 'EXTERNAL_ENRICHMENT' && node.sourceId ? [node.sourceId] : [],
     );
     if (enrichmentIds.length === 0) {
-      results.push(...candidates);
+      for (const candidate of candidates) {
+        if (seenNodeIds.has(candidate.id)) continue;
+        seenNodeIds.add(candidate.id);
+        results.push(candidate);
+      }
     } else {
       const currentEnrichments = await client.transcriptEnrichment.findMany({
         where: {
@@ -68,13 +102,16 @@ export async function searchBrainNodes(
         select: { id: true },
       });
       const currentIds = new Set(currentEnrichments.map((item) => item.id));
-      results.push(
-        ...candidates.filter(
-          (node) =>
-            node.sourceType !== 'EXTERNAL_ENRICHMENT' ||
-            (node.sourceId !== null && currentIds.has(node.sourceId)),
-        ),
-      );
+      for (const candidate of candidates) {
+        if (
+          candidate.sourceType === 'EXTERNAL_ENRICHMENT' &&
+          (candidate.sourceId === null || !currentIds.has(candidate.sourceId))
+        )
+          continue;
+        if (seenNodeIds.has(candidate.id)) continue;
+        seenNodeIds.add(candidate.id);
+        results.push(candidate);
+      }
     }
     if (candidates.length < batchSize) break;
   }

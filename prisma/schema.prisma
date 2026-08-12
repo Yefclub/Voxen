@@ -84,6 +84,8 @@ model User {
   brainNodes                    BrainNode[]
   brainEdges                    BrainEdge[]
   brainSources                  BrainSource[]
+  brainFacts                    BrainFact[]
+  brainEntityAliases            BrainEntityAlias[]
   brainCompilations             BrainCompilation[]
   telegramLink                  TelegramLink?
   automations                   Automation[]
@@ -793,22 +795,23 @@ enum BrainCompilationStatus {
 }
 
 model BrainNode {
-  id          String           @id @default(cuid())
-  userId      String
-  key         String
-  type        BrainNodeType
-  label       String
-  description String?          @db.Text
-  status      ContentStatus    @default(ACTIVE)
-  metadata    Json             @default("{}")
-  sourceType  BrainSourceType?
-  sourceId    String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @default(now()) @updatedAt
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  outgoing    BrainEdge[]      @relation("BrainEdgeFrom")
-  incoming    BrainEdge[]      @relation("BrainEdgeTo")
-  sources     BrainSource[]
+  id            String             @id @default(cuid())
+  userId        String
+  key           String
+  type          BrainNodeType
+  label         String
+  description   String?            @db.Text
+  status        ContentStatus      @default(ACTIVE)
+  metadata      Json               @default("{}")
+  sourceType    BrainSourceType?
+  sourceId      String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @default(now()) @updatedAt
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoing      BrainEdge[]        @relation("BrainEdgeFrom")
+  incoming      BrainEdge[]        @relation("BrainEdgeTo")
+  sources       BrainSource[]
+  entityAliases BrainEntityAlias[]
 
   @@unique([userId, key])
   @@index([userId, type, updatedAt(sort: Desc)])
@@ -833,6 +836,7 @@ model BrainEdge {
   from       BrainNode     @relation("BrainEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
   to         BrainNode     @relation("BrainEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
   sources    BrainSource[]
+  facts      BrainFact[]
 
   @@unique([userId, fromNodeId, toNodeId, kind, method])
   @@index([userId, kind, updatedAt(sort: Desc)])
@@ -846,6 +850,7 @@ model BrainSource {
   userId      String
   nodeId      String?
   edgeId      String?
+  factId      String?
   sourceType  BrainSourceType
   sourceId    String
   chunkId     String?
@@ -860,11 +865,67 @@ model BrainSource {
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   node        BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   edge        BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  fact        BrainFact?      @relation(fields: [factId], references: [id], onDelete: Cascade)
 
   @@unique([userId, evidenceKey])
   @@index([userId, sourceType, sourceId])
   @@index([nodeId])
   @@index([edgeId])
+  @@index([factId])
+}
+
+// Versioned semantic meaning attached to a navigable BrainEdge. validFrom/
+// validTo are domain time; observedAt/createdAt are knowledge/transaction time.
+model BrainFact {
+  id            String        @id @default(cuid())
+  userId        String
+  edgeId        String
+  factKey       String
+  predicate     String
+  validFrom     DateTime?
+  validTo       DateTime?
+  observedAt    DateTime      @default(now())
+  invalidatedAt DateTime?
+  confidence    Decimal       @default(1) @db.Decimal(5, 4)
+  method        String        @default("manual")
+  metadata      Json          @default("{}")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @default(now()) @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  edge          BrainEdge     @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  sources       BrainSource[]
+
+  @@unique([userId, factKey])
+  @@index([userId, validFrom, validTo])
+  @@index([userId, observedAt(sort: Desc)])
+  @@index([edgeId])
+}
+
+// Alias observations are candidates, not destructive redirects. Several
+// entities may legitimately share the same normalizedAlias inside one workspace.
+model BrainEntityAlias {
+  id              String          @id @default(cuid())
+  userId          String
+  entityNodeId    String
+  alias           String
+  normalizedAlias String
+  entityType      String          @default("OTHER")
+  confidence      Decimal         @default(1) @db.Decimal(5, 4)
+  method          String          @default("manual")
+  sourceType      BrainSourceType
+  sourceId        String
+  segmentKey      String?
+  evidenceKey     String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @default(now()) @updatedAt
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entity          BrainNode       @relation(fields: [entityNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, evidenceKey])
+  @@index([userId, normalizedAlias])
+  @@index([userId, entityType, normalizedAlias])
+  @@index([entityNodeId])
+  @@index([userId, sourceType, sourceId])
 }
 
 model BrainCompilation {

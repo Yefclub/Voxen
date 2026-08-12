@@ -160,6 +160,8 @@ async def extract_grounded_brain(
                         "excerpt": item.excerpt,
                         "confidence": item.confidence,
                         "slug": brain_extract.slugify_label(item.label),
+                        "entity_type": item.entity_type,
+                        "aliases": list(item.aliases),
                     }
                     for item in result.items
                 ]
@@ -171,6 +173,8 @@ async def extract_grounded_brain(
                         "kind": relation.kind,
                         "excerpt": relation.excerpt,
                         "confidence": relation.confidence,
+                        "valid_from": relation.valid_from,
+                        "valid_to": relation.valid_to,
                     }
                     for relation in result.relations
                 ]
