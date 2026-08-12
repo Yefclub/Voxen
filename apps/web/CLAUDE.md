@@ -5,11 +5,34 @@ Regras globais do repositório continuam no `CLAUDE.md` da raiz.
 
 ## Implementação de UI/UX
 
-Voxen tem tema **cinza (zinc)** via Tailwind v4 + shadcn/ui. Modern e bonito. Ao implementar UI:
+Tailwind v4 + shadcn/ui, com design system próprio — **não** o tema padrão do shadcn.
 
-- Estudar componentes shadcn existentes antes de criar do zero
-- Manter tema consistente (zinc-50 a zinc-950 como paleta principal)
-- Acentos podem usar zinc + um destaque (mas confirmar com o user)
+**Quatro packs de tema**, escolhidos por `documentElement[data-theme]`: `linear` (default), `zinc`, `emerald` e `light`. `zinc` é um pack entre quatro, não "a paleta" — e a escala crua `zinc-50…zinc-950` do Tailwind não é fonte de verdade de nada.
+
+Histórico, porque a atribuição erra fácil: a spec 073 criou o sistema de temas com `zinc` como padrão; foi a **115** que introduziu o `linear` e o tornou default, e a **129** trocou só o rótulo exibido para "Voxen", mantendo o identificador. Citar a 073 pelo estado atual manda o leitor a um documento que diz `zinc (padrão)`.
+
+**Tokens semânticos são a fonte de verdade.** Superfície, texto e borda saem de `--color-app-*`; destaque sai de `--color-accent-*`. Há também escalas próprias de `--radius-*`, `--ease-*` e o trio de fontes. Os valores vivem em `src/client/index.css` — ler de lá, não daqui, porque valor copiado envelhece.
+
+```tsx
+// certo
+<div className="bg-[var(--color-app-surface)] text-[var(--color-app-fg)]" />
+// errado — não bate com token em pack nenhum, e quebra visualmente em `light`
+<div className="bg-zinc-800 text-zinc-100" />
+```
+
+**A regra é uma só: cor de superfície, texto ou borda tem de responder a `data-theme`.** Na prática isso significa token — e o sintoma de errar é silencioso, porque parece certo no pack em que você desenvolveu.
+
+Formas que reprovam, todas pelo mesmo motivo: escala crua do Tailwind (`zinc-800`, `neutral-*`, `slate-*`), cor nomeada (`text-white`, `bg-black/55`), hex arbitrário em classe (`bg-[#18181b]` — note que só o `var()` salva a sintaxe de colchete), literal em JS ou CSS-in-JS (`rgb(...)`, `oklch(...)`, tema de editor, config de biblioteca) e `style={{ color: ... }}` inline. A lista é exemplo, não definição: o que decide é o teste acima.
+
+**Exceção — teste, não rótulo.** A cor pode ser fixa se **carrega significado próprio** (ação, estado, categoria) **e** não deveria mudar entre packs. É o caso de `button.tsx` (`emerald`, `violet`, `rose`), do mapa de origem dos badges de ingestão e das séries de gráfico — inclusive nas bordas desses componentes, que carregam a mesma cor de categoria.
+
+O que reprova é cor de **afordância**: borda de foco e anel de foco não significam nada, só indicam onde está o cursor. O idioma de foco do repo já é `ring-violet-500/40`; `ring-zinc-500/40` e `focus:border-zinc-500/60` são drift.
+
+**Acento novo fora dos `--color-accent-*` existentes: confirmar com o owner antes.**
+
+Além disso:
+
+- Estudar componentes existentes em `src/client/components/ui/` antes de criar do zero
 - Markdown rendering deve respeitar o tema (cores e tipografia consistentes)
 
 ### Verificação Visual com Playwright (OBRIGATÓRIO para mudanças de UI)

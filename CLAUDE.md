@@ -112,7 +112,7 @@ O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
 | Várias issues em lote (worktrees paralelas)    | skill `batch-issues`   |
 | Spec EARS + ciclo SDD/TDD                      | skill `spec`           |
 | Migrations Prisma                              | `prisma/CLAUDE.md`     |
-| UI/UX, tema zinc, verificação visual           | `apps/web/CLAUDE.md`   |
+| UI/UX, tokens de tema, verificação visual      | `apps/web/CLAUDE.md`   |
 | Formato `.md` de transcrição                   | `apps/worker/CLAUDE.md` |
 
 ### Os 9 passos (em ordem)
