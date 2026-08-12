@@ -15,6 +15,7 @@ import {
   MIRROR_SOURCE,
   MIRROR_TARGET,
   diffMirror,
+  formatExcludedNote,
   formatMirrorReport,
   isMirrorClean,
   syncMirror,
@@ -30,7 +31,7 @@ function main() {
   const root = REPO_ROOT;
 
   if (argv.includes("--fix")) {
-    const { written, removed } = syncMirror(root);
+    const { written, removed, excluded } = syncMirror(root);
     for (const relative of written) {
       stdout.write(`synced   ${MIRROR_TARGET}/${relative}\n`);
     }
@@ -43,14 +44,19 @@ function main() {
         ? `${MIRROR_TARGET}/ already matches ${MIRROR_SOURCE}/\n`
         : `\n${total} file(s) updated. Commit them with the ${MIRROR_SOURCE}/ change.\n`,
     );
+    const note = formatExcludedNote(excluded);
+    if (note) stdout.write(`${note}\n`);
     return 0;
   }
 
   const result = diffMirror(root);
+  const note = formatExcludedNote(result.excluded);
   if (isMirrorClean(result)) {
     stdout.write(`${MIRROR_TARGET}/ matches ${MIRROR_SOURCE}/\n`);
+    if (note) stdout.write(`${note}\n`);
     return 0;
   }
+  if (note) stderr.write(`${note}\n`);
 
   stderr.write(
     `${MIRROR_TARGET}/ is out of sync with ${MIRROR_SOURCE}/.\n\n` +

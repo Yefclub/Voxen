@@ -84,7 +84,10 @@ checkouts under `.claude/worktrees/`, `.env` files included.
 - [ ] A file matching `.gitignore` under `.claude/` is neither compared nor
       copied, including a full worktree checkout containing `.env`.
 - [ ] The static deny set alone excludes local state when git cannot answer.
-- [ ] A non-UTF-8 file survives repair byte for byte.
+- [ ] A non-UTF-8 file survives repair byte for byte, and a corrupted mirrored
+      binary is reported as diverged rather than clean.
+- [ ] A symbolic link on either side is excluded rather than followed.
+- [ ] The report states how many paths were excluded.
 - [ ] Running the command from a subdirectory reports the repository state
       rather than an empty match.
 - [ ] A missing source tree raises an error.

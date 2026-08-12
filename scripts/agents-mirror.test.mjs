@@ -17,6 +17,7 @@ import {
   MIRROR_SOURCE,
   MIRROR_TARGET,
   diffMirror,
+  formatExcludedNote,
   formatMirrorReport,
   isMirrorClean,
   listMirroredFiles,
@@ -197,8 +198,6 @@ test("ignores line-ending differences between the trees", () => {
 });
 
 test("copies a non-UTF-8 file byte for byte", () => {
-  // Reading bytes as utf8 and writing them back is lossy, and the loss would
-  // hit both sides of the comparison, so a corrupted mirror would read clean.
   const bytes = Buffer.from([0x00, 0xff, 0xfe, 0x41, 0x80]);
   withScaffold({ [`${MIRROR_SOURCE}/assets/icon.bin`]: bytes }, (root) => {
     syncMirror(root);
@@ -208,6 +207,88 @@ test("copies a non-UTF-8 file byte for byte", () => {
     );
     assert.ok(isMirrorClean(diffMirror(root)));
   });
+});
+
+test("detects a corrupted binary instead of reporting it clean", () => {
+  // `toString("utf8")` maps every invalid sequence to U+FFFD, so comparing two
+  // binaries as text makes any pair of them look equal. The line-ending
+  // fallback has to be gated on both sides being valid UTF-8, or a corrupted
+  // mirror reads clean and --fix rewrites nothing.
+  for (const [source, mirror] of [
+    [[0x89, 0x50, 0xff, 0x01], [0x89, 0x50, 0xfe, 0x01]],
+    [[0x41, 0x0d, 0x0a, 0xff], [0x41, 0x0a, 0xff]],
+  ]) {
+    withScaffold(
+      {
+        [`${MIRROR_SOURCE}/assets/icon.bin`]: Buffer.from(source),
+        [`${MIRROR_TARGET}/assets/icon.bin`]: Buffer.from(mirror),
+      },
+      (root) => {
+        assert.deepEqual(diffMirror(root).diverged, ["assets/icon.bin"]);
+        assert.deepEqual(syncMirror(root).written, ["assets/icon.bin"]);
+        assert.deepEqual(
+          readFileSync(join(root, MIRROR_TARGET, "assets/icon.bin")),
+          Buffer.from(source),
+        );
+      },
+    );
+  }
+});
+
+test("reports what it skipped instead of dropping it silently", () => {
+  withScaffold(
+    {
+      [`${MIRROR_SOURCE}/skills/x/SKILL.md`]: "real\n",
+      [`${MIRROR_SOURCE}/scheduled_tasks.lock`]: "lock\n",
+      [`${MIRROR_SOURCE}/worktrees/issue-1/.env`]: "SECRET=1\n",
+      [`${MIRROR_SOURCE}/local.pem`]: "key\n",
+    },
+    (root) => {
+      const { excluded } = diffMirror(root);
+      assert.deepEqual(excluded, [
+        "local.pem",
+        "scheduled_tasks.lock",
+        "worktrees",
+      ]);
+      assert.match(formatExcludedNote(excluded), /skipped 3 path\(s\)/);
+      assert.equal(formatExcludedNote([]), "");
+    },
+  );
+});
+
+test("the CLI exits 1 and points at --fix when the trees drift", () => {
+  // The branch that actually blocks CI. Exercised through a copy of the
+  // scripts so the CLI resolves a temporary root instead of the repository.
+  withScaffold(
+    {
+      [`${MIRROR_SOURCE}/skills/a/SKILL.md`]: "body\n",
+      [`${MIRROR_TARGET}/.keep`]: "",
+    },
+    (root) => {
+      mkdirSync(join(root, "scripts"), { recursive: true });
+      for (const name of ["agents-mirror.mjs", "agents-mirror-lib.mjs"]) {
+        writeFileSync(
+          join(root, "scripts", name),
+          readFileSync(join(scriptsDir, name)),
+        );
+      }
+      assert.throws(
+        () =>
+          execFileSync(
+            process.execPath,
+            [join(root, "scripts", "agents-mirror.mjs")],
+            { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+          ),
+        (error) => {
+          assert.equal(error.status, 1);
+          assert.match(error.stderr, /out of sync/);
+          assert.match(error.stderr, /missing\s+\.agents\/skills\/a\/SKILL\.md/);
+          assert.match(error.stderr, /agents-mirror\.mjs --fix/);
+          return true;
+        },
+      );
+    },
+  );
 });
 
 test("does not follow symlinks on either side", () => {
