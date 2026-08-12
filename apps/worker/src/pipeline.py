@@ -339,9 +339,12 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "Opções: envie o arquivo por upload manual, "
-            "ou peça ao admin para configurar um proxy residencial nas configurações da instância. "
-            "Por que isso acontece em VPS? Veja docs/DEPLOY.md (Home-lab vs VPS)."
+            "Upload manual resolve na hora. Para destravar o download em si, o admin "
+            "tem três opções, da mais eficaz à mais simples em IP de datacenter: "
+            "provider de PO token (YTDLP_BGUTIL_BASE_URL), proxy residencial nas "
+            "configurações da instância, ou cookies do YouTube nas integrações. "
+            "Por que isso acontece em VPS e como configurar cada uma: "
+            "docs/DEPLOY.md (Home-lab vs VPS)."
         )
     if "http error 403" in text or "status code 403" in text or "access denied" in text:
         return (

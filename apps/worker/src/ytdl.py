@@ -23,6 +23,7 @@ from youtube_transcript_api._errors import NoTranscriptFound, YouTubeTranscriptA
 from youtube_transcript_api.proxies import GenericProxyConfig
 
 from . import voxen_settings
+from .safe_diagnostics import error_diagnostic
 from .transcript_md import Segment
 
 logger = structlog.get_logger(__name__)
@@ -126,7 +127,18 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
         requests.RequestException,
         YouTubeTranscriptApiException,
         xml.etree.ElementTree.ParseError,
-    ):
+    ) as exc:
+        # Best-effort continua sendo o comportamento: o pipeline cai no yt-dlp.
+        # Mas engolir sem registrar tornava "vídeo sem legenda" e "endpoint de
+        # legendas bloqueado" indistinguíveis no log, e a ação do operador é
+        # diferente em cada um — o segundo caso quer proxy/POT, o primeiro não
+        # tem o que fazer. Sem esta linha, só sobra a falha do yt-dlp depois.
+        logger.info(
+            "youtube-transcript-api-unavailable",
+            video_id=video_id,
+            proxied=proxy_url is not None,
+            **error_diagnostic(exc, "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE"),
+        )
         return None
 
 

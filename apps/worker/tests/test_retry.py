@@ -96,9 +96,18 @@ async def test_retry_turns_youtube_antibot_into_permanent_error() -> None:
         attempts += 1
         raise yt_dlp.utils.DownloadError("Sign in to confirm you’re not a bot. Use cookies.")
 
-    with pytest.raises(PermanentError, match="YouTube bloqueou"):
+    with pytest.raises(PermanentError, match="YouTube bloqueou") as caught:
         await _retry_transient(fn, tries=3, base_delay=0)
     assert attempts == 1
+
+    # A mensagem é a única coisa que o operador vê quando o download trava, e
+    # ela citava só upload e proxy. O deploy suporta três mitigações — a de PO
+    # token é a que resolve IP de datacenter, e ficava invisível.
+    message = caught.value.public_message
+    assert "YTDLP_BGUTIL_BASE_URL" in message, "provider de PO token"
+    assert "proxy residencial" in message
+    assert "cookies" in message
+    assert "pload manual" in message
 
 
 async def test_retry_rate_limit_retries_then_permanent() -> None:
