@@ -29,9 +29,15 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # 10, não 5. Agrupar reduz a probabilidade da fome, não elimina: PR agrupada
+    # ocupa um slot igual, então na semana em que os cinco grupos tiverem update
+    # eles sozinhos enchiam o limite de 5 e sobrava ZERO para os outros 57
+    # pacotes — inclusive o `ai`, que fica fora de grupo justamente para nunca
+    # esperar. Grupo trata a causa, teto trata o resíduo; sem os dois, o `ai`
+    # continuaria sem slot na semana cheia.
+    open-pull-requests-limit: 10
     # Sem grupos, cada patch de Radix ou AWS SDK gastava um slot sozinho, o
-    # limite de 5 enchia, e Dependabot parava de abrir qualquer coisa nova — foi
+    # limite enchia, e Dependabot parava de abrir qualquer coisa nova — foi
     # assim que `ai` ficou 40 patches atrás (issue #769). Agrupar por família
     # colapsa o ruído; `ai` fica DE FORA de propósito, porque é a dependência
     # mais crítica e não pode esperar um irmão quebrado destravar o grupo.
