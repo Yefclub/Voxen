@@ -36,7 +36,13 @@ Graphiti is a design reference, not a runtime dependency:
   grounded excerpt. Missing time remains `null`; a supplied malformed time
   rejects the relation instead of turning it into an undated fact.
 - Entities and relations use extraction-local references, so homonyms that
-  coexist in one segment retain distinct identities and evidence paths.
+  coexist in one segment retain distinct identities and evidence paths. The
+  same normalizer is used on definitions and references; normalized collisions
+  and ID/label contradictions are rejected instead of guessed.
+- Transcript lifecycle mutations share the graph-write lease and serialize on
+  the transcript row. A grounded segment can commit only while that exact
+  source version is still `ACTIVE`, preventing a concurrent worker from
+  reactivating archived topology.
 - Current and point-in-time retrieval return evidence and uncertainty. Overlapping
   facts are shown together rather than silently choosing a winner.
 
@@ -115,6 +121,8 @@ Graphiti is a design reference, not a runtime dependency:
 - [ ] Repeated compilation is idempotent for facts and aliases.
 - [ ] Alias lookup improves recall without destructive node merges.
 - [ ] Ambiguous aliases remain separate.
+- [ ] Local-reference collisions, mismatched labels, and inactive-source races
+      fail closed.
 - [ ] Current, `asOf`, and range queries enforce user and active-source scope.
 - [ ] Chat and MCP expose bounded temporal retrieval with citations.
 - [ ] Source deletion/recompilation removes only orphaned derived records.

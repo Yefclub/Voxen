@@ -1313,7 +1313,8 @@ async def upsert_grounded_brain_items(
                   AND transcript."correctionRevision" = $7
                   AND transcript."sourceVersion" = $8
                   AND transcript."sourceChecksum" IS NOT DISTINCT FROM $9
-                FOR UPDATE OF segment
+                  AND transcript.status = 'ACTIVE'::"ContentStatus"
+                FOR UPDATE OF segment, transcript
                 """,
                 compilation_id,
                 user_id,

@@ -18,12 +18,12 @@ import httpx
 
 from . import openrouter
 from .brain_extract_prompt import build_grounded_extract_prompt
+from .entity_resolution import normalize_local_ref, slugify_label
 from .temporal import parse_iso_timestamp
 
 OR_BASE_URL = openrouter.OR_BASE_URL
 MAX_ENTITIES, MAX_CLAIMS = 8, 6
-MAX_TEXT = 6_000
-ALIAS_CONFIDENCE_MIN = 0.9
+MAX_TEXT, ALIAS_CONFIDENCE_MIN = 6_000, 0.9
 BRAIN_GROUNDED_EXTRACT_VERSION = 3
 
 _HEADING_RE = re.compile(r"^#{1,6}\s+\S")
@@ -170,13 +170,6 @@ def is_grounded(excerpt: str, source_text: str) -> bool:
     return ex in src
 
 
-def slugify_label(label: str) -> str:
-    nfkd = unicodedata.normalize("NFD", label or "")
-    no_accents = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
-    slug = re.sub(r"[^a-z0-9]+", "-", no_accents.lower())
-    return slug.strip("-")[:80]
-
-
 def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     """Parse JSON do modelo e filtra só itens groundable."""
     text = (raw or "").strip()
@@ -196,6 +189,8 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
 
     out: list[GroundedItem] = []
     seen: set[str] = set()
+    local_ref_signatures: dict[str, tuple[str, str, str]] = {}
+    ambiguous_local_refs: set[str] = set()
 
     def add(
         kind: str,
@@ -215,11 +210,14 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
         if not is_grounded(exc, source_text):
             return
         slug = slugify_label(lab)
-        normalized_ref = (
-            re.sub(r"[^a-zA-Z0-9_.:-]+", "-", local_ref.strip())[:80]
-            if isinstance(local_ref, str) and local_ref.strip()
-            else ""
-        )
+        normalized_ref = normalize_local_ref(local_ref)
+        signature = (kind, slug, normalize_for_grounding(exc))
+        if normalized_ref:
+            existing_signature = local_ref_signatures.get(normalized_ref)
+            if existing_signature and existing_signature != signature:
+                ambiguous_local_refs.add(normalized_ref)
+                return
+            local_ref_signatures[normalized_ref] = signature
         # Entity labels are not identities: two homonyms may legitimately
         # coexist in one segment. A model-provided local id is preferred; the
         # literal excerpt is the conservative fallback identity.
@@ -306,7 +304,7 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
             if sum(1 for x in out if x.kind == "claim") >= MAX_CLAIMS:
                 break
 
-    return out
+    return [item for item in out if item.local_ref not in ambiguous_local_refs]
 
 
 def parse_grounded_relations(
@@ -361,8 +359,8 @@ def parse_grounded_relations(
         predicate_label = " ".join(predicate.split()).strip()[:80]
         subject_ref_raw = relation.get("subject_id") or relation.get("subject_ref")
         object_ref_raw = relation.get("object_id") or relation.get("object_ref")
-        subject_ref = str(subject_ref_raw).strip() if isinstance(subject_ref_raw, str) else ""
-        object_ref = str(object_ref_raw).strip() if isinstance(object_ref_raw, str) else ""
+        subject_ref = normalize_local_ref(subject_ref_raw)
+        object_ref = normalize_local_ref(object_ref_raw)
         subject_matches = known_by_slug.get(slugify_label(subject_label), [])
         object_matches = known_by_slug.get(slugify_label(object_label), [])
         subject_item = known_by_ref.get(subject_ref) if subject_ref else None
@@ -377,6 +375,8 @@ def parse_grounded_relations(
             not subject_item
             or not object_item
             or not kind
+            or slugify_label(subject_item.label) != slugify_label(subject_label)
+            or slugify_label(object_item.label) != slugify_label(object_label)
             or subject_item.local_ref == object_item.local_ref
             or len(predicate_label) < 2
             or not is_grounded(evidence, source_text)

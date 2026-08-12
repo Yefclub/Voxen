@@ -9,6 +9,7 @@ from hashlib import sha256
 from typing import Any
 
 from . import brain_compilation_db, brain_extract, db, storage, voxen_settings
+from .entity_resolution import slugify_label
 from .graph_index_lease import acquire_graph_index_lease
 from .pipeline_observability import log_openrouter_route
 from .safe_diagnostics import error_diagnostic
@@ -159,7 +160,7 @@ async def extract_grounded_brain(
                         "label": item.label,
                         "excerpt": item.excerpt,
                         "confidence": item.confidence,
-                        "slug": brain_extract.slugify_label(item.label),
+                        "slug": slugify_label(item.label),
                         "entity_type": item.entity_type,
                         "aliases": list(item.aliases),
                         "local_ref": item.local_ref,

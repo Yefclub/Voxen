@@ -25,6 +25,16 @@ def normalize_entity_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.casefold()).strip("-")[:120]
 
 
+def normalize_local_ref(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    return re.sub(r"[^a-zA-Z0-9_.:-]+", "-", value.strip())[:80]
+
+
+def slugify_label(label: str) -> str:
+    return normalize_entity_text(label)[:80]
+
+
 def normalize_entity_type(value: str | None) -> str:
     normalized = re.sub(r"[^A-Z]+", "_", str(value or "OTHER").upper()).strip("_")
     return normalized if normalized in ENTITY_TYPES else "OTHER"

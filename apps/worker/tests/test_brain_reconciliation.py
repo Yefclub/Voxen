@@ -417,6 +417,8 @@ async def test_stale_compilation_hash_cannot_persist_grounded_evidence(
 
     claim_query, claim_args = conn.fetchrow_calls[0]
     assert 'compilation."contentHash" = $4' in claim_query
+    assert "transcript.status = 'ACTIVE'" in claim_query
+    assert "FOR UPDATE OF segment, transcript" in claim_query
     assert claim_args[3] == "stale-hash"
     assert conn.execute_calls == []
 

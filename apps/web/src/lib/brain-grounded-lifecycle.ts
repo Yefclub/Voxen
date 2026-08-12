@@ -1,7 +1,13 @@
 import { Prisma } from '../../prisma-generated/client';
+import { cancelTranscriptEnrichmentsForInactiveParent } from './transcript-enrichments';
+import { TRANSCRIPT_LIST_SELECT } from './transcript-list-select';
+import { reindexTranscriptBrain } from './brain';
+import { runWithBrainIndexLease } from './brain-index-lease';
 import { db } from './db';
 
 type GroundedLifecycleDb = Pick<typeof db, '$executeRaw'>;
+type TranscriptLifecycleStatus = 'ACTIVE' | 'ARCHIVED' | 'TRASH';
+type TranscriptListItem = Prisma.TranscriptGetPayload<{ select: typeof TRANSCRIPT_LIST_SELECT }>;
 
 /**
  * Projects source lifecycle into the navigable graph without deleting the
@@ -62,4 +68,34 @@ export async function reconcileGroundedBrainLifecycle(
     WHERE node.id = desired.id
       AND node.status IS DISTINCT FROM desired.status
   `);
+}
+
+export async function applyTranscriptLifecycle(
+  userId: string,
+  transcriptId: string,
+  status: TranscriptLifecycleStatus,
+): Promise<TranscriptListItem | null> {
+  let transcript: TranscriptListItem | null = null;
+  const applied = await runWithBrainIndexLease(userId, async (assertLeaseOwnership) => {
+    transcript = await db.$transaction(async (tx) => {
+      const now = new Date();
+      const updated = await tx.transcript.update({
+        where: { id: transcriptId },
+        data: {
+          status,
+          archivedAt: status === 'ARCHIVED' ? now : null,
+          trashedAt: status === 'TRASH' ? now : null,
+        },
+        select: TRANSCRIPT_LIST_SELECT,
+      });
+      if (status !== 'ACTIVE') {
+        await cancelTranscriptEnrichmentsForInactiveParent(tx, userId, transcriptId, now);
+      }
+      await reconcileGroundedBrainLifecycle(userId, tx);
+      return updated;
+    });
+    await assertLeaseOwnership();
+    await reindexTranscriptBrain(userId, transcriptId, { assertLeaseOwnership });
+  });
+  return applied ? transcript : null;
 }

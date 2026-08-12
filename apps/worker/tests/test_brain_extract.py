@@ -21,8 +21,8 @@ from src.brain_extract import (
     parse_grounded_payload,
     parse_grounded_relations,
     segment_content,
-    slugify_label,
 )
+from src.entity_resolution import slugify_label
 
 
 def test_is_grounded_requires_substring() -> None:
@@ -259,6 +259,83 @@ def test_parse_grounded_relations_keeps_cooccurring_homonyms_distinct_by_local_i
         ("alex-acme", "acme"),
         ("alex-beta", "beta"),
     ]
+
+
+def test_parse_grounded_relations_normalizes_local_ids_on_both_sides() -> None:
+    source = "Alex Silva da Acme apresentou o produto. Alex Silva da Beta revisou a pesquisa."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "id": "alex acme",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                },
+                {
+                    "id": "alex beta",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Beta revisou a pesquisa",
+                },
+                {"id": "acme corp", "label": "Acme", "excerpt": "Alex Silva da Acme"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "alex acme",
+                    "subject": "Alex Silva",
+                    "predicate": "works_at",
+                    "object_id": "acme corp",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                }
+            ],
+        }
+    )
+
+    relations = parse_grounded_relations(raw, source, parse_grounded_payload(raw, source))
+
+    assert [(relation.subject_ref, relation.object_ref) for relation in relations] == [
+        ("alex-acme", "acme-corp")
+    ]
+
+
+def test_parse_grounded_payload_rejects_local_id_collisions_after_normalization() -> None:
+    source = "Ana lidera a Acme. Bia lidera a Beta."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"id": "leader one", "label": "Ana", "excerpt": "Ana lidera a Acme"},
+                {"id": "leader-one", "label": "Bia", "excerpt": "Bia lidera a Beta"},
+            ]
+        }
+    )
+
+    assert parse_grounded_payload(raw, source) == []
+
+
+def test_parse_grounded_relations_rejects_ids_that_contradict_declared_labels() -> None:
+    source = "Ana trabalha na Acme."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"id": "ana", "label": "Ana", "excerpt": "Ana trabalha na Acme"},
+                {"id": "acme", "label": "Acme", "excerpt": "Ana trabalha na Acme"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "acme",
+                    "subject": "Ana",
+                    "predicate": "works_at",
+                    "object_id": "ana",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana trabalha na Acme",
+                }
+            ],
+        }
+    )
+
+    assert parse_grounded_relations(raw, source, parse_grounded_payload(raw, source)) == []
 
 
 def test_parse_grounded_relations_preserves_distinct_temporal_episodes() -> None:
