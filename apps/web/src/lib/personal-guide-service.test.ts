@@ -57,7 +57,14 @@ describeIfDatabase('personal Guide source isolation', () => {
     ownerTranscriptId = ownerTranscript.id;
     archivedTranscriptId = archivedTranscript.id;
     foreignTranscriptId = foreignTranscript.id;
-    const [contentNode, topicNode, archivedContentNode, archivedTopicNode] = await Promise.all([
+    const [
+      contentNode,
+      topicNode,
+      archivedContentNode,
+      archivedTopicNode,
+      archivedActiveSourceTopic,
+      archivedEdgeTopic,
+    ] = await Promise.all([
       db.brainNode.create({
         data: {
           userId: ownerId,
@@ -94,6 +101,23 @@ describeIfDatabase('personal Guide source isolation', () => {
           label: 'Archived secret guide topic',
         },
       }),
+      db.brainNode.create({
+        data: {
+          userId: ownerId,
+          key: `TOPIC:archived-active-source:${suffix}`,
+          type: 'TOPIC',
+          label: 'Archived node from active source',
+          status: 'ARCHIVED',
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId: ownerId,
+          key: `TOPIC:archived-edge:${suffix}`,
+          type: 'TOPIC',
+          label: 'Active node behind archived edge',
+        },
+      }),
     ]);
     await Promise.all([
       db.brainEdge.create({
@@ -104,6 +128,27 @@ describeIfDatabase('personal Guide source isolation', () => {
           kind: 'MENTIONS',
           confidence: 0.9,
           method: 'test-extraction',
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId: ownerId,
+          fromNodeId: contentNode.id,
+          toNodeId: archivedActiveSourceTopic.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId: ownerId,
+          fromNodeId: contentNode.id,
+          toNodeId: archivedEdgeTopic.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+          status: 'ARCHIVED',
         },
       }),
       db.brainEdge.create({
@@ -204,5 +249,7 @@ describeIfDatabase('personal Guide source isolation', () => {
     expect(serialized).not.toContain(archivedTranscriptId);
     expect(serialized).not.toContain(foreignTranscriptId);
     expect(serialized).not.toContain('Archived secret guide topic');
+    expect(serialized).not.toContain('Archived node from active source');
+    expect(serialized).not.toContain('Active node behind archived edge');
   });
 });

@@ -311,15 +311,19 @@ export async function loadProjectionFeatures(
         userId,
         sourceType: 'TRANSCRIPT',
         sourceId: { in: transcriptIds },
-        status: { not: 'TRASH' },
+        status: activeOnly ? 'ACTIVE' : { not: 'TRASH' },
       },
       select: {
         sourceId: true,
         outgoing: {
           where: {
             userId,
-            status: { not: 'TRASH' },
-            to: { userId, status: { not: 'TRASH' }, type: { in: ['TOPIC', 'ENTITY'] } },
+            status: activeOnly ? 'ACTIVE' : { not: 'TRASH' },
+            to: {
+              userId,
+              status: activeOnly ? 'ACTIVE' : { not: 'TRASH' },
+              type: { in: ['TOPIC', 'ENTITY'] },
+            },
           },
           select: {
             confidence: true,
@@ -329,8 +333,12 @@ export async function loadProjectionFeatures(
         incoming: {
           where: {
             userId,
-            status: { not: 'TRASH' },
-            from: { userId, status: { not: 'TRASH' }, type: { in: ['TOPIC', 'ENTITY'] } },
+            status: activeOnly ? 'ACTIVE' : { not: 'TRASH' },
+            from: {
+              userId,
+              status: activeOnly ? 'ACTIVE' : { not: 'TRASH' },
+              type: { in: ['TOPIC', 'ENTITY'] },
+            },
           },
           select: {
             confidence: true,
