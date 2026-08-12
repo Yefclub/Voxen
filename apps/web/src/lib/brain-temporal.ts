@@ -70,15 +70,13 @@ export async function queryBrainTimeline(
   const normalizedAlias = entityRef ? normalizeEntityAlias(entityRef) : null;
 
   const temporalFilter = asOf
-    ? Prisma.sql`AND fact."validFrom" IS NOT NULL
-                 AND fact."validFrom" <= ${asOf}
+    ? Prisma.sql`AND (fact."validFrom" IS NULL OR fact."validFrom" <= ${asOf})
                  AND (fact."validTo" IS NULL OR fact."validTo" > ${asOf})`
     : from || to
-      ? Prisma.sql`AND fact."validFrom" IS NOT NULL
-                   ${to ? Prisma.sql`AND fact."validFrom" < ${to}` : Prisma.empty}
+      ? Prisma.sql`${to ? Prisma.sql`AND (fact."validFrom" IS NULL OR fact."validFrom" < ${to})` : Prisma.empty}
                    ${from ? Prisma.sql`AND (fact."validTo" IS NULL OR fact."validTo" > ${from})` : Prisma.empty}`
-      : Prisma.sql`AND fact."validTo" IS NULL
-                   AND (fact."validFrom" IS NULL OR fact."validFrom" <= CURRENT_TIMESTAMP)`;
+      : Prisma.sql`AND (fact."validFrom" IS NULL OR fact."validFrom" <= CURRENT_TIMESTAMP)
+                   AND (fact."validTo" IS NULL OR fact."validTo" > CURRENT_TIMESTAMP)`;
 
   const rows = await client.$queryRaw<BrainTimelineRow[]>(Prisma.sql`
     SELECT fact.id, fact."factKey", fact.predicate, edge.kind::text AS kind,
@@ -105,7 +103,9 @@ export async function queryBrainTimeline(
     JOIN "BrainNode" object
       ON object.id = edge."toNodeId" AND object."userId" = fact."userId"
     JOIN "BrainSource" source
-      ON source."factId" = fact.id AND source."userId" = fact."userId"
+      ON source."factId" = fact.id
+     AND source."userId" = fact."userId"
+     AND source."invalidatedAt" IS NULL
     JOIN "Transcript" transcript
       ON source."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
      AND transcript.id = source."sourceId"
@@ -136,6 +136,14 @@ export async function queryBrainTimeline(
                 WHERE alias."userId" = ${userId}
                   AND alias."entityNodeId" IN (subject.id, object.id)
                   AND alias."normalizedAlias" = ${normalizedAlias}
+                  AND alias."invalidatedAt" IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM "Transcript" alias_transcript
+                    WHERE alias."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+                      AND alias_transcript.id = alias."sourceId"
+                      AND alias_transcript."userId" = alias."userId"
+                      AND alias_transcript.status = 'ACTIVE'::"ContentStatus"
+                  )
               )
             )`
           : Prisma.empty

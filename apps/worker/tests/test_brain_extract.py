@@ -178,6 +178,56 @@ def test_parse_grounded_relation_keeps_valid_iso_interval_and_rejects_reversed_o
     assert relations[0].valid_to == "2024-07-01T00:00:00Z"
 
 
+def test_parse_grounded_relations_preserves_distinct_temporal_episodes() -> None:
+    source = (
+        "Ana trabalhou na Acme em 2020 e retornou para a Acme em 2024. "
+        "Ana também assessorou a Acme em 2024."
+    )
+    raw = json.dumps(
+        {
+            "entities": [
+                {"label": "Ana", "excerpt": "Ana trabalhou na Acme em 2020"},
+                {"label": "Acme", "excerpt": "Ana trabalhou na Acme em 2020"},
+            ],
+            "relations": [
+                {
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana trabalhou na Acme em 2020",
+                    "valid_from": "2020-01-01T00:00:00Z",
+                    "valid_to": "2021-01-01T00:00:00Z",
+                },
+                {
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "retornou para a Acme em 2024",
+                    "valid_from": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "subject": "Ana",
+                    "predicate": "advised",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana também assessorou a Acme em 2024",
+                    "valid_from": "2024-01-01T00:00:00Z",
+                },
+            ],
+        }
+    )
+
+    relations = parse_grounded_relations(raw, source, parse_grounded_payload(raw, source))
+
+    assert [(relation.predicate, relation.valid_from) for relation in relations] == [
+        ("worked_at", "2020-01-01T00:00:00Z"),
+        ("worked_at", "2024-01-01T00:00:00Z"),
+        ("advised", "2024-01-01T00:00:00Z"),
+    ]
+
+
 def test_segment_content_covers_long_markdown_with_lines_and_timestamps() -> None:
     content = "\n".join(
         [

@@ -3,6 +3,8 @@
 from typing import Any
 from uuid import uuid4
 
+from . import brain_temporal_store
+
 
 async def _defer_grounded_compilation(
     conn: Any,
@@ -12,49 +14,10 @@ async def _defer_grounded_compilation(
     source_checksum: str,
 ) -> None:
     """Withdraw stale automatic evidence and durably schedule the new source."""
-    await conn.execute(
-        """
-        DELETE FROM "BrainSource" source
-        USING "BrainEdge" edge
-        WHERE source."edgeId" = edge.id
-          AND source."userId" = $1
-          AND source."sourceId" = $2
-          AND edge.method LIKE 'llm-grounded%'
-        """,
-        user_id,
-        transcript_id,
+    await brain_temporal_store.withdraw_grounded_evidence(
+        conn, user_id=user_id, transcript_id=transcript_id
     )
-    await conn.execute(
-        """
-        DELETE FROM "BrainEntityAlias"
-        WHERE "userId" = $1
-          AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-          AND "sourceId" = $2
-          AND method = 'llm-grounded-alias'
-        """,
-        user_id,
-        transcript_id,
-    )
-    await conn.execute(
-        """
-        DELETE FROM "BrainFact" fact
-        WHERE fact."userId" = $1
-          AND fact.method = 'llm-grounded-temporal'
-          AND NOT EXISTS (
-            SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
-          )
-        """,
-        user_id,
-    )
-    await conn.execute(
-        """
-        DELETE FROM "BrainEdge" edge
-        WHERE edge."userId" = $1
-          AND edge.method LIKE 'llm-grounded%'
-          AND NOT EXISTS (SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id)
-        """,
-        user_id,
-    )
+    await brain_temporal_store.archive_or_remove_unsupported_grounded_graph(conn, user_id=user_id)
     await conn.execute(
         """
         DELETE FROM "BrainNode" node
@@ -181,7 +144,8 @@ async def mark_reviewable_derivatives_stale(
     )
     await conn.execute(
         """
-        DELETE FROM "BrainSource"
+        UPDATE "BrainSource"
+        SET "invalidatedAt" = NOW()
         WHERE "userId" = $1
           AND "evidenceKey" IN (
             SELECT 'note-anchor:' || id
@@ -190,6 +154,7 @@ async def mark_reviewable_derivatives_stale(
               AND "transcriptId" = $2
               AND status <> 'VALID'::"NoteAnchorStatus"
           )
+          AND "invalidatedAt" IS NULL
         """,
         user_id,
         transcript_id,

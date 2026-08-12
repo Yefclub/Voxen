@@ -22,8 +22,10 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
 
     await mark_reviewable_derivatives_stale(conn, "user-1", "transcript-1", 4, "checksum-4")
 
-    assert len(conn.calls) == 13
-    anchor_query, anchor_args = conn.calls[1]
+    assert len(conn.calls) == 15
+    anchor_query, anchor_args = next(
+        call for call in conn.calls if 'UPDATE "NoteTranscriptAnchor"' in call[0]
+    )
     assert 'UPDATE "NoteTranscriptAnchor"' in anchor_query
     assert '"userId" = $1' in anchor_query
     assert '"transcriptId" = $2' in anchor_query
@@ -32,42 +34,68 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
     assert '"sourceChecksum" IS DISTINCT FROM $4' in anchor_query
     assert anchor_args == ("user-1", "transcript-1", 4, "checksum-4")
 
-    evidence_query, evidence_args = conn.calls[2]
-    assert 'DELETE FROM "BrainSource"' in evidence_query
+    evidence_query, evidence_args = next(
+        call
+        for call in conn.calls
+        if 'UPDATE "BrainSource"' in call[0] and "'note-anchor:' || id" in call[0]
+    )
+    assert 'UPDATE "BrainSource"' in evidence_query
+    assert 'SET "invalidatedAt" = NOW()' in evidence_query
     assert '"evidenceKey" IN' in evidence_query
     assert "'note-anchor:' || id" in evidence_query
     assert '"userId" = $1' in evidence_query
     assert '"transcriptId" = $2' in evidence_query
     assert evidence_args == ("user-1", "transcript-1")
 
-    enrichment_query, enrichment_args = conn.calls[3]
+    enrichment_query, enrichment_args = next(
+        call for call in conn.calls if 'UPDATE "TranscriptEnrichment"' in call[0]
+    )
     assert 'UPDATE "TranscriptEnrichment"' in enrichment_query
     assert "\"staleReason\" = 'source-version-changed'" in enrichment_query
     assert enrichment_args == ("user-1", "transcript-1", 4, "checksum-4")
 
-    enrichment_brain_query, enrichment_brain_args = conn.calls[4]
+    enrichment_brain_query, enrichment_brain_args = next(
+        call
+        for call in conn.calls
+        if 'DELETE FROM "BrainNode"' in call[0] and "'EXTERNAL_ENRICHMENT'" in call[0]
+    )
     assert 'DELETE FROM "BrainNode"' in enrichment_brain_query
     assert "'EXTERNAL_ENRICHMENT'" in enrichment_brain_query
     assert enrichment_brain_args == ("user-1", "transcript-1")
 
-    grounded_source_query, grounded_source_args = conn.calls[5]
-    assert 'DELETE FROM "BrainSource"' in grounded_source_query
+    grounded_source_query, grounded_source_args = next(
+        call
+        for call in conn.calls
+        if 'UPDATE "BrainSource" source' in call[0] and "llm-grounded%" in call[0]
+    )
+    assert 'UPDATE "BrainSource"' in grounded_source_query
+    assert 'SET "invalidatedAt" = NOW()' in grounded_source_query
     assert "llm-grounded%" in grounded_source_query
-    assert grounded_source_args == ("user-1", "transcript-1")
+    assert grounded_source_args == ("user-1", "transcript-1", None)
 
-    alias_query, alias_args = conn.calls[6]
-    assert 'DELETE FROM "BrainEntityAlias"' in alias_query
-    assert alias_args == ("user-1", "transcript-1")
+    alias_query, alias_args = next(
+        call for call in conn.calls if 'UPDATE "BrainEntityAlias"' in call[0]
+    )
+    assert 'UPDATE "BrainEntityAlias"' in alias_query
+    assert alias_args == ("user-1", "transcript-1", None)
 
-    orphan_fact_query, orphan_fact_args = conn.calls[7]
-    assert 'DELETE FROM "BrainFact"' in orphan_fact_query
+    orphan_fact_query, orphan_fact_args = next(
+        call for call in conn.calls if 'UPDATE "BrainFact" fact' in call[0]
+    )
+    assert 'UPDATE "BrainFact"' in orphan_fact_query
     assert orphan_fact_args == ("user-1",)
 
-    brain_marker_query, brain_marker_args = conn.calls[10]
+    brain_marker_query, brain_marker_args = next(
+        call
+        for call in conn.calls
+        if 'UPDATE "BrainNode"' in call[0] and "topicIndexVersion" in call[0]
+    )
     assert "- 'topicIndexVersion' - 'brainIndexVersion'" in brain_marker_query
     assert brain_marker_args == ("user-1", "TRANSCRIPT:transcript-1")
 
-    compilation_query, compilation_args = conn.calls[12]
+    compilation_query, compilation_args = next(
+        call for call in conn.calls if 'INSERT INTO "BrainCompilation"' in call[0]
+    )
     assert 'INSERT INTO "BrainCompilation"' in compilation_query
     assert 'INSERT INTO "BrainCompilationSegment"' in compilation_query
     assert 'ON CONFLICT ("transcriptId") DO UPDATE' in compilation_query
@@ -217,8 +245,9 @@ async def test_stale_anchor_withdraws_only_its_brain_evidence() -> None:
         status = await conn.fetchval(
             'SELECT status::text FROM "NoteTranscriptAnchor" WHERE id = $1', anchor_id
         )
-        evidence_count = await conn.fetchval(
-            'SELECT COUNT(*) FROM "BrainSource" WHERE "userId" = $1 AND "evidenceKey" = $2',
+        evidence = await conn.fetchrow(
+            'SELECT id, "invalidatedAt" FROM "BrainSource" '
+            'WHERE "userId" = $1 AND "evidenceKey" = $2',
             user_id,
             f"note-anchor:{anchor_id}",
         )
@@ -245,7 +274,8 @@ async def test_stale_anchor_withdraws_only_its_brain_evidence() -> None:
             compilation["id"],
         )
         assert status == "STALE"
-        assert evidence_count == 0
+        assert evidence is not None
+        assert evidence["invalidatedAt"] is not None
         assert enrichment_stale_reason == "source-version-changed"
         assert enrichment_brain_count == 0
         assert compilation["contentHash"] == "source-pending:2:checksum-2"

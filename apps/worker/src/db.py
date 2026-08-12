@@ -1170,31 +1170,11 @@ async def prepare_grounded_brain_compilation(
                 transcript_id,
             )
             if compilation and compilation["contentHash"] != content_hash:
-                # Remove só a evidência desta fonte. Relações automáticas podem
-                # ter suporte em outras fontes e, nesse caso, permanecem.
-                await conn.execute(
-                    """
-                    DELETE FROM "BrainSource" source
-                    USING "BrainEdge" edge
-                    WHERE source."userId" = $1
-                      AND source."sourceId" = $2
-                      AND source."edgeId" = edge.id
-                      AND edge."userId" = $1
-                      AND edge.method LIKE 'llm-grounded%'
-                    """,
-                    user_id,
-                    transcript_id,
+                await brain_temporal_store.withdraw_grounded_evidence(
+                    conn, user_id=user_id, transcript_id=transcript_id
                 )
-                await conn.execute(
-                    """
-                    DELETE FROM "BrainEdge" edge
-                    WHERE edge."userId" = $1
-                      AND edge.method LIKE 'llm-grounded%'
-                      AND NOT EXISTS (
-                          SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
-                      )
-                    """,
-                    user_id,
+                await brain_temporal_store.archive_or_remove_unsupported_grounded_graph(
+                    conn, user_id=user_id
                 )
                 await conn.execute(
                     'DELETE FROM "BrainCompilationSegment" WHERE "compilationId" = $1',
@@ -1280,9 +1260,10 @@ def _grounded_evidence_key(
     segment_key: str,
     slug: str,
     excerpt: str,
+    evidence_version: str,
 ) -> str:
     normalized_excerpt = re.sub(r"\s+", " ", excerpt).strip().casefold()
-    raw = "\0".join((transcript_id, segment_key, slug, normalized_excerpt))
+    raw = "\0".join((transcript_id, segment_key, slug, normalized_excerpt, evidence_version))
     return sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -1359,44 +1340,14 @@ async def upsert_grounded_brain_items(
                 return 0
             _require_grounded_compilation_lease(lease)
             content_node_id = str(content["id"])
-            # Uma retomada substitui somente a evidência daquele segmento.
-            await conn.execute(
-                """
-                DELETE FROM "BrainSource" source
-                USING "BrainEdge" edge
-                WHERE source."userId" = $1
-                  AND source."sourceId" = $2
-                  AND source."segmentKey" = $3
-                  AND source."edgeId" = edge.id
-                  AND edge.method LIKE 'llm-grounded%'
-                """,
-                user_id,
-                transcript_id,
-                segment["key"],
-            )
-            await conn.execute(
-                """
-                DELETE FROM "BrainEntityAlias"
-                WHERE "userId" = $1
-                  AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-                  AND "sourceId" = $2
-                  AND "segmentKey" = $3
-                  AND method = 'llm-grounded-alias'
-                """,
-                user_id,
-                transcript_id,
-                segment["key"],
-            )
-            await conn.execute(
-                """
-                DELETE FROM "BrainFact" fact
-                WHERE fact."userId" = $1
-                  AND fact.method = 'llm-grounded-temporal'
-                  AND NOT EXISTS (
-                    SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
-                  )
-                """,
-                user_id,
+            evidence_version = f"source:{source_version}:correction:{correction_revision}"
+            # A retomada retira a versão corrente daquele segmento, mas mantém
+            # o episódio anterior citável no ledger histórico.
+            await brain_temporal_store.withdraw_grounded_evidence(
+                conn,
+                user_id=user_id,
+                transcript_id=transcript_id,
+                segment_key=segment["key"],
             )
             _require_grounded_compilation_lease(lease)
             concepts: dict[str, tuple[str, str]] = {}
@@ -1445,6 +1396,7 @@ async def upsert_grounded_brain_items(
                         aliases=aliases,
                         entity_type=entity_type,
                         confidence=conf,
+                        evidence_version=evidence_version,
                     )
                 concepts[slug] = (concept_id, kind)
                 edge_kind = "SUPPORTS" if kind == "claim" else "MENTIONS"
@@ -1489,7 +1441,11 @@ async def upsert_grounded_brain_items(
                     fact_id=None,
                     segment=segment,
                     evidence_key=_grounded_evidence_key(
-                        transcript_id, segment["key"], f"item:{slug}", excerpt
+                        transcript_id,
+                        segment["key"],
+                        f"item:{slug}",
+                        excerpt,
+                        evidence_version,
                     ),
                     excerpt=excerpt,
                 )
@@ -1525,8 +1481,10 @@ async def upsert_grounded_brain_items(
                         FROM "BrainSource" source
                         JOIN "BrainEdge" edge ON edge.id = source."edgeId"
                         WHERE source."userId" = $1
+                          AND source."invalidatedAt" IS NULL
                           AND edge."userId" = $1
                           AND edge.method = 'llm-grounded'
+                          AND edge.status = 'ACTIVE'::"ContentStatus"
                           AND edge.kind = 'SUPPORTS'::"BrainEdgeKind"
                           AND edge."toNodeId" IN ($2, $3)
                         """,
@@ -1550,7 +1508,8 @@ async def upsert_grounded_brain_items(
                         $1, $2, $3, $4, $5::"BrainEdgeKind", $6, 'llm-grounded-relation',
                         'ACTIVE'::"ContentStatus", $7::jsonb, NOW(), NOW()
                     ) ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
-                        confidence = EXCLUDED.confidence, metadata = EXCLUDED.metadata,
+                        confidence = EXCLUDED.confidence, status = EXCLUDED.status,
+                        metadata = EXCLUDED.metadata,
                         "updatedAt" = NOW()
                     RETURNING id
                     """,
@@ -1583,12 +1542,14 @@ async def upsert_grounded_brain_items(
                         valid_to=(str(relation["valid_to"]) if relation.get("valid_to") else None),
                         observed_at=observed_at,
                         confidence=float(relation.get("confidence") or 0.7),
+                        evidence_version=evidence_version,
                     )
                     relation_evidence_key = _grounded_evidence_key(
                         transcript_id,
                         segment["key"],
                         f"relation:{subject_slug}:{relation_kind}:{object_slug}",
                         excerpt,
+                        evidence_version,
                     )
                     await brain_temporal_store.upsert_evidence_source(
                         conn,
@@ -1602,28 +1563,8 @@ async def upsert_grounded_brain_items(
                     )
                     created += 1
             _require_grounded_compilation_lease(lease)
-            await conn.execute(
-                """
-                DELETE FROM "BrainFact" fact
-                WHERE fact."userId" = $1
-                  AND fact.method = 'llm-grounded-temporal'
-                  AND NOT EXISTS (
-                    SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
-                  )
-                """,
-                user_id,
-            )
-            _require_grounded_compilation_lease(lease)
-            await conn.execute(
-                """
-                DELETE FROM "BrainEdge" edge
-                WHERE edge."userId" = $1
-                  AND edge.method LIKE 'llm-grounded%'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
-                  )
-                """,
-                user_id,
+            await brain_temporal_store.archive_or_remove_unsupported_grounded_graph(
+                conn, user_id=user_id
             )
             _require_grounded_compilation_lease(lease)
             await conn.execute(

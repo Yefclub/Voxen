@@ -41,8 +41,9 @@ do grafo ou do contexto foi truncado. Tokens somente `WRITE` não descobrem essa
 ferramenta.
 
 `voxen_brain_timeline` consulta relações temporais apoiadas por evidência. Sem
-argumento de tempo, retorna fatos sem fim de validade registrado; `as_of`
-consulta um instante, enquanto `from`/`to` encontra janelas sobrepostas. A
+argumento de tempo, retorna fatos válidos agora, tenham eles fim desconhecido ou
+um término futuro; `as_of` consulta um instante, enquanto `from`/`to` encontra
+janelas sobrepostas. A
 validade no domínio (`validFrom`/`validTo`) fica separada de `observedAt`, o
 tempo representado pelo episódio-fonte. Se o conteúdo não declarar o tempo, ele
 continua desconhecido — nunca é inferido pela data de ingestão. Aliases de

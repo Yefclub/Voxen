@@ -10,7 +10,6 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
 from typing import Any
@@ -18,6 +17,7 @@ from typing import Any
 import httpx
 
 from . import openrouter
+from .temporal import parse_iso_timestamp
 
 OR_BASE_URL = openrouter.OR_BASE_URL
 MAX_ENTITIES = 8
@@ -174,19 +174,6 @@ def slugify_label(label: str) -> str:
     return slug.strip("-")[:80]
 
 
-def parse_iso_timestamp(value: object) -> str | None:
-    """Accept an explicit timezone-aware ISO timestamp and normalize it to UTC."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return None
-    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
 def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     """Parse JSON do modelo e filtra só itens groundable."""
     text = (raw or "").strip()
@@ -322,7 +309,7 @@ def parse_grounded_relations(
 
     known = {slugify_label(item.label): item for item in items}
     out: list[GroundedRelation] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str, str]] = set()
     kind_map = {
         "supports": "SUPPORTS",
         "contradicts": "CONTRADICTS",
@@ -373,7 +360,14 @@ def parse_grounded_relations(
         valid_to = parse_iso_timestamp(relation.get("valid_to") or relation.get("invalidAt"))
         if valid_from and valid_to and valid_to <= valid_from:
             continue
-        key = (slugify_label(subject_item.label), kind, slugify_label(object_item.label))
+        key = (
+            slugify_label(subject_item.label),
+            kind,
+            slugify_label(object_item.label),
+            predicate_label.casefold(),
+            valid_from or "",
+            valid_to or "",
+        )
         if key in seen:
             continue
         seen.add(key)

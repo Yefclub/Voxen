@@ -25,17 +25,17 @@ def _new_id() -> str:
     return f"c{timestamp}{secrets.token_hex(8)}"
 
 
-def _timestamp_utc_naive(value: str | datetime | None) -> datetime | None:
+def _timestamp_utc(value: str | datetime | None) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, str):
         parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
         if parsed.tzinfo is None:
             raise ValueError("temporal timestamps must include an explicit timezone")
-        return parsed.astimezone(UTC).replace(tzinfo=None)
+        return parsed.astimezone(UTC)
     if value.tzinfo is None:
-        return value
-    return value.astimezone(UTC).replace(tzinfo=None)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 async def upsert_evidence_source(
@@ -61,7 +61,7 @@ async def upsert_evidence_source(
             "edgeId" = EXCLUDED."edgeId", "factId" = EXCLUDED."factId",
             "startLine" = EXCLUDED."startLine", "endLine" = EXCLUDED."endLine",
             "startSec" = EXCLUDED."startSec", "endSec" = EXCLUDED."endSec",
-            excerpt = EXCLUDED.excerpt
+            excerpt = EXCLUDED.excerpt, "invalidatedAt" = NULL
         """,
         _new_id(),
         user_id,
@@ -100,8 +100,14 @@ async def entity_alias_candidates(
           ON node.id = alias."entityNodeId"
          AND node."userId" = alias."userId"
          AND node.status = 'ACTIVE'::"ContentStatus"
+        JOIN "Transcript" transcript
+          ON alias."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+         AND transcript.id = alias."sourceId"
+         AND transcript."userId" = alias."userId"
+         AND transcript.status = 'ACTIVE'::"ContentStatus"
         WHERE alias."userId" = $1
           AND alias."normalizedAlias" = ANY($2::text[])
+          AND alias."invalidatedAt" IS NULL
         GROUP BY alias."entityNodeId", node.label, node.metadata, alias."entityType"
         """,
         user_id,
@@ -140,6 +146,7 @@ async def upsert_concept_node(
         ON CONFLICT ("userId", key) DO UPDATE SET
             type = EXCLUDED.type, label = EXCLUDED.label,
             description = EXCLUDED.description,
+            status = EXCLUDED.status,
             metadata = "BrainNode".metadata || EXCLUDED.metadata,
             "updatedAt" = NOW()
         RETURNING id
@@ -188,7 +195,9 @@ async def resolve_entity_node(
         label=label,
         entity_type=entity_type,
         aliases=aliases,
-        ambiguous=bool(candidates),
+        # A normalized name is never identity evidence. Keep a contextual key
+        # until one unique, compatible alias observation justifies reuse.
+        ambiguous=True,
         context_key=f"{transcript_id}:{segment_key}:{excerpt}",
     )
     return await upsert_concept_node(
@@ -212,6 +221,7 @@ async def upsert_entity_aliases(
     aliases: tuple[str, ...],
     entity_type: str,
     confidence: float,
+    evidence_version: str,
 ) -> None:
     for alias in dict.fromkeys((label, *aliases)):
         normalized = normalize_entity_text(alias)
@@ -219,7 +229,14 @@ async def upsert_entity_aliases(
             continue
         evidence_key = sha256(
             "\0".join(
-                (transcript_id, segment_key, entity_node_id, normalized, "llm-grounded-alias")
+                (
+                    transcript_id,
+                    segment_key,
+                    entity_node_id,
+                    normalized,
+                    evidence_version,
+                    "llm-grounded-alias",
+                )
             ).encode("utf-8")
         ).hexdigest()
         await conn.execute(
@@ -232,7 +249,8 @@ async def upsert_entity_aliases(
                 $1, $2, $3, $4, $5, $6, $7, 'llm-grounded-alias',
                 'TRANSCRIPT'::"BrainSourceType", $8, $9, $10, NOW(), NOW()
             ) ON CONFLICT ("userId", "evidenceKey") DO UPDATE SET
-                alias = EXCLUDED.alias, confidence = EXCLUDED.confidence, "updatedAt" = NOW()
+                alias = EXCLUDED.alias, confidence = EXCLUDED.confidence,
+                "invalidatedAt" = NULL, "updatedAt" = NOW()
             """,
             _new_id(),
             user_id,
@@ -255,6 +273,7 @@ def _fact_key(
     predicate: str,
     valid_from: str | None,
     valid_to: str | None,
+    evidence_version: str,
 ) -> str:
     return sha256(
         "\0".join(
@@ -265,6 +284,7 @@ def _fact_key(
                 re.sub(r"\s+", " ", predicate).strip().casefold(),
                 valid_from or "",
                 valid_to or "",
+                evidence_version,
             )
         ).encode("utf-8")
     ).hexdigest()
@@ -283,6 +303,7 @@ async def upsert_fact(
     valid_to: str | None,
     observed_at: datetime,
     confidence: float,
+    evidence_version: str,
 ) -> str:
     fact_key = _fact_key(
         from_node_id=from_node_id,
@@ -291,6 +312,7 @@ async def upsert_fact(
         predicate=predicate,
         valid_from=valid_from,
         valid_to=valid_to,
+        evidence_version=evidence_version,
     )
     row = await conn.fetchrow(
         """
@@ -298,10 +320,10 @@ async def upsert_fact(
             id, "userId", "edgeId", "factKey", predicate, "validFrom", "validTo",
             "observedAt", confidence, method, metadata, "createdAt", "updatedAt"
         ) VALUES (
-            $1, $2, $3, $4, $5, $6::timestamp, $7::timestamp,
+            $1, $2, $3, $4, $5, $6, $7,
             $8, $9, 'llm-grounded-temporal', '{}'::jsonb, NOW(), NOW()
         ) ON CONFLICT ("userId", "factKey") DO UPDATE SET
-            "edgeId" = EXCLUDED."edgeId",
+            "edgeId" = EXCLUDED."edgeId", "invalidatedAt" = NULL,
             confidence = GREATEST("BrainFact".confidence, EXCLUDED.confidence),
             "observedAt" = LEAST("BrainFact"."observedAt", EXCLUDED."observedAt"),
             "updatedAt" = NOW()
@@ -312,9 +334,116 @@ async def upsert_fact(
         edge_id,
         fact_key,
         predicate,
-        _timestamp_utc_naive(valid_from),
-        _timestamp_utc_naive(valid_to),
-        _timestamp_utc_naive(observed_at),
+        _timestamp_utc(valid_from),
+        _timestamp_utc(valid_to),
+        _timestamp_utc(observed_at),
         confidence,
     )
     return str(row["id"])
+
+
+async def withdraw_grounded_evidence(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+    transcript_id: str,
+    segment_key: str | None = None,
+) -> None:
+    """Withdraw current evidence while retaining its bitemporal audit ledger."""
+    await conn.execute(
+        """
+        UPDATE "BrainSource" source
+        SET "invalidatedAt" = NOW()
+        FROM "BrainEdge" edge
+        WHERE source."userId" = $1
+          AND source."sourceId" = $2
+          AND ($3::text IS NULL OR source."segmentKey" = $3)
+          AND source."edgeId" = edge.id
+          AND edge.method LIKE 'llm-grounded%'
+          AND source."invalidatedAt" IS NULL
+        """,
+        user_id,
+        transcript_id,
+        segment_key,
+    )
+    await conn.execute(
+        """
+        UPDATE "BrainEntityAlias"
+        SET "invalidatedAt" = NOW(), "updatedAt" = NOW()
+        WHERE "userId" = $1
+          AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+          AND "sourceId" = $2
+          AND ($3::text IS NULL OR "segmentKey" = $3)
+          AND method = 'llm-grounded-alias'
+          AND "invalidatedAt" IS NULL
+        """,
+        user_id,
+        transcript_id,
+        segment_key,
+    )
+    await conn.execute(
+        """
+        UPDATE "BrainFact" fact
+        SET "invalidatedAt" = NOW(), "updatedAt" = NOW()
+        WHERE fact."userId" = $1
+          AND fact.method = 'llm-grounded-temporal'
+          AND fact."invalidatedAt" IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM "BrainSource" source
+            WHERE source."factId" = fact.id AND source."invalidatedAt" IS NULL
+          )
+        """,
+        user_id,
+    )
+
+
+async def archive_or_remove_unsupported_grounded_graph(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+) -> None:
+    """Hide unsupported current relations without erasing historical fact rows."""
+    await conn.execute(
+        """
+        UPDATE "BrainEdge" edge
+        SET status = 'ARCHIVED'::"ContentStatus", "updatedAt" = NOW()
+        WHERE edge."userId" = $1
+          AND edge.method LIKE 'llm-grounded%'
+          AND edge.status = 'ACTIVE'::"ContentStatus"
+          AND NOT EXISTS (
+            SELECT 1 FROM "BrainSource" source
+            WHERE source."edgeId" = edge.id AND source."invalidatedAt" IS NULL
+          )
+          AND EXISTS (SELECT 1 FROM "BrainFact" fact WHERE fact."edgeId" = edge.id)
+        """,
+        user_id,
+    )
+    await conn.execute(
+        """
+        DELETE FROM "BrainEdge" edge
+        WHERE edge."userId" = $1
+          AND edge.method LIKE 'llm-grounded%'
+          AND NOT EXISTS (
+            SELECT 1 FROM "BrainSource" source
+            WHERE source."edgeId" = edge.id AND source."invalidatedAt" IS NULL
+          )
+          AND NOT EXISTS (SELECT 1 FROM "BrainFact" fact WHERE fact."edgeId" = edge.id)
+        """,
+        user_id,
+    )
+    await conn.execute(
+        """
+        UPDATE "BrainNode" node
+        SET status = 'ARCHIVED'::"ContentStatus", "updatedAt" = NOW()
+        WHERE node."userId" = $1
+          AND node.metadata->>'method' = 'llm-grounded'
+          AND node."sourceType" IS NULL
+          AND node.status = 'ACTIVE'::"ContentStatus"
+          AND NOT EXISTS (
+            SELECT 1 FROM "BrainEdge" edge
+            WHERE (edge."fromNodeId" = node.id OR edge."toNodeId" = node.id)
+              AND edge.status = 'ACTIVE'::"ContentStatus"
+          )
+        """,
+        user_id,
+    )

@@ -284,7 +284,7 @@ class _SegmentConnection:
         return {"id": "content-node"}
 
     async def execute(self, query: str, *_args: object) -> str:
-        if 'DELETE FROM "BrainSource" source' in query:
+        if 'UPDATE "BrainSource" source' in query and 'source."segmentKey" = $3' in query:
             self.lease.owned = False
         return "OK"
 
@@ -307,7 +307,7 @@ class _CompilationResetConnection:
         return "OK"
 
 
-async def test_recompilation_removes_relation_evidence_without_touching_manual_edges(
+async def test_recompilation_invalidates_relation_evidence_without_erasing_history(
     monkeypatch: Any,
 ) -> None:
     conn = _CompilationResetConnection()
@@ -329,7 +329,10 @@ async def test_recompilation_removes_relation_evidence_without_touching_manual_e
     )
 
     queries = "\n".join(query for query, _args in conn.execute_calls)
-    assert 'DELETE FROM "BrainSource" source' in queries
+    assert 'UPDATE "BrainSource" source' in queries
+    assert 'SET "invalidatedAt" = NOW()' in queries
+    assert 'UPDATE "BrainEntityAlias"' in queries
+    assert 'UPDATE "BrainFact" fact' in queries
     assert "edge.method LIKE 'llm-grounded%'" in queries
     assert 'source."sourceId" = $2' in queries
     assert "NOT EXISTS" in queries

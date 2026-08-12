@@ -5,8 +5,9 @@ import { queryBrainTimeline } from '../brain-temporal';
 export function createBrainTimelineTool(userId: string) {
   return tool({
     description:
-      'Consulta fatos temporais citáveis do Brain. Sem período, retorna apenas fatos sem fim ' +
-      'de validade; use asOf para um instante histórico ou from/to para sobreposição de janela. ' +
+      'Consulta fatos temporais citáveis do Brain. Sem período, retorna fatos válidos agora, ' +
+      'inclusive os que possuem término futuro; use asOf para um instante histórico ou ' +
+      'from/to para sobreposição de janela. ' +
       'Os resultados são conhecimento extraído e exigem verificação das evidências retornadas.',
     inputSchema: z.object({
       query: z.string().min(1).max(300).optional(),

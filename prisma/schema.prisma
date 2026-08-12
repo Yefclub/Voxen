@@ -846,32 +846,34 @@ model BrainEdge {
 }
 
 model BrainSource {
-  id          String          @id @default(cuid())
-  userId      String
-  nodeId      String?
-  edgeId      String?
-  factId      String?
-  sourceType  BrainSourceType
-  sourceId    String
-  chunkId     String?
-  startLine   Int?
-  endLine     Int?
-  startSec    Int?
-  endSec      Int?
-  segmentKey  String?
-  evidenceKey String?
-  excerpt     String?         @db.Text
-  createdAt   DateTime        @default(now())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  node        BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  edge        BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
-  fact        BrainFact?      @relation(fields: [factId], references: [id], onDelete: Cascade)
+  id            String          @id @default(cuid())
+  userId        String
+  nodeId        String?
+  edgeId        String?
+  factId        String?
+  sourceType    BrainSourceType
+  sourceId      String
+  chunkId       String?
+  startLine     Int?
+  endLine       Int?
+  startSec      Int?
+  endSec        Int?
+  segmentKey    String?
+  evidenceKey   String?
+  excerpt       String?         @db.Text
+  invalidatedAt DateTime?       @db.Timestamptz(3)
+  createdAt     DateTime        @default(now())
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node          BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  edge          BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  fact          BrainFact?      @relation(fields: [factId], references: [id], onDelete: Cascade)
 
   @@unique([userId, evidenceKey])
   @@index([userId, sourceType, sourceId])
   @@index([nodeId])
   @@index([edgeId])
   @@index([factId])
+  @@index([userId, invalidatedAt])
 }
 
 // Versioned semantic meaning attached to a navigable BrainEdge. validFrom/
@@ -882,10 +884,10 @@ model BrainFact {
   edgeId        String
   factKey       String
   predicate     String
-  validFrom     DateTime?
-  validTo       DateTime?
-  observedAt    DateTime      @default(now())
-  invalidatedAt DateTime?
+  validFrom     DateTime?     @db.Timestamptz(3)
+  validTo       DateTime?     @db.Timestamptz(3)
+  observedAt    DateTime      @default(now()) @db.Timestamptz(3)
+  invalidatedAt DateTime?     @db.Timestamptz(3)
   confidence    Decimal       @default(1) @db.Decimal(5, 4)
   method        String        @default("manual")
   metadata      Json          @default("{}")
@@ -897,6 +899,7 @@ model BrainFact {
 
   @@unique([userId, factKey])
   @@index([userId, validFrom, validTo])
+  @@index([userId, invalidatedAt])
   @@index([userId, observedAt(sort: Desc)])
   @@index([edgeId])
 }
@@ -916,6 +919,7 @@ model BrainEntityAlias {
   sourceId        String
   segmentKey      String?
   evidenceKey     String
+  invalidatedAt   DateTime?       @db.Timestamptz(3)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @default(now()) @updatedAt
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -926,6 +930,7 @@ model BrainEntityAlias {
   @@index([userId, entityType, normalizedAlias])
   @@index([entityNodeId])
   @@index([userId, sourceType, sourceId])
+  @@index([userId, invalidatedAt])
 }
 
 model BrainCompilation {

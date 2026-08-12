@@ -297,33 +297,69 @@ async function deferGroundedCompilation(
   checksum: string,
 ): Promise<void> {
   await tx.$executeRaw`
-    DELETE FROM "BrainSource" source
-    USING "BrainEdge" edge
+    UPDATE "BrainSource" source
+    SET "invalidatedAt" = NOW()
+    FROM "BrainEdge" edge
     WHERE source."edgeId" = edge.id
       AND source."userId" = ${userId}
       AND source."sourceId" = ${transcriptId}
       AND edge.method LIKE 'llm-grounded%'
+      AND source."invalidatedAt" IS NULL
   `;
   await tx.$executeRaw`
-    DELETE FROM "BrainEntityAlias"
+    UPDATE "BrainEntityAlias"
+    SET "invalidatedAt" = NOW(), "updatedAt" = NOW()
     WHERE "userId" = ${userId}
       AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
       AND "sourceId" = ${transcriptId}
       AND method = 'llm-grounded-alias'
+      AND "invalidatedAt" IS NULL
   `;
   await tx.$executeRaw`
-    DELETE FROM "BrainFact" fact
+    UPDATE "BrainFact" fact
+    SET "invalidatedAt" = NOW(), "updatedAt" = NOW()
     WHERE fact."userId" = ${userId}
       AND fact.method = 'llm-grounded-temporal'
+      AND fact."invalidatedAt" IS NULL
       AND NOT EXISTS (
-        SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
+        SELECT 1 FROM "BrainSource" source
+        WHERE source."factId" = fact.id AND source."invalidatedAt" IS NULL
       )
+  `;
+  await tx.$executeRaw`
+    UPDATE "BrainEdge" edge
+    SET status = 'ARCHIVED'::"ContentStatus", "updatedAt" = NOW()
+    WHERE edge."userId" = ${userId}
+      AND edge.method LIKE 'llm-grounded%'
+      AND edge.status = 'ACTIVE'::"ContentStatus"
+      AND NOT EXISTS (
+        SELECT 1 FROM "BrainSource" source
+        WHERE source."edgeId" = edge.id AND source."invalidatedAt" IS NULL
+      )
+      AND EXISTS (SELECT 1 FROM "BrainFact" fact WHERE fact."edgeId" = edge.id)
   `;
   await tx.$executeRaw`
     DELETE FROM "BrainEdge" edge
     WHERE edge."userId" = ${userId}
       AND edge.method LIKE 'llm-grounded%'
-      AND NOT EXISTS (SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM "BrainSource" source
+        WHERE source."edgeId" = edge.id AND source."invalidatedAt" IS NULL
+      )
+      AND NOT EXISTS (SELECT 1 FROM "BrainFact" fact WHERE fact."edgeId" = edge.id)
+  `;
+  await tx.$executeRaw`
+    UPDATE "BrainNode" node
+    SET status = 'ARCHIVED'::"ContentStatus", "updatedAt" = NOW()
+    WHERE node."userId" = ${userId}
+      AND node.metadata->>'method' = 'llm-grounded'
+      AND node."sourceType" IS NULL
+      AND node.status = 'ACTIVE'::"ContentStatus"
+      AND NOT EXISTS (
+        SELECT 1 FROM "BrainEdge" edge
+        WHERE (edge."fromNodeId" = node.id OR edge."toNodeId" = node.id)
+          AND edge.status = 'ACTIVE'::"ContentStatus"
+      )
   `;
   await tx.$executeRaw`
     DELETE FROM "BrainNode" node
@@ -454,7 +490,8 @@ async function invalidateChangedNoteAnchors(
     where: { id: { in: staleIds }, userId, transcriptId, status: 'VALID' },
     data: { status: 'STALE', staleReason: 'transcript-correction-changed' },
   });
-  await tx.brainSource.deleteMany({
+  await tx.brainSource.updateMany({
     where: { userId, evidenceKey: { in: staleIds.map((id) => `note-anchor:${id}`) } },
+    data: { invalidatedAt: new Date() },
   });
 }

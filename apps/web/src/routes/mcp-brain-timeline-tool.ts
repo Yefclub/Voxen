@@ -10,7 +10,8 @@ export function registerBrainTimelineTool(server: McpServer, userId: string): vo
       title: 'Consultar linha do tempo do Brain',
       description:
         'Consulta relações temporais extraídas e citáveis. Sem período, retorna fatos atuais ' +
-        '(sem validTo); as_of consulta um instante; from/to consulta sobreposição de intervalo. ' +
+        '(sem término ou com término futuro); as_of consulta um instante; from/to consulta ' +
+        'sobreposição de intervalo. ' +
         'Use as evidências retornadas antes de apresentar qualquer relação como fato.',
       inputSchema: {
         query: z.string().min(1).max(300).optional(),

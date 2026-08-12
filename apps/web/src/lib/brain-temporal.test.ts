@@ -129,6 +129,18 @@ describe.skipIf(!process.env.DATABASE_URL)('Brain temporal retrieval (PostgreSQL
           evidenceKey: `alias:${suffix}`,
         },
       });
+      await db.brainEntityAlias.create({
+        data: {
+          userId: ownerId,
+          entityNodeId: subject.id,
+          alias: 'Ana Archived',
+          normalizedAlias: 'ana-archived',
+          entityType: 'PERSON',
+          sourceType: 'TRANSCRIPT',
+          sourceId: archivedTranscript,
+          evidenceKey: `alias:archived:${suffix}`,
+        },
+      });
       for (const [sourceId, key] of [
         [ownerTranscript, 'active'],
         [archivedTranscript, 'archived'],
@@ -179,12 +191,54 @@ describe.skipIf(!process.env.DATABASE_URL)('Brain temporal retrieval (PostgreSQL
           excerpt: 'Ana will work at Acme',
         },
       });
+      for (const [predicate, validFrom, invalidatedAt] of [
+        ['current_bounded', new Date('2020-01-01T00:00:00Z'), null],
+        ['open_start', null, null],
+        ['withdrawn_current', new Date('2020-01-01T00:00:00Z'), new Date()],
+      ] as const) {
+        const fact = await db.brainFact.create({
+          data: {
+            userId: ownerId,
+            edgeId: edge.id,
+            factKey: `${predicate}:${suffix}`,
+            predicate,
+            validFrom,
+            validTo: new Date('2999-01-01T00:00:00Z'),
+            observedAt: new Date('2026-01-01T00:00:00Z'),
+            invalidatedAt,
+            method: 'llm-grounded-temporal',
+          },
+        });
+        await db.brainSource.create({
+          data: {
+            userId: ownerId,
+            edgeId: edge.id,
+            factId: fact.id,
+            sourceType: 'TRANSCRIPT',
+            sourceId: ownerTranscript,
+            evidenceKey: `source:${predicate}:${suffix}`,
+            excerpt: predicate,
+          },
+        });
+      }
 
       const results = await queryBrainTimeline(ownerId, {
         entityRef: 'Ana Maria',
+        query: 'worked_at',
         asOf: '2021-01-01T00:00:00Z',
       });
       const current = await queryBrainTimeline(ownerId, { entityRef: 'Ana Maria' });
+      const openStartAsOf = await queryBrainTimeline(ownerId, {
+        entityRef: 'Ana Maria',
+        query: 'open_start',
+        asOf: '2021-01-01T00:00:00Z',
+      });
+      const openStartRange = await queryBrainTimeline(ownerId, {
+        entityRef: 'Ana Maria',
+        query: 'open_start',
+        from: '2020-01-01T00:00:00Z',
+        to: '2021-01-01T00:00:00Z',
+      });
       const foreign = await queryBrainTimeline(foreignId, {
         entityRef: 'Ana Maria',
         asOf: '2021-01-01T00:00:00Z',
@@ -194,8 +248,30 @@ describe.skipIf(!process.env.DATABASE_URL)('Brain temporal retrieval (PostgreSQL
       expect(results[0]?.sources).toEqual([
         expect.objectContaining({ sourceId: ownerTranscript, excerpt: 'Ana worked at Acme' }),
       ]);
-      expect(current).toEqual([]);
+      expect(current.map((fact) => fact.predicate).sort()).toEqual([
+        'current_bounded',
+        'open_start',
+      ]);
+      expect(openStartAsOf).toHaveLength(1);
+      expect(openStartRange).toHaveLength(1);
       expect(foreign).toEqual([]);
+      expect(
+        await queryBrainTimeline(ownerId, {
+          entityRef: 'Ana Archived',
+          asOf: '2021-01-01T00:00:00Z',
+        }),
+      ).toEqual([]);
+
+      await db.brainEntityAlias.updateMany({
+        where: { userId: ownerId, normalizedAlias: 'ana-maria' },
+        data: { invalidatedAt: new Date() },
+      });
+      expect(
+        await queryBrainTimeline(ownerId, {
+          entityRef: 'Ana Maria',
+          asOf: '2021-01-01T00:00:00Z',
+        }),
+      ).toEqual([]);
     } finally {
       await db.user.deleteMany({ where: { id: { in: [ownerId, foreignId] } } });
     }

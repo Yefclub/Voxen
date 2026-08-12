@@ -36,6 +36,7 @@ import {
 } from '../lib/retrieval';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
 import { registerBrainTimelineTool } from './mcp-brain-timeline-tool';
+import { keepCurrentOwnedSources } from './mcp-brain-source-lifecycle';
 import {
   registerTranscriptEnrichmentTools,
   registerTranscriptEnrichmentWriteTools,
@@ -1153,6 +1154,8 @@ function registerBrainTools(server: McpServer, userId: string): void {
       const sources = await db.brainSource.findMany({
         where: {
           userId,
+          invalidatedAt: null,
+          AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
           OR: [{ nodeId: ref }, { edgeId: ref }, { sourceId: ref }, { node: { key: ref } }],
         },
         orderBy: { createdAt: 'desc' },
@@ -1185,7 +1188,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
         },
       });
       const contradiction = await db.brainEdge.findFirst({
-        where: { userId, id: ref, kind: 'CONTRADICTS' },
+        where: { userId, id: ref, kind: 'CONTRADICTS', status: 'ACTIVE' },
         select: { fromNodeId: true, toNodeId: true },
       });
       const conflictingSources = contradiction
@@ -1195,6 +1198,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                 db.brainSource.findMany({
                   where: {
                     userId,
+                    invalidatedAt: null,
                     edge: {
                       method: 'llm-grounded',
                       kind: 'SUPPORTS',
@@ -1205,6 +1209,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                   take: 10,
                   select: {
                     edgeId: true,
+                    sourceType: true,
                     sourceId: true,
                     startLine: true,
                     endLine: true,
@@ -1217,7 +1222,14 @@ function registerBrainTools(server: McpServer, userId: string): void {
             )
           ).flat()
         : [];
-      return ok({ sources, conflicting_sources: conflictingSources });
+      const [currentSources, currentConflicts] = await Promise.all([
+        keepCurrentOwnedSources(userId, sources),
+        keepCurrentOwnedSources(userId, conflictingSources),
+      ]);
+      return ok({
+        sources: currentSources,
+        conflicting_sources: currentConflicts,
+      });
     },
   );
 

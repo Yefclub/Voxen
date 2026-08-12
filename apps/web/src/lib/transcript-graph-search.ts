@@ -46,6 +46,7 @@ export function transcriptGraphMatchSql(userId: string, query: string): Prisma.S
        AND bn."userId" = ${userId}
        AND bn.status = 'ACTIVE'::"ContentStatus"
       WHERE bs."userId" = ${userId}
+        AND bs."invalidatedAt" IS NULL
         AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
         AND bs."sourceId" = t.id
         AND (

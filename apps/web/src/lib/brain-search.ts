@@ -41,8 +41,14 @@ export async function searchBrainNodes(
         ON node.id = alias."entityNodeId"
        AND node."userId" = alias."userId"
        AND node.status = 'ACTIVE'::"ContentStatus"
+      JOIN "Transcript" transcript
+        ON alias."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+       AND transcript.id = alias."sourceId"
+       AND transcript."userId" = alias."userId"
+       AND transcript.status = 'ACTIVE'::"ContentStatus"
       WHERE alias."userId" = ${userId}
         AND alias."normalizedAlias" = ${normalizedAlias}
+        AND alias."invalidatedAt" IS NULL
       ORDER BY alias."entityNodeId"
       LIMIT ${requestedLimit}
     `);

@@ -40,9 +40,9 @@ the graph or context snapshot was truncated. Write-only tokens do not discover
 this tool.
 
 `voxen_brain_timeline` retrieves evidence-backed temporal relations. With no
-time argument it returns facts that have no recorded end of validity; `as_of`
-performs a point-in-time lookup, while `from`/`to` finds overlapping validity
-windows. Domain validity (`validFrom`/`validTo`) is kept separate from
+time argument it returns facts valid now, whether their end is unknown or in
+the future; `as_of` performs a point-in-time lookup, while `from`/`to` finds
+overlapping validity windows. Domain validity (`validFrom`/`validTo`) is kept separate from
 `observedAt`, the time represented by the source episode. Missing domain time
 stays unknown—it is never inferred from ingestion time. Entity aliases improve
 search recall but remain reversible observations; Voxen never merges two
