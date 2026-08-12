@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree
 from unittest.mock import AsyncMock
 
-from src import ytdl
+from src import youtube_captions
 from src.ytdl import VideoProbe, parse_vtt_or_srt, pick_subtitle_lang
 
 VTT_SAMPLE = """WEBVTT
@@ -196,10 +196,10 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
             assert languages[0] == "pt"
             return FakeFetched()
 
-    monkeypatch.setattr(ytdl, "YouTubeTranscriptApi", FakeApi)
-    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+    monkeypatch.setattr(youtube_captions, "YouTubeTranscriptApi", FakeApi)
+    monkeypatch.setattr(youtube_captions, "_runtime_options", AsyncMock(return_value={}))
     monkeypatch.setattr(
-        ytdl,
+        youtube_captions,
         "_fetch_youtube_oembed",
         lambda video_id, proxy_url: {
             "title": "Video de teste",
@@ -209,7 +209,7 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
         },
     )
 
-    result = await ytdl.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
+    result = await youtube_captions.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
 
     assert result is not None
     assert result.language == "pt"
@@ -223,9 +223,11 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
 
 
 async def test_fetch_youtube_transcript_ignores_non_youtube(monkeypatch) -> None:
-    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+    monkeypatch.setattr(youtube_captions, "_runtime_options", AsyncMock(return_value={}))
 
-    result = await ytdl.fetch_youtube_transcript("https://example.com/watch?v=dQw4w9WgXcQ")
+    result = await youtube_captions.fetch_youtube_transcript(
+        "https://example.com/watch?v=dQw4w9WgXcQ"
+    )
 
     assert result is None
 
@@ -238,9 +240,48 @@ async def test_fetch_youtube_transcript_malformed_xml_falls_back(monkeypatch) ->
         def fetch(self, video_id, languages, preserve_formatting=False):
             raise xml.etree.ElementTree.ParseError("no element found: line 1, column 0")
 
-    monkeypatch.setattr(ytdl, "YouTubeTranscriptApi", FakeApi)
-    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+    monkeypatch.setattr(youtube_captions, "YouTubeTranscriptApi", FakeApi)
+    monkeypatch.setattr(youtube_captions, "_runtime_options", AsyncMock(return_value={}))
 
-    result = await ytdl.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
+    result = await youtube_captions.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
 
     assert result is None
+
+
+async def test_fetch_youtube_transcript_reports_why_it_gave_up(monkeypatch, caplog) -> None:
+    """Bloqueio e ausência de legenda são ações diferentes para o operador.
+
+    O fallback é best-effort de propósito — o pipeline segue para o yt-dlp — mas
+    engolir sem registrar deixava os dois casos idênticos no log, e depois só
+    sobrava a falha do yt-dlp. O tipo da exceção é o que os separa, então ele
+    precisa sobreviver à normalização do `error_diagnostic`.
+    """
+    from youtube_transcript_api import IpBlocked
+
+    class BlockedApi:
+        def __init__(self, proxy_config=None) -> None:
+            self.proxy_config = proxy_config
+
+        def fetch(self, video_id, languages, preserve_formatting=False):
+            raise IpBlocked(video_id)
+
+    monkeypatch.setattr(youtube_captions, "YouTubeTranscriptApi", BlockedApi)
+    monkeypatch.setattr(youtube_captions, "_runtime_options", AsyncMock(return_value={}))
+
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        youtube_captions.logger,
+        "info",
+        lambda event, **kw: events.append((event, kw)),
+        raising=False,
+    )
+
+    assert await youtube_captions.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ") is None
+
+    event, fields = next(e for e in events if e[0] == "youtube-transcript-api-unavailable")
+    assert fields["error_code"] == "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE"
+    # Sem isto o log diria "Exception" e não separaria bloqueio de vídeo sem legenda.
+    assert fields["error_type"] == "IpBlocked"
+    # Sem proxy configurado, o egress saiu pelo IP do servidor — que é a
+    # explicação do bloqueio, então não pode aparecer como proxied.
+    assert fields["proxied"] is False

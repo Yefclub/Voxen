@@ -29,6 +29,7 @@ from . import (
     uploaded_media,
     video_url,
     voxen_settings,
+    youtube_captions,
     ytdl,
 )
 from .audio_chunking import AudioChunk, split_audio
@@ -339,9 +340,13 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "Opções: envie o arquivo por upload manual, "
-            "ou peça ao admin para configurar um proxy residencial nas configurações da instância. "
-            "Por que isso acontece em VPS? Veja docs/DEPLOY.md (Home-lab vs VPS)."
+            "Upload manual resolve na hora. Você também pode salvar seus cookies do "
+            "YouTube nas integrações — isso vale só para os seus downloads. "
+            "Para destravar a instância inteira, o admin pode configurar o proxy "
+            "residencial (recomendado) ou, como mitigação frágil, um provider de PO "
+            "token próprio em YTDLP_BGUTIL_BASE_URL. "
+            "Por que isso acontece em VPS e como configurar cada uma: "
+            "docs/DEPLOY.md (Home-lab vs VPS)."
         )
     if "http error 403" in text or "status code 403" in text or "access denied" in text:
         return (
@@ -400,7 +405,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "downloading", percent=5)
 
-    transcript_fetch = await ytdl.fetch_youtube_transcript(source_url)
+    transcript_fetch = await youtube_captions.fetch_youtube_transcript(source_url)
     if transcript_fetch is not None:
         log.info("path-youtube-transcript-api", lang=transcript_fetch.language)
         probe_info = transcript_fetch.probe
