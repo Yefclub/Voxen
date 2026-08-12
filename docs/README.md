@@ -22,6 +22,16 @@ documentation currently has two tracks:
 | [`en/MEM0-SHADOW.md`](en/MEM0-SHADOW.md)             | Optional Mem0 shadow evaluation and safety boundary   |
 | [`en/TRANSCRIPT-FORMAT.md`](en/TRANSCRIPT-FORMAT.md) | Markdown transcript schema                            |
 
+## Research
+
+Spike write-ups: a question, the evidence gathered, and the recommendation.
+They record why an option was taken or rejected at a point in time, and are not
+updated as the codebase moves on.
+
+| Document                                                             | Question                                     |
+| -------------------------------------------------------------------- | -------------------------------------------- |
+| [`research/768-ai-elements-spike.md`](research/768-ai-elements-spike.md) | Should the chat adopt Vercel AI Elements? |
+
 ## Português (Brasil)
 
 | Documento                                      | Tema                                                     |
