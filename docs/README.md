@@ -19,6 +19,7 @@ documentation currently has two tracks:
 | [`en/DECISIONS.md`](en/DECISIONS.md)                 | Architecture Decision Records                         |
 | [`en/SECURITY.md`](en/SECURITY.md)                   | Threat model, guards, secrets, and incident response  |
 | [`en/MCP.md`](en/MCP.md)                             | MCP clients, compatibility, security, troubleshooting |
+| [`en/MEM0-SHADOW.md`](en/MEM0-SHADOW.md)             | Optional Mem0 shadow evaluation and safety boundary   |
 | [`en/TRANSCRIPT-FORMAT.md`](en/TRANSCRIPT-FORMAT.md) | Markdown transcript schema                            |
 
 ## Português (Brasil)
@@ -32,4 +33,5 @@ documentation currently has two tracks:
 | [`DECISIONS.md`](DECISIONS.md)                 | Registro histórico de decisões arquiteturais             |
 | [`SECURITY.md`](SECURITY.md)                   | Threat model, guards, secrets e resposta a incidentes    |
 | [`MCP.md`](MCP.md)                             | Clientes MCP, compatibilidade, segurança e diagnóstico   |
+| [`MEM0-SHADOW.md`](MEM0-SHADOW.md)             | Avaliação opcional do Mem0 e limites de segurança        |
 | [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Schema Markdown de transcrições                          |

@@ -37,6 +37,7 @@
     "typecheck": "make typecheck",
     "migrate": "make migrate",
     "migration:check": "node scripts/prisma-migration-gate.mjs",
+    "memory:eval": "bun apps/web/src/cli/mem0-shadow-eval.ts",
     "quality:duplicates": "jscpd apps/web/src apps/extension apps/worker/src",
     "quality:check": "node scripts/quality-gate.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",

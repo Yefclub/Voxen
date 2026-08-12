@@ -387,3 +387,24 @@ ingestão” de entidades/claims.
 - Embeddings desligados por default — zero custo extra em deploys mínimos.
 
 ---
+
+## ADR-013 — Mem0 apenas como shadow de memória conversacional opcional
+
+**Data**: 2026-08-11
+**Status**: Aceita para avaliação; não aprovado para injeção no prompt
+
+O Mem0 OSS resolve um problema menor que a base da Voxen: recuperar algumas
+preferências e informações recorrentes da conversa sem repetir históricos
+longos. Transcrições, notas, evidências, fatos temporais, preferências controladas
+e Brain continuam canônicos. O Mem0 roda separado, fica desligado por padrão e
+seus resultados inferidos são não verificados e inacessíveis ao prompt, MCP,
+citações e grafo durante esta etapa.
+
+Escritas de chat falham sem afetar a resposta; a exclusão de conta falha de modo
+estrito quando o provider está ativo. Um avaliador ao vivo deve aprovar qualidade,
+isolamento, exclusão, latência, tokens e custo antes de outro ADR permitir uso
+controlado. O grafo nativo da plataforma Mem0 não é adotado porque apenas reforça
+ranking por coocorrência de entidades sem expor o grafo tipado e fundamentado da
+Voxen.
+
+---
