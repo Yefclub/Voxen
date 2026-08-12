@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.14.5-dev.1786503242 — 2026-08-11 · Dev
+
+### ✨ Personal graph context for chat and MCP
+
+Voxen now gives its in-app agent and MCP clients the same bounded,
+explainable personal context. Explicit feedback, inferred interests, trends,
+and graph-ranked sources stay distinguishable, user-scoped, and linked to
+authorized evidence.
+
+The context guides discovery without becoming factual evidence: agents must
+still open and verify sources before making claims. Negative preferences never
+become positive ranking seeds, unavailable context degrades safely, and MCP
+read tokens gain the new `voxen_personal_context` tool.
+
 ## v0.14.5-dev.1786497875 — 2026-08-11 · Dev
 
 ### ✨ An explainable Guide for personal knowledge trends
