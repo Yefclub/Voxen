@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.14.5-dev.1786535868 — 2026-08-12 · Dev
+
+### 🧹 CI now blocks a pull request that updates only one of the two agent rule trees
+
+The repository keeps `.agents/` as a mirror of `.claude/`, because that is the
+tree Codex loads. Nothing verified it, and the trees drifted silently once: a
+pull request added skill frontmatter to `.claude/` alone and it went unnoticed
+until a reviewer compared them by hand. Left alone, the two harnesses end up
+following different rules.
+
+A guard now compares both trees, ignoring only the mandated `.claude/` to
+`.agents/` path rewrite and any line-ending difference. It runs as a test inside
+the already-required `Test TS (apps/web)` check, so a pull request touching one
+tree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`
+regenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift
+without changing anything.
+
 ## v0.14.5-dev.1786524207 — 2026-08-12 · Dev
 
 ### ✨ Optional conversational-memory shadow evaluation
