@@ -50,9 +50,16 @@ Antes de commitar QUALQUER fix visual ou mudança de UI:
 
 `components.json` existe para o CLI do shadcn resolver alias e instalar dependência — **não** adota o tema do shadcn. Foi escrito à mão de propósito: `shadcn init` grava um bloco de variáveis CSS próprio no stylesheet alvo e define uma base color, exatamente o que não pode encostar no `index.css`.
 
+**`--dry-run` antes de todo `add`, sem exceção.** Não rodar `init` não protege o `index.css` — o `add` escreve nele também. Dois danos reais, os dois medidos com `add sidebar --dry-run`:
+
+- **Injeta variável CSS no `index.css`.** Item de registry que traz `cssVars` (`sidebar`, `chart` e outros) despeja o vocabulário do shadcn dentro do arquivo dos quatro packs. `add sidebar` reporta `16 CSS variables added to src/client/index.css`. O `components.json` aponta `"css": "src/client/index.css"`, então o alvo é o arquivo mais sensível do app.
+- **Sobrescreve componente já restilizado.** O mesmo comando reporta `~6 overwrite` em `button`, `separator`, `sheet`, `tooltip`, `input` e `skeleton` — todos já convertidos à mão para `--color-app-*`. `--overwrite` é `false` por padrão, mas o dry-run é o único jeito de ver a lista antes.
+
+Ler as **três** seções da saída — `Files`, `CSS` e `Dependencies` — não só o destino do arquivo.
+
 ```bash
-pnpm dlx shadcn@latest add <componente>              # registry padrão do shadcn
-pnpm dlx shadcn@latest add @ai-elements/<componente> # AI Elements
+pnpm dlx shadcn@latest add <componente> --dry-run     # sempre primeiro
+pnpm dlx shadcn@latest add @ai-elements/<componente> --dry-run
 ```
 
 O que o CLI entrega é **scaffolding**: colocação de arquivo, reescrita de import e instalação de dependência. Não entrega tema — componente de registry chega no vocabulário de token do shadcn (`--background`, `--primary`), que não existe aqui, então **todo componente puxado precisa de passe manual para `--color-app-*`** antes de entrar.
@@ -65,7 +72,9 @@ Três coisas que o arquivo não consegue explicar sozinho:
 
 `cssVariables: true` **não pode mudar depois** da inicialização, segundo a doc do shadcn. Está `true` porque assim o componente chega com nome semântico de token, mecanicamente substituível pelos nossos; `false` embutiria cor fixa (`bg-white dark:bg-neutral-950`), que é pior num app com quatro packs.
 
-**Onde o arquivo cai, e o caso em que o alias não manda.** Item do registry padrão do shadcn respeita o alias: `add collapsible` grava em `src/client/components/ui/`, junto dos que já existem. Item que declara `target` próprio ignora tanto o alias quanto o `-p` — os do AI Elements declaram `components/ai-elements/<nome>.tsx` e caem em `src/components/ai-elements/`, fora da árvore do client. Compila (o `include` do tsconfig é `src/**/*`) e os imports `@/…` de dentro resolvem, mas cria diretório novo em `src/` fora do padrão. Verificado com `--dry-run`; conferir o destino antes de rodar sem ele.
+**Onde o arquivo cai, e o caso em que o alias não manda.** Item do registry padrão do shadcn respeita o alias: `add collapsible` grava em `src/client/components/ui/`, junto dos que já existem. Item que declara `target` próprio ignora tanto o alias quanto o `-p` — os do AI Elements declaram `components/ai-elements/<nome>.tsx` e caem em `src/components/ai-elements/`, fora da árvore do client. Compila (o `include` do tsconfig é `src/**/*`) e os imports `@/…` de dentro resolvem, mas cria diretório novo em `src/` fora do padrão.
+
+Um `add` pode misturar os dois registries: `registryDependencies` sem URL resolve contra o **registry padrão do shadcn**, não contra o namespace de origem. Por isso `add @ai-elements/reasoning` arrasta um `collapsible` upstream para `ui/` — o AI Elements não publica esse item (404 no host deles).
 
 ## Agente sem embeddings (harness/Karpathy)
 
