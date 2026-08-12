@@ -26,6 +26,7 @@ class FakeStore implements MemoryShadowCoordinationStore {
   readonly users = new Set<string>();
   readonly fences = new Map<string, string>();
   readonly writers = new Map<string, string>();
+  readonly subjects = new Set<string>();
 
   constructor(...users: string[]) {
     users.forEach((userId) => this.users.add(userId));
@@ -33,6 +34,7 @@ class FakeStore implements MemoryShadowCoordinationStore {
 
   async registerWriter(userId: string, writerId: string): Promise<boolean> {
     if (!this.users.has(userId) || this.fences.has(userId)) return false;
+    this.subjects.add(userId);
     this.writers.set(writerId, userId);
     return true;
   }
@@ -47,6 +49,10 @@ class FakeStore implements MemoryShadowCoordinationStore {
 
   async clearFence(userId: string, owner: string): Promise<void> {
     if (this.fences.get(userId) === owner) this.fences.delete(userId);
+  }
+
+  async clearSubject(userId: string): Promise<void> {
+    this.subjects.delete(userId);
   }
 
   async waitForWriters(userId: string): Promise<boolean> {
@@ -85,6 +91,7 @@ describe('memory shadow durable deletion coordination', () => {
         events.push('write-started');
         await writeCanFinish;
         events.push('write-finished');
+        return true;
       },
       { redis: writerRedis, store },
     );
@@ -106,6 +113,7 @@ describe('memory shadow durable deletion coordination', () => {
     store.users.delete('user-a');
     await finishDeletion(true);
     expect(store.fences.has('user-a')).toBe(false);
+    expect(store.subjects.has('user-a')).toBe(false);
   });
 
   it('blocks late writers even when the Redis lease is lost', async () => {
@@ -119,6 +127,7 @@ describe('memory shadow durable deletion coordination', () => {
       'user-a',
       async () => {
         events.push('unsafe-write');
+        return true;
       },
       { redis: new FakeRedis(), store },
     );
@@ -139,5 +148,24 @@ describe('memory shadow durable deletion coordination', () => {
       ),
     ).rejects.toThrow('remote unavailable');
     expect(store.fences.has('user-a')).toBe(false);
+  });
+
+  it('retains an ambiguous writer and its deletion fence without expiring either', async () => {
+    const store = new FakeStore('user-a');
+    scheduleUserMemoryShadowWrite('user-a', async () => false, {
+      redis: new FakeRedis(),
+      store,
+    });
+    await eventually(() => expect(store.writers.size).toBe(1));
+
+    await expect(
+      acquireUserMemoryShadowDeletionFence('user-a', async () => {}, {
+        redis: new FakeRedis(),
+        store,
+      }),
+    ).rejects.toThrow('Timed out draining memory shadow writers');
+    expect(store.writers.size).toBe(1);
+    expect(store.fences.has('user-a')).toBe(true);
+    expect(store.subjects.has('user-a')).toBe(true);
   });
 });

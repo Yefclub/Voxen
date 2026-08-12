@@ -50,6 +50,8 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
 - When account deletion overlaps a shadow write on another application replica,
   a durable per-user fence shall block new writers and drain every registered
   writer before remote deletion, even if the Redis lease is lost.
+- When a shadow write has an ambiguous outcome, its durable marker and any
+  deletion fence shall remain fail-closed without time-based expiry.
 
 ### State-driven
 
@@ -61,6 +63,8 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
   required.
 - While shadow mode is active, search results shall remain unavailable to the
   chat prompt and Brain index.
+- While the provider is disabled, an account with a tracked remote subject shall
+  remain undeletable until remote cleanup is explicitly reconciled.
 
 ### Optional
 
@@ -88,6 +92,8 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
 - [x] Failures are soft for chat writes and strict for account deletion.
 - [x] Cross-replica deletion fencing survives Redis lease loss and prevents late
       remote data recreation.
+- [x] Ambiguous writes never age out automatically or permit account deletion.
+- [x] Disabling the provider cannot bypass a tracked subject's remote cleanup.
 - [x] Scope-secret identity is pinned and accidental rotation fails closed.
 - [x] Search candidates are explicitly unverified and never injected in prompts.
 - [x] Configuration rejects unsafe URLs, credentials in URLs, and unbounded values.

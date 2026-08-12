@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import {
   MEMORY_SHADOW_ALGORITHM_VERSION,
+  beginUserMemoryShadowDeletion,
   createMemoryProvider,
   deleteUserMemoryShadow,
   memoryShadowWriteEnabled,
@@ -91,6 +92,21 @@ describe('memory provider configuration', () => {
         MEM0_ALLOW_INSECURE_HTTP: 'true',
       }),
     ).toMatchObject({ kind: 'mem0-shadow', baseUrl: 'http://mem0:8000' });
+  });
+
+  it('does not let disabled mode bypass cleanup for a tracked remote subject', async () => {
+    await expect(
+      beginUserMemoryShadowDeletion('user-a', {
+        env: {},
+        subjectStore: { has: async (userId) => userId === 'user-a' },
+      }),
+    ).rejects.toThrow('restore its configuration');
+
+    const finish = await beginUserMemoryShadowDeletion('user-b', {
+      env: {},
+      subjectStore: { has: async () => false },
+    });
+    await expect(finish(true)).resolves.toBeUndefined();
   });
 });
 

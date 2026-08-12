@@ -12,6 +12,7 @@ export interface MemoryShadowCoordinationStore {
   finishWriter(writerId: string): Promise<void>;
   placeFence(userId: string, owner: string): Promise<void>;
   clearFence(userId: string, owner: string): Promise<void>;
+  clearSubject(userId: string): Promise<void>;
   waitForWriters(userId: string): Promise<boolean>;
 }
 
@@ -29,7 +30,6 @@ const LOCK_TTL_MS = 120_000;
 const LOCK_RENEW_MS = 30_000;
 const WRITE_WAIT_MS = 5_000;
 const DELETE_WAIT_MS = 45_000;
-const WRITER_STALE_MS = 60_000;
 const WRITER_DRAIN_WAIT_MS = 65_000;
 const RETRY_MS = 50;
 
@@ -67,6 +67,11 @@ const prismaCoordinationStore: MemoryShadowCoordinationStore = {
         tx.user.count({ where: { id: userId } }),
       ]);
       if (fenced > 0 || userExists === 0) return false;
+      await tx.memoryShadowSubject.upsert({
+        where: { userId },
+        create: { userId },
+        update: {},
+      });
       await tx.memoryShadowWriter.create({ data: { id: writerId, userId } });
       return true;
     });
@@ -87,12 +92,12 @@ const prismaCoordinationStore: MemoryShadowCoordinationStore = {
   async clearFence(userId, owner) {
     await db.memoryShadowFence.deleteMany({ where: { userId, owner } });
   },
+  async clearSubject(userId) {
+    await db.memoryShadowSubject.deleteMany({ where: { userId } });
+  },
   async waitForWriters(userId) {
     const deadline = Date.now() + WRITER_DRAIN_WAIT_MS;
     do {
-      await db.memoryShadowWriter.deleteMany({
-        where: { userId, updatedAt: { lt: new Date(Date.now() - WRITER_STALE_MS) } },
-      });
       if ((await db.memoryShadowWriter.count({ where: { userId } })) === 0) return true;
       await delay(RETRY_MS);
     } while (Date.now() < deadline);
@@ -141,7 +146,7 @@ async function acquireDistributedUserLock(
 /** Runs a best-effort write registered durably before external network I/O. */
 export function scheduleUserMemoryShadowWrite(
   userId: string,
-  operation: () => Promise<void>,
+  operation: () => Promise<boolean>,
   options: MemoryShadowWriteOptions = {},
 ): void {
   void (async () => {
@@ -149,20 +154,23 @@ export function scheduleUserMemoryShadowWrite(
     const store = options.store ?? prismaCoordinationStore;
     const writerId = randomUUID();
     let registered = false;
+    let confirmed = false;
     let release: (() => Promise<void>) | null = null;
     try {
       release = await acquireDistributedUserLock(userId, WRITE_WAIT_MS, redis);
       if (!release) return;
       registered = await store.registerWriter(userId, writerId);
       if (!registered) return;
-      await operation();
+      confirmed = await operation();
     } catch {
       console.warn('[memory-shadow] scheduled write failed');
     } finally {
-      if (registered) {
+      if (registered && confirmed) {
         await store.finishWriter(writerId).catch(() => {
           console.warn('[memory-shadow] writer lease release failed');
         });
+      } else if (registered) {
+        console.warn('[memory-shadow] writer outcome ambiguous; durable marker retained');
       }
       await release?.().catch(() => {
         console.warn('[memory-shadow] distributed lock release failed');
@@ -185,18 +193,24 @@ export async function acquireUserMemoryShadowDeletionFence(
   const release = await acquireDistributedUserLock(userId, DELETE_WAIT_MS, redis);
   if (!release) throw new Error('Timed out waiting for the memory shadow deletion fence');
   const owner = randomUUID();
+  let keepFence = false;
   try {
     await store.placeFence(userId, owner);
     if (!(await store.waitForWriters(userId))) {
+      keepFence = true;
       throw new Error('Timed out draining memory shadow writers');
     }
     await deleteRemote();
-    return async (_canonicalDeleted) => {
-      await store.clearFence(userId, owner);
-      await release();
+    return async (canonicalDeleted) => {
+      try {
+        if (canonicalDeleted) await store.clearSubject(userId);
+        await store.clearFence(userId, owner);
+      } finally {
+        await release();
+      }
     };
   } catch (error) {
-    await store.clearFence(userId, owner).catch(() => {});
+    if (!keepFence) await store.clearFence(userId, owner).catch(() => {});
     await release();
     throw error;
   }

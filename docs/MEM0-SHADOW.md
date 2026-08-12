@@ -112,16 +112,22 @@ estados e precisa de avaliação separada antes de qualquer modo controlado futu
 - Escritas do chat são best-effort; indisponibilidade do Mem0 não falha a resposta.
 - Turnos interrompidos, falhos ou pausados para aprovação não são gravados.
 - Um mutex Redis por usuário serializa escritas shadow e exclusão de conta entre
-  réplicas da aplicação. Cada escrita registra antes da rede uma lease durável no
+  réplicas da aplicação. Cada escrita registra antes da rede um marcador durável no
   PostgreSQL; a exclusão fixa um fence, bloqueia novos escritores e drena todas
-  as leases antes de apagar o sujeito remoto, mesmo se a lease Redis for perdida.
+  as escritas confirmadas antes de apagar o sujeito remoto, mesmo se a lease Redis
+  for perdida.
 - Exclusão de conta é estrita: se o Mem0 habilitado não remover o sujeito remoto,
   a Voxen mantém a conta canônica para não abandonar dados pessoais derivados.
 - Use `VOXEN_MEMORY_PROVIDER=disabled` (ou remova a variável) para zerar chamadas
-  de rede. Não há migration nem rollback de dados canônicos.
-- Se o processo cair durante uma escrita, a exclusão permanece fail-closed até a
-  lease expirar. Repetir a exclusão retoma a operação; não remova manualmente o
-  fence nem a impressão do segredo sem confirmar a limpeza no Mem0.
+  de rede. Isso não contorna a limpeza: uma conta que já possua sujeito remoto
+  rastreado não pode ser excluída enquanto o provedor estiver desativado.
+- Uma escrita com resposta confirmada remove seu marcador. Timeout, queda do
+  processo ou qualquer resultado ambíguo mantém o marcador e o fence de exclusão
+  **sem expiração automática**, pois a requisição remota ainda pode concluir tarde.
+- Para reconciliar um resultado ambíguo, interrompa novas escritas da Voxen,
+  confirme que não há requisições em voo no Mem0, apague o sujeito remoto com o
+  segredo original e somente então remova os marcadores operacionais. Não remova
+  o fence, o sujeito rastreado ou a impressão do segredo antes dessa confirmação.
 - Apagar o storage do Mem0 não remove transcrições, notas, fatos Brain, histórico
   de chat ou preferências controladas pelo usuário na Voxen.
 

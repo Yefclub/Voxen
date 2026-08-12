@@ -65,10 +65,15 @@ export interface MemoryScopeStore {
   pin(fingerprint: string): Promise<void>;
 }
 
+export interface MemoryShadowSubjectStore {
+  has(userId: string): Promise<boolean>;
+}
+
 interface MemoryProviderDependencies {
   env?: MemoryEnvironment;
   fetchImpl?: typeof fetch;
   scopeStore?: MemoryScopeStore;
+  subjectStore?: MemoryShadowSubjectStore;
 }
 
 const SCOPE_CONFIG_ID = 'mem0-shadow-v1';
@@ -85,6 +90,12 @@ const prismaMemoryScopeStore: MemoryScopeStore = {
         'MEM0_SCOPE_SECRET does not match the immutable namespace fingerprint; restore the original secret',
       );
     }
+  },
+};
+
+const prismaMemoryShadowSubjectStore: MemoryShadowSubjectStore = {
+  async has(userId) {
+    return (await db.memoryShadowSubject.count({ where: { userId } })) > 0;
   },
 };
 
@@ -371,7 +382,15 @@ export async function beginUserMemoryShadowDeletion(
   dependencies: MemoryProviderDependencies = {},
 ): Promise<(canonicalDeleted: boolean) => Promise<void>> {
   const config = resolveMemoryProviderConfig(dependencies.env ?? process.env);
-  if (config.kind === 'disabled') return async () => {};
+  if (config.kind === 'disabled') {
+    const subjectStore = dependencies.subjectStore ?? prismaMemoryShadowSubjectStore;
+    if (await subjectStore.has(userId)) {
+      throw new Error(
+        'Mem0 shadow was previously enabled; restore its configuration and reconcile remote memory before deleting this account',
+      );
+    }
+    return async () => {};
+  }
   return acquireUserMemoryShadowDeletionFence(userId, () =>
     deleteUserMemoryShadow(userId, dependencies),
   );

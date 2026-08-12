@@ -113,16 +113,21 @@ states and must be evaluated separately before any future controlled mode.
 - Chat writes are best-effort. A Mem0 outage cannot fail a canonical reply.
 - Aborted, failed, and tool-approval-paused turns are not written.
 - A Redis per-user mutex serializes shadow writes and account deletion across
-  application replicas. Every writer registers a durable PostgreSQL lease before
-  network I/O; deletion pins a fence, blocks new writers, and drains all leases
-  before deleting the remote subject, even if the Redis lease is lost.
+  application replicas. Every writer registers a durable PostgreSQL marker before
+  network I/O; deletion pins a fence, blocks new writers, and drains all confirmed
+  writes before deleting the remote subject, even if the Redis lease is lost.
 - Account deletion is strict: if enabled Mem0 cannot delete the remote subject,
   Voxen keeps the canonical account instead of orphaning derived personal data.
 - Set `VOXEN_MEMORY_PROVIDER=disabled` (or remove it) to stop all network calls.
-  No database migration or canonical-data rollback is required.
-- If a process crashes during a write, deletion stays fail-closed until its lease
-  expires. Retry account deletion to resume; do not remove the fence or secret
-  fingerprint manually before confirming that Mem0 has been cleaned.
+  This does not bypass cleanup: an account with a tracked remote subject cannot
+  be deleted while the provider is disabled.
+- A confirmed write removes its marker. A timeout, process crash, or any ambiguous
+  outcome retains both the marker and deletion fence **without automatic expiry**,
+  because the remote request may still complete late.
+- To reconcile an ambiguous outcome, stop new Voxen writes, verify that Mem0 has
+  no in-flight requests, delete the remote subject with the original secret, and
+  only then remove the operational markers. Never remove the fence, tracked
+  subject, or secret fingerprint before that confirmation.
 - Removing Mem0 storage does not remove transcripts, notes, Brain facts, chat
   history, or user-controlled preferences from Voxen.
 

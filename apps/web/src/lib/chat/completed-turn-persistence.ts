@@ -37,9 +37,9 @@ export function scheduleCompletedTurnMemoryShadow(input: {
   eligible: boolean;
 }): void {
   if (!input.eligible || !input.userMessageId || !memoryShadowWriteEnabled()) return;
-  // Reload the canonical row instead of trusting runtime input: HITL resumes
-  // use synthetic prompts and must never become user memory.
-  scheduleUserMemoryShadowWrite(input.userId, async () => {
+  // Reload the canonical row before registering an external writer. HITL
+  // resumes use synthetic prompts and must never become user memory.
+  void (async () => {
     const userMessage = await db.chatMessage.findFirst({
       where: {
         id: input.userMessageId ?? undefined,
@@ -50,14 +50,17 @@ export function scheduleCompletedTurnMemoryShadow(input: {
       select: { id: true, content: true },
     });
     if (!userMessage) return;
-    await recordCompletedTurnInMemoryShadow({
-      userId: input.userId,
-      conversationId: input.conversationId,
-      userMessageId: userMessage.id,
-      assistantMessageId: input.assistantMessageId,
-      userContent: userMessage.content,
-      assistantContent: input.assistantContent,
-      completedAt: new Date(),
+    scheduleUserMemoryShadowWrite(input.userId, async () => {
+      const result = await recordCompletedTurnInMemoryShadow({
+        userId: input.userId,
+        conversationId: input.conversationId,
+        userMessageId: userMessage.id,
+        assistantMessageId: input.assistantMessageId,
+        userContent: userMessage.content,
+        assistantContent: input.assistantContent,
+        completedAt: new Date(),
+      });
+      return result.status === 'written';
     });
-  });
+  })().catch(() => console.warn('[memory-shadow] canonical turn reload failed'));
 }
