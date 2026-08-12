@@ -81,15 +81,16 @@ _ALLOWED_ERROR_CODES = frozenset(
         "VIDEO_TOO_LONG",
         "VISION_MODEL_NOT_CONFIGURED",
         "WEB_TITLE_GENERATION_FAILED",
-        "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE",
         "WORKER_RUNTIME_FAILED",
         "X_ANALYSIS_EMPTY",
         "X_MODEL_NOT_CONFIGURED",
         "X_URL_INVALID",
+        "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE",
     }
 )
 _ALLOWED_ERROR_TYPES = frozenset(
     {
+        "AgeRestricted",
         "AudioValidationError",
         "BotoCoreError",
         "CancelledError",
@@ -103,7 +104,9 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "FetchBlockedError",
         "FileNotFoundError",
         "HTTPStatusError",
+        "IpBlocked",
         "NetworkError",
+        "NoTranscriptFound",
         "OpenrouterAuthError",
         "OpenrouterTransientError",
         "OSError",
@@ -113,14 +116,18 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "ProxyError",
         "ReadError",
         "ReadTimeout",
+        "RequestBlocked",
         "RobotsBlockedError",
         "RuntimeError",
         "TimeoutError",
+        "TranscriptsDisabled",
         "TransientError",
         "TypeError",
         "ValueError",
+        "VideoUnavailable",
         "WriteError",
         "WriteTimeout",
+        "YouTubeRequestFailed",
         "YoutubeDLError",
     }
 )

@@ -93,6 +93,7 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
         except NoTranscriptFound:
             fetched = _fetch_any_transcript(api, video_id)
             if fetched is None:
+                logger.info("youtube-transcript-api-empty", video_id=video_id, reason="no-track")
                 return None
 
         segments = tuple(
@@ -101,6 +102,7 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
             if snippet.text.strip()
         )
         if not segments:
+            logger.info("youtube-transcript-api-empty", video_id=video_id, reason="blank-cues")
             return None
 
         metadata = _fetch_youtube_oembed(video_id, proxy_url)
@@ -136,7 +138,11 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
         logger.info(
             "youtube-transcript-api-unavailable",
             video_id=video_id,
-            proxied=proxy_url is not None,
+            # Efetivo, não configurado: `_transcript_proxy_config` descarta
+            # esquema não suportado, então um `socks4://` em `yt_dlp_proxy_urls`
+            # sai direto pelo IP do servidor. Registrar a intenção aqui afirmaria
+            # `proxied=True` justamente no caso que explica o bloqueio.
+            proxied=_is_supported_proxy(proxy_url),
             **error_diagnostic(exc, "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE"),
         )
         return None

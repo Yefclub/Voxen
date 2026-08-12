@@ -339,10 +339,11 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "Upload manual resolve na hora. Para destravar o download em si, o admin "
-            "tem três opções, da mais eficaz à mais simples em IP de datacenter: "
-            "provider de PO token (YTDLP_BGUTIL_BASE_URL), proxy residencial nas "
-            "configurações da instância, ou cookies do YouTube nas integrações. "
+            "Upload manual resolve na hora. Você também pode salvar seus cookies do "
+            "YouTube nas integrações — isso vale só para os seus downloads. "
+            "Para destravar a instância inteira, o admin pode configurar o proxy "
+            "residencial (recomendado) ou, como mitigação frágil, um provider de PO "
+            "token próprio em YTDLP_BGUTIL_BASE_URL. "
             "Por que isso acontece em VPS e como configurar cada uma: "
             "docs/DEPLOY.md (Home-lab vs VPS)."
         )

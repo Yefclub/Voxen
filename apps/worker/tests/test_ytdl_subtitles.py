@@ -244,3 +244,39 @@ async def test_fetch_youtube_transcript_malformed_xml_falls_back(monkeypatch) ->
     result = await ytdl.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
 
     assert result is None
+
+
+async def test_fetch_youtube_transcript_reports_why_it_gave_up(monkeypatch, caplog) -> None:
+    """Bloqueio e ausência de legenda são ações diferentes para o operador.
+
+    O fallback é best-effort de propósito — o pipeline segue para o yt-dlp — mas
+    engolir sem registrar deixava os dois casos idênticos no log, e depois só
+    sobrava a falha do yt-dlp. O tipo da exceção é o que os separa, então ele
+    precisa sobreviver à normalização do `error_diagnostic`.
+    """
+    from youtube_transcript_api import IpBlocked
+
+    class BlockedApi:
+        def __init__(self, proxy_config=None) -> None:
+            self.proxy_config = proxy_config
+
+        def fetch(self, video_id, languages, preserve_formatting=False):
+            raise IpBlocked(video_id)
+
+    monkeypatch.setattr(ytdl, "YouTubeTranscriptApi", BlockedApi)
+    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        ytdl.logger, "info", lambda event, **kw: events.append((event, kw)), raising=False
+    )
+
+    assert await ytdl.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ") is None
+
+    event, fields = next(e for e in events if e[0] == "youtube-transcript-api-unavailable")
+    assert fields["error_code"] == "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE"
+    # Sem isto o log diria "Exception" e não separaria bloqueio de vídeo sem legenda.
+    assert fields["error_type"] == "IpBlocked"
+    # Sem proxy configurado, o egress saiu pelo IP do servidor — que é a
+    # explicação do bloqueio, então não pode aparecer como proxied.
+    assert fields["proxied"] is False
