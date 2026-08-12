@@ -36,6 +36,4 @@ recebe tools:
 
 Ao adicionar tool nova, manter o padrão: tools devem ser **simples, determinísticas, sem efeito colateral** (read-only sobre a Base de conhecimento). Decisão em `docs/DECISIONS.md` ADR-004.
 
-## Formato `.md` de transcrição
-
-Cada vídeo transcrito vira um `.md` com frontmatter YAML + corpo com timestamps clicáveis. Schema completo em `docs/TRANSCRIPT-FORMAT.md`. O texto puro + frontmatter são espelhados em Postgres pra FTS rápida.
+O formato `.md` que essas tools leem é gerado pelo worker — contrato em `docs/TRANSCRIPT-FORMAT.md`, regras em `apps/worker/CLAUDE.md`.

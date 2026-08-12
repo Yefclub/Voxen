@@ -41,7 +41,7 @@ Review `changelog/RELEASE.md`, `releases.json`, both package versions, and
 
 ### 3. Validate
 
-Run the full local validation required by `CLAUDE.md`, including the release
+Run the full pre-PR checklist from the `ship` skill (step 3), plus the release
 script tests. Confirm that the prepared version is stable SemVer and matches the
 selected label.
 

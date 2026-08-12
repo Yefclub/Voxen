@@ -43,7 +43,7 @@ Neste modo:
 
 Quando o usuário já sabe o que quer e pede para executar. Sinais: instruções diretas ("implementa X", "corrige Y", "cria PR"), issues do GitHub, tarefas definidas.
 
-Neste modo: seguir as regras de implementação incremental, checklist pre-PR, verificação visual, etc.
+Neste modo: seguir a implementação incremental (abaixo) e o fluxo Git — o detalhe operacional de cada etapa está na tabela de roteamento em "Workflow Git & PR".
 
 ### Transição entre modos
 
@@ -229,8 +229,7 @@ Decisões técnicas devem considerar: segurança self-hosted, soberania de dados
 
 ## CI/CD (GitHub Actions)
 
-O que cada workflow roda está em `.github/workflows/` (`ci.yml`, `security.yml`,
-`release.yml`) — ler de lá, não daqui.
+O que cada workflow roda está em `.github/workflows/` — ler de lá, não daqui.
 
 Branch protection em `dev` e `main` (não é visível no repo, é config do GitHub):
 
