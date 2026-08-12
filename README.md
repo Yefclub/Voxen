@@ -157,6 +157,7 @@ documentation tracks.
 | [Decisions](docs/en/DECISIONS.md)                 | Architecture Decision Records                          |
 | [Security](docs/en/SECURITY.md)                   | Threat model and technical controls                    |
 | [MCP clients](docs/en/MCP.md)                     | Client setup, compatibility, security, troubleshooting |
+| [Mem0 shadow evaluation](docs/en/MEM0-SHADOW.md)  | Optional conversational-memory experiment and decision |
 | [Transcript format](docs/en/TRANSCRIPT-FORMAT.md) | Canonical Markdown schema                              |
 | [Contributing](CONTRIBUTING.md)                   | Contribution requirements                              |
 | [Security policy](SECURITY.md)                    | Private vulnerability reporting                        |

@@ -16,6 +16,7 @@ import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { getAppTimezone, getSetting, setSettings } from '../lib/settings';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 import { storageDeletePrefix } from '../lib/storage';
+import { deleteUserMemoryShadow } from '../lib/memory/memory-provider';
 import { adminAuthenticationRoutes } from './admin-authentication';
 import { adminMcpRoutes } from './admin-mcp';
 import { adminResearchPolicyRoutes } from './admin-research-policy';
@@ -225,6 +226,10 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
     });
     // Storage is I/O; do not keep a PostgreSQL transaction open during
     // a limpeza. Revalidamos o estado protegido logo antes da exclusão local.
+    // Shadow memory is derived but external. Delete it first and fail strict so
+    // an unreachable provider cannot leave personal memories orphaned after the
+    // canonical user row disappears.
+    await deleteUserMemoryShadow(target.id);
     await storageDeletePrefix(`workspaces/${target.id}/`);
     await withAdminRosterLock(async (tx) => {
       const current = await tx.user.findUnique({ where: { id: target.id } });

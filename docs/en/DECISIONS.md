@@ -73,3 +73,18 @@ The original separate agent required a custom stream bridge. The current
 integrated agent emits the application's SSE event contract directly from the
 authenticated Hono route and persists text, reasoning, sources, and tool events
 as ordered message segments.
+
+## ADR-013: Mem0 only as an optional conversational-memory shadow
+
+Mem0 OSS addresses a narrower problem than Voxen's knowledge base: recovering a
+small set of recurring conversational preferences and project facts without
+replaying long histories. Voxen keeps transcripts, notes, evidence, temporal
+facts, user-controlled preferences, and Brain as canonical. Mem0 is a separately
+hosted, disabled-by-default provider whose inferred results are unverified and
+cannot enter prompts, MCP, citations, or the graph during the evaluation stage.
+
+Completed chat writes fail soft; account deletion fails strict when the provider
+is enabled. A live harness must pass quality, isolation, deletion, latency, token,
+and cost review before a new ADR may authorize controlled retrieval. Mem0's
+native Platform graph is not adopted because it boosts retrieval through
+untyped entity co-occurrence rather than exposing Voxen's grounded typed graph.
