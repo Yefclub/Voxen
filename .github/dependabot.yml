@@ -30,6 +30,46 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Sem grupos, cada patch de Radix ou AWS SDK gastava um slot sozinho, o
+    # limite de 5 enchia, e Dependabot parava de abrir qualquer coisa nova — foi
+    # assim que `ai` ficou 40 patches atrás (issue #769). Agrupar por família
+    # colapsa o ruído; `ai` fica DE FORA de propósito, porque é a dependência
+    # mais crítica e não pode esperar um irmão quebrado destravar o grupo.
+    #
+    # `update-types` restrito a minor/patch: major continua vindo em PR
+    # separada, que é o que ele precisa para ser revisado de verdade.
+    groups:
+      radix:
+        patterns:
+          - "@radix-ui/*"
+        update-types:
+          - minor
+          - patch
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+        update-types:
+          - minor
+          - patch
+      prisma:
+        # `prisma` e `@prisma/client` têm que subir na mesma versão. Separados,
+        # viravam duas PRs (#739 e #737) ocupando dois slots para uma decisão só.
+        patterns:
+          - "prisma"
+          - "@prisma/client"
+      types:
+        patterns:
+          - "@types/*"
+        update-types:
+          - minor
+          - patch
+      streamdown:
+        patterns:
+          - "streamdown"
+          - "@streamdown/*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: pip
     directory: /apps/worker
