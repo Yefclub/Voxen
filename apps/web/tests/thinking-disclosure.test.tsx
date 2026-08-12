@@ -3,8 +3,11 @@ import { describe, expect, test } from 'bun:test';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import {
   THINKING_AUTO_CLOSE_DELAY_MS,
+  initialThinkingDisclosure,
+  thinkingDisclosureReducer,
   useThinkingDisclosure,
   type DisclosureScheduler,
+  type ThinkingDisclosureEvent,
 } from '../src/client/lib/thinking-disclosure';
 import {
   applySegmentEvent,
@@ -191,6 +194,11 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
     const frames = turnFrames(agenticTurn());
     expect(frames.map(retiredTrigger)).toEqual([true, false, true, false, false]);
     expect(frames.map((frame) => frame.live)).toEqual([true, true, true, true, false]);
+    // A premissa do gatilho da spec 200: `answering` é MONÓTONO. É por isso que
+    // ele pode recolher sem trazer de volta a oscilação — ao contrário do
+    // gatilho aposentado acima, que alterna nos dois sentidos nesta mesma
+    // sequência.
+    expect(frames.map((frame) => frame.answering)).toEqual([false, true, true, true, true]);
   });
 
   test('o atraso do recolhimento é perceptível sem ser espera', () => {
@@ -343,22 +351,78 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
     await act(async () => renderer.unmount());
   });
 
-  test('mensagem do histórico monta recolhida e não agenda nada', async () => {
-    // Resposta inteira já presente (`answering: true`) mas turno morto: nada
-    // deve disparar, nem o recolhimento do que já está recolhido.
-    const clock = fakeClock();
-    const log: boolean[] = [];
-    const probe: Probe = { toggle: () => {} };
-    const turn = agenticTurn();
+  // ==========================================================================
+  // Contrato do reducer, sem React no meio.
+  //
+  // Os testes de ciclo de vida acima passam pelo `useEffect`, e ali `live` está
+  // nos dois arrays de dependência: `turn-started` e `answer-started` caem no
+  // mesmo lote, então o `expanded: true` intermediário nunca é comitado e o log
+  // de transições fica igual COM ou SEM a trava. Ou seja, aqueles testes
+  // provariam a ordem de declaração dos efeitos, não a garantia.
+  //
+  // A trava é a garantia que a spec 200 mais destaca. Sobre o reducer puro ela
+  // é verificável diretamente, e o teste falha se alguém tirar `answered` da
+  // guarda — inclusive se antes disso trocar a ordem dos efeitos.
+  // ==========================================================================
+  describe('reducer', () => {
+    const run = (
+      events: ThinkingDisclosureEvent[],
+      start = initialThinkingDisclosure({ live: true, answerStarted: false }),
+    ) => events.reduce(thinkingDisclosureReducer, start);
 
-    const renderer = await mount(turn.ended, clock.schedule, log, probe);
-    expect(log).toEqual([false]);
-    expect(clock.pending()).toBe(0);
+    test('a resposta recolhe e trava contra reabertura automática', () => {
+      const afterAnswer = run([{ type: 'answer-started' }]);
+      expect(afterAnswer.expanded).toBe(false);
+      expect(afterAnswer.answered).toBe(true);
 
-    act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
-    expect(log).toEqual([false]);
+      // O caso que o teste de ciclo de vida não alcança: `turn-started` DEPOIS
+      // da resposta — stream que cai e volta no mesmo turno.
+      const afterRecovery = thinkingDisclosureReducer(afterAnswer, { type: 'turn-started' });
+      expect(afterRecovery.expanded).toBe(false);
+      expect(afterRecovery).toBe(afterAnswer);
+    });
 
-    await act(async () => renderer.unmount());
+    test('mais ferramentas depois da resposta não reabrem', () => {
+      const state = run([
+        { type: 'answer-started' },
+        { type: 'turn-started' },
+        { type: 'turn-started' },
+      ]);
+      expect(state.expanded).toBe(false);
+    });
+
+    test('o controle manual vence a chegada da resposta', () => {
+      const opened = run([{ type: 'toggled' }, { type: 'toggled' }]);
+      expect(opened).toMatchObject({ expanded: true, manual: true });
+
+      const afterAnswer = thinkingDisclosureReducer(opened, { type: 'answer-started' });
+      expect(afterAnswer.expanded).toBe(true);
+      // Marca a trava mesmo sob controle manual: se o usuário devolver o bloco
+      // ao automático num turno futuro, o turno não pode parecer "sem resposta".
+      expect(afterAnswer.answered).toBe(true);
+    });
+
+    test('turno só com ferramentas fecha pelo auto-close, sem travar', () => {
+      const state = run([{ type: 'auto-close' }]);
+      expect(state).toMatchObject({ expanded: false, answered: false });
+    });
+
+    test('o estado inicial já nasce coerente com a resposta em curso', () => {
+      expect(initialThinkingDisclosure({ live: true, answerStarted: false })).toMatchObject({
+        expanded: true,
+        answered: false,
+      });
+      // Montar no meio de uma resposta: recolhido e travado, sem abrir para
+      // fechar no efeito seguinte.
+      expect(initialThinkingDisclosure({ live: true, answerStarted: true })).toMatchObject({
+        expanded: false,
+        answered: true,
+      });
+      expect(initialThinkingDisclosure({ live: false, answerStarted: true })).toMatchObject({
+        expanded: false,
+        answered: true,
+      });
+    });
   });
 
   test('clicar durante o turno tira o bloco do piloto automático', async () => {
@@ -426,12 +490,20 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
     // Mesmo caminho, sem o clique: aí a automação continua no comando, e é ela
     // que reabre — inclusive no turno restaurado depois de recarregar a página,
     // que monta com o stream ainda fechado.
+    //
+    // O quadro de montagem é o turno restaurado ANTES da resposta, e não
+    // `turn.ended`: o servidor grava `content` uma única vez, no fim do turno,
+    // e durante `RUNNING` o snapshot devolve string vazia. Turno vivo restaurado
+    // com a resposta inteira pronta não existe. Com a trava da spec 200 a
+    // diferença passou a importar — depois da resposta, a volta do stream não
+    // reabre mais (é o que o teste do reducer cobre).
     const clock = fakeClock();
     const log: boolean[] = [];
     const probe: Probe = { toggle: () => {} };
     const turn = agenticTurn();
+    const restored: TurnFrame = { ...turn.start, live: false };
 
-    const renderer = await mount(turn.ended, clock.schedule, log, probe);
+    const renderer = await mount(restored, clock.schedule, log, probe);
     expect(log).toEqual([false]);
 
     await step(renderer, turn.start, clock.schedule, log, probe);

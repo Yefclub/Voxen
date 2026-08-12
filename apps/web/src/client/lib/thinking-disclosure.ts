@@ -68,9 +68,19 @@ export type ThinkingDisclosureEvent =
  * Turno já vivo na montagem abre direto; mensagem do histórico monta recolhida
  * — e recolhida ela nunca agenda nada, senão cada mensagem antiga da conversa
  * armaria um timer para fechar o que já está fechado.
+ *
+ * Montar com a resposta já em curso nasce recolhido e já travado. Abrir para
+ * recolher no efeito seguinte seria um frame de pisca, e um `turn-started`
+ * posterior encontraria o turno "sem resposta" e reabriria.
  */
-export function initialThinkingDisclosure(live: boolean): ThinkingDisclosureState {
-  return { expanded: live, manual: false, answered: false };
+export function initialThinkingDisclosure({
+  live,
+  answerStarted,
+}: {
+  live: boolean;
+  answerStarted: boolean;
+}): ThinkingDisclosureState {
+  return { expanded: live && !answerStarted, manual: false, answered: answerStarted };
 }
 
 export function thinkingDisclosureReducer(
@@ -130,7 +140,11 @@ export function useThinkingDisclosure(
   answerStarted: boolean,
   schedule: DisclosureScheduler = timeoutScheduler,
 ): { expanded: boolean; toggle: () => void } {
-  const [state, dispatch] = useReducer(thinkingDisclosureReducer, live, initialThinkingDisclosure);
+  const [state, dispatch] = useReducer(
+    thinkingDisclosureReducer,
+    { live, answerStarted },
+    initialThinkingDisclosure,
+  );
   const { expanded, manual } = state;
 
   useEffect(() => {
