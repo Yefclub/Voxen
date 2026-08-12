@@ -1164,4 +1164,80 @@ describeIfDb('brain indexer', () => {
     ).toBeNull();
     expect(await db.brainEdge.count({ where: { userId: user.id, method: 'keyword' } })).toBe(0);
   });
+
+  it('removes grounded-only knowledge from default navigation while its source is archived', async () => {
+    await signUp('grounded-lifecycle@voxen.local', 'senha-super-segura-123', 'Grounded Lifecycle');
+    const signin = await signIn('grounded-lifecycle@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'grounded-lifecycle@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/grounded-lifecycle',
+        title: 'Grounded lifecycle',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/grounded-lifecycle.md`,
+        plainText: 'Alex trabalha na Acme.',
+        frontmatter: {},
+      },
+    });
+    const groundedNodes = await Promise.all(
+      ['alex', 'acme'].map((key) =>
+        db.brainNode.create({
+          data: {
+            userId: user.id,
+            key: `ENTITY:person:${key}`,
+            type: 'ENTITY',
+            label: key,
+            metadata: { method: 'llm-grounded' },
+          },
+        }),
+      ),
+    );
+    const alex = groundedNodes[0]!;
+    const acme = groundedNodes[1]!;
+    const edge = await db.brainEdge.create({
+      data: {
+        userId: user.id,
+        fromNodeId: alex.id,
+        toNodeId: acme.id,
+        kind: 'RELATED_TO',
+        method: 'llm-grounded-relation',
+      },
+    });
+    await db.brainSource.create({
+      data: {
+        userId: user.id,
+        edgeId: edge.id,
+        sourceType: 'TRANSCRIPT',
+        sourceId: transcript.id,
+        evidenceKey: `grounded-lifecycle:${transcript.id}`,
+        excerpt: 'Alex trabalha na Acme.',
+      },
+    });
+
+    for (const status of ['ARCHIVED', 'ACTIVE'] as const) {
+      const response = await app.fetch(
+        new Request(`http://localhost/api/transcripts/${transcript.id}/lifecycle`, {
+          method: 'PATCH',
+          headers: { cookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ status }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect((await db.brainEdge.findUniqueOrThrow({ where: { id: edge.id } })).status).toBe(
+        status,
+      );
+      expect(
+        (await db.brainNode.findMany({ where: { id: { in: [alex.id, acme.id] } } })).map(
+          (node) => node.status,
+        ),
+      ).toEqual([status, status]);
+    }
+  });
 });

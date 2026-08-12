@@ -178,6 +178,89 @@ def test_parse_grounded_relation_keeps_valid_iso_interval_and_rejects_reversed_o
     assert relations[0].valid_to == "2024-07-01T00:00:00Z"
 
 
+@pytest.mark.parametrize("invalid_value", ["2026-08-12", "not-a-date", ""])
+def test_parse_grounded_relation_rejects_a_supplied_invalid_timestamp(
+    invalid_value: str,
+) -> None:
+    source = "Ana começou na Acme durante o projeto Atlas."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"id": "ana", "label": "Ana", "excerpt": "Ana começou na Acme"},
+                {"id": "acme", "label": "Acme", "excerpt": "Ana começou na Acme"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "ana",
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object_id": "acme",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana começou na Acme durante o projeto Atlas",
+                    "valid_from": invalid_value,
+                }
+            ],
+        }
+    )
+
+    assert parse_grounded_relations(raw, source, parse_grounded_payload(raw, source)) == []
+
+
+def test_parse_grounded_relations_keeps_cooccurring_homonyms_distinct_by_local_id() -> None:
+    source = "Alex Silva da Acme apresentou o produto. Alex Silva da Beta revisou a pesquisa."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "id": "alex-acme",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                },
+                {
+                    "id": "alex-beta",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Beta revisou a pesquisa",
+                },
+                {"id": "acme", "label": "Acme", "excerpt": "Alex Silva da Acme"},
+                {"id": "beta", "label": "Beta", "excerpt": "Alex Silva da Beta"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "alex-acme",
+                    "subject": "Alex Silva",
+                    "predicate": "works_at",
+                    "object_id": "acme",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                },
+                {
+                    "subject_id": "alex-beta",
+                    "subject": "Alex Silva",
+                    "predicate": "works_at",
+                    "object_id": "beta",
+                    "object": "Beta",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Alex Silva da Beta revisou a pesquisa",
+                },
+            ],
+        }
+    )
+
+    items = parse_grounded_payload(raw, source)
+    relations = parse_grounded_relations(raw, source, items)
+
+    assert [item.local_ref for item in items if item.label == "Alex Silva"] == [
+        "alex-acme",
+        "alex-beta",
+    ]
+    assert [(item.subject_ref, item.object_ref) for item in relations] == [
+        ("alex-acme", "acme"),
+        ("alex-beta", "beta"),
+    ]
+
+
 def test_parse_grounded_relations_preserves_distinct_temporal_episodes() -> None:
     source = (
         "Ana trabalhou na Acme em 2020 e retornou para a Acme em 2024. "

@@ -33,7 +33,10 @@ Graphiti is a design reference, not a runtime dependency:
   candidate may be reused; ambiguous candidates stay separate and can be joined
   by reversible `SAME_AS` evidence.
 - Temporal extraction accepts only ISO timestamps returned beside a literal
-  grounded excerpt. Missing time remains `null`; the system never invents a date.
+  grounded excerpt. Missing time remains `null`; a supplied malformed time
+  rejects the relation instead of turning it into an undated fact.
+- Entities and relations use extraction-local references, so homonyms that
+  coexist in one segment retain distinct identities and evidence paths.
 - Current and point-in-time retrieval return evidence and uncertainty. Overlapping
   facts are shown together rather than silently choosing a winner.
 
@@ -58,8 +61,8 @@ Graphiti is a design reference, not a runtime dependency:
   idempotent `BrainFact` and attach the segment evidence to it.
 - When a grounded entity yields literal aliases, the system shall record each
   alias with its source and extraction confidence.
-- When a segment is recompiled, the system shall remove only orphaned facts and
-  aliases derived exclusively from that segment/source.
+- When a segment is recompiled, the system shall invalidate superseded facts,
+  aliases, and sources while preserving their immutable audit rows.
 - When an entity alias resolves to exactly one compatible high-confidence
   candidate, the system may reuse that node without rewriting its identity.
 - When alias resolution is ambiguous, the system shall preserve separate nodes.
@@ -74,6 +77,9 @@ Graphiti is a design reference, not a runtime dependency:
   undated and shall expose its observation time.
 - While source content is archived or trashed, its facts and aliases shall not be
   used by default agent/MCP retrieval.
+- While a grounded edge has no current evidence from an active transcript, the
+  default navigable graph shall archive that edge and any grounded-only orphan
+  nodes; restoring an active source shall reactivate supported topology.
 
 ### Optional
 

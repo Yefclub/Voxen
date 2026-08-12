@@ -4,6 +4,7 @@ import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { reindexTranscriptBrain } from '../lib/brain';
 import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
+import { reconcileGroundedBrainLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
@@ -53,7 +54,6 @@ import {
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
-
 type Vars = { userId: string };
 
 export const transcriptsRoutes = new Hono<{ Variables: Vars }>();
@@ -1100,6 +1100,7 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
     if (status !== 'ACTIVE') {
       await cancelTranscriptEnrichmentsForInactiveParent(tx, userId, id, now);
     }
+    await reconcileGroundedBrainLifecycle(userId, tx);
     return updated;
   });
   await reindexTranscriptBrain(userId, id);

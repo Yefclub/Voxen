@@ -63,3 +63,48 @@ ALTER TABLE "BrainEntityAlias" ADD CONSTRAINT "BrainEntityAlias_entityNodeId_fke
   FOREIGN KEY ("entityNodeId") REFERENCES "BrainNode"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "BrainSource" ADD CONSTRAINT "BrainSource_factId_fkey"
   FOREIGN KEY ("factId") REFERENCES "BrainFact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Bring grounded graph navigation in line with the lifecycle of its source
+-- transcripts for installations that already contain archived knowledge.
+WITH desired AS (
+  SELECT edge.id,
+    CASE WHEN EXISTS (
+      SELECT 1
+      FROM "BrainSource" source
+      JOIN "Transcript" transcript
+        ON source."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+       AND transcript.id = source."sourceId"
+       AND transcript."userId" = source."userId"
+       AND transcript.status = 'ACTIVE'::"ContentStatus"
+      WHERE source."edgeId" = edge.id
+        AND source."userId" = edge."userId"
+        AND source."invalidatedAt" IS NULL
+    ) THEN 'ACTIVE'::"ContentStatus" ELSE 'ARCHIVED'::"ContentStatus" END AS status
+  FROM "BrainEdge" edge
+  WHERE edge.method LIKE 'llm-grounded%'
+    AND edge.status <> 'TRASH'::"ContentStatus"
+)
+UPDATE "BrainEdge" edge
+SET status = desired.status, "updatedAt" = CURRENT_TIMESTAMP
+FROM desired
+WHERE edge.id = desired.id
+  AND edge.status IS DISTINCT FROM desired.status;
+
+WITH desired AS (
+  SELECT node.id,
+    CASE WHEN EXISTS (
+      SELECT 1 FROM "BrainEdge" edge
+      WHERE edge."userId" = node."userId"
+        AND edge.status = 'ACTIVE'::"ContentStatus"
+        AND (edge."fromNodeId" = node.id OR edge."toNodeId" = node.id)
+    ) THEN 'ACTIVE'::"ContentStatus" ELSE 'ARCHIVED'::"ContentStatus" END AS status
+  FROM "BrainNode" node
+  WHERE node.metadata->>'method' = 'llm-grounded'
+    AND node."sourceType" IS NULL
+    AND node.status <> 'TRASH'::"ContentStatus"
+)
+UPDATE "BrainNode" node
+SET status = desired.status, "updatedAt" = CURRENT_TIMESTAMP
+FROM desired
+WHERE node.id = desired.id
+  AND node.status IS DISTINCT FROM desired.status;

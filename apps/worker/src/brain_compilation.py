@@ -162,14 +162,15 @@ async def extract_grounded_brain(
                         "slug": brain_extract.slugify_label(item.label),
                         "entity_type": item.entity_type,
                         "aliases": list(item.aliases),
+                        "local_ref": item.local_ref,
                     }
                     for item in result.items
                 ]
                 relations = [
                     {
-                        "subject_slug": brain_extract.slugify_label(relation.subject),
+                        "subject_ref": relation.subject_ref,
                         "predicate": relation.predicate,
-                        "object_slug": brain_extract.slugify_label(relation.object),
+                        "object_ref": relation.object_ref,
                         "kind": relation.kind,
                         "excerpt": relation.excerpt,
                         "confidence": relation.confidence,

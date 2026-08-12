@@ -1358,6 +1358,7 @@ async def upsert_grounded_brain_items(
                 excerpt = str(item.get("excerpt") or "").strip()
                 conf = float(item.get("confidence") or 0.7)
                 slug = str(item.get("slug") or "")
+                local_ref = str(item.get("local_ref") or slug)
                 entity_type = normalize_entity_type(str(item.get("entity_type") or "OTHER"))
                 aliases = tuple(
                     str(alias).strip()
@@ -1398,7 +1399,7 @@ async def upsert_grounded_brain_items(
                         confidence=conf,
                         evidence_version=evidence_version,
                     )
-                concepts[slug] = (concept_id, kind)
+                concepts[local_ref] = (concept_id, kind)
                 edge_kind = "SUPPORTS" if kind == "claim" else "MENTIONS"
                 edge_row = await conn.fetchrow(
                     """
@@ -1452,10 +1453,10 @@ async def upsert_grounded_brain_items(
                 created += 1
                 _require_grounded_compilation_lease(lease)
             for relation in relations:
-                subject_slug = str(relation.get("subject_slug") or "")
-                object_slug = str(relation.get("object_slug") or "")
-                subject = concepts.get(subject_slug)
-                obj = concepts.get(object_slug)
+                subject_ref = str(relation.get("subject_ref") or relation.get("subject_slug") or "")
+                object_ref = str(relation.get("object_ref") or relation.get("object_slug") or "")
+                subject = concepts.get(subject_ref)
+                obj = concepts.get(object_ref)
                 relation_kind = str(relation.get("kind") or "")
                 excerpt = str(relation.get("excerpt") or "").strip()
                 if (
@@ -1547,7 +1548,7 @@ async def upsert_grounded_brain_items(
                     relation_evidence_key = _grounded_evidence_key(
                         transcript_id,
                         segment["key"],
-                        f"relation:{subject_slug}:{relation_kind}:{object_slug}",
+                        f"relation:{subject_ref}:{relation_kind}:{object_ref}:fact:{fact_id}",
                         excerpt,
                         evidence_version,
                     )
