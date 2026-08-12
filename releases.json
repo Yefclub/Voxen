@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786492801",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Weighted graph importance shaped by durable interests",
+    "body": "The knowledge graph now distinguishes raw connection count from weighted\nimportance. It calculates weighted degree, structural PageRank, and a separate\nPersonalized PageRank based only on the signed-in user's positive durable\ninterest projections.\n\nGraph hubs now prioritize stronger, better-supported relationships instead of\ntreating every edge equally. When no personal seed is available in the visible\ngraph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,\nprojection watermark, seed counts, and snapshot truncation remain inspectable\nwithout exposing another user's interests.",
+    "pr": 754,
+    "author": "Kalyel",
+    "date": "2026-08-11T20:59:48-03:00",
+    "translations": {
+      "en": {
+        "title": "Weighted graph importance shaped by durable interests",
+        "body": "The knowledge graph now distinguishes raw connection count from weighted\nimportance. It calculates weighted degree, structural PageRank, and a separate\nPersonalized PageRank based only on the signed-in user's positive durable\ninterest projections.\n\nGraph hubs now prioritize stronger, better-supported relationships instead of\ntreating every edge equally. When no personal seed is available in the visible\ngraph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,\nprojection watermark, seed counts, and snapshot truncation remain inspectable\nwithout exposing another user's interests."
+      },
+      "pt-BR": {
+        "title": "Importância ponderada do grafo guiada por interesses duráveis",
+        "body": "O grafo de conhecimento agora diferencia a quantidade bruta de conexões da\nimportância ponderada. Ele calcula grau ponderado, PageRank estrutural e um\nPersonalized PageRank separado, baseado apenas nas projeções positivas de\ninteresse durável do usuário autenticado.\n\nOs hubs do grafo passam a priorizar relações mais fortes e bem fundamentadas,\nem vez de tratar todas as arestas como equivalentes. Quando não há uma semente\npessoal no recorte visível, a Voxen usa um fallback uniforme explícito. Versão\ndo algoritmo, convergência, watermark da projeção, quantidade de sementes e\ntruncamento do recorte continuam inspecionáveis sem expor interesses de outro\nusuário."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/754"
+  },
+  {
     "version": "0.14.5-dev.1786487522",
     "channel": "dev",
     "type": "feat",

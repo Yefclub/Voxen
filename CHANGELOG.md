@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.14.5-dev.1786492801 — 2026-08-11 · Dev
+
+### ✨ Weighted graph importance shaped by durable interests
+
+The knowledge graph now distinguishes raw connection count from weighted
+importance. It calculates weighted degree, structural PageRank, and a separate
+Personalized PageRank based only on the signed-in user's positive durable
+interest projections.
+
+Graph hubs now prioritize stronger, better-supported relationships instead of
+treating every edge equally. When no personal seed is available in the visible
+graph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,
+projection watermark, seed counts, and snapshot truncation remain inspectable
+without exposing another user's interests.
+
 ## v0.14.5-dev.1786487522 — 2026-08-11 · Dev
 
 ### ✨ Knowledge graph communities now reveal cohesive themes
