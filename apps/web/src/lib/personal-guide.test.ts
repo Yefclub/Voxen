@@ -215,6 +215,39 @@ describe('explainable personal Guide', () => {
     });
   });
 
+  test('keeps every trend class visible and omits unsupported medium-only signals', () => {
+    const emerging = Array.from({ length: 25 }, (_, index) =>
+      item({ key: `emerging-${index}`, score: 0.8 - index * 0.01 }),
+    );
+    const guide = buildPersonalGuide({
+      projections: [
+        snapshot('SHORT', [...emerging, item({ key: 'steady-visible', score: 0.49 })]),
+        snapshot('MEDIUM', [
+          item({ key: 'steady-visible', score: 0.5 }),
+          item({ key: 'medium-only', score: 0.7 }),
+        ]),
+        snapshot('LONG', [
+          item({ key: 'steady-visible', score: 0.48 }),
+          item({ key: 'cooling-visible', score: 0.75 }),
+        ]),
+      ],
+      graph: { nodes: graphNodes, edges: graphEdges, truncated: false },
+      centrality,
+      communities: [],
+      sourcesByTranscriptId: sources,
+      now,
+    });
+
+    expect(guide.trends.filter((trend) => trend.classification === 'EMERGING')).toHaveLength(8);
+    expect(guide.trends).toContainEqual(
+      expect.objectContaining({ key: 'steady-visible', classification: 'STEADY' }),
+    );
+    expect(guide.trends).toContainEqual(
+      expect.objectContaining({ key: 'cooling-visible', classification: 'COOLING' }),
+    );
+    expect(guide.trends.some((trend) => trend.key === 'medium-only')).toBe(false);
+  });
+
   test('ranks personalized sources and exposes inspectable evidence', () => {
     const guide = buildPersonalGuide({
       projections: [

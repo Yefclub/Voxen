@@ -41,6 +41,7 @@ new preferences and does not persist recommendations as knowledge facts.
 - The system shall provide at least one inspectable reason for every recommendation.
 - The system shall link evidence and recommendations only to active, user-owned sources.
 - The system shall expose algorithm versions, projection watermark, graph truncation, and generation time.
+- The system shall prevent browsers and shared sessions from caching a Guide response across account changes.
 - The system shall provide Portuguese and English interface copy.
 
 ### Event-driven
@@ -54,6 +55,7 @@ new preferences and does not persist recommendations as knowledge facts.
 ### State-driven
 
 - While explicit and inferred evidence coexist, the system shall show both counts without presenting observation as declared preference.
+- While a score is negative, the system shall preserve its sign in the trend evidence instead of rendering it as zero.
 - While the graph snapshot is truncated, the system shall disclose that rankings describe only the returned snapshot.
 - While the Guide is loading, the system shall preserve the application shell and show a bounded loading state.
 - While the user has insufficient evidence, the system shall show an onboarding state instead of fabricated trends.
@@ -70,6 +72,9 @@ new preferences and does not persist recommendations as knowledge facts.
 - If graph ranking or community detection cannot produce a result, then the system shall return a valid partial Guide rather than invent evidence.
 - If scores are invalid or non-finite, then the system shall clamp or discard them before ranking or rendering.
 - If two items have equal scores, then the system shall use stable labels and identifiers as deterministic tie-breakers.
+- If one trend class has more candidates than another, then the system shall cap each class independently so one class cannot hide the others.
+- If a feature has positive support in only the medium horizon, then the system shall not describe it as steady.
+- If authorized evidence exceeds one database batch, then the system shall hydrate subsequent batches without silently dropping source links.
 
 ## Acceptance criteria
 
@@ -78,6 +83,7 @@ new preferences and does not persist recommendations as knowledge facts.
 - [x] Each trend exposes short-, medium-, and long-term scores plus explicit and observed evidence.
 - [x] Recommended sources use personalized graph ranking when valid seeds exist.
 - [x] Every recommendation includes inspectable interest, community, or structural evidence.
+- [x] Recommendation details expose ranking scores, lift or cohesion, and links to authorized supporting sources.
 - [x] Evidence links resolve only to active transcripts owned by the current user.
 - [x] Empty, partial, uniform-fallback, and truncated-graph states are explicit and accessible.
 - [x] The API returns versioned deterministic metadata without calling an LLM.

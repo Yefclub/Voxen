@@ -6,6 +6,7 @@ import type { GraphCentralityResult } from '../shared/graph-centrality';
 export const PERSONAL_GUIDE_ALGORITHM_VERSION = 'personal-guide-v1';
 export const PERSONAL_GUIDE_TREND_DELTA = 0.12;
 export const PERSONAL_GUIDE_MIN_SCORE = 0.03;
+export const PERSONAL_GUIDE_TRENDS_PER_CLASSIFICATION = 8;
 export const PERSONAL_GUIDE_RECOMMENDATION_LIMIT = 12;
 
 export type PersonalGuideTrendClassification = 'EMERGING' | 'STEADY' | 'COOLING';
@@ -195,11 +196,12 @@ function buildTrends(
     STEADY: 1,
     COOLING: 2,
   };
-  return [...aggregates.values()]
+  const trends = [...aggregates.values()]
     .filter((aggregate) => Math.max(...Object.values(aggregate.scores)) >= PERSONAL_GUIDE_MIN_SCORE)
     .filter((aggregate) => Math.max(...Object.values(aggregate.scores)) > 0)
-    .map((aggregate): PersonalGuideTrend => {
+    .map((aggregate): PersonalGuideTrend | null => {
       const classification = classifyTrend(aggregate.scores);
+      if (!classification) return null;
       return {
         dimension: aggregate.dimension,
         key: aggregate.key,
@@ -220,17 +222,23 @@ function buildTrends(
         lastEventAt: aggregate.lastEventAt,
       };
     })
+    .filter((trend): trend is PersonalGuideTrend => trend !== null)
     .sort(
       (left, right) =>
         classificationOrder[left.classification] - classificationOrder[right.classification] ||
         right.score - left.score ||
         left.label.localeCompare(right.label) ||
         left.key.localeCompare(right.key),
-    )
-    .slice(0, 24);
+    );
+
+  return (['EMERGING', 'STEADY', 'COOLING'] as const).flatMap((classification) =>
+    trends
+      .filter((trend) => trend.classification === classification)
+      .slice(0, PERSONAL_GUIDE_TRENDS_PER_CLASSIFICATION),
+  );
 }
 
-function classifyTrend(scores: TrendAggregate['scores']): PersonalGuideTrendClassification {
+function classifyTrend(scores: TrendAggregate['scores']): PersonalGuideTrendClassification | null {
   if (scores.short > 0 && scores.short - scores.long >= PERSONAL_GUIDE_TREND_DELTA) {
     return 'EMERGING';
   }
@@ -240,7 +248,10 @@ function classifyTrend(scores: TrendAggregate['scores']): PersonalGuideTrendClas
   ) {
     return 'COOLING';
   }
-  return 'STEADY';
+  const supportedHorizons = Object.values(scores).filter(
+    (score) => score >= PERSONAL_GUIDE_MIN_SCORE,
+  ).length;
+  return supportedHorizons >= 2 ? 'STEADY' : null;
 }
 
 function buildRecommendations(input: {

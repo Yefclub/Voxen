@@ -12,16 +12,17 @@ import {
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
+import { GuideRecommendationEvidence } from '../components/guide/guide-recommendation-evidence';
 import { FetchError } from '../components/ui/fetch-error';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { Spinner } from '../components/ui/spinner';
 import { formatRelative } from '../lib/format';
 import { useFetch } from '../lib/hooks';
 import { useI18n, type I18nKey } from '../lib/i18n';
+import { formatGuidePercent, formatGuideSignedPercent } from '../lib/personal-guide-format';
 import { cn } from '../lib/utils';
 import type {
   PersonalGuide,
-  PersonalGuideReason,
   PersonalGuideTrend,
   PersonalGuideTrendClassification,
 } from '../../lib/personal-guide';
@@ -56,6 +57,9 @@ export function GuiaPage(): React.ReactElement {
   const { locale, t } = useI18n();
   const { data, loading, error, refresh } = useFetch<PersonalGuide>('/api/guide');
   const empty = Boolean(data && data.trends.length === 0 && data.recommendations.length === 0);
+  const evidenceSources = new Map(
+    data?.evidenceSources.map((source) => [source.transcriptId, source]) ?? [],
+  );
 
   return (
     <PageShell width="wide">
@@ -133,9 +137,7 @@ export function GuiaPage(): React.ReactElement {
                       trends={data.trends.filter(
                         (trend) => trend.classification === group.classification,
                       )}
-                      evidenceSources={
-                        new Map(data.evidenceSources.map((source) => [source.transcriptId, source]))
-                      }
+                      evidenceSources={evidenceSources}
                     />
                   ))}
                 </div>
@@ -175,14 +177,10 @@ export function GuiaPage(): React.ReactElement {
                             {recommendation.description}
                           </p>
                         )}
-                        <div className="mt-4 space-y-2">
-                          {recommendation.reasons.map((reason) => (
-                            <ReasonRow
-                              key={`${recommendation.transcriptId}:${reason.kind}`}
-                              reason={reason}
-                            />
-                          ))}
-                        </div>
+                        <GuideRecommendationEvidence
+                          recommendation={recommendation}
+                          evidenceSources={evidenceSources}
+                        />
                         <div className="mt-auto pt-5">
                           <Button asChild variant="outline" size="sm">
                             <Link to={`/transcricoes/${recommendation.transcriptId}`}>
@@ -279,7 +277,7 @@ function TrendDetails({
       <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{trend.label}</span>
         <span className="text-xs tabular-nums text-[var(--color-app-muted)]">
-          {formatPercent(trend.score)}
+          {formatGuidePercent(trend.score)}
         </span>
         <ArrowRight className="h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform group-open:rotate-90" />
       </summary>
@@ -330,16 +328,19 @@ function TrendDetails({
 }
 
 function HorizonBar({ label, value }: { label: string; value: number }): React.ReactElement {
-  const normalized = Math.max(0, Math.min(1, value));
+  const normalized = Math.max(0, Math.min(1, Math.abs(value)));
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-[var(--color-app-muted)]">
         <span>{label}</span>
-        <span className="tabular-nums">{formatPercent(value)}</span>
+        <span className="tabular-nums">{formatGuideSignedPercent(value)}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-app-border)]">
         <div
-          className="h-full rounded-full bg-[var(--color-accent-primary)]"
+          className={cn(
+            'h-full rounded-full',
+            value < 0 ? 'bg-amber-400' : 'bg-[var(--color-accent-primary)]',
+          )}
           style={{ width: `${normalized * 100}%` }}
         />
       </div>
@@ -350,31 +351,7 @@ function HorizonBar({ label, value }: { label: string; value: number }): React.R
 function ScoreRing({ score }: { score: number }): React.ReactElement {
   return (
     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10 text-xs font-semibold tabular-nums text-violet-300">
-      {formatPercent(score)}
-    </div>
-  );
-}
-
-function ReasonRow({ reason }: { reason: PersonalGuideReason }): React.ReactElement {
-  const { t } = useI18n();
-  const label =
-    reason.kind === 'INTEREST'
-      ? t('guide.reason.interest', { label: reason.label })
-      : reason.kind === 'COMMUNITY'
-        ? t('guide.reason.community', { label: reason.community?.label ?? reason.label })
-        : reason.kind === 'PERSONALIZATION'
-          ? t('guide.reason.personalization')
-          : t('guide.reason.structural');
-  return (
-    <div className="flex items-start gap-2 text-xs leading-relaxed text-[var(--color-app-subtle)]">
-      {reason.kind === 'STRUCTURAL' ? (
-        <Network className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300" />
-      ) : reason.kind === 'PERSONALIZATION' ? (
-        <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300" />
-      ) : (
-        <LineChart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" />
-      )}
-      <span>{label}</span>
+      {formatGuidePercent(score)}
     </div>
   );
 }
@@ -395,9 +372,4 @@ function GuideEmptyState(): React.ReactElement {
       </Button>
     </Card>
   );
-}
-
-function formatPercent(value: number): string {
-  const finite = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-  return `${Math.round(finite * 100)}%`;
 }

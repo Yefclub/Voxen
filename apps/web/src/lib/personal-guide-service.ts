@@ -6,6 +6,8 @@ import { buildPersonalGuide, type PersonalGuide, type PersonalGuideSource } from
 import { getPersonalInterestProjections } from './personal-interest-projections';
 import { calculateGraphCentrality } from '../shared/graph-ranking';
 
+const PERSONAL_GUIDE_SOURCE_BATCH_SIZE = 500;
+
 export async function loadPersonalGuide(userId: string, now = new Date()): Promise<PersonalGuide> {
   const [projections, graph] = await Promise.all([
     getPersonalInterestProjections({ userId, now }),
@@ -47,32 +49,37 @@ export async function loadPersonalGuideSources(
   userId: string,
   transcriptIds: string[],
 ): Promise<Map<string, PersonalGuideSource>> {
-  const uniqueIds = [...new Set(transcriptIds)].filter(Boolean).slice(0, 550);
+  const uniqueIds = [...new Set(transcriptIds)].filter(Boolean);
   if (uniqueIds.length === 0) return new Map();
-  const transcripts = await db.transcript.findMany({
-    where: { id: { in: uniqueIds }, userId, status: 'ACTIVE' },
-    select: {
-      id: true,
-      title: true,
-      summaryMd: true,
-      source: true,
-      thumbnailUrl: true,
-      createdAt: true,
-    },
-  });
-  return new Map(
-    transcripts.map((transcript) => [
-      transcript.id,
-      {
+  const sources: PersonalGuideSource[] = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += PERSONAL_GUIDE_SOURCE_BATCH_SIZE) {
+    const batch = await db.transcript.findMany({
+      where: {
+        id: { in: uniqueIds.slice(offset, offset + PERSONAL_GUIDE_SOURCE_BATCH_SIZE) },
+        userId,
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        title: true,
+        summaryMd: true,
+        source: true,
+        thumbnailUrl: true,
+        createdAt: true,
+      },
+    });
+    sources.push(
+      ...batch.map((transcript) => ({
         transcriptId: transcript.id,
         title: transcript.title,
         description: conciseDescription(transcript.summaryMd),
         source: transcript.source,
         thumbnailUrl: transcript.thumbnailUrl,
         createdAt: transcript.createdAt.toISOString(),
-      },
-    ]),
-  );
+      })),
+    );
+  }
+  return new Map(sources.map((source) => [source.transcriptId, source]));
 }
 
 function conciseDescription(markdown: string | null): string | null {

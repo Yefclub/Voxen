@@ -119,6 +119,13 @@ describeIfDatabase('personal Guide source isolation', () => {
     });
   });
 
+  test('does not discard authorized evidence after the first database batch', async () => {
+    const nonexistentIds = Array.from({ length: 550 }, (_, index) => `missing-${index}`);
+    const sources = await loadPersonalGuideSources(ownerId, [...nonexistentIds, ownerTranscriptId]);
+
+    expect([...sources.keys()]).toEqual([ownerTranscriptId]);
+  });
+
   test('builds a personalized end-to-end Guide from owned events and graph records', async () => {
     const guide = await loadPersonalGuide(ownerId, new Date());
 

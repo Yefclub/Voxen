@@ -21,6 +21,6 @@ guideRoutes.use('*', async (c, next) => {
 
 guideRoutes.get('/', async (c) => {
   const guide = await loadPersonalGuide(c.get('userId'));
-  c.header('Cache-Control', 'private, max-age=30');
+  c.header('Cache-Control', 'no-store');
   return c.json(guide);
 });
