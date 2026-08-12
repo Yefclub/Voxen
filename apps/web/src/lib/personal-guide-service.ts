@@ -1,12 +1,10 @@
 import { db } from './db';
+import { calculateActivePersonalInterestProjections } from './active-personal-interest-projections';
 import { detectGraphCommunities } from './graph-community-detection';
 import { buildGraphPersonalization } from './graph-personalization';
 import { readGraphSlice } from './graph-read-model';
 import { buildPersonalGuide, type PersonalGuide, type PersonalGuideSource } from './personal-guide';
-import {
-  getPersonalInterestProjections,
-  type InterestProjectionSnapshot,
-} from './personal-interest-projections';
+import type { InterestProjectionSnapshot } from './personal-interest-projections';
 import { calculateGraphCentrality } from '../shared/graph-ranking';
 
 const PERSONAL_GUIDE_SOURCE_BATCH_SIZE = 500;
@@ -26,18 +24,9 @@ export async function loadPersonalGuideBundle(
   now = new Date(),
 ): Promise<PersonalGuideBundle> {
   const [projections, graph] = await Promise.all([
-    getPersonalInterestProjections({ userId, now }),
+    calculateActivePersonalInterestProjections(userId, now),
     readGraphSlice({ userId, view: 'full', hops: 1 }),
   ]);
-  const personalization = buildGraphPersonalization(projections);
-  const centrality = calculateGraphCentrality({
-    nodes: graph.nodes,
-    edges: graph.edges,
-    personalSeeds: personalization.seeds,
-    personalization,
-    snapshotTruncated: graph.truncated,
-  });
-  const communities = detectGraphCommunities(graph.nodes, graph.edges).communities;
   const requestedTranscriptIds = new Set(
     graph.nodes
       .map((node) => (node.sourceType === 'TRANSCRIPT' ? node.sourceId : null))
@@ -51,6 +40,15 @@ export async function loadPersonalGuideBundle(
     }
   }
   const sourcesByTranscriptId = await loadPersonalGuideSources(userId, [...requestedTranscriptIds]);
+  const personalization = buildGraphPersonalization(projections);
+  const centrality = calculateGraphCentrality({
+    nodes: graph.nodes,
+    edges: graph.edges,
+    personalSeeds: personalization.seeds,
+    personalization,
+    snapshotTruncated: graph.truncated,
+  });
+  const communities = detectGraphCommunities(graph.nodes, graph.edges).communities;
   return {
     guide: buildPersonalGuide({
       projections,

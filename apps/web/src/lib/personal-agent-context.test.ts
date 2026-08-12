@@ -8,6 +8,7 @@ import {
   PERSONAL_AGENT_CONTEXT_MAX_CHARS,
   buildPersonalAgentContext,
   buildPersonalAgentInstructions,
+  serializePersonalAgentContext,
 } from './personal-agent-context';
 
 const source = (id: string, title = `Source ${id}`): PersonalGuideSource => ({
@@ -65,6 +66,13 @@ const emptyGuide = (overrides: Partial<PersonalGuide> = {}): PersonalGuide => ({
   evidenceSources: [],
   ...overrides,
 });
+
+const sourceMapFor = (items: InterestProjectionItem[]): Map<string, PersonalGuideSource> =>
+  new Map(
+    items.flatMap((entry) =>
+      entry.evidence.transcriptIds.map((transcriptId) => [transcriptId, source(transcriptId)]),
+    ),
+  );
 
 describe('personal agent context', () => {
   test('keeps declared, inferred, mixed, and lower-interest signals distinct', () => {
@@ -138,13 +146,117 @@ describe('personal agent context', () => {
     const context = buildPersonalAgentContext({
       guide: emptyGuide(),
       projections: [snapshot('SHORT', [...positive, ...negative])],
-      sourcesByTranscriptId: new Map(),
+      sourcesByTranscriptId: sourceMapFor([...positive, ...negative]),
     });
 
     expect(context.preferences.some((entry) => entry.stance === 'MORE')).toBe(true);
     expect(context.preferences.some((entry) => entry.stance === 'LESS')).toBe(true);
     expect(context.metadata.contextTruncated).toBe(true);
     expect(JSON.stringify(context).length).toBeLessThanOrEqual(PERSONAL_AGENT_CONTEXT_MAX_CHARS);
+  });
+
+  test('omits stale projection and trend metadata without active evidence', () => {
+    const stale = item('archived', {
+      label: 'Archived secret topic',
+      evidence: {
+        observedEvents: 8,
+        explicitTranscripts: 1,
+        transcriptIds: ['archived-or-foreign'],
+      },
+    });
+    const context = buildPersonalAgentContext({
+      guide: emptyGuide({
+        trends: [
+          {
+            dimension: 'TOPIC',
+            key: 'archived',
+            label: 'Archived secret trend',
+            brainNodeId: 'node-archived',
+            classification: 'EMERGING',
+            score: 0.8,
+            scores: { short: 0.8, medium: 0.2, long: 0 },
+            evidence: {
+              observedEvents: 8,
+              explicitTranscripts: 1,
+              transcriptIds: ['archived-or-foreign'],
+            },
+            lastEventAt: '2026-08-10T00:00:00.000Z',
+          },
+        ],
+      }),
+      projections: [snapshot('SHORT', [stale])],
+      sourcesByTranscriptId: new Map(),
+    });
+
+    expect(context.preferences).toEqual([]);
+    expect(context.trends).toEqual([]);
+    expect(JSON.stringify(context)).not.toContain('Archived secret');
+  });
+
+  test('classifies cancelled declared evidence with observed activity as mixed', () => {
+    const cancelled = item('cancelled', {
+      explicitScore: 0,
+      inferredScore: 0.4,
+      score: 0.1,
+      evidence: {
+        observedEvents: 3,
+        explicitTranscripts: 2,
+        transcriptIds: ['cancelled-source'],
+      },
+    });
+    const context = buildPersonalAgentContext({
+      guide: emptyGuide(),
+      projections: [snapshot('SHORT', [cancelled])],
+      sourcesByTranscriptId: sourceMapFor([cancelled]),
+    });
+
+    expect(context.preferences[0]).toMatchObject({
+      key: 'cancelled',
+      provenance: 'MIXED',
+      declaredScore: 0,
+      inferredScore: 0.4,
+    });
+  });
+
+  test('enforces the budget after prompt-safe escaping', () => {
+    const hostileItems = Array.from({ length: 20 }, (_, index) =>
+      item(`hostile-${index}`, {
+        label: '<'.repeat(500),
+        explicitScore: 1,
+        inferredScore: 0.5,
+        score: 0.875,
+      }),
+    );
+    const sources = sourceMapFor(hostileItems);
+    const context = buildPersonalAgentContext({
+      guide: emptyGuide({
+        trends: Array.from({ length: 9 }, (_, index) => ({
+          dimension: 'TOPIC',
+          key: `hostile-${index}`,
+          label: '<'.repeat(500),
+          brainNodeId: `node-hostile-${index}`,
+          classification: 'EMERGING' as const,
+          score: 0.8,
+          scores: { short: 0.8, medium: 0.2, long: 0 },
+          evidence: {
+            observedEvents: 2,
+            explicitTranscripts: 1,
+            transcriptIds: [`source-hostile-${index}`],
+          },
+          lastEventAt: '2026-08-10T00:00:00.000Z',
+        })),
+      }),
+      projections: [snapshot('SHORT', hostileItems)],
+      sourcesByTranscriptId: sources,
+    });
+
+    expect(context.metadata.contextTruncated).toBe(true);
+    expect(serializePersonalAgentContext(context).length).toBeLessThanOrEqual(
+      PERSONAL_AGENT_CONTEXT_MAX_CHARS,
+    );
+    expect(buildPersonalAgentInstructions(context).length).toBeLessThan(
+      PERSONAL_AGENT_CONTEXT_MAX_CHARS + 1_000,
+    );
   });
 
   test('carries graph-ranked recommendations with authorized evidence only', () => {
@@ -191,7 +303,7 @@ describe('personal agent context', () => {
     const context = buildPersonalAgentContext({
       guide: emptyGuide(),
       projections: [snapshot('SHORT', [malicious])],
-      sourcesByTranscriptId: new Map(),
+      sourcesByTranscriptId: sourceMapFor([malicious]),
     });
     const instructions = buildPersonalAgentInstructions(context);
 

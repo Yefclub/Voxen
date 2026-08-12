@@ -1,83 +1,29 @@
 import {
   Prisma,
-  type InterestEventKind,
   type InterestProjection as StoredInterestProjection,
 } from '../../prisma-generated/client';
 import { z } from 'zod';
 import { db } from './db';
+import { InterestProjectionItemSchema } from './personal-interest-projection-types';
+import type {
+  InterestProjectionEvent,
+  InterestProjectionFeature,
+  InterestProjectionHorizon,
+  InterestProjectionItem,
+  InterestProjectionSnapshot,
+} from './personal-interest-projection-types';
+export type {
+  InterestProjectionDimension,
+  InterestProjectionEvent,
+  InterestProjectionFeature,
+  InterestProjectionHorizon,
+  InterestProjectionItem,
+  InterestProjectionSnapshot,
+} from './personal-interest-projection-types';
 
 export const INTEREST_PROJECTION_ALGORITHM_VERSION = 'interest-v1';
 export const INTEREST_PROJECTION_MAX_ITEMS = 50;
 export const INTEREST_PROJECTION_FRESHNESS_MS = 15 * 60 * 1_000;
-
-export type InterestProjectionHorizon = 'SHORT' | 'MEDIUM' | 'LONG';
-export type InterestProjectionDimension =
-  | 'TOPIC'
-  | 'ENTITY'
-  | 'TAG'
-  | 'FOLDER'
-  | 'AUTHOR'
-  | 'CHANNEL'
-  | 'SOURCE';
-
-export interface InterestProjectionFeature {
-  dimension: InterestProjectionDimension;
-  key: string;
-  label: string;
-  relevance: number;
-  brainNodeId?: string;
-}
-
-export interface InterestProjectionEvent {
-  transcriptId: string;
-  origin: 'OBSERVED' | 'EXPLICIT';
-  kind: InterestEventKind;
-  signal: number;
-  occurredAt: Date;
-}
-
-export interface InterestProjectionItem {
-  dimension: InterestProjectionDimension;
-  key: string;
-  label: string;
-  brainNodeId: string | null;
-  explicitScore: number;
-  inferredScore: number;
-  score: number;
-  evidence: {
-    observedEvents: number;
-    explicitTranscripts: number;
-    transcriptIds: string[];
-  };
-  lastEventAt: string;
-}
-
-export interface InterestProjectionSnapshot {
-  horizon: InterestProjectionHorizon;
-  algorithmVersion: string;
-  windowDays: number;
-  halfLifeDays: number;
-  items: InterestProjectionItem[];
-  eventCount: number;
-  eventWatermark: string | null;
-  computedAt: string;
-}
-
-const InterestProjectionItemSchema = z.object({
-  dimension: z.enum(['TOPIC', 'ENTITY', 'TAG', 'FOLDER', 'AUTHOR', 'CHANNEL', 'SOURCE']),
-  key: z.string().min(1).max(200),
-  label: z.string().min(1).max(500),
-  brainNodeId: z.string().nullable(),
-  explicitScore: z.number().min(-1).max(1),
-  inferredScore: z.number().min(0).max(1),
-  score: z.number().min(-1).max(1),
-  evidence: z.object({
-    observedEvents: z.number().int().nonnegative(),
-    explicitTranscripts: z.number().int().nonnegative(),
-    transcriptIds: z.array(z.string()).max(5),
-  }),
-  lastEventAt: z.string().datetime(),
-});
 
 interface ProjectionConfig {
   horizon: InterestProjectionHorizon;
@@ -338,14 +284,19 @@ function isStoredProjectionNewer(
   });
 }
 
-async function loadProjectionFeatures(
+export async function loadProjectionFeatures(
   userId: string,
   transcriptIds: string[],
+  activeOnly = false,
 ): Promise<Map<string, InterestProjectionFeature[]>> {
   if (transcriptIds.length === 0) return new Map();
   const [transcripts, contentNodes] = await Promise.all([
     db.transcript.findMany({
-      where: { id: { in: transcriptIds }, userId, status: { not: 'TRASH' } },
+      where: {
+        id: { in: transcriptIds },
+        userId,
+        status: activeOnly ? 'ACTIVE' : { not: 'TRASH' },
+      },
       select: {
         id: true,
         source: true,

@@ -113,6 +113,7 @@ export function buildPersonalAgentContext(
     ...less.slice(0, PREFERENCES_PER_STANCE),
   ];
   const trendCandidates = input.guide.trends
+    .filter((trend) => hasActiveEvidence(trend.evidence.transcriptIds, input.sourcesByTranscriptId))
     .filter((trend) => Number.isFinite(trend.score))
     .map((trend) => ({
       dimension: cleanMetadata(trend.dimension, 40),
@@ -191,12 +192,12 @@ export function buildPersonalAgentContext(
     context.preferences.length === 0 &&
     context.trends.length === 0 &&
     context.recommendations.length === 0;
-  enforceSerializedBudget(context);
+  enforcePersonalAgentContextBudget(context, serializePersonalAgentContext);
   return context;
 }
 
 export function buildPersonalAgentInstructions(context: PersonalAgentContext): string {
-  const serialized = JSON.stringify(context).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e');
+  const serialized = serializePersonalAgentContext(context);
   return [
     '',
     '<untrusted_personal_context>',
@@ -212,6 +213,36 @@ export function buildPersonalAgentInstructions(context: PersonalAgentContext): s
   ].join('\n');
 }
 
+export function serializePersonalAgentContext(context: PersonalAgentContext): string {
+  return JSON.stringify(context).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e');
+}
+
+export function enforcePersonalAgentContextBudget(
+  context: PersonalAgentContext,
+  serialize: (value: PersonalAgentContext) => string = JSON.stringify,
+): PersonalAgentContext {
+  let guard = 0;
+  while (serialize(context).length > PERSONAL_AGENT_CONTEXT_MAX_CHARS && guard < 100) {
+    context.metadata.contextTruncated = true;
+    const removable = [
+      context.recommendations.length > 1 ? context.recommendations : null,
+      context.trends.length > 1 ? context.trends : null,
+      canRemovePreference(context.preferences) ? context.preferences : null,
+      context.recommendations.length > 0 ? context.recommendations : null,
+      context.trends.length > 0 ? context.trends : null,
+      context.preferences.length > 0 ? context.preferences : null,
+    ].find((items) => items !== null);
+    if (!removable) break;
+    removable.pop();
+    guard += 1;
+  }
+  context.metadata.empty =
+    context.preferences.length === 0 &&
+    context.trends.length === 0 &&
+    context.recommendations.length === 0;
+  return context;
+}
+
 function buildPreferences(
   projections: InterestProjectionSnapshot[],
   sources: ReadonlyMap<string, PersonalGuideSource>,
@@ -220,6 +251,7 @@ function buildPreferences(
   for (const projection of projections) {
     const horizon = horizonKey(projection.horizon);
     for (const item of projection.items) {
+      if (!hasActiveEvidence(item.evidence.transcriptIds, sources)) continue;
       const aggregateKey = `${item.dimension}:${item.key}`;
       const aggregate = aggregates.get(aggregateKey) ?? {
         dimension: item.dimension,
@@ -259,7 +291,7 @@ function buildPreferences(
       const score = weightedHorizonScore(aggregate.scores, aggregate.present);
       const declaredScore = weightedHorizonScore(aggregate.declaredScores, aggregate.present);
       const inferredScore = weightedHorizonScore(aggregate.inferredScores, aggregate.present);
-      const hasDeclared = Math.abs(declaredScore) >= 0.001;
+      const hasDeclared = aggregate.explicitTranscripts > 0 || Math.abs(declaredScore) >= 0.001;
       const hasInferred = inferredScore >= 0.001;
       if (Math.abs(score) < MIN_SIGNAL_SCORE && !hasDeclared) return null;
       const stance = hasDeclared && declaredScore < 0 ? 'LESS' : score > 0 ? 'MORE' : null;
@@ -315,27 +347,19 @@ function sourceRefs(
     }));
 }
 
-function enforceSerializedBudget(context: PersonalAgentContext): void {
-  let guard = 0;
-  while (JSON.stringify(context).length > PERSONAL_AGENT_CONTEXT_MAX_CHARS && guard < 100) {
-    context.metadata.contextTruncated = true;
-    const removable = [
-      context.recommendations.length > 1 ? context.recommendations : null,
-      context.trends.length > 1 ? context.trends : null,
-      canRemovePreference(context.preferences) ? context.preferences : null,
-    ].find((items) => items !== null);
-    if (!removable) break;
-    removable.pop();
-    guard += 1;
-  }
-}
-
 function canRemovePreference(preferences: PersonalAgentPreference[]): boolean {
   if (preferences.length <= 1) return false;
   const more = preferences.filter((entry) => entry.stance === 'MORE').length;
   const less = preferences.length - more;
   const last = preferences.at(-1);
   return last?.stance === 'MORE' ? more > 1 : less > 1;
+}
+
+function hasActiveEvidence(
+  transcriptIds: readonly string[],
+  sources: ReadonlyMap<string, PersonalGuideSource>,
+): boolean {
+  return transcriptIds.some((transcriptId) => sources.has(transcriptId));
 }
 
 function weightedHorizonScore(scores: HorizonScores, present: Set<keyof HorizonScores>): number {

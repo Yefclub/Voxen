@@ -83,6 +83,22 @@ describe('durable graph personalization context', () => {
     expect(context.ignoredNegativeItems).toBe(1);
   });
 
+  test('never promotes a combined positive score with explicit negative feedback', () => {
+    const context = buildGraphPersonalization([
+      snapshot('SHORT', null, [
+        item({
+          key: 'explicitly-lower',
+          brainNodeId: 'topic-explicitly-lower',
+          explicitScore: -0.1,
+          score: 0.175,
+        }),
+      ]),
+    ]);
+
+    expect(context.seeds).toEqual([]);
+    expect(context.ignoredNegativeItems).toBe(1);
+  });
+
   test('changes the cache fragment when effective scores change at the same watermark', () => {
     const first = buildGraphPersonalization([
       snapshot('SHORT', '2026-08-11T12:00:00.000Z', [

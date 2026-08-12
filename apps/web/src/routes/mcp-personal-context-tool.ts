@@ -1,5 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { PersonalAgentContext, PersonalAgentSourceRef } from '../lib/personal-agent-context';
+import {
+  enforcePersonalAgentContextBudget,
+  type PersonalAgentContext,
+  type PersonalAgentSourceRef,
+} from '../lib/personal-agent-context';
 import { loadPersonalAgentContext } from '../lib/personal-agent-context-service';
 import { fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
 
@@ -23,7 +27,7 @@ export function registerMcpPersonalContextTool(
     async () => {
       try {
         const context = await loadPersonalAgentContext(userId);
-        return ok({ ...withPublicLinks(context, publicOrigin) });
+        return ok({ ...enforcePersonalAgentContextBudget(withPublicLinks(context, publicOrigin)) });
       } catch {
         return fail('O contexto pessoal não está disponível neste momento.');
       }

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
+import { PERSONAL_AGENT_CONTEXT_MAX_CHARS } from '../src/lib/personal-agent-context';
 import { deleteSetting, setSetting } from '../src/lib/settings';
 import {
   transcriptCorrectionChecksum,
@@ -216,6 +217,9 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
         'personal-agent-context-v1',
       );
       expect(data.result?.structuredContent?.metadata?.empty).toBe(false);
+      expect(JSON.stringify(data.result?.structuredContent).length).toBeLessThanOrEqual(
+        PERSONAL_AGENT_CONTEXT_MAX_CHARS,
+      );
       expect(data.result?.structuredContent?.preferences).toContainEqual(
         expect.objectContaining({
           label: 'Personal context topic',

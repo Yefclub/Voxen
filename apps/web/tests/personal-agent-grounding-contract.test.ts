@@ -26,8 +26,7 @@ describe('shared personal agent grounding contract', () => {
     expect(readRegistration).toBeGreaterThan(0);
     expect(writeRegistration).toBeGreaterThan(readRegistration);
     expect(toolRegistration).toBeGreaterThan(0);
-    expect(mcpPersonalContextSource).toContain(
-      'return ok({ ...withPublicLinks(context, publicOrigin) })',
-    );
+    expect(mcpPersonalContextSource).toContain('withPublicLinks(context, publicOrigin)');
+    expect(mcpPersonalContextSource).toContain('enforcePersonalAgentContextBudget(');
   });
 });
