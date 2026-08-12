@@ -1,3 +1,8 @@
+---
+name: research
+description: Use quando pedirem pesquisa ou comparação de tecnologia/abordagem ("pesquisa sobre X", "qual a melhor lib pra Y", "como o mercado resolve Z") — cruza web com o contexto do repo e entrega opções com trade-offs, licença, manutenção e tamanho.
+---
+
 # Research — Pesquisa Estruturada com Trade-offs
 
 Pesquisa sobre um tema, tecnologia ou abordagem, cruzando informações da web com o contexto atual do projeto.

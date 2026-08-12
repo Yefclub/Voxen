@@ -47,4 +47,4 @@ Um único arquivo `.specs/<slug>.md` colado integralmente na resposta, pronto pr
 - Não inventa contratos que não existem em `architecture.md` — proponha estender e marque como decisão em aberto.
 - Não copia descrições genéricas. Tudo específico ao Voxen.
 - Não pula EARS por preguiça. Requirement vago é bug futuro.
-- Não cria specs para bugfix de ≤5 linhas, dep bump, lint fix, doc typo (exceção do `CLAUDE.md`).
+- Não cria specs nos casos que a skill `spec` lista como dispensados ("Quando spec NÃO é necessária") — a lista canônica é lá, não aqui.

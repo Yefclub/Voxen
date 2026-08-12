@@ -1,9 +1,9 @@
 ---
 name: ship
-description: Use quando for entregar uma mudança pelo fluxo completo do repositório ("faz a PR", "shipa isso", "manda pra dev", "abre PR pra essa correção") — branch a partir de dev sincronizada, checklist pre-PR, PR, espera robusta de CI, review independente e merge.
+description: Use quando for entregar uma mudança pelo fluxo completo do repositório ("faz a PR", "shipa isso", "manda pra dev", "abre PR pra essa correção") — branch a partir de dev sincronizada, checklist pre-PR, review independente antes do push, PR, espera robusta de CI e merge.
 ---
 
-# Ship — branch, PR, CI, review, and merge
+# Ship — branch, review, PR, CI, and merge
 
 Use this flow to deliver one focused change through the complete repository
 workflow.
@@ -55,7 +55,28 @@ Run every item before pushing. A red item is a stop, not a warning.
 6. `docker compose build` — the real build works; it catches errors tsc and mypy
    do not
 
-### 4. Push and open the PR
+### 4. Independent review — before the push, always required
+
+Read and run the `review-pr` skill at `.claude/skills/review-pr/SKILL.md` in a
+background sub-agent, pointed at the local commit range
+(`git diff origin/dev...HEAD`). The reviewer checks the diff, tests, security,
+scope, migrations, and specification. It never comments on GitHub, and the
+author never self-approves.
+
+Keep the review scope narrow: defects the diff introduces, breakage of existing
+behavior, and gaps against what the issue asked for. Adjacent improvements and
+pre-existing problems are out of scope — without that bound the reviewer returns
+legitimate but peripheral findings and the signal drowns.
+
+If the verdict is `MUDANÇAS NECESSÁRIAS`, fix every blocking finding in the
+local branch, re-run only what the fix touched, and review again. Repeat steps 2
+to 4 until the review comes back clean. Nothing is pushed during this loop.
+
+Why here and not after CI: a finding caught after the push costs a full runner
+cycle, and most of those cycles are spent on intermediate commits nobody would
+have merged. A local review needs no push and no runner.
+
+### 5. Push once and open the PR
 
 ```bash
 git push -u origin <branch>
@@ -68,7 +89,7 @@ gh pr create --base dev --head <branch> \
 The body uses these English sections: Context, What changed, Technical details,
 Test plan, and References. Do not add emoji or AI attribution.
 
-### 5. Monitor CI robustly
+### 6. Monitor CI robustly
 
 Confirm that the rollup belongs to the current head SHA, contains every
 required check, has no pending or failed conclusions, and ends with
@@ -81,8 +102,10 @@ Use `statusCheckRollup` and wait for completion. See the `ci-status` skill for
 the two real failure modes (replication lag / empty rollup, and a push that
 never triggers CI) and the background polling loop.
 
-If CI fails, investigate, fix, push, and repeat. Do not review or merge a red
-head.
+If CI fails, investigate, fix, push, and repeat. Do not merge a red head. CI
+catching something the local review could not — a flake, an environment
+difference, a gate that only runs on the runner — is the legitimate exception,
+not a sign the review was skipped.
 
 When `Quality Gate` fails, download the `quality-gate-report` artifact from the
 failed workflow run. Read `summary.md` and `metrics.json`; use
@@ -96,17 +119,11 @@ and the referenced redacted stage log. Add or correct a new ordered migration;
 never edit, rename, or delete a migration that already exists on the target
 branch.
 
-### 6. Independent review — always required
-
-After CI is green, read and run the `review-pr` skill at
-`.claude/skills/review-pr/SKILL.md` in a background sub-agent. The reviewer
-checks the diff, tests, security, scope, migrations, and specification without
-commenting on GitHub.
-
-If the verdict is `MUDANÇAS NECESSÁRIAS`, fix every blocking finding and repeat
-CI and review on the new head. If the verdict is `APROVADO`, continue.
-
 ### 7. Merge
+
+The review already passed in step 4, so a green CI is the whole remaining gate.
+If a fix was pushed after CI failed, re-review that fix commit before merging —
+the author does not self-approve a correction either.
 
 For an authorized normal PR:
 
