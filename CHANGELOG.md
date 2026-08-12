@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786514157 — 2026-08-12 · Dev
+
+### ✨ Temporal Brain facts and safer entity resolution
+
+Voxen now distinguishes when a relation was observed from when it was valid,
+keeps historical fact versions with citations, and exposes bounded current or
+point-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed
+aliases improve entity discovery without destructively merging homonyms.
+
 ## v0.14.5-dev.1786503242 — 2026-08-11 · Dev
 
 ### ✨ Personal graph context for chat and MCP
