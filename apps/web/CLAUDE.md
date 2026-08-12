@@ -5,11 +5,26 @@ Regras globais do repositório continuam no `CLAUDE.md` da raiz.
 
 ## Implementação de UI/UX
 
-Voxen tem tema **cinza (zinc)** via Tailwind v4 + shadcn/ui. Modern e bonito. Ao implementar UI:
+Tailwind v4 + shadcn/ui, com design system próprio (spec 073) — **não** o tema padrão do shadcn.
 
-- Estudar componentes shadcn existentes antes de criar do zero
-- Manter tema consistente (zinc-50 a zinc-950 como paleta principal)
-- Acentos podem usar zinc + um destaque (mas confirmar com o user)
+**Quatro packs de tema**, escolhidos por `documentElement[data-theme]`: `linear` (default), `zinc`, `emerald` e `light`. `zinc` é um pack entre quatro, não "a paleta" — e a escala crua `zinc-50…zinc-950` do Tailwind não é fonte de verdade de nada.
+
+**Tokens semânticos são a fonte de verdade.** Superfície, texto e borda saem de `--color-app-*`; destaque sai de `--color-accent-*`. Há também escalas próprias de `--radius-*`, `--ease-*` e o trio de fontes. Os valores vivem em `src/client/index.css` — ler de lá, não daqui, porque valor copiado envelhece.
+
+```tsx
+// certo
+<div className="bg-[var(--color-app-surface)] text-[var(--color-app-fg)]" />
+// errado — ignora data-theme, quebra em três dos quatro packs
+<div className="bg-zinc-800 text-zinc-100" />
+```
+
+**Proibido escala crua de cor** (`zinc-*`, `neutral-*`, `slate-*` e afins) para superfície, texto ou borda: ela não responde a `data-theme`, então nasce quebrada nos outros packs. O sintoma é silencioso — parece certo no pack em que você desenvolveu.
+
+**Exceção:** cor de destaque deliberadamente independente de tema continua permitida — `button.tsx` usa `emerald`, `violet` e `rose` de propósito, e cor categórica de gráfico segue a mesma lógica. Se for uma dessas, é escolha; caso contrário, é token.
+
+Além disso:
+
+- Estudar componentes existentes em `src/client/components/ui/` antes de criar do zero
 - Markdown rendering deve respeitar o tema (cores e tipografia consistentes)
 
 ### Verificação Visual com Playwright (OBRIGATÓRIO para mudanças de UI)
