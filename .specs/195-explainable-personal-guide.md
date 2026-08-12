@@ -73,16 +73,16 @@ new preferences and does not persist recommendations as knowledge facts.
 
 ## Acceptance criteria
 
-- [ ] A dedicated `/guia` page is available from desktop and mobile navigation.
-- [ ] The page separates emerging, steady, and cooling interests.
-- [ ] Each trend exposes short-, medium-, and long-term scores plus explicit and observed evidence.
-- [ ] Recommended sources use personalized graph ranking when valid seeds exist.
-- [ ] Every recommendation includes inspectable interest, community, or structural evidence.
-- [ ] Evidence links resolve only to active transcripts owned by the current user.
-- [ ] Empty, partial, uniform-fallback, and truncated-graph states are explicit and accessible.
-- [ ] The API returns versioned deterministic metadata without calling an LLM.
-- [ ] Tests cover trend classification, recommendation ranking, negative-signal exclusion, fallback, and user isolation.
-- [ ] Desktop and smartphone layouts are visually verified in both supported locales.
+- [x] A dedicated `/guia` page is available from desktop and mobile navigation.
+- [x] The page separates emerging, steady, and cooling interests.
+- [x] Each trend exposes short-, medium-, and long-term scores plus explicit and observed evidence.
+- [x] Recommended sources use personalized graph ranking when valid seeds exist.
+- [x] Every recommendation includes inspectable interest, community, or structural evidence.
+- [x] Evidence links resolve only to active transcripts owned by the current user.
+- [x] Empty, partial, uniform-fallback, and truncated-graph states are explicit and accessible.
+- [x] The API returns versioned deterministic metadata without calling an LLM.
+- [x] Tests cover trend classification, recommendation ranking, negative-signal exclusion, fallback, and user isolation.
+- [x] Desktop and smartphone layouts are visually verified in both supported locales.
 
 ## Out of scope
 

@@ -26,6 +26,7 @@ import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
+import { guideRoutes } from './routes/guide';
 import { createReleasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { chatRoutes } from './routes/chat';
@@ -254,6 +255,8 @@ app.route('/api/mcp/tokens', mcpTokenRoutes);
 app.route('/api/mcp/oauth', mcpOAuthAccountRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
+// Explainable, deterministic personal Guide built from user-owned signals and graph data.
+app.route('/api/guide', guideRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
 // Conversa canônica por usuário, streaming e ferramentas da Base de conhecimento.
