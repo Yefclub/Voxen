@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.14.5-dev.1786538447 — 2026-08-12 · Dev
+
+### 🎨 The thinking block now closes when the answer starts
+
+The reasoning timeline used to stay open for the whole answer, so the response
+streamed in below a wall of tool rows and reasoning text and only moved up once
+the turn had finished. It now collapses as soon as the first words of the answer
+arrive, and stays closed for the rest of the turn even when the assistant calls
+more tools afterwards.
+
+Opening the block yourself still wins: if you expand it to follow the reasoning,
+nothing closes it under you. A turn that ends without a written answer, having
+only run tools, still closes shortly after it finishes.
+
 ## v0.14.5-dev.1786535868 — 2026-08-12 · Dev
 
 ### 🧹 CI now blocks a pull request that updates only one of the two agent rule trees
