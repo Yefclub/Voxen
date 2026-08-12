@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.14.5-dev.1786552219 — 2026-08-12 · Dev
+
+### 🧹 Components from shadcn-format registries can now be installed by CLI
+
+Every component under the web app's `ui` directory had been transcribed by hand,
+because the project had no `components.json` and therefore no supported way to
+pull one from a shadcn-format registry. Each addition meant copying from GitHub,
+rewriting imports and installing dependencies manually.
+
+The file now exists, written by hand rather than generated, so that
+`shadcn init` never touches the stylesheet that defines the four theme packs. It
+buys scaffolding only — file placement, alias resolution and dependency install.
+Registry components still arrive in shadcn's token vocabulary and still need a
+manual pass onto the project's own tokens before they are usable.
+
 ## v0.14.5-dev.1786538447 — 2026-08-12 · Dev
 
 ### 🎨 The thinking block now closes when the answer starts

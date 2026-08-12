@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786552219",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Components from shadcn-format registries can now be installed by CLI",
+    "body": "Every component under the web app's `ui` directory had been transcribed by hand,\nbecause the project had no `components.json` and therefore no supported way to\npull one from a shadcn-format registry. Each addition meant copying from GitHub,\nrewriting imports and installing dependencies manually.\n\nThe file now exists, written by hand rather than generated, so that\n`shadcn init` never touches the stylesheet that defines the four theme packs. It\nbuys scaffolding only — file placement, alias resolution and dependency install.\nRegistry components still arrive in shadcn's token vocabulary and still need a\nmanual pass onto the project's own tokens before they are usable.",
+    "pr": 780,
+    "author": "Kalyel",
+    "date": "2026-08-12T13:30:06-03:00",
+    "translations": {
+      "en": {
+        "title": "Components from shadcn-format registries can now be installed by CLI",
+        "body": "Every component under the web app's `ui` directory had been transcribed by hand,\nbecause the project had no `components.json` and therefore no supported way to\npull one from a shadcn-format registry. Each addition meant copying from GitHub,\nrewriting imports and installing dependencies manually.\n\nThe file now exists, written by hand rather than generated, so that\n`shadcn init` never touches the stylesheet that defines the four theme packs. It\nbuys scaffolding only — file placement, alias resolution and dependency install.\nRegistry components still arrive in shadcn's token vocabulary and still need a\nmanual pass onto the project's own tokens before they are usable."
+      },
+      "pt-BR": {
+        "title": "Componentes de registries no formato shadcn agora podem ser instalados por CLI",
+        "body": "Todo componente do diretório `ui` do app web tinha sido transcrito à mão, porque\no projeto não tinha `components.json` e portanto nenhum caminho suportado para\npuxar um componente de registry no formato shadcn. Cada adição significava\ncopiar do GitHub, reescrever imports e instalar dependências na mão.\n\nAgora o arquivo existe, escrito à mão em vez de gerado, para que o `shadcn init`\nnunca encoste no stylesheet que define os quatro packs de tema. Ele entrega só\nscaffolding — colocação de arquivo, resolução de alias e instalação de\ndependência. Componente de registry continua chegando no vocabulário de token do\nshadcn e continua precisando de um passe manual para os tokens do projeto antes\nde servir."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/780"
+  },
+  {
     "version": "0.14.5-dev.1786538447",
     "channel": "dev",
     "type": "ui",
