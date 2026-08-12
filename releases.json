@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786514157",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Temporal Brain facts and safer entity resolution",
+    "body": "Voxen now distinguishes when a relation was observed from when it was valid,\nkeeps historical fact versions with citations, and exposes bounded current or\npoint-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed\naliases improve entity discovery without destructively merging homonyms.",
+    "pr": 761,
+    "author": "Kalyel",
+    "date": "2026-08-12T02:55:29-03:00",
+    "translations": {
+      "en": {
+        "title": "Temporal Brain facts and safer entity resolution",
+        "body": "Voxen now distinguishes when a relation was observed from when it was valid,\nkeeps historical fact versions with citations, and exposes bounded current or\npoint-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed\naliases improve entity discovery without destructively merging homonyms."
+      },
+      "pt-BR": {
+        "title": "Fatos temporais e resolução segura de entidades no Brain",
+        "body": "O Voxen agora diferencia quando uma relação foi observada de quando ela era\nválida, preserva versões históricas com citações e expõe consultas limitadas do\nestado atual ou de um instante passado para a assistente interna e o MCP.\nAliases apoiados por evidência melhoram a descoberta sem fundir homônimos de\nforma destrutiva."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/761"
+  },
+  {
     "version": "0.14.5-dev.1786503242",
     "channel": "dev",
     "type": "feat",
