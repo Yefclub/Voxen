@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -12,6 +19,7 @@ import {
   diffMirror,
   formatMirrorReport,
   isMirrorClean,
+  listMirroredFiles,
   normalizeEol,
   rewriteToMirror,
   syncMirror,
@@ -26,7 +34,7 @@ function scaffold(files) {
   for (const [relative, contents] of Object.entries(files)) {
     const absolute = join(root, relative);
     mkdirSync(dirname(absolute), { recursive: true });
-    writeFileSync(absolute, contents, "utf8");
+    writeFileSync(absolute, contents);
   }
   return root;
 }
@@ -50,6 +58,76 @@ test("the repository mirror is in sync", () => {
       `Run \`node scripts/agents-mirror.mjs --fix\` and commit the result.\n` +
       formatMirrorReport(result),
   );
+});
+
+// --- never promote ignored local state into a versioned tree --------------
+//
+// The mirror step is a copy. A copy that picks up a gitignored file publishes
+// local state — a worktree checkout, a lock file, an env file — into `.agents/`,
+// where the matching ignore rules do not exist.
+
+test("skips locally ignored paths even when git cannot be consulted", () => {
+  withScaffold(
+    {
+      [`${MIRROR_SOURCE}/settings.local.json`]: "{}\n",
+      [`${MIRROR_SOURCE}/scheduled_tasks.lock`]: "lock\n",
+      [`${MIRROR_SOURCE}/skills/x/settings.local.json`]: "{}\n",
+      [`${MIRROR_SOURCE}/worktrees/issue-42/.env`]: "MASTER_KEY=secret\n",
+      [`${MIRROR_SOURCE}/worktrees/issue-42/apps/web/index.ts`]: "export {};\n",
+      [`${MIRROR_SOURCE}/skills/x/SKILL.md`]: "real\n",
+      [`${MIRROR_TARGET}/skills/x/SKILL.md`]: "real\n",
+    },
+    (root) => {
+      assert.deepEqual(listMirroredFiles(root, MIRROR_SOURCE), [
+        "skills/x/SKILL.md",
+      ]);
+      assert.ok(isMirrorClean(diffMirror(root)));
+
+      const { written } = syncMirror(root);
+      assert.deepEqual(written, []);
+      assert.throws(() =>
+        readFileSync(join(root, MIRROR_TARGET, "worktrees/issue-42/.env")),
+      );
+    },
+  );
+});
+
+test("skips anything git reports as ignored", () => {
+  withScaffold(
+    {
+      ".gitignore": `${MIRROR_SOURCE}/generated/\n`,
+      [`${MIRROR_SOURCE}/generated/cache.md`]: "derived\n",
+      [`${MIRROR_SOURCE}/skills/x/SKILL.md`]: "real\n",
+    },
+    (root) => {
+      const git = (...args) =>
+        execFileSync("git", args, { cwd: root, stdio: "ignore" });
+      git("init", "-q");
+
+      assert.deepEqual(listMirroredFiles(root, MIRROR_SOURCE), [
+        "skills/x/SKILL.md",
+      ]);
+    },
+  );
+});
+
+// --- a guard that reads nothing must not report success -------------------
+
+test("refuses to pass when the source tree is absent", () => {
+  withScaffold({ "unrelated.md": "x\n" }, (root) => {
+    assert.throws(() => diffMirror(root), /not found/);
+  });
+});
+
+test("the CLI reports a clean repository from any working directory", () => {
+  // The root is anchored to the script, not to cwd. Running from a
+  // subdirectory used to find neither tree and call that a match.
+  const output = execFileSync(process.execPath, [script], {
+    cwd: join(repoRoot, "scripts"),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.match(output, /matches/);
 });
 
 // --- unit behaviour -------------------------------------------------------
@@ -118,11 +196,44 @@ test("ignores line-ending differences between the trees", () => {
   assert.equal(normalizeEol("a\r\nb"), "a\nb");
 });
 
-test("does not mirror local settings", () => {
-  withScaffold(
-    { [`${MIRROR_SOURCE}/settings.local.json`]: "{}\n" },
-    (root) => assert.ok(isMirrorClean(diffMirror(root))),
-  );
+test("copies a non-UTF-8 file byte for byte", () => {
+  // Reading bytes as utf8 and writing them back is lossy, and the loss would
+  // hit both sides of the comparison, so a corrupted mirror would read clean.
+  const bytes = Buffer.from([0x00, 0xff, 0xfe, 0x41, 0x80]);
+  withScaffold({ [`${MIRROR_SOURCE}/assets/icon.bin`]: bytes }, (root) => {
+    syncMirror(root);
+    assert.deepEqual(
+      readFileSync(join(root, MIRROR_TARGET, "assets/icon.bin")),
+      bytes,
+    );
+    assert.ok(isMirrorClean(diffMirror(root)));
+  });
+});
+
+test("does not follow symlinks on either side", () => {
+  const root = scaffold({
+    [`${MIRROR_SOURCE}/skills/a/SKILL.md`]: "body\n",
+    "outside.md": "untouched\n",
+  });
+  try {
+    mkdirSync(join(root, MIRROR_TARGET, "skills/a"), { recursive: true });
+    try {
+      symlinkSync(
+        join(root, "outside.md"),
+        join(root, MIRROR_TARGET, "skills/a/SKILL.md"),
+      );
+    } catch {
+      return; // Windows without developer mode cannot create symlinks.
+    }
+    syncMirror(root);
+    assert.equal(readFileSync(join(root, "outside.md"), "utf8"), "untouched\n");
+    assert.equal(
+      readFileSync(join(root, MIRROR_TARGET, "skills/a/SKILL.md"), "utf8"),
+      "body\n",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("--fix adds, rewrites, and prunes until the trees match", () => {
@@ -137,6 +248,13 @@ test("--fix adds, rewrites, and prunes until the trees match", () => {
       const { written, removed } = syncMirror(root);
       assert.deepEqual(written, ["skills/a/SKILL.md", "skills/b/SKILL.md"]);
       assert.deepEqual(removed, ["skills/gone/SKILL.md"]);
+      assert.equal(
+        readFileSync(join(root, MIRROR_TARGET, "skills/a/SKILL.md"), "utf8"),
+        "see `.agents/skills/a`\n",
+      );
+      assert.throws(() =>
+        readFileSync(join(root, MIRROR_TARGET, "skills/gone/SKILL.md")),
+      );
       assert.ok(isMirrorClean(diffMirror(root)));
     },
   );
@@ -150,40 +268,6 @@ test("--fix is idempotent", () => {
       const second = syncMirror(root);
       assert.deepEqual(second.written, []);
       assert.deepEqual(second.removed, []);
-    },
-  );
-});
-
-// --- CLI ------------------------------------------------------------------
-
-test("the CLI exits 0 on a clean tree and 1 on a dirty one", () => {
-  const run = (root) =>
-    execFileSync(process.execPath, [script], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-  withScaffold(
-    {
-      [`${MIRROR_SOURCE}/skills/a/SKILL.md`]: "body\n",
-      [`${MIRROR_TARGET}/skills/a/SKILL.md`]: "body\n",
-    },
-    (root) => assert.match(run(root), /matches/),
-  );
-
-  withScaffold(
-    { [`${MIRROR_SOURCE}/skills/a/SKILL.md`]: "body\n" },
-    (root) => {
-      assert.throws(
-        () => run(root),
-        (error) => {
-          assert.equal(error.status, 1);
-          assert.match(error.stderr, /out of sync/);
-          assert.match(error.stderr, /agents-mirror\.mjs --fix/);
-          return true;
-        },
-      );
     },
   );
 });

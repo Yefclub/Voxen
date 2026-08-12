@@ -8,7 +8,8 @@
 // already-required "Test TS (apps/web)" job, so CI blocks a pull request that
 // edits one tree and not the other.
 
-import { argv, cwd, exit, stderr, stdout } from "node:process";
+import { argv, exit, stderr, stdout } from "node:process";
+import { fileURLToPath } from "node:url";
 
 import {
   MIRROR_SOURCE,
@@ -19,8 +20,14 @@ import {
   syncMirror,
 } from "./agents-mirror-lib.mjs";
 
+// Anchored to the script's own location, never to the working directory. With
+// cwd() this reported "matches" from any subdirectory, because both trees were
+// absent and an empty comparison looks clean — a guard announcing success
+// without reading a file is the failure it exists to prevent.
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+
 function main() {
-  const root = cwd();
+  const root = REPO_ROOT;
 
   if (argv.includes("--fix")) {
     const { written, removed } = syncMirror(root);
