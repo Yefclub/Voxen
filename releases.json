@@ -1,5 +1,47 @@
 [
   {
+    "version": "0.14.5-dev.1786563888",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Worker logs now say which failure happened instead of a generic one",
+    "body": "Twenty-three internal failure codes never reached the logs. A safety filter,\nwhich exists to keep external error messages out of log output, silently\nreplaced any code it did not recognise with a generic one — and its list had\nfallen behind the code. Every research enrichment failure, several brain\nextraction and summary failures, provider rate limiting, saved media errors and\nmedia cleanup errors all surfaced as the same anonymous entry, so an upstream\noutage looked identical to any other unexpected error.\n\nThe list is now complete, and a test keeps it that way: adding a failure code\nwithout registering it fails the build instead of going quiet in production. The\ncheck reads the source tree rather than matching text, so it covers the codes\nthat never appear literally at the point they are logged.\n\nSeparately, brain extraction reported success when it had actually postponed\nwork. When the graph write lock was busy the run finished with a completion\nentry showing zero concepts, which reads exactly like a document that genuinely\nhad none. It now reports incomplete, with the number of postponed segments, so\nthe two cases can be told apart.",
+    "pr": 788,
+    "author": "Kalyel",
+    "date": "2026-08-12T16:44:35-03:00",
+    "translations": {
+      "en": {
+        "title": "Worker logs now say which failure happened instead of a generic one",
+        "body": "Twenty-three internal failure codes never reached the logs. A safety filter,\nwhich exists to keep external error messages out of log output, silently\nreplaced any code it did not recognise with a generic one — and its list had\nfallen behind the code. Every research enrichment failure, several brain\nextraction and summary failures, provider rate limiting, saved media errors and\nmedia cleanup errors all surfaced as the same anonymous entry, so an upstream\noutage looked identical to any other unexpected error.\n\nThe list is now complete, and a test keeps it that way: adding a failure code\nwithout registering it fails the build instead of going quiet in production. The\ncheck reads the source tree rather than matching text, so it covers the codes\nthat never appear literally at the point they are logged.\n\nSeparately, brain extraction reported success when it had actually postponed\nwork. When the graph write lock was busy the run finished with a completion\nentry showing zero concepts, which reads exactly like a document that genuinely\nhad none. It now reports incomplete, with the number of postponed segments, so\nthe two cases can be told apart."
+      },
+      "pt-BR": {
+        "title": "Logs do worker passam a dizer qual falha aconteceu, em vez de uma genérica",
+        "body": "Vinte e três códigos internos de falha nunca chegavam aos logs. Um filtro de\nsegurança, que existe para manter mensagens de erro externas fora do log,\ntrocava em silêncio qualquer código que não reconhecesse por um genérico — e a\nlista dele tinha ficado para trás do código. Toda falha de enriquecimento por\npesquisa, várias de extração de conceitos e de resumo, limite de taxa do\nprovedor, erros de mídia salva e de limpeza de mídia apareciam como a mesma\nentrada anônima, então indisponibilidade externa ficava idêntica a qualquer\noutro erro inesperado.\n\nA lista está completa, e um teste mantém assim: adicionar código de falha sem\nregistrá-lo quebra o build em vez de emudecer em produção. A checagem lê a\nárvore de código em vez de casar texto, então alcança também os códigos que\nnunca aparecem literalmente no ponto em que são logados.\n\nEm separado, a extração de conceitos reportava sucesso quando na verdade tinha\nadiado trabalho. Com a trava de escrita do grafo ocupada, a passada terminava com\numa entrada de conclusão mostrando zero conceitos, o que se lê exatamente como um\ndocumento que legitimamente não tinha nenhum. Agora reporta incompleta, com\nquantos segmentos ficaram para depois, então dá para distinguir os dois casos."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/788"
+  },
+  {
+    "version": "0.14.5-dev.1786563888",
+    "channel": "dev",
+    "type": "chore",
+    "title": "The AI SDK is back on a current patch release",
+    "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them.",
+    "pr": 783,
+    "author": "Kalyel",
+    "date": "2026-08-12T14:26:32-03:00",
+    "translations": {
+      "en": {
+        "title": "The AI SDK is back on a current patch release",
+        "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them."
+      },
+      "pt-BR": {
+        "title": "O AI SDK volta a uma versão de patch atual",
+        "body": "O pacote `ai`, que roda todo o laço do agente — aprovação de ferramenta, orçamento\nde timeout e streaming —, estava travado quarenta releases de patch atrás, com\nessa quantidade de correções paradas na dependência mais crítica do app.\n\nAtualizar mudou um comportamento do qual o chat dependia: a versão nova entrega\npedaços de texto vazios que a antiga filtrava, o que partiria um raciocínio\ncontínuo em dois blocos separados. Isso foi tratado, então o painel de raciocínio\ncontinua se comportando como antes.\n\nAgora está atualizado. A automação de dependências também foi reagrupada para\nque isso não se repita do mesmo jeito: atualização de rotina da mesma família\npassa a chegar numa PR só em vez de uma cada, o que impede que um punhado de\nrevisões paradas trave todas as outras atualizações atrás delas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/783"
+  },
+  {
     "version": "0.14.5-dev.1786552219",
     "channel": "dev",
     "type": "chore",
