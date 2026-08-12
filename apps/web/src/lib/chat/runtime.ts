@@ -76,6 +76,7 @@ import {
   normalizeTranscriptApprovalError,
 } from './transcript-editing';
 import { grantAlwaysAllowAction, loadAlwaysAllowActions } from './hitl-preferences';
+import { isFinalTextDelta } from './stream-segments';
 import { isProviderObservedEvent } from './stream-timing';
 import { resolveApprovalInMessageJson } from './approval-message-resolution';
 import {
@@ -1745,10 +1746,10 @@ export async function streamAssistantReply(options: {
       if (reasoningDelta) {
         appendReasoning(segments, reasoningDelta);
         emit({ type: 'reasoning', delta: reasoningDelta });
-      } else if (type === 'text-delta' && typeof part.text === 'string') {
+      } else if (isFinalTextDelta(part)) {
         closeReasoning(segments);
-        answer += part.text;
-        emit({ type: 'text', delta: part.text });
+        answer += part.text as string;
+        emit({ type: 'text', delta: part.text as string });
       } else if (type === 'tool-call') {
         const event: StoredToolEvent = {
           id: String(part.toolCallId ?? crypto.randomUUID()),
