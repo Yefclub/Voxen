@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,10 @@ import pytest
 from src.safe_diagnostics import _ALLOWED_ERROR_CODES, error_diagnostic
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
+
+# Mesma forma que `PermanentError.__init__` exige. Fora dela o código vira
+# `PERMANENT_FAILURE` em runtime, então coletá-lo aqui seria falso positivo.
+_CODE_SHAPE = re.compile(r"[A-Z][A-Z0-9_]{1,63}$")
 
 
 def _string_arg(node: ast.Call, index: int) -> str | None:
@@ -32,6 +37,24 @@ def _called_name(node: ast.Call) -> str | None:
     return getattr(func, "id", None)
 
 
+def _local_diagnostic_names(tree: ast.Module) -> set[str]:
+    """Nomes pelos quais `error_diagnostic` é chamável neste arquivo.
+
+    Resolvido a partir do próprio `import`, não fixado como string: `pipeline.py`
+    importa `error_diagnostic as _error_diagnostic`, e uma varredura que casasse
+    só o nome canônico perderia o maior arquivo do worker inteiro — 12 códigos e
+    13 call sites. Lista fixa de apelidos fecharia o caso de hoje e quebraria no
+    próximo alias; ler o binding não quebra.
+    """
+    names = {"error_diagnostic"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and "safe_diagnostics" in node.module:
+            for alias in node.names:
+                if alias.name == "error_diagnostic":
+                    names.add(alias.asname or alias.name)
+    return names
+
+
 def _codes_used_in_source() -> dict[str, set[str]]:
     """Códigos internos que podem chegar a `error_diagnostic`, por arquivo.
 
@@ -46,18 +69,21 @@ def _codes_used_in_source() -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
     for path in sorted(_SRC.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        diagnostic_names = _local_diagnostic_names(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             name = _called_name(node)
             code: str | None = None
-            if name == "error_diagnostic":
+            if name in diagnostic_names:
                 code = _string_arg(node, 1) or _keyword(node, "code")
             elif name == "public":
                 code = _string_arg(node, 0) or _keyword(node, "code")
             elif name == "PermanentError":
                 code = _keyword(node, "code")
-            if code:
+            # `public` casa por nome, então qualquer método homônimo entraria
+            # aqui. A forma do código é o filtro: um bucket ou caminho não passa.
+            if code and _CODE_SHAPE.fullmatch(code):
                 found.setdefault(code, set()).add(path.name)
     return found
 
@@ -90,9 +116,11 @@ def test_the_scan_actually_finds_call_sites() -> None:
     `error_diagnostic` daria a lista como completa com oito códigos de fora.
     """
     used = _codes_used_in_source()
-    assert len(used) > 30, f"esperava dezenas de call sites, achei {len(used)}"
+    assert len(used) > 60, f"esperava dezenas de call sites, achei {len(used)}"
     assert "BRAIN_EXTRACTION_FAILED" in used, "caminho do error_diagnostic literal"
     assert "OPENROUTER_RATE_LIMITED" in used, "caminho do PermanentError.public"
+    # Só alcançável através do import aliasado de `pipeline.py`.
+    assert "TIKTOK_PROBE_RETRY" in used, "caminho do error_diagnostic aliasado"
 
 
 @pytest.mark.parametrize(
