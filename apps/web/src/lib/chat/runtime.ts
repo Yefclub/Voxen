@@ -1748,8 +1748,8 @@ export async function streamAssistantReply(options: {
         emit({ type: 'reasoning', delta: reasoningDelta });
       } else if (isFinalTextDelta(part)) {
         closeReasoning(segments);
-        answer += part.text as string;
-        emit({ type: 'text', delta: part.text as string });
+        answer += part.text;
+        emit({ type: 'text', delta: part.text });
       } else if (type === 'tool-call') {
         const event: StoredToolEvent = {
           id: String(part.toolCallId ?? crypto.randomUUID()),

@@ -17,6 +17,9 @@
  * fechado e abria outro, partindo um raciocínio contínuo em dois blocos na UI e
  * no que é persistido.
  */
-export function isFinalTextDelta(part: { type?: unknown; text?: unknown }): boolean {
+export function isFinalTextDelta(part: {
+  type?: unknown;
+  text?: unknown;
+}): part is { type: 'text-delta'; text: string } {
   return part.type === 'text-delta' && typeof part.text === 'string' && part.text.length > 0;
 }

@@ -29,13 +29,15 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    # 10, não 5. Agrupar reduz a probabilidade da fome, não elimina: PR agrupada
-    # ocupa um slot igual, então na semana em que os cinco grupos tiverem update
-    # eles sozinhos enchiam o limite de 5 e sobrava ZERO para os outros 57
-    # pacotes — inclusive o `ai`, que fica fora de grupo justamente para nunca
-    # esperar. Grupo trata a causa, teto trata o resíduo; sem os dois, o `ai`
-    # continuaria sem slot na semana cheia.
-    open-pull-requests-limit: 10
+    # O teto tem que ser maior que o número de grupos, senão a fome volta um
+    # nível acima: PR agrupada ocupa um slot igual, então N grupos com update na
+    # mesma semana enchem N slots e sobra zero para os avulsos — inclusive o
+    # `ai`, que fica fora de grupo justamente para nunca esperar.
+    #
+    # São 10 grupos cobrindo 43 dos 78 pacotes; 35 seguem avulsos. 15 = os 10
+    # grupos no pior caso + 5 de folga para os avulsos. Grupo trata a causa,
+    # teto trata o resíduo, e o resíduo só cabe se houver folga sobre os grupos.
+    open-pull-requests-limit: 15
     # Sem grupos, cada patch de Radix ou AWS SDK gastava um slot sozinho, o
     # limite enchia, e Dependabot parava de abrir qualquer coisa nova — foi
     # assim que `ai` ficou 40 patches atrás (issue #769). Agrupar por família
@@ -73,6 +75,46 @@ updates:
         patterns:
           - "streamdown"
           - "@streamdown/*"
+        update-types:
+          - minor
+          - patch
+      # Espelham os grupos que o bloco da raiz já tem. Sem eles, 12 pacotes que
+      # a raiz considera ruído de rotina continuavam gastando um slot cada aqui.
+      tooling:
+        patterns:
+          - "eslint*"
+          - "prettier*"
+          - "typescript*"
+          - "vite*"
+          - "vitest*"
+        update-types:
+          - minor
+          - patch
+      react:
+        patterns:
+          - "react*"
+          - "@vitejs/plugin-react*"
+        update-types:
+          - minor
+          - patch
+      codemirror:
+        patterns:
+          - "@codemirror/*"
+          - "codemirror"
+        update-types:
+          - minor
+          - patch
+      better-auth:
+        patterns:
+          - "better-auth"
+          - "@better-auth/*"
+        update-types:
+          - minor
+          - patch
+      hono:
+        patterns:
+          - "hono"
+          - "@hono/*"
         update-types:
           - minor
           - patch
