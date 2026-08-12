@@ -181,8 +181,14 @@ async def resolve_entity_node(
     entity_type: str,
     aliases: tuple[str, ...],
     excerpt: str,
+    local_ref: str = "",
+    excluded_node_ids: set[str] | None = None,
 ) -> str:
     candidates = await entity_alias_candidates(conn, user_id=user_id, names=(label, *aliases))
+    if excluded_node_ids:
+        candidates = [
+            candidate for candidate in candidates if candidate.node_id not in excluded_node_ids
+        ]
     selected = select_entity_candidate(
         label=label,
         entity_type=entity_type,
@@ -198,7 +204,7 @@ async def resolve_entity_node(
         # A normalized name is never identity evidence. Keep a contextual key
         # until one unique, compatible alias observation justifies reuse.
         ambiguous=True,
-        context_key=f"{transcript_id}:{segment_key}:{excerpt}",
+        context_key=f"{transcript_id}:{segment_key}:{local_ref}:{excerpt}",
     )
     return await upsert_concept_node(
         conn,

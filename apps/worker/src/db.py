@@ -1387,6 +1387,8 @@ async def upsert_grounded_brain_items(
                         entity_type=entity_type,
                         aliases=aliases,
                         excerpt=excerpt,
+                        local_ref=local_ref,
+                        excluded_node_ids={node_id for node_id, _kind in concepts.values()},
                     )
                     await brain_temporal_store.upsert_entity_aliases(
                         conn,
@@ -1445,7 +1447,7 @@ async def upsert_grounded_brain_items(
                     evidence_key=_grounded_evidence_key(
                         transcript_id,
                         segment["key"],
-                        f"item:{slug}",
+                        f"item:{slug}:ref:{local_ref}",
                         excerpt,
                         evidence_version,
                     ),

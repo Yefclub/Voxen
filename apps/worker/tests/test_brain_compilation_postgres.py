@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -8,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, brain_temporal_store, db
+from src import brain_compilation_db, brain_extract, brain_temporal_store, db
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -470,6 +471,88 @@ async def test_concurrent_homonyms_without_strong_alias_evidence_stay_separate()
         await conn_a.close()
         await conn_b.close()
         await setup.close()
+
+
+async def test_parser_local_refs_preserve_same_excerpt_homonyms_in_storage() -> None:
+    assert os.environ.get("DATABASE_URL")
+    suffix = uuid.uuid4().hex
+    user_id = f"local-ref-user-{suffix}"
+    transcript_id = f"local-ref-transcript-{suffix}"
+    source = "Alex Silva e Alex Silva apresentaram juntos o projeto Atlas."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "id": "alex-one",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva e Alex Silva apresentaram juntos",
+                },
+                {
+                    "id": "alex-two",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva e Alex Silva apresentaram juntos",
+                },
+            ]
+        }
+    )
+    items = brain_extract.parse_grounded_payload(raw, source)
+    assert [item.local_ref for item in items] == ["alex-one", "alex-two"]
+
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        await conn.execute(
+            """
+            INSERT INTO "User" (id, email, name, status, role, "createdAt", "updatedAt")
+            VALUES ($1, $2, 'Local Ref Test', 'APPROVED', 'USER', NOW(), NOW())
+            """,
+            user_id,
+            f"{user_id}@example.test",
+        )
+        await conn.execute(
+            """
+            INSERT INTO "Transcript" (
+              id, "userId", source, url, title, "durationSec", language,
+              "transcriptionMethod", "mdPath", "plainText", frontmatter,
+              "createdAt", "updatedAt"
+            ) VALUES (
+              $1, $2, 'WEB', $3, 'Homonyms', 0, 'pt', 'SCRAPE', $4, $5,
+              '{}'::jsonb, NOW(), NOW()
+            )
+            """,
+            transcript_id,
+            user_id,
+            f"https://example.test/{transcript_id}",
+            f"{transcript_id}.md",
+            source,
+        )
+
+        node_ids: list[str] = []
+        for item in items:
+            node_ids.append(
+                await brain_temporal_store.resolve_entity_node(
+                    conn,
+                    user_id=user_id,
+                    transcript_id=transcript_id,
+                    segment_key="segment-1",
+                    label=item.label,
+                    entity_type=item.entity_type,
+                    aliases=item.aliases,
+                    excerpt=item.excerpt,
+                    local_ref=item.local_ref,
+                    excluded_node_ids=set(node_ids),
+                )
+            )
+
+        assert len(set(node_ids)) == 2
+        assert (
+            await conn.fetchval(
+                'SELECT COUNT(*) FROM "BrainNode" WHERE id = ANY($1::text[])', node_ids
+            )
+            == 2
+        )
+    finally:
+        await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
+        await conn.close()
 
 
 async def test_recompilation_withdraws_current_facts_without_deleting_the_ledger() -> None:

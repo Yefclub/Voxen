@@ -38,7 +38,9 @@ Graphiti is a design reference, not a runtime dependency:
 - Entities and relations use extraction-local references, so homonyms that
   coexist in one segment retain distinct identities and evidence paths. The
   same normalizer is used on definitions and references; normalized collisions
-  and ID/label contradictions are rejected instead of guessed.
+  and ID/label contradictions are rejected instead of guessed. Local references
+  remain part of persisted contextual identity and evidence keys, and explicit
+  peers in one payload cannot resolve onto the same node.
 - Transcript lifecycle mutations share the graph-write lease and serialize on
   the transcript row. A grounded segment can commit only while that exact
   source version is still `ACTIVE`, preventing a concurrent worker from
