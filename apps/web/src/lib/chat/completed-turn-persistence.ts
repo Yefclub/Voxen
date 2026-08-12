@@ -1,6 +1,7 @@
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { recordCompletedTurnInMemoryShadow } from '../memory/memory-provider';
+import { scheduleUserMemoryShadowWrite } from '../memory/memory-shadow-coordinator';
 
 /**
  * Persists an assistant reply on the active conversation trail. This is used
@@ -35,29 +36,25 @@ export function scheduleCompletedTurnMemoryShadow(input: {
   if (!input.eligible || !input.userMessageId) return;
   // Reload the canonical row instead of trusting runtime input: HITL resumes
   // use synthetic prompts and must never become user memory.
-  void db.chatMessage
-    .findFirst({
+  scheduleUserMemoryShadowWrite(input.userId, async () => {
+    const userMessage = await db.chatMessage.findFirst({
       where: {
-        id: input.userMessageId,
+        id: input.userMessageId ?? undefined,
         conversationId: input.conversationId,
         role: 'USER',
         kind: 'NORMAL',
       },
       select: { id: true, content: true },
-    })
-    .then(async (userMessage) => {
-      if (!userMessage) return;
-      await recordCompletedTurnInMemoryShadow({
-        userId: input.userId,
-        conversationId: input.conversationId,
-        userMessageId: userMessage.id,
-        assistantMessageId: input.assistantMessageId,
-        userContent: userMessage.content,
-        assistantContent: input.assistantContent,
-        completedAt: new Date(),
-      });
-    })
-    .catch(() => {
-      console.warn('[memory-shadow] canonical completed turn could not be loaded');
     });
+    if (!userMessage) return;
+    await recordCompletedTurnInMemoryShadow({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      userMessageId: userMessage.id,
+      assistantMessageId: input.assistantMessageId,
+      userContent: userMessage.content,
+      assistantContent: input.assistantContent,
+      completedAt: new Date(),
+    });
+  });
 }

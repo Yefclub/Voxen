@@ -1726,6 +1726,7 @@ export async function streamAssistantReply(options: {
     for await (const rawPart of result.fullStream) {
       const part = rawPart as unknown as Record<string, unknown>;
       const type = part.type;
+      if (type === 'error') providerStreamCompleted = false;
       if (!firstProviderEventLogged && isProviderObservedEvent(type)) {
         firstProviderEventLogged = true;
         const firstEventAt = Date.now();

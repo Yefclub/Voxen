@@ -81,7 +81,7 @@ function normalized(value: string): string {
 
 function matchesExpectation(candidate: MemoryCandidate, item: MemoryEvaluationCase): boolean {
   const content = normalized(candidate.content);
-  const hasExpected = item.expectedTerms.some((term) => content.includes(normalized(term)));
+  const hasExpected = item.expectedTerms.every((term) => content.includes(normalized(term)));
   const hasForbidden = (item.forbiddenTerms ?? []).some((term) =>
     content.includes(normalized(term)),
   );
@@ -100,6 +100,7 @@ export async function runMemoryShadowEvaluation(args: {
 
   const now = args.now ?? new Date();
   const conversationOwners = new Map<string, string>();
+  const isolationMarkers = new Map<string, string>();
   const evaluationUsers = new Set<string>();
   let fullReplayEstimatedTokens = 0;
   let hits = 0;
@@ -111,18 +112,25 @@ export async function runMemoryShadowEvaluation(args: {
   let crossUserLeaks = 0;
   let candidateTokens = 0;
   const latencies: number[] = [];
-  for (const item of args.cases) evaluationUsers.add(item.userId);
+  for (const item of args.cases) {
+    evaluationUsers.add(item.userId);
+    isolationMarkers.set(
+      item.userId,
+      `voxen-isolation-${args.runId}-${Buffer.from(item.userId).toString('base64url')}`,
+    );
+  }
   try {
     for (const item of args.cases) {
       const conversationId = `mem0-eval:${args.runId}:${item.id}`;
       conversationOwners.set(conversationId, item.userId);
-      fullReplayEstimatedTokens += estimateTokens(item.userContent + item.assistantContent);
+      const markedUserContent = `${item.userContent}\nMy private isolation marker is ${isolationMarkers.get(item.userId)}.`;
+      fullReplayEstimatedTokens += estimateTokens(markedUserContent + item.assistantContent);
       const turn: CompletedMemoryTurn = {
         userId: item.userId,
         conversationId,
         userMessageId: `${conversationId}:user`,
         assistantMessageId: `${conversationId}:assistant`,
-        userContent: item.userContent,
+        userContent: markedUserContent,
         assistantContent: item.assistantContent,
         completedAt: now,
       };
@@ -153,11 +161,16 @@ export async function runMemoryShadowEvaluation(args: {
           normalized(candidate.content).includes(normalized(term)),
         ),
       ).length;
-      crossUserLeaks += candidateConversationIds.filter(
-        (conversationId) =>
-          conversationOwners.has(conversationId) &&
-          conversationOwners.get(conversationId) !== item.userId,
-      ).length;
+      crossUserLeaks += candidates.filter((candidate) => {
+        const owner = candidate.provenance.conversationId
+          ? conversationOwners.get(candidate.provenance.conversationId)
+          : undefined;
+        const foreignMarker = [...isolationMarkers].some(
+          ([userId, marker]) =>
+            userId !== item.userId && normalized(candidate.content).includes(normalized(marker)),
+        );
+        return foreignMarker || owner !== item.userId;
+      }).length;
       totalCandidates += candidates.length;
       candidateTokens += candidates.reduce(
         (total, candidate) => total + estimateTokens(candidate.content),

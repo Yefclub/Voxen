@@ -112,4 +112,56 @@ describe('memory shadow evaluation', () => {
     ).rejects.toThrow('upstream setup failure');
     expect(deleted.toSorted()).toEqual(['evaluation-user-a', 'evaluation-user-b']);
   });
+
+  it('requires every expected fact instead of passing on a partial match', async () => {
+    const provider = new EvaluationProvider();
+    const report = await runMemoryShadowEvaluation({
+      provider,
+      cases: [
+        {
+          ...cases[0]!,
+          expectedTerms: ['respostas curtas', 'português'],
+        },
+      ],
+      runId: 'partial-match',
+    });
+    expect(report.shadow.recall).toBe(0);
+    expect(report.passed).toBe(false);
+  });
+
+  it('treats candidates without attributable provenance as isolation failures', async () => {
+    let deleted = false;
+    const provider: MemoryProvider = {
+      kind: 'mem0-shadow',
+      addCompletedTurn: async () => undefined,
+      search: async () =>
+        deleted
+          ? []
+          : [
+              {
+                id: 'unattributed',
+                content: 'respostas curtas',
+                score: 1,
+                trust: 'unverified',
+                provenance: {
+                  conversationId: null,
+                  userMessageId: null,
+                  assistantMessageId: null,
+                  algorithmVersion: null,
+                },
+                scoreDetails: null,
+              },
+            ],
+      deleteUser: async () => {
+        deleted = true;
+      },
+    };
+    const report = await runMemoryShadowEvaluation({
+      provider,
+      cases: [cases[0]!],
+      runId: 'missing-provenance',
+    });
+    expect(report.shadow.crossUserLeaks).toBe(1);
+    expect(report.passed).toBe(false);
+  });
 });

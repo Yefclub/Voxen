@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { acquireUserMemoryShadowDeletionFence } from './memory-shadow-coordinator';
 
 export const MEMORY_SHADOW_ALGORITHM_VERSION = 'voxen-mem0-oss-shadow-v1';
 
@@ -321,4 +322,13 @@ export async function deleteUserMemoryShadow(
 ): Promise<void> {
   const provider = createMemoryProvider(dependencies);
   await provider.deleteUser(userId);
+}
+
+export async function beginUserMemoryShadowDeletion(
+  userId: string,
+  dependencies: MemoryProviderDependencies = {},
+): Promise<() => void> {
+  return acquireUserMemoryShadowDeletionFence(userId, () =>
+    deleteUserMemoryShadow(userId, dependencies),
+  );
 }

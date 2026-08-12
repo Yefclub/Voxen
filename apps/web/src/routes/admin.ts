@@ -16,7 +16,7 @@ import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { getAppTimezone, getSetting, setSettings } from '../lib/settings';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 import { storageDeletePrefix } from '../lib/storage';
-import { deleteUserMemoryShadow } from '../lib/memory/memory-provider';
+import { beginUserMemoryShadowDeletion } from '../lib/memory/memory-provider';
 import { adminAuthenticationRoutes } from './admin-authentication';
 import { adminMcpRoutes } from './admin-mcp';
 import { adminResearchPolicyRoutes } from './admin-research-policy';
@@ -229,21 +229,25 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
     // Shadow memory is derived but external. Delete it first and fail strict so
     // an unreachable provider cannot leave personal memories orphaned after the
     // canonical user row disappears.
-    await deleteUserMemoryShadow(target.id);
-    await storageDeletePrefix(`workspaces/${target.id}/`);
-    await withAdminRosterLock(async (tx) => {
-      const current = await tx.user.findUnique({ where: { id: target.id } });
-      if (!current) throw new AdminUserActionError('Usuário não encontrado.', 404);
-      if (confirmEmail !== current.email) {
-        throw new AdminUserActionError(
-          'Digite exatamente o e-mail da conta para confirmar a exclusão.',
-        );
-      }
-      await assertMayRemoveApprovedAdmin(tx, current);
-      await tx.setting.deleteMany({ where: { scope: 'USER', userId: current.id } });
-      await tx.verification.deleteMany({ where: { identifier: current.email } });
-      await tx.user.delete({ where: { id: current.id } });
-    });
+    const releaseMemoryFence = await beginUserMemoryShadowDeletion(target.id);
+    try {
+      await storageDeletePrefix(`workspaces/${target.id}/`);
+      await withAdminRosterLock(async (tx) => {
+        const current = await tx.user.findUnique({ where: { id: target.id } });
+        if (!current) throw new AdminUserActionError('Usuário não encontrado.', 404);
+        if (confirmEmail !== current.email) {
+          throw new AdminUserActionError(
+            'Digite exatamente o e-mail da conta para confirmar a exclusão.',
+          );
+        }
+        await assertMayRemoveApprovedAdmin(tx, current);
+        await tx.setting.deleteMany({ where: { scope: 'USER', userId: current.id } });
+        await tx.verification.deleteMany({ where: { identifier: current.email } });
+        await tx.user.delete({ where: { id: current.id } });
+      });
+    } finally {
+      releaseMemoryFence();
+    }
     return c.json({ ok: true });
   } catch (error) {
     if (error instanceof AdminUserActionError)

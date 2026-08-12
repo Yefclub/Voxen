@@ -17,6 +17,7 @@ describe('chat memory shadow integration contract', () => {
     expect(schedulingCall).toContain('abortSignal.aborted');
     expect(schedulingCall).toContain('failedTools.length === 0');
     expect(schedulingCall).toContain('answer.trim()');
+    expect(source.slice(promptIndex, shadowIndex)).toContain("type === 'error'");
     expect(persistence).toContain("kind: 'NORMAL'");
     expect(persistence).toContain("role: 'USER'");
     const canonicalLookup = persistence.indexOf('findFirst');
