@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.14.5-dev.1786563888 — 2026-08-12 · Dev
+
+### 🐛 Worker logs now say which failure happened instead of a generic one
+
+Twenty-three internal failure codes never reached the logs. A safety filter,
+which exists to keep external error messages out of log output, silently
+replaced any code it did not recognise with a generic one — and its list had
+fallen behind the code. Every research enrichment failure, several brain
+extraction and summary failures, provider rate limiting, saved media errors and
+media cleanup errors all surfaced as the same anonymous entry, so an upstream
+outage looked identical to any other unexpected error.
+
+The list is now complete, and a test keeps it that way: adding a failure code
+without registering it fails the build instead of going quiet in production. The
+check reads the source tree rather than matching text, so it covers the codes
+that never appear literally at the point they are logged.
+
+Separately, brain extraction reported success when it had actually postponed
+work. When the graph write lock was busy the run finished with a completion
+entry showing zero concepts, which reads exactly like a document that genuinely
+had none. It now reports incomplete, with the number of postponed segments, so
+the two cases can be told apart.
+
+## v0.14.5-dev.1786563888 — 2026-08-12 · Dev
+
+### 🧹 The AI SDK is back on a current patch release
+
+The `ai` package, which runs the whole agent loop — tool approvals, timeout
+budgets and streaming — had been pinned forty patch releases behind, with that
+many releases of fixes sitting unapplied on the most critical dependency in the
+app.
+
+Catching up changed one behaviour the chat depended on: the newer package
+delivers empty text chunks that the old one filtered out, which would have split
+a single stretch of reasoning into two separate blocks. That is handled, so the
+reasoning panel keeps behaving as before.
+
+It is now current. The dependency automation was also regrouped so this cannot
+happen the same way again: routine updates from the same family now arrive as
+one pull request instead of one each, which stops a handful of parked reviews
+from blocking every other update behind them.
+
 ## v0.14.5-dev.1786552219 — 2026-08-12 · Dev
 
 ### 🧹 Components from shadcn-format registries can now be installed by CLI
