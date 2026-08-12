@@ -115,7 +115,7 @@ O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
 | UI/UX, tema zinc, verificação visual           | `apps/web/CLAUDE.md`   |
 | Formato `.md` de transcrição                   | `apps/worker/CLAUDE.md` |
 
-### Os 7 passos (em ordem)
+### Os 9 passos (em ordem)
 
 1. **Analisar e conversar** com o owner sobre o que fazer/entender. Confirmar escopo, perguntar se ambíguo, propor abordagem.
 2. **Branch a partir de `dev` SINCRONIZADA**:
@@ -124,18 +124,22 @@ O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
    git checkout -b feat/<slug>
    ```
    NUNCA branchar de feature anterior. NUNCA branchar de stale.
-3. **Trabalhar + testar** localmente (lint, typecheck, test, build) → **retornar pro owner** com o que foi feito.
-4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em inglês, sem emojis, **sem rodapés nem co-autoria de IA (nem no corpo da PR, nem nos commits)** — ver "Sem co-autoria de IA" abaixo. Use Conventional Commits no título: `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
-5. **Monitorar CI até terminar**: usar o padrão de espera robusto da skill `ci-status` — NÃO confiar em `gh pr checks` cru (exit code não diferencia pendente de falho; pode mostrar checks de runs cancelados antigos). Se vermelho, investigar e corrigir antes de prosseguir.
-6. **Disparar agente Opus 4.7 (skill `review-pr`)** em background pra revisar diffs, segurança, escopo.
-7. **Se CI verde + review APROVADO (com ou sem ressalvas) → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + veredito do agente), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** Exceção: review retornou "MUDANÇAS NECESSÁRIAS" → corrige antes de mergear. PR de release (`dev→main`) sim aguarda owner.
-8. **Pós-merge OBRIGATÓRIO** — `git fetch && git checkout dev && git pull --ff-only` + `docker compose build <serviços-afetados>` + `docker compose up -d <serviços>`. Owner aplica no host de deploy local (self-hosted); se o ambiente local não atualizar, o GitHub diverge do que o owner vê. Skipa só PRs docs-only (que não mudam runtime). Depois → volta pro passo 1.
+3. **Trabalhar + testar** localmente — checklist pre-PR completo (lint, typecheck, test, build) na skill `ship`.
+4. **Commit local, SEM push.**
+5. **Review do commit local** (skill `review-pr` em subagente) — **pré-requisito, não opcional.** Escopo estreito: só defeito introduzido pelo diff, quebra de comportamento existente e lacuna do que a issue pede. Quem implementou não se auto-aprova.
+6. **Corrigir os achados na branch local** e re-rodar só o que a correção tocou. Repetir 4 → 6 até o review voltar limpo.
+7. **Push único → abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em inglês, sem emojis, **sem rodapés nem co-autoria de IA (nem no corpo da PR, nem nos commits)** — ver "Sem co-autoria de IA" abaixo. Use Conventional Commits no título: `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
+8. **Monitorar CI até terminar** com o padrão de espera robusto da skill `ci-status` — NÃO confiar em `gh pr checks` cru (exit code não diferencia pendente de falho; pode mostrar checks de runs cancelados antigos). **CI verde → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + review já aprovado no passo 6), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** PR de release (`dev→main`) sim aguarda owner.
+9. **Pós-merge OBRIGATÓRIO** — `git fetch && git checkout dev && git pull --ff-only` + `docker compose build <serviços-afetados>` + `docker compose up -d <serviços>`. Owner aplica no host de deploy local (self-hosted); se o ambiente local não atualizar, o GitHub diverge do que o owner vê. Skipa só PRs docs-only (que não mudam runtime). Depois → volta pro passo 1.
+
+**Por que o review vem antes do push.** Com review depois do CI, cada achado custa um ciclo de runner inteiro — e a maior parte desses ciclos é gasta em commit intermediário que ninguém ia mergear. Review local não precisa de push nem de runner. Exceção legítima: o CI reprovar algo que o review local não pega (flake, divergência de ambiente, gate que só roda no runner) → corrige na branch e re-empurra.
 
 ### Regras inegociáveis
 
 - **NUNCA** acumular mais de 1 feature em uma branch — **uma PR por feature**. Se você acumulou (ex: 12 commits sem PR), pare, abra a PR agora.
 - **NUNCA** commitar/pushar direto em `dev` ou `main`.
-- **Merge autônomo é permitido** quando CI verde + review `APROVADO` (passo 7) — não esperar confirmação do owner nesse caso. **Exceção que SEMPRE aguarda o owner**: PR de release (`dev→main`).
+- **NUNCA** abrir PR sem o review local do passo 5 ter voltado limpo. PR aberta é runner gasto; achado que o review pega antes do push não custa CI nenhum.
+- **Merge autônomo é permitido** quando CI verde + review `APROVADO` (passo 8) — não esperar confirmação do owner nesse caso. **Exceção que SEMPRE aguarda o owner**: PR de release (`dev→main`).
 - **NUNCA** adicionar co-autoria ou rodapés de IA em lugar nenhum (ver "Sem co-autoria de IA" abaixo).
 - **NUNCA** postar comentários desnecessários em PRs/issues.
 - **NUNCA** branchar de stale. Sempre `git pull --ff-only` em `dev` antes de criar branch.
@@ -243,7 +247,7 @@ Branch protection em `dev` e `main` (não é visível no repo, é config do GitH
 
 Princípios pra rodar subagentes autônomos sem alucinar progresso (verificação externa > auto-introspecção):
 
-- **Maker ≠ checker**: quem implementa NÃO é quem aprova. O review (`review-pr`) é **pré-requisito do merge, não opcional** — modelo que se auto-avalia é leniente. Vale também pra correções de ressalva: re-revisar o commit de fix antes de mergear (o ciclo já pegou bugs reais em re-review).
+- **Maker ≠ checker**: quem implementa NÃO é quem aprova. O review (`review-pr`) é **pré-requisito do push, não opcional** — modelo que se auto-avalia é leniente. Vale também pra correções de ressalva: re-revisar o commit de fix antes de empurrar (o ciclo já pegou bugs reais em re-review).
 - **Definition of Done escrita antes de despachar**: definir a condição de sucesso verificável (testes passam, checklist verde, PR criada). Se não dá pra escrever a condição, a tarefa não está pronta pra autonomia — quebrar ou esclarecer.
 - **Fail-closed em runaway**: ao repetir o mesmo erro/ação ~3× ou bater teto de retries, **parar e reportar o estado real** — nunca declarar sucesso nem insistir em loop. Confiar pela fonte (CI real, `statusCheckRollup`), não pelo que o subagente reportou (já houve subagente reportando "CI verde" com CI vermelho).
 

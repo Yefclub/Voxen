@@ -1,6 +1,6 @@
 ---
 name: batch-issues
-description: Use quando o owner passar várias issues para implementar de uma vez ("implementa essas 4 issues", lista de issues em lote) — protocolo de worktrees paralelas em 4 fases, com subagentes isolados, limpeza obrigatória, espera de CI e review automatizado por PR.
+description: Use quando o owner passar várias issues para implementar de uma vez ("implementa essas 4 issues", lista de issues em lote) — protocolo de worktrees paralelas em 4 fases, com subagentes isolados, review local antes de cada push, limpeza obrigatória e espera de CI.
 ---
 
 # Batch Issues — Implementação Paralela com Worktrees
@@ -14,39 +14,41 @@ Quando o usuário fornecer múltiplas issues para implementar em paralelo, segui
 1. Ler todas as issues via `gh issue view` — entender escopo e dependências
 2. Detectar conflitos potenciais — se duas issues tocam os mesmos arquivos, avisar ANTES de iniciar
 
-**Fase 2 — Implementação Paralela**
+**Fase 2 — Implementação + review local, em paralelo**
 
 3. Para cada issue, disparar um sub-agente com `isolation: "worktree"`:
 
 - O agente recebe: número da issue, contexto completo do problema, arquivos relevantes
-- O agente deve: ler a issue → atualizar/criar spec em `.specs/` se ainda não houver → implementar → escrever testes → rodar checklist pre-PR → criar PR
+- O agente deve, na ordem: ler a issue → atualizar/criar spec em `.specs/` se ainda não houver → implementar → escrever testes → rodar checklist pre-PR (skill `ship`, passo 3) → **commit local, sem push**
 - O agente NÃO deve modificar arquivos fora do escopo da sua issue
 - A worktree é automaticamente limpa se o agente não fizer mudanças
 
+4. Ainda dentro da fase 2, para cada worktree com commit: disparar um sub-agente de **review do commit local** (skill `review-pr`, modo local, contexto limpo).
+
+- Quem implementou não revisa o próprio diff
+- Veredicto `MUDANÇAS NECESSÁRIAS` → o agente de implementação corrige na worktree e re-submete ao review; repetir até limpo
+- Só depois do review limpo: **push único → criar PR** contra `dev`
+
+Por que aqui e não depois do CI: cada achado pego depois do push custa um ciclo de runner por PR. Num lote de 5 issues isso multiplica por 5 — é o gasto que esta ordem elimina.
+
 **Fase 3 — Limpeza + Aguardar CI**
 
-4. Limpar worktrees (ver seção abaixo)
-5. Gerar tabela resumo parcial com status das PRs
-6. Aguardar CI de todas as PRs (usar o padrão de espera robusta da skill `ci-status`, não `gh pr checks` cru)
+5. Limpar worktrees (ver seção abaixo)
+6. Gerar tabela resumo parcial com status das PRs
+7. Aguardar CI de todas as PRs (usar o padrão de espera robusta da skill `ci-status`, não `gh pr checks` cru)
 
 - Se CI falhar em alguma PR, reportar quais falharam e por quê
-- NÃO prosseguir para review de PRs com CI vermelho
+- CI vermelho após review limpo é o caso legítimo (flake, divergência de ambiente, gate que só roda no runner): corrigir, re-revisar o commit de fix, re-empurrar
 
-**Fase 4 — Review Automatizado**
+**Fase 4 — Consolidação**
 
-7. Para cada PR com CI verde, disparar um sub-agente de review (em background):
-
-- O agente usa a skill `review-pr` (`.claude/skills/review-pr/SKILL.md`)
-- Analisa diff, tipagem, segurança, testes, escopo, migrations, spec alinhada
-- Retorna relatório estruturado com veredicto: APROVADO ou MUDANÇAS NECESSÁRIAS
-
-8. Após todos os reviews completarem, retornar ao Claude principal com:
+8. Retornar ao Claude principal com:
 
    | Issue | PR  | CI  | Review | Problemas |
    | ----- | --- | --- | ------ | --------- |
 
 9. Sinalizar PRs que toquem arquivos sobrepostos para revisão manual
-10. Merge é SEMPRE decisão humana — nunca mergear automaticamente
+10. Merge de lote é SEMPRE decisão humana — nunca mergear automaticamente um lote inteiro
 
 ## Limpeza de Worktrees (OBRIGATÓRIO)
 
@@ -66,7 +68,8 @@ Worktrees que não geraram mudanças são limpas automaticamente. Para as que ge
 
 ## Regras do Agente de Review
 
-- Só inicia após CI verde — PR com CI vermelho não é revisada
-- Usa a skill em `.claude/skills/review-pr/SKILL.md` como guia
-- Roda em background (`run_in_background: true`) para não bloquear reviews de outras PRs
+- Roda sobre o **commit local**, antes do push — não espera CI (fase 2, passo 4)
+- Usa a skill em `.claude/skills/review-pr/SKILL.md` como guia, em modo local
+- Roda em background (`run_in_background: true`) para não bloquear as outras worktrees
+- Contexto limpo, nunca o mesmo agente que implementou
 - Retorna relatório para o Claude principal — NUNCA comenta na PR ou aprova diretamente
