@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.14.5-dev.1786524207 — 2026-08-12 · Dev
+
+### ✨ Optional conversational-memory shadow evaluation
+
+Voxen can now evaluate a separately hosted Mem0 OSS service without changing
+answers or canonical knowledge. The adapter is disabled by default, isolates
+users through opaque server-derived subjects, records provenance only after a
+completed chat turn, and removes remote memories before account deletion. A
+privacy-safe live harness measures retrieval quality, isolation, deletion,
+latency, token volume, and reported cost before any future controlled use.
+
 ## v0.14.5-dev.1786514157 — 2026-08-12 · Dev
 
 ### ✨ Temporal Brain facts and safer entity resolution

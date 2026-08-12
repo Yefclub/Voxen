@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786524207",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Optional conversational-memory shadow evaluation",
+    "body": "Voxen can now evaluate a separately hosted Mem0 OSS service without changing\nanswers or canonical knowledge. The adapter is disabled by default, isolates\nusers through opaque server-derived subjects, records provenance only after a\ncompleted chat turn, and removes remote memories before account deletion. A\nprivacy-safe live harness measures retrieval quality, isolation, deletion,\nlatency, token volume, and reported cost before any future controlled use.",
+    "pr": 763,
+    "author": "Kalyel",
+    "date": "2026-08-12T05:43:08-03:00",
+    "translations": {
+      "en": {
+        "title": "Optional conversational-memory shadow evaluation",
+        "body": "Voxen can now evaluate a separately hosted Mem0 OSS service without changing\nanswers or canonical knowledge. The adapter is disabled by default, isolates\nusers through opaque server-derived subjects, records provenance only after a\ncompleted chat turn, and removes remote memories before account deletion. A\nprivacy-safe live harness measures retrieval quality, isolation, deletion,\nlatency, token volume, and reported cost before any future controlled use."
+      },
+      "pt-BR": {
+        "title": "Avaliação opcional de memória conversacional em shadow mode",
+        "body": "A Voxen agora pode avaliar um serviço Mem0 OSS hospedado separadamente sem\nalterar respostas nem o conhecimento canônico. O adaptador é desativado por\npadrão, isola usuários por sujeitos opacos derivados no servidor, registra\nproveniência apenas após concluir um turno do chat e remove memórias remotas\nantes da exclusão da conta. Um avaliador ao vivo sem conteúdo sensível mede\nqualidade, isolamento, exclusão, latência, tokens e custo informado antes de\nqualquer uso controlado futuro."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/763"
+  },
+  {
     "version": "0.14.5-dev.1786514157",
     "channel": "dev",
     "type": "feat",
