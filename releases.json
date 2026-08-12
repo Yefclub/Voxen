@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786577267",
+    "channel": "dev",
+    "type": "fix",
+    "title": "A blocked YouTube download now names every way to unblock it",
+    "body": "When YouTube refuses an automated download, the message you get is the only\nguidance available — and it listed two of the three fixes this deployment\nsupports. The one it left out is the one that works on a rented server, which is\nwhere the block almost always happens.\n\nIt now names all three, in the order worth trying: a PO token provider, a\nresidential proxy, or your YouTube cookies. Manual upload still works\nimmediately, and that is said first.\n\nA related silence is gone too. Before downloading, the worker tries to fetch\nexisting captions, and a failure there was invisible in the logs. \"This video\nhas no captions\" and \"the captions endpoint is blocked too\" looked identical,\neven though only the second one is worth acting on.",
+    "pr": 790,
+    "author": "Kalyel",
+    "date": "2026-08-12T20:27:31-03:00",
+    "translations": {
+      "en": {
+        "title": "A blocked YouTube download now names every way to unblock it",
+        "body": "When YouTube refuses an automated download, the message you get is the only\nguidance available — and it listed two of the three fixes this deployment\nsupports. The one it left out is the one that works on a rented server, which is\nwhere the block almost always happens.\n\nIt now names all three, in the order worth trying: a PO token provider, a\nresidential proxy, or your YouTube cookies. Manual upload still works\nimmediately, and that is said first.\n\nA related silence is gone too. Before downloading, the worker tries to fetch\nexisting captions, and a failure there was invisible in the logs. \"This video\nhas no captions\" and \"the captions endpoint is blocked too\" looked identical,\neven though only the second one is worth acting on."
+      },
+      "pt-BR": {
+        "title": "Download bloqueado do YouTube agora mostra todos os caminhos para destravar",
+        "body": "Quando o YouTube recusa um download automatizado, a mensagem é a única\norientação disponível — e ela listava duas das três soluções que esta instalação\nsuporta. A que ficou de fora é justamente a que funciona em servidor alugado,\nque é onde o bloqueio quase sempre acontece.\n\nAgora ela cita as três, na ordem que vale tentar: provider de PO token, proxy\nresidencial ou seus cookies do YouTube. Upload manual continua resolvendo na\nhora, e isso é dito primeiro.\n\nUm silêncio parecido também acabou. Antes de baixar, o worker tenta pegar\nlegendas já existentes, e uma falha ali era invisível nos logs. \"Este vídeo não\ntem legenda\" e \"o endpoint de legendas também está bloqueado\" pareciam iguais,\nembora só o segundo peça alguma ação."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/790"
+  },
+  {
     "version": "0.14.5-dev.1786563888",
     "channel": "dev",
     "type": "fix",

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.14.5-dev.1786577267 — 2026-08-12 · Dev
+
+### 🐛 A blocked YouTube download now names every way to unblock it
+
+When YouTube refuses an automated download, the message you get is the only
+guidance available — and it listed two of the three fixes this deployment
+supports. The one it left out is the one that works on a rented server, which is
+where the block almost always happens.
+
+It now names all three, in the order worth trying: a PO token provider, a
+residential proxy, or your YouTube cookies. Manual upload still works
+immediately, and that is said first.
+
+A related silence is gone too. Before downloading, the worker tries to fetch
+existing captions, and a failure there was invisible in the logs. "This video
+has no captions" and "the captions endpoint is blocked too" looked identical,
+even though only the second one is worth acting on.
+
 ## v0.14.5-dev.1786563888 — 2026-08-12 · Dev
 
 ### 🐛 Worker logs now say which failure happened instead of a generic one
