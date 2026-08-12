@@ -120,7 +120,9 @@ estados e precisa de avaliação separada antes de qualquer modo controlado futu
   a Voxen mantém a conta canônica para não abandonar dados pessoais derivados.
 - Use `VOXEN_MEMORY_PROVIDER=disabled` (ou remova a variável) para zerar chamadas
   de rede. Isso não contorna a limpeza: uma conta que já possua sujeito remoto
-  rastreado não pode ser excluída enquanto o provedor estiver desativado.
+  rastreado não pode ser excluída enquanto o provedor estiver desativado. Mesmo
+  uma réplica desativada fixa o fence, drena escritores e só então verifica o
+  marcador novamente, protegendo alterações graduais de configuração.
 - Uma escrita com resposta confirmada remove seu marcador. Timeout, queda do
   processo ou qualquer resultado ambíguo mantém o marcador e o fence de exclusão
   **sem expiração automática**, pois a requisição remota ainda pode concluir tarde.

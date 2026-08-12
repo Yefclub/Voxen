@@ -64,7 +64,8 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
 - While shadow mode is active, search results shall remain unavailable to the
   chat prompt and Brain index.
 - While the provider is disabled, an account with a tracked remote subject shall
-  remain undeletable until remote cleanup is explicitly reconciled.
+  remain undeletable until remote cleanup is explicitly reconciled. The disabled
+  replica shall fence and drain concurrent writers before rechecking that state.
 
 ### Optional
 

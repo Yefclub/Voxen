@@ -120,7 +120,9 @@ states and must be evaluated separately before any future controlled mode.
   Voxen keeps the canonical account instead of orphaning derived personal data.
 - Set `VOXEN_MEMORY_PROVIDER=disabled` (or remove it) to stop all network calls.
   This does not bypass cleanup: an account with a tracked remote subject cannot
-  be deleted while the provider is disabled.
+  be deleted while the provider is disabled. Even a disabled replica pins the
+  fence, drains writers, and only then rechecks the marker, protecting rolling
+  configuration changes.
 - A confirmed write removes its marker. A timeout, process crash, or any ambiguous
   outcome retains both the marker and deletion fence **without automatic expiry**,
   because the remote request may still complete late.

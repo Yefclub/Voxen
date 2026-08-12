@@ -74,6 +74,7 @@ interface MemoryProviderDependencies {
   fetchImpl?: typeof fetch;
   scopeStore?: MemoryScopeStore;
   subjectStore?: MemoryShadowSubjectStore;
+  deletionFence?: typeof acquireUserMemoryShadowDeletionFence;
 }
 
 const SCOPE_CONFIG_ID = 'mem0-shadow-v1';
@@ -382,16 +383,16 @@ export async function beginUserMemoryShadowDeletion(
   dependencies: MemoryProviderDependencies = {},
 ): Promise<(canonicalDeleted: boolean) => Promise<void>> {
   const config = resolveMemoryProviderConfig(dependencies.env ?? process.env);
+  const acquireDeletionFence = dependencies.deletionFence ?? acquireUserMemoryShadowDeletionFence;
   if (config.kind === 'disabled') {
     const subjectStore = dependencies.subjectStore ?? prismaMemoryShadowSubjectStore;
-    if (await subjectStore.has(userId)) {
-      throw new Error(
-        'Mem0 shadow was previously enabled; restore its configuration and reconcile remote memory before deleting this account',
-      );
-    }
-    return async () => {};
+    return acquireDeletionFence(userId, async () => {
+      if (await subjectStore.has(userId)) {
+        throw new Error(
+          'Mem0 shadow was previously enabled; restore its configuration and reconcile remote memory before deleting this account',
+        );
+      }
+    });
   }
-  return acquireUserMemoryShadowDeletionFence(userId, () =>
-    deleteUserMemoryShadow(userId, dependencies),
-  );
+  return acquireDeletionFence(userId, () => deleteUserMemoryShadow(userId, dependencies));
 }

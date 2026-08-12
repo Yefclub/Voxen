@@ -95,18 +95,43 @@ describe('memory provider configuration', () => {
   });
 
   it('does not let disabled mode bypass cleanup for a tracked remote subject', async () => {
+    const events: string[] = [];
+    const deletionFence = async (
+      userId: string,
+      checkRemoteSubject: () => Promise<void>,
+    ): Promise<(canonicalDeleted: boolean) => Promise<void>> => {
+      events.push(`fenced:${userId}`);
+      await checkRemoteSubject();
+      return async () => {
+        events.push(`released:${userId}`);
+      };
+    };
     await expect(
       beginUserMemoryShadowDeletion('user-a', {
         env: {},
-        subjectStore: { has: async (userId) => userId === 'user-a' },
+        subjectStore: {
+          has: async (userId) => {
+            events.push(`checked:${userId}`);
+            return userId === 'user-a';
+          },
+        },
+        deletionFence,
       }),
     ).rejects.toThrow('restore its configuration');
+    expect(events).toEqual(['fenced:user-a', 'checked:user-a']);
 
     const finish = await beginUserMemoryShadowDeletion('user-b', {
       env: {},
-      subjectStore: { has: async () => false },
+      subjectStore: {
+        has: async (userId) => {
+          events.push(`checked:${userId}`);
+          return false;
+        },
+      },
+      deletionFence,
     });
     await expect(finish(true)).resolves.toBeUndefined();
+    expect(events.slice(-3)).toEqual(['fenced:user-b', 'checked:user-b', 'released:user-b']);
   });
 });
 
