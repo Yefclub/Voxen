@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.14.5-dev.1786503242",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Personal graph context for chat and MCP",
+    "body": "Voxen now gives its in-app agent and MCP clients the same bounded,\nexplainable personal context. Explicit feedback, inferred interests, trends,\nand graph-ranked sources stay distinguishable, user-scoped, and linked to\nauthorized evidence.\n\nThe context guides discovery without becoming factual evidence: agents must\nstill open and verify sources before making claims. Negative preferences never\nbecome positive ranking seeds, unavailable context degrades safely, and MCP\nread tokens gain the new `voxen_personal_context` tool.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-11T23:53:52-03:00",
+    "translations": {
+      "en": {
+        "title": "Personal graph context for chat and MCP",
+        "body": "Voxen now gives its in-app agent and MCP clients the same bounded,\nexplainable personal context. Explicit feedback, inferred interests, trends,\nand graph-ranked sources stay distinguishable, user-scoped, and linked to\nauthorized evidence.\n\nThe context guides discovery without becoming factual evidence: agents must\nstill open and verify sources before making claims. Negative preferences never\nbecome positive ranking seeds, unavailable context degrades safely, and MCP\nread tokens gain the new `voxen_personal_context` tool."
+      },
+      "pt-BR": {
+        "title": "Contexto pessoal do grafo no chat e MCP",
+        "body": "A Voxen agora oferece ao agente interno e aos clientes MCP o mesmo contexto\npessoal limitado e explicável. Feedback explícito, interesses inferidos,\ntendências e fontes priorizadas pelo grafo permanecem distinguíveis,\nisolados por usuário e vinculados a evidências autorizadas.\n\nO contexto orienta a descoberta sem se tornar evidência factual: os agentes\nainda precisam abrir e verificar as fontes antes de fazer afirmações.\nPreferências negativas nunca viram sementes positivas de ranking, a\nindisponibilidade degrada com segurança e tokens MCP de leitura ganham a nova\nferramenta `voxen_personal_context`."
+      }
+    }
+  },
+  {
     "version": "0.14.5-dev.1786497875",
     "channel": "dev",
     "type": "feat",
