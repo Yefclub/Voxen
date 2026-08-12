@@ -1,3 +1,8 @@
+---
+name: review-pr
+description: Use quando uma PR precisar de revisão técnica antes do merge ("revisa a PR 42", "esse diff está ok?", logo após o CI ficar verde) — analisa diff, tipagem, segurança, testes, escopo, migrations e alinhamento com a spec, e devolve veredito APROVADO ou MUDANÇAS NECESSÁRIAS ao Claude principal, sem comentar na PR.
+---
+
 # Review PR
 
 Skill para revisão técnica de Pull Requests.

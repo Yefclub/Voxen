@@ -1,3 +1,8 @@
+---
+name: release
+description: Use quando for preparar uma release estável ("prepara a release", "sobe pra main", "bump de versão", "fecha a vX.Y.Z") — coleta tudo que entrou em dev desde a tag anterior e abre a PR dev→main com título, label e mensagem de merge corretos.
+---
+
 # Release — prepare a stable release PR (dev → main)
 
 Prepare a stable release by collecting everything merged into `dev` since the

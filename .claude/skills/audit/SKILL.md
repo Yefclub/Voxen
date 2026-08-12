@@ -1,3 +1,8 @@
+---
+name: audit
+description: Use quando pedirem auditoria ou análise profunda de uma área do código ("analisa o módulo X", "audita a segurança de Y", "como está o código de Z") — lê o código-fonte real antes de qualquer afirmação e entrega achados priorizados por severidade.
+---
+
 # Audit — Auditoria Focada de Código
 
 Analisa uma área específica do codebase com profundidade, lendo código real antes de qualquer afirmação.
