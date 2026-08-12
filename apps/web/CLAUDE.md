@@ -20,9 +20,15 @@ Histórico, porque a atribuição erra fácil: a spec 073 criou o sistema de tem
 <div className="bg-zinc-800 text-zinc-100" />
 ```
 
-**Proibida cor de superfície, texto ou borda que não venha de token.** Vale para escala crua do Tailwind (`zinc-*`, `neutral-*`, `slate-*`) e igualmente para literal em JS ou CSS-in-JS (`#18181b`, `rgb(...)`, `oklch(...)`) — tema de editor e config de biblioteca contam. Nada disso responde a `data-theme`, e o sintoma é silencioso: parece certo no pack em que você desenvolveu.
+**A regra é uma só: cor de superfície, texto ou borda tem de responder a `data-theme`.** Na prática isso significa token — e o sintoma de errar é silencioso, porque parece certo no pack em que você desenvolveu.
 
-**Exceção — teste, não rótulo.** A cor pode ser fixa se **carrega significado próprio** (ação, estado, categoria) **e** não deveria mudar entre packs. É o caso de `button.tsx` (`emerald`, `violet`, `rose`), do mapa de origem dos badges de ingestão e das séries de gráfico. Foco e borda **não** passam nesse teste: são afordância, não significado — e o idioma de foco do repo já é `ring-violet-500/40`, não cinza. Acento novo fora dos `--color-accent-*` existentes: confirmar com o owner antes.
+Formas que reprovam, todas pelo mesmo motivo: escala crua do Tailwind (`zinc-800`, `neutral-*`, `slate-*`), cor nomeada (`text-white`, `bg-black/55`), hex arbitrário em classe (`bg-[#18181b]` — note que só o `var()` salva a sintaxe de colchete), literal em JS ou CSS-in-JS (`rgb(...)`, `oklch(...)`, tema de editor, config de biblioteca) e `style={{ color: ... }}` inline. A lista é exemplo, não definição: o que decide é o teste acima.
+
+**Exceção — teste, não rótulo.** A cor pode ser fixa se **carrega significado próprio** (ação, estado, categoria) **e** não deveria mudar entre packs. É o caso de `button.tsx` (`emerald`, `violet`, `rose`), do mapa de origem dos badges de ingestão e das séries de gráfico — inclusive nas bordas desses componentes, que carregam a mesma cor de categoria.
+
+O que reprova é cor de **afordância**: borda de foco e anel de foco não significam nada, só indicam onde está o cursor. O idioma de foco do repo já é `ring-violet-500/40`; `ring-zinc-500/40` e `focus:border-zinc-500/60` são drift.
+
+**Acento novo fora dos `--color-accent-*` existentes: confirmar com o owner antes.**
 
 Além disso:
 
