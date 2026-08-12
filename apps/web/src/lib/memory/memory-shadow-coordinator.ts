@@ -55,7 +55,9 @@ async function advisoryUserLock(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   userId: string,
 ): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 198))`;
+  await tx.$queryRaw<Array<{ locked: string }>>`
+    SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 198))::text AS "locked"
+  `;
 }
 
 const prismaCoordinationStore: MemoryShadowCoordinationStore = {
