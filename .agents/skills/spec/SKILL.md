@@ -1,3 +1,8 @@
+---
+name: spec
+description: Use antes de qualquer feature não-trivial (>2 arquivos) e quando pedirem "escreve a spec", "spec pra X", "documenta o requisito" — cria/edita `.specs/NNN-slug.md` em formato EARS e conduz o ciclo SDD+TDD que sai dela.
+---
+
 # Spec — Criar/Editar Spec em EARS
 
 Skill p/ criar ou editar `.specs/<NNN>-<slug>.md` antes de qualquer feature não-trivial. Segue o padrão **EARS** (Easy Approach to Requirements Syntax) e é versionada junto do PR de implementação.
@@ -8,6 +13,14 @@ Skill p/ criar ou editar `.specs/<NNN>-<slug>.md` antes de qualquer feature não
 - Antes de mudar contrato (API, schema do banco, formato do `.md` de transcrição)
 - Quando o usuário descreve uma feature/comportamento e ainda não há spec
 - Quando uma spec existente precisa ser atualizada após mudanças de requisitos
+
+### Quando spec NÃO é necessária
+
+- Typo, rename trivial, fix de lint
+- Bump de dependência sem mudança de API
+- Refactor interno sem mudança de comportamento
+
+Em dúvida: criar spec curta. O custo é baixo.
 
 ## Inputs
 
@@ -101,6 +114,24 @@ Quando requisitos mudarem durante implementação:
 - **Testável**: cada requisito deve ser implementável e testável. Se não dá pra escrever um teste, o requisito está vago
 - **Sem implementação na spec**: spec descreve COMPORTAMENTO, não tecnologia. Sem nomes de arquivos, libs, código. Tecnologia vai em `docs/STACK.md` e ADRs
 - **Sem ambiguidade**: "rapidamente", "em geral", "se possível" — banidos. Substituir por valores concretos
+
+## SDD + TDD — o ciclo que sai da spec
+
+Voxen segue **SDD (Spec-Driven Development) + TDD** rigorosamente.
+
+### Fluxo SDD
+
+1. Feature nova ou não-trivial → criar `.specs/NNN-slug.md` (EARS, acima)
+2. Co-autorar a spec com o usuário (perguntar até estar claro)
+3. Spec aprovada → atualizar `docs/DECISIONS.md` se há decisão arquitetural
+4. Spec entra no MESMO PR da implementação (ou PR `docs/*` separado antes, se for grande)
+
+### Fluxo TDD
+
+1. Para cada critério de aceite da spec, escrever teste primeiro (falhando)
+2. Implementar o mínimo pra fazer o teste passar
+3. Refatorar com testes verdes
+4. Repetir até todos critérios cobertos
 
 ## Output esperado
 

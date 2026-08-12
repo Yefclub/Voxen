@@ -1,3 +1,8 @@
+---
+name: sprint-summary
+description: Use quando pedirem radiografia técnica do projeto ("como está o projeto?", "estado técnico", "o que tem de dívida técnica", "onde estamos") — diagnóstico técnico para decisão do dev, diferente do `changelog`, que é para gestão.
+---
+
 # Sprint Summary — Radiografia Técnica do Projeto
 
 Gera um resumo técnico do estado atual do projeto para o desenvolvedor. Diferente do changelog (para gestão), esse é para tomada de decisão técnica.

@@ -111,5 +111,5 @@ Retornar relatório estruturado:
 - **NUNCA comentar na PR.** Nada de `gh pr comment`, `gh pr review` ou `gh issue comment`. O relatório volta pro Claude principal, e é ele que decide o que fazer.
 - **Nunca auto-aprovar.** Quem implementou não revisa o próprio diff — a review roda em subagente de contexto limpo.
 - Se APROVADO, só reportar. Se MUDANÇAS NECESSÁRIAS, listar exatamente o que corrigir, com arquivo e linha.
-- **Achado em escopo se corrige antes do push**, independente do rótulo de severidade. Follow-up adiado é dívida que raramente volta, e corrigir com contexto quente custa uma fração de reabrir depois.
+- **Achado em escopo se corrige antes do push** (modo local) ou **antes do merge** (modo PR), independente do rótulo de severidade. Follow-up adiado é dívida que raramente volta, e corrigir com contexto quente custa uma fração de reabrir depois.
 - **Sinal de parada**: review na 3ª rodada trazendo casos cada vez mais periféricos é problema de escopo, não de qualidade. Fechar com o que está correto e reportar o que ficou de fora.

@@ -69,7 +69,7 @@ Worktrees que não geraram mudanças são limpas automaticamente. Para as que ge
 ## Regras do Agente de Review
 
 - Roda sobre o **commit local**, antes do push — não espera CI (fase 2, passo 4)
-- Usa a skill em `.claude/skills/review-pr/SKILL.md` como guia, em modo local
+- Usa a skill em `.agents/skills/review-pr/SKILL.md` como guia, em modo local
 - Roda em background (`run_in_background: true`) para não bloquear as outras worktrees
 - Contexto limpo, nunca o mesmo agente que implementou
 - Retorna relatório para o Claude principal — NUNCA comenta na PR ou aprova diretamente

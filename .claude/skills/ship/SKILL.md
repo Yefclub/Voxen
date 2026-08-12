@@ -3,7 +3,7 @@ name: ship
 description: Use quando for entregar uma mudança pelo fluxo completo do repositório ("faz a PR", "shipa isso", "manda pra dev", "abre PR pra essa correção") — branch a partir de dev sincronizada, checklist pre-PR, review independente antes do push, PR, espera robusta de CI e merge.
 ---
 
-# Ship — branch, PR, CI, review, and merge
+# Ship — branch, review, PR, CI, and merge
 
 Use this flow to deliver one focused change through the complete repository
 workflow.
