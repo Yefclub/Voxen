@@ -255,9 +255,12 @@ describe('Mem0 OSS shadow contract', () => {
         pinned = fingerprint;
       },
     };
-    const fetchImpl = (async () =>
-      Response.json({ results: [] })) as unknown as typeof fetch;
-    const original = createMemoryProvider({ env: baseEnv, fetchImpl, scopeStore: strictScopeStore });
+    const fetchImpl = (async () => Response.json({ results: [] })) as unknown as typeof fetch;
+    const original = createMemoryProvider({
+      env: baseEnv,
+      fetchImpl,
+      scopeStore: strictScopeStore,
+    });
     await original.search({ userId: 'user-a', query: 'preference', limit: 1 });
 
     const rotated = createMemoryProvider({

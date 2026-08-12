@@ -110,11 +110,10 @@ describe('memory shadow durable deletion coordination', () => {
 
   it('blocks late writers even when the Redis lease is lost', async () => {
     const store = new FakeStore('user-a');
-    const finishDeletion = await acquireUserMemoryShadowDeletionFence(
-      'user-a',
-      async () => {},
-      { redis: new FakeRedis(), store },
-    );
+    const finishDeletion = await acquireUserMemoryShadowDeletionFence('user-a', async () => {}, {
+      redis: new FakeRedis(),
+      store,
+    });
     const events: string[] = [];
     scheduleUserMemoryShadowWrite(
       'user-a',
