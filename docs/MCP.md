@@ -25,6 +25,21 @@ Comece com somente leitura. Habilite escrita apenas para um cliente que
 realmente precise modificar sua base e cujo comportamento de aprovação você
 conheça.
 
+## Contexto pessoal e grafo
+
+Credenciais com leitura expõem `voxen_personal_context`. A ferramenta reúne,
+em um contrato limitado e versionado, feedback explícito, interesses inferidos
+por atividade, tendências e fontes priorizadas pelo grafo. Os campos
+`provenance` diferenciam `DECLARED`, `INFERRED` e `MIXED`; `stance: LESS`
+representa menor interesse e nunca é usado como semente positiva.
+
+Esse contexto orienta descoberta e recomendações, mas não comprova fatos nem é
+um perfil psicológico. O cliente deve abrir os links retornados, ler a fonte e
+usar as ferramentas de verificação antes de afirmar seu conteúdo. O resultado
+também informa versões dos algoritmos, watermark das projeções e se o recorte
+do grafo ou do contexto foi truncado. Tokens somente `WRITE` não descobrem essa
+ferramenta.
+
 ## Fluxo seguro para editar notas
 
 As leituras de nota retornam uma `revision` monotônica e um `checksum` opaco.

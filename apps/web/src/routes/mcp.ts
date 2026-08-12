@@ -48,6 +48,7 @@ import {
   mcpBearerChallenge,
   writeMcpOAuthAudit,
 } from '../lib/mcp-oauth';
+import { registerMcpPersonalContextTool } from './mcp-personal-context-tool';
 
 export const mcpRoutes = new Hono();
 
@@ -77,8 +78,11 @@ const VOXEN_INSTRUCTIONS = [
   '6. Use tags e resumo para decidir relevância; relacione com docs/tópicos próximos:',
   '   voxen_related e voxen_brain_*',
   '   (neighbors, sources, path até 3 hops, hubs).',
-  '7. Monte um contexto mínimo; cite doc + linhas/seção + timestamp do que usar.',
-  '8. Valide afirmações factuais fortes com voxen_verify_citations antes de afirmá-las;',
+  '7. Para perguntas personalizadas, use voxen_personal_context. Ele separa feedback explícito',
+  '   de interesse inferido e recomenda fontes via grafo, mas é apenas um guia de navegação:',
+  '   abra e verifique cada fonte antes de usá-la como evidência factual.',
+  '8. Monte um contexto mínimo; cite doc + linhas/seção + timestamp do que usar.',
+  '9. Valide afirmações factuais fortes com voxen_verify_citations antes de afirmá-las;',
   '   se não houver evidência suficiente, diga isso — não invente.',
   '',
   'Fluxo de escrita:',
@@ -299,13 +303,14 @@ function buildVoxenMcpServer(
   publicOrigin: string,
 ): McpServer {
   const server = new McpServer(
-    { name: 'voxen-mcp', version: '0.4.0' },
+    { name: 'voxen-mcp', version: '0.5.0' },
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
     registerTranscriptTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
     registerTranscriptEnrichmentTools(server, userId, publicOrigin);
+    registerMcpPersonalContextTool(server, userId, publicOrigin);
     registerBrainTools(server, userId);
   }
   if (scopes.includes('WRITE')) {

@@ -84,6 +84,8 @@ import {
   type UrlIntent,
 } from './url-intent';
 import { buildBatchTranscriptionTool } from './batch-ingestion-tool';
+import { loadPersonalAgentContext } from '../personal-agent-context-service';
+import { buildPersonalAgentInstructions } from '../personal-agent-context';
 import {
   healStaleRunningInSegments,
   healStaleRunningTools,
@@ -1607,6 +1609,7 @@ export async function streamAssistantReply(options: {
   // decidir quais linhas continuam ativas.
   const relevantPromise = preloadRelevantContent(userId, content, 5).catch(() => []);
   const timezonePromise = getAppTimezone().catch(() => 'America/Sao_Paulo');
+  const personalContextPromise = loadPersonalAgentContext(userId).catch(() => null);
   const compaction = await maybeCompact(conversationId, modelConfig, (label) =>
     emit({ type: 'status', label }),
   ).catch(() => {
@@ -1623,7 +1626,7 @@ export async function streamAssistantReply(options: {
     where: { id: conversationId },
     select: { activeLeafId: true, messagesLinearized: true },
   });
-  const [active, relevant, timezone] = await Promise.all([
+  const [active, relevant, timezone, personalContext] = await Promise.all([
     // Único caminho pelo qual o prompt é montado (spec 127): a trilha ativa,
     // na ordem da caminhada, sem compactadas e sem a resposta em construção.
     loadActiveHistory(
@@ -1636,12 +1639,16 @@ export async function streamAssistantReply(options: {
     ) as Promise<ActiveMessage[]>,
     relevantPromise,
     timezonePromise,
+    personalContextPromise,
   ]);
   const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
   let answer = '';
   const tools: StoredToolEvent[] = [];
   const segments: StoredMessageSegment[] = [];
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
+  const personalInstructions = personalContext
+    ? buildPersonalAgentInstructions(personalContext)
+    : '';
   const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
   const urlIntent = classifyUrlIntent(content);
   const alwaysAllow = await loadAlwaysAllowActions(userId).catch(
@@ -1676,7 +1683,12 @@ export async function streamAssistantReply(options: {
 
   const result = streamText({
     model: routedChatModel(provider, modelConfig),
-    instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
+    instructions:
+      AGENT_INSTRUCTIONS +
+      clock +
+      suggestions +
+      personalInstructions +
+      buildUrlIntentInstructions(urlIntent),
     // AI SDK 7 rejects role:system inside `messages` unless opted in. Our
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
     // only — never from the client — so allowing them preserves trusted history.
