@@ -113,6 +113,7 @@ O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
 | Spec EARS + ciclo SDD/TDD                      | skill `spec`           |
 | Migrations Prisma                              | `prisma/CLAUDE.md`     |
 | UI/UX, tema zinc, verificação visual           | `apps/web/CLAUDE.md`   |
+| Formato `.md` de transcrição                   | `apps/worker/CLAUDE.md` |
 
 ### Os 7 passos (em ordem)
 
@@ -223,7 +224,7 @@ Projeto open source do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen`. Owner/m
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: MinIO/S3-compatible (sem dependência obrigatória de cloud externa)
 - **LLM**: OpenRouter como agregador único (1 chave, billing unificado)
-- **CI/CD**: GitHub Actions com CI, release e segurança (Trivy, CodeQL, Dependency Review, Bandit, gitleaks)
+- **CI/CD**: GitHub Actions (workflows em `.github/workflows/`)
 
 Decisões técnicas devem considerar: segurança self-hosted, soberania de dados, escalabilidade horizontal modesta (poucos users, muitos vídeos), e fácil deploy num único container/host.
 
