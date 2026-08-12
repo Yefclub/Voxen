@@ -50,12 +50,14 @@ Antes de commitar QUALQUER fix visual ou mudança de UI:
 
 `components.json` existe para o CLI do shadcn resolver alias e instalar dependência — **não** adota o tema do shadcn. Foi escrito à mão de propósito: `shadcn init` grava um bloco de variáveis CSS próprio no stylesheet alvo e define uma base color, exatamente o que não pode encostar no `index.css`.
 
-**`--dry-run` antes de todo `add`, sem exceção.** Não rodar `init` não protege o `index.css` — o `add` escreve nele também. Dois danos reais, os dois medidos com `add sidebar --dry-run`:
+**`--dry-run` antes de todo `add`, sem exceção.** Não rodar `init` não protege o `index.css` — o `add` escreve nele também. Dois danos, e **a proteção do CLI cobre só um deles**:
 
-- **Injeta variável CSS no `index.css`.** Item de registry que traz `cssVars` (`sidebar`, `chart` e outros) despeja o vocabulário do shadcn dentro do arquivo dos quatro packs. `add sidebar` reporta `16 CSS variables added to src/client/index.css`. O `components.json` aponta `"css": "src/client/index.css"`, então o alvo é o arquivo mais sensível do app.
-- **Sobrescreve componente já restilizado.** O mesmo comando reporta `~6 overwrite` em `button`, `separator`, `sheet`, `tooltip`, `input` e `skeleton` — todos já convertidos à mão para `--color-app-*`. `--overwrite` é `false` por padrão, mas o dry-run é o único jeito de ver a lista antes.
+- **Sobrescreve componente já restilizado** — tem rede. `add sidebar` reporta `~6 overwrite` em `button`, `separator`, `sheet`, `tooltip`, `input` e `skeleton`, todos já convertidos à mão para `--color-app-*`. Mas o CLI pergunta arquivo a arquivo antes de gravar, mesmo com `--yes` (que só pula o prompt inicial, não é `--overwrite`), e aborta sem escrever se não houver quem responda. Vale para o AI Elements também: `@ai-elements/context` sobrescreve `button.tsx`.
+- **Injeta variável CSS no `index.css`** — **não tem rede nenhuma.** Sem prompt, sem confirmação. `add sidebar` grava 35 linhas: 8 `--sidebar-*` em `:root`, 8 em `.dark`, 8 `--color-sidebar-*` no `@theme` e um `@custom-variant dark (&:is(.dark *))` no topo do arquivo. Note o `.dark`: este app seleciona tema por `[data-theme=...]`, então entra um bloco morto **mais** uma convenção de dark mode concorrente dentro do arquivo dos quatro packs.
 
-Ler as **três** seções da saída — `Files`, `CSS` e `Dependencies` — não só o destino do arquivo.
+Só item com `cssVars` faz isso, e é raro — num levantamento de 31 itens do registry padrão, `sidebar` foi o único. `chart`, por exemplo, não escreve CSS nenhum. Raro não é seguro: é justamente por ser raro que ninguém confere.
+
+Ler a saída inteira — `Files`, `Dependencies`, e `CSS` quando aparecer. A seção `CSS` só existe quando o item traz `cssVars`; a ausência dela é o sinal de que esse dano não vai acontecer.
 
 ```bash
 pnpm dlx shadcn@latest add <componente> --dry-run     # sempre primeiro
@@ -67,7 +69,7 @@ O que o CLI entrega é **scaffolding**: colocação de arquivo, reescrita de imp
 Três coisas que o arquivo não consegue explicar sozinho:
 
 - `tailwind.config: ""` porque Tailwind v4 é CSS-first e não há `tailwind.config.ts`.
-- `tailwind.baseColor: "zinc"` é exigido pelo schema mas é inerte aqui — nunca geramos o bloco de variáveis do shadcn. Não leia como afirmação sobre o tema.
+- `tailwind.baseColor: "zinc"` é exigido pelo schema mas é inerte aqui — ele só alimenta o bloco de variáveis que o `init` geraria, e não rodamos `init`. Não leia como afirmação sobre o tema, nem como garantia de que variável do shadcn não entra: a que o `add` injeta vem com valor fixo do próprio item, sem passar por `baseColor`.
 - `iconLibrary` está ausente de propósito: este app não usa `lucide-react` nem `@radix-ui/react-icons`. Ícone vem de `@/components/ui/icons`. Componente de registry que importa `lucide-react` traz uma segunda biblioteca de ícones junto — pesar antes de aceitar.
 
 `cssVariables: true` **não pode mudar depois** da inicialização, segundo a doc do shadcn. Está `true` porque assim o componente chega com nome semântico de token, mecanicamente substituível pelos nossos; `false` embutiria cor fixa (`bg-white dark:bg-neutral-950`), que é pior num app com quatro packs.
