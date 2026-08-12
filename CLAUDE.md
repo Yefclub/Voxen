@@ -139,7 +139,7 @@ O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
 - **NUNCA** acumular mais de 1 feature em uma branch — **uma PR por feature**. Se você acumulou (ex: 12 commits sem PR), pare, abra a PR agora.
 - **NUNCA** commitar/pushar direto em `dev` ou `main`.
 - **NUNCA** abrir PR sem o review local do passo 5 ter voltado limpo. PR aberta é runner gasto; achado que o review pega antes do push não custa CI nenhum.
-- **Merge autônomo é permitido** quando CI verde + review `APROVADO` (passo 8) — não esperar confirmação do owner nesse caso. **Exceção que SEMPRE aguarda o owner**: PR de release (`dev→main`).
+- **Merge autônomo é permitido** quando CI verde + review `APROVADO` → mergear no passo 8, sem esperar confirmação do owner. **Exceção que SEMPRE aguarda o owner**: PR de release (`dev→main`).
 - **NUNCA** adicionar co-autoria ou rodapés de IA em lugar nenhum (ver "Sem co-autoria de IA" abaixo).
 - **NUNCA** postar comentários desnecessários em PRs/issues.
 - **NUNCA** branchar de stale. Sempre `git pull --ff-only` em `dev` antes de criar branch.
