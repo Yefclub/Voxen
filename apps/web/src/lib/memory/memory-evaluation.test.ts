@@ -70,6 +70,7 @@ describe('memory shadow evaluation', () => {
     expect(report.shadow).toMatchObject({
       recall: 1,
       provenanceRecall: 1,
+      isolationMarkerRecall: 1,
       contradictionRate: 0,
       precision: 1,
       falseMemoryRate: 0,
@@ -162,6 +163,48 @@ describe('memory shadow evaluation', () => {
       runId: 'missing-provenance',
     });
     expect(report.shadow.crossUserLeaks).toBe(1);
+    expect(report.passed).toBe(false);
+  });
+
+  it('actively probes every user with the other user isolation marker', async () => {
+    const turns: CompletedMemoryTurn[] = [];
+    let deleted = false;
+    const provider: MemoryProvider = {
+      kind: 'mem0-shadow',
+      addCompletedTurn: async (turn) => {
+        turns.push(turn);
+      },
+      // Deliberately ignores userId: normal semantic queries still retrieve the
+      // expected case, while direct marker probes expose the scope failure.
+      search: async (input) =>
+        deleted
+          ? []
+          : turns
+              .filter((turn) => turn.userContent.includes(input.query))
+              .map((turn) => ({
+                id: turn.userMessageId,
+                content: turn.userContent,
+                score: 1,
+                trust: 'unverified' as const,
+                provenance: {
+                  conversationId: turn.conversationId,
+                  userMessageId: turn.userMessageId,
+                  assistantMessageId: turn.assistantMessageId,
+                  algorithmVersion: 'test',
+                },
+                scoreDetails: null,
+              })),
+      deleteUser: async () => {
+        deleted = true;
+      },
+    };
+    const report = await runMemoryShadowEvaluation({
+      provider,
+      cases,
+      runId: 'ignored-user-filter',
+    });
+    expect(report.shadow.isolationMarkerRecall).toBe(1);
+    expect(report.shadow.crossUserLeaks).toBeGreaterThan(0);
     expect(report.passed).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import {
   MEMORY_SHADOW_ALGORITHM_VERSION,
   createMemoryProvider,
   deleteUserMemoryShadow,
+  memoryShadowWriteEnabled,
   opaqueMemorySubject,
   recordCompletedTurnInMemoryShadow,
   resolveMemoryProviderConfig,
@@ -35,6 +36,8 @@ describe('memory provider configuration', () => {
     });
 
     expect(provider.kind).toBe('disabled');
+    expect(memoryShadowWriteEnabled({})).toBe(false);
+    expect(memoryShadowWriteEnabled(baseEnv)).toBe(true);
     await provider.addCompletedTurn({
       userId: 'user-a',
       conversationId: 'conversation-a',

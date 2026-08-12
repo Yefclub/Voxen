@@ -134,6 +134,10 @@ export function resolveMemoryProviderConfig(
   };
 }
 
+export function memoryShadowWriteEnabled(env: MemoryEnvironment = process.env): boolean {
+  return env.VOXEN_MEMORY_PROVIDER?.trim().toLowerCase() === 'mem0-shadow';
+}
+
 export function opaqueMemorySubject(userId: string, scopeSecret: string): string {
   if (!userId) throw new Error('Authenticated Voxen userId is required');
   return `voxen_${createHmac('sha256', scopeSecret).update(userId, 'utf8').digest('hex')}`;
@@ -327,7 +331,9 @@ export async function deleteUserMemoryShadow(
 export async function beginUserMemoryShadowDeletion(
   userId: string,
   dependencies: MemoryProviderDependencies = {},
-): Promise<() => void> {
+): Promise<() => Promise<void>> {
+  const config = resolveMemoryProviderConfig(dependencies.env ?? process.env);
+  if (config.kind === 'disabled') return async () => {};
   return acquireUserMemoryShadowDeletionFence(userId, () =>
     deleteUserMemoryShadow(userId, dependencies),
   );

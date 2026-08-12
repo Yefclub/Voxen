@@ -24,6 +24,7 @@ export interface MemoryEvaluationReport {
   shadow: {
     recall: number;
     provenanceRecall: number;
+    isolationMarkerRecall: number;
     contradictionRate: number;
     precision: number;
     falseMemoryRate: number;
@@ -42,6 +43,7 @@ export interface MemoryEvaluationReport {
     falseMemoryRateAtMost: number;
     contradictionRateAtMost: number;
     crossUserLeaks: 0;
+    isolationMarkerRecall: 1;
     deletionResidues: 0;
     searchLatencyP95MsAtMost: number;
   };
@@ -55,9 +57,12 @@ const THRESHOLDS = {
   falseMemoryRateAtMost: 0.1,
   contradictionRateAtMost: 0.05,
   crossUserLeaks: 0 as const,
+  isolationMarkerRecall: 1 as const,
   deletionResidues: 0 as const,
   searchLatencyP95MsAtMost: 1_500,
 };
+
+const MAX_ISOLATION_RESULTS = 20;
 
 function quantile(sorted: readonly number[], ratio: number): number {
   if (sorted.length === 0) return 0;
@@ -105,6 +110,7 @@ export async function runMemoryShadowEvaluation(args: {
   let fullReplayEstimatedTokens = 0;
   let hits = 0;
   let provenanceHits = 0;
+  let isolationMarkerHits = 0;
   let contradictions = 0;
   let expectedProvenanceCandidates = 0;
   let relevantCandidates = 0;
@@ -135,6 +141,37 @@ export async function runMemoryShadowEvaluation(args: {
         completedAt: now,
       };
       await args.provider.addCompletedTurn(turn);
+    }
+    for (const [ownerUserId, marker] of isolationMarkers) {
+      const ownCandidates = await args.provider.search({
+        userId: ownerUserId,
+        query: marker,
+        limit: MAX_ISOLATION_RESULTS,
+      });
+      if (
+        ownCandidates.some((candidate) =>
+          normalized(candidate.content).includes(normalized(marker)),
+        )
+      ) {
+        isolationMarkerHits += 1;
+      }
+      for (const otherUserId of evaluationUsers) {
+        if (otherUserId === ownerUserId) continue;
+        const foreignCandidates = await args.provider.search({
+          userId: otherUserId,
+          query: marker,
+          limit: MAX_ISOLATION_RESULTS,
+        });
+        crossUserLeaks += foreignCandidates.filter((candidate) => {
+          const conversationOwner = candidate.provenance.conversationId
+            ? conversationOwners.get(candidate.provenance.conversationId)
+            : undefined;
+          return (
+            normalized(candidate.content).includes(normalized(marker)) ||
+            conversationOwner === ownerUserId
+          );
+        }).length;
+      }
     }
     for (const item of args.cases) {
       const expectedConversationId = `mem0-eval:${args.runId}:${item.id}`;
@@ -193,6 +230,7 @@ export async function runMemoryShadowEvaluation(args: {
 
   const recall = hits / args.cases.length;
   const provenanceRecall = provenanceHits / args.cases.length;
+  const isolationMarkerRecall = isolationMarkerHits / isolationMarkers.size;
   const contradictionRate =
     expectedProvenanceCandidates === 0 ? 0 : contradictions / expectedProvenanceCandidates;
   const precision = totalCandidates === 0 ? 0 : relevantCandidates / totalCandidates;
@@ -209,6 +247,7 @@ export async function runMemoryShadowEvaluation(args: {
     falseMemoryRate <= THRESHOLDS.falseMemoryRateAtMost &&
     contradictionRate <= THRESHOLDS.contradictionRateAtMost &&
     crossUserLeaks === THRESHOLDS.crossUserLeaks &&
+    isolationMarkerRecall === THRESHOLDS.isolationMarkerRecall &&
     deletionResidues === THRESHOLDS.deletionResidues &&
     quantile(sortedLatencies, 0.95) <= THRESHOLDS.searchLatencyP95MsAtMost;
 
@@ -226,6 +265,7 @@ export async function runMemoryShadowEvaluation(args: {
     shadow: {
       recall,
       provenanceRecall,
+      isolationMarkerRecall,
       contradictionRate,
       precision,
       falseMemoryRate,

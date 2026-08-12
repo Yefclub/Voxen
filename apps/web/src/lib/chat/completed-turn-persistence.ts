@@ -1,6 +1,9 @@
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
-import { recordCompletedTurnInMemoryShadow } from '../memory/memory-provider';
+import {
+  memoryShadowWriteEnabled,
+  recordCompletedTurnInMemoryShadow,
+} from '../memory/memory-provider';
 import { scheduleUserMemoryShadowWrite } from '../memory/memory-shadow-coordinator';
 
 /**
@@ -33,7 +36,7 @@ export function scheduleCompletedTurnMemoryShadow(input: {
   assistantContent: string;
   eligible: boolean;
 }): void {
-  if (!input.eligible || !input.userMessageId) return;
+  if (!input.eligible || !input.userMessageId || !memoryShadowWriteEnabled()) return;
   // Reload the canonical row instead of trusting runtime input: HITL resumes
   // use synthetic prompts and must never become user memory.
   scheduleUserMemoryShadowWrite(input.userId, async () => {

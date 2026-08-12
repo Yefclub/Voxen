@@ -107,6 +107,8 @@ states and must be evaluated separately before any future controlled mode.
 
 - Chat writes are best-effort. A Mem0 outage cannot fail a canonical reply.
 - Aborted, failed, and tool-approval-paused turns are not written.
+- A Redis per-user mutex serializes shadow writes and account deletion across
+  application replicas, preventing a late write from recreating deleted data.
 - Account deletion is strict: if enabled Mem0 cannot delete the remote subject,
   Voxen keeps the canonical account instead of orphaning derived personal data.
 - Set `VOXEN_MEMORY_PROVIDER=disabled` (or remove it) to stop all network calls.

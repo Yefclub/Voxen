@@ -246,7 +246,9 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
         await tx.user.delete({ where: { id: current.id } });
       });
     } finally {
-      releaseMemoryFence();
+      await releaseMemoryFence().catch(() => {
+        console.warn('[memory-shadow] deletion fence release failed');
+      });
     }
     return c.json({ ok: true });
   } catch (error) {

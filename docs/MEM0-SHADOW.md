@@ -105,6 +105,8 @@ estados e precisa de avaliação separada antes de qualquer modo controlado futu
 
 - Escritas do chat são best-effort; indisponibilidade do Mem0 não falha a resposta.
 - Turnos interrompidos, falhos ou pausados para aprovação não são gravados.
+- Um mutex Redis por usuário serializa escritas shadow e exclusão de conta entre
+  réplicas da aplicação, impedindo uma escrita tardia de recriar dados apagados.
 - Exclusão de conta é estrita: se o Mem0 habilitado não remover o sujeito remoto,
   a Voxen mantém a conta canônica para não abandonar dados pessoais derivados.
 - Use `VOXEN_MEMORY_PROVIDER=disabled` (ou remova a variável) para zerar chamadas
