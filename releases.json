@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786535868",
+    "channel": "dev",
+    "type": "chore",
+    "title": "CI now blocks a pull request that updates only one of the two agent rule trees",
+    "body": "The repository keeps `.agents/` as a mirror of `.claude/`, because that is the\ntree Codex loads. Nothing verified it, and the trees drifted silently once: a\npull request added skill frontmatter to `.claude/` alone and it went unnoticed\nuntil a reviewer compared them by hand. Left alone, the two harnesses end up\nfollowing different rules.\n\nA guard now compares both trees, ignoring only the mandated `.claude/` to\n`.agents/` path rewrite and any line-ending difference. It runs as a test inside\nthe already-required `Test TS (apps/web)` check, so a pull request touching one\ntree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`\nregenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift\nwithout changing anything.",
+    "pr": 774,
+    "author": "Kalyel",
+    "date": "2026-08-12T08:57:35-03:00",
+    "translations": {
+      "en": {
+        "title": "CI now blocks a pull request that updates only one of the two agent rule trees",
+        "body": "The repository keeps `.agents/` as a mirror of `.claude/`, because that is the\ntree Codex loads. Nothing verified it, and the trees drifted silently once: a\npull request added skill frontmatter to `.claude/` alone and it went unnoticed\nuntil a reviewer compared them by hand. Left alone, the two harnesses end up\nfollowing different rules.\n\nA guard now compares both trees, ignoring only the mandated `.claude/` to\n`.agents/` path rewrite and any line-ending difference. It runs as a test inside\nthe already-required `Test TS (apps/web)` check, so a pull request touching one\ntree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`\nregenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift\nwithout changing anything."
+      },
+      "pt-BR": {
+        "title": "CI passa a barrar PR que atualiza só uma das duas árvores de regras de agente",
+        "body": "O repositório mantém `.agents/` como espelho de `.claude/`, porque é essa a\nárvore que o Codex carrega. Nada verificava isso, e as duas se desencontraram em\nsilêncio uma vez: um PR adicionou frontmatter de skill só em `.claude/` e\nninguém percebeu até alguém comparar à mão. Sem correção, os dois harnesses\nacabam seguindo regras diferentes.\n\nAgora um guard compara as duas árvores, ignorando apenas a reescrita de path\nobrigatória de `.claude/` para `.agents/` e diferenças de fim de linha. Ele roda\ncomo teste dentro do check `Test TS (apps/web)`, que já era obrigatório, então PR\nque mexe numa árvore só falha antes do merge. `node scripts/agents-mirror.mjs --fix`\nregenera o espelho, e `node scripts/agents-mirror.mjs` aponta a divergência sem\nalterar nada."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/774"
+  },
+  {
     "version": "0.14.5-dev.1786524207",
     "channel": "dev",
     "type": "feat",
