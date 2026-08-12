@@ -169,6 +169,7 @@ export async function readTranscriptLocalGraph(input: {
       userId: input.userId,
       sourceType: 'TRANSCRIPT',
       sourceId: input.transcriptId,
+      invalidatedAt: null,
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: EVIDENCE_LIMIT + 1,
@@ -253,6 +254,7 @@ async function readEvidence(
   const sources = await db.brainSource.findMany({
     where: {
       userId,
+      invalidatedAt: null,
       OR: [
         ...(nodeIds.length > 0 ? [{ nodeId: { in: nodeIds } }] : []),
         ...(edgeIds.length > 0 ? [{ edgeId: { in: edgeIds } }] : []),

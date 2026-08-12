@@ -44,6 +44,7 @@ import {
 } from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
 import { createReadExternalEnrichmentTool } from './external-enrichment-tool';
+import { createBrainTimelineTool } from './brain-timeline-tool';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
   createProposePatchNoteTool,
@@ -138,6 +139,9 @@ const AGENT_INSTRUCTIONS = [
   '5. Expanda contexto (expand_context) só quando o trecho lido não bastar.',
   '6. read_transcript (documento completo) é ÚLTIMO recurso — caro; evite.',
   '7. Relacione trechos com docs/fontes/tópicos próximos usando related.',
+  '   Para perguntas sobre o que é válido agora, o que era válido em uma data ou como uma',
+  '   relação mudou, use brain_timeline. A linha do tempo contém inferências extraídas:',
+  '   abra as evidências retornadas antes de tratá-las como fatos.',
   '8. Monte um Context Pack mínimo: só o que sustenta a resposta, sem conteúdo irrelevante.',
   '9. Cite exatamente doc + linhas/seção + timestamp (hh:mm:ss) do que usar.',
   '10. Valide: cada afirmação factual forte precisa de evidência recuperada — use verify_citations.',
@@ -1001,6 +1005,7 @@ export function buildTools(
         return searchBrainNodes(userId, query, 12);
       },
     }),
+    brain_timeline: createBrainTimelineTool(userId),
     propose_patch_note: createProposePatchNoteTool(),
     propose_patch_transcript: createProposePatchTranscriptTool(),
     list_deletable_knowledge: createListDeletableKnowledgeTool(userId),

@@ -17,13 +17,14 @@ from typing import Any
 import httpx
 
 from . import openrouter
+from .brain_extract_prompt import build_grounded_extract_prompt
+from .entity_resolution import normalize_local_ref, slugify_label
+from .temporal import parse_iso_timestamp
 
 OR_BASE_URL = openrouter.OR_BASE_URL
-MAX_ENTITIES = 8
-MAX_CLAIMS = 6
-MAX_TEXT = 6_000
-ALIAS_CONFIDENCE_MIN = 0.9
-BRAIN_GROUNDED_EXTRACT_VERSION = 2
+MAX_ENTITIES, MAX_CLAIMS = 8, 6
+MAX_TEXT, ALIAS_CONFIDENCE_MIN = 6_000, 0.9
+BRAIN_GROUNDED_EXTRACT_VERSION = 3
 
 _HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _TIMESTAMP_RE = re.compile(r"^\s*\[(\d{1,2}):([0-5]?\d):([0-5]?\d)\]")
@@ -35,6 +36,9 @@ class GroundedItem:
     label: str
     excerpt: str
     confidence: float
+    entity_type: str = "OTHER"
+    aliases: tuple[str, ...] = ()
+    local_ref: str = ""
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,10 @@ class GroundedRelation:
     kind: str
     excerpt: str
     confidence: float
+    valid_from: str | None = None
+    valid_to: str | None = None
+    subject_ref: str = ""
+    object_ref: str = ""
 
 
 @dataclass(frozen=True)
@@ -162,13 +170,6 @@ def is_grounded(excerpt: str, source_text: str) -> bool:
     return ex in src
 
 
-def slugify_label(label: str) -> str:
-    nfkd = unicodedata.normalize("NFD", label or "")
-    no_accents = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
-    slug = re.sub(r"[^a-z0-9]+", "-", no_accents.lower())
-    return slug.strip("-")[:80]
-
-
 def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     """Parse JSON do modelo e filtra só itens groundable."""
     text = (raw or "").strip()
@@ -188,8 +189,18 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
 
     out: list[GroundedItem] = []
     seen: set[str] = set()
+    local_ref_signatures: dict[str, tuple[str, str, str]] = {}
+    ambiguous_local_refs: set[str] = set()
 
-    def add(kind: str, label: object, excerpt: object, confidence: object = 0.7) -> None:
+    def add(
+        kind: str,
+        label: object,
+        excerpt: object,
+        confidence: object = 0.7,
+        entity_type: object = "OTHER",
+        aliases: object = None,
+        local_ref: object = None,
+    ) -> None:
         if not isinstance(label, str) or not isinstance(excerpt, str):
             return
         lab = " ".join(label.split()).strip()
@@ -199,13 +210,68 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
         if not is_grounded(exc, source_text):
             return
         slug = slugify_label(lab)
-        if not slug or slug in seen:
+        normalized_ref = normalize_local_ref(local_ref)
+        signature = (kind, slug, normalize_for_grounding(exc))
+        if normalized_ref:
+            existing_signature = local_ref_signatures.get(normalized_ref)
+            if existing_signature and existing_signature != signature:
+                ambiguous_local_refs.add(normalized_ref)
+                return
+            local_ref_signatures[normalized_ref] = signature
+        # Entity labels are not identities: two homonyms may legitimately
+        # coexist in one segment. A model-provided local id is preferred; the
+        # literal excerpt is the conservative fallback identity.
+        identity = (
+            f"{kind}:ref:{normalized_ref}"
+            if normalized_ref
+            else (
+                f"entity:{slug}:{normalize_for_grounding(exc)}"
+                if kind == "entity"
+                else f"{kind}:{slug}"
+            )
+        )
+        if not slug or identity in seen:
             return
         conf = 0.7
         if isinstance(confidence, (int, float)):
             conf = max(0.4, min(0.95, float(confidence)))
-        seen.add(slug)
-        out.append(GroundedItem(kind=kind, label=lab[:80], excerpt=exc[:400], confidence=conf))
+        normalized_entity_type = "OTHER"
+        literal_aliases: tuple[str, ...] = ()
+        if kind == "entity":
+            from .entity_resolution import normalize_entity_type
+
+            normalized_entity_type = normalize_entity_type(
+                entity_type if isinstance(entity_type, str) else None
+            )
+            if isinstance(aliases, list):
+                accepted: list[str] = []
+                source_normalized = normalize_for_grounding(source_text)
+                for raw_alias in aliases[:10]:
+                    if not isinstance(raw_alias, str):
+                        continue
+                    alias = " ".join(raw_alias.split()).strip()[:80]
+                    if (
+                        len(alias) >= 2
+                        and slugify_label(alias) != slug
+                        and normalize_for_grounding(alias) in source_normalized
+                        and alias not in accepted
+                    ):
+                        accepted.append(alias)
+                    if len(accepted) >= 5:
+                        break
+                literal_aliases = tuple(accepted)
+        seen.add(identity)
+        out.append(
+            GroundedItem(
+                kind=kind,
+                label=lab[:80],
+                excerpt=exc[:400],
+                confidence=conf,
+                entity_type=normalized_entity_type,
+                aliases=literal_aliases,
+                local_ref=normalized_ref or identity,
+            )
+        )
 
     entities = parsed.get("entities")
     if isinstance(entities, list):
@@ -217,6 +283,9 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
                 item.get("label") or item.get("name"),
                 item.get("excerpt") or item.get("evidence"),
                 item.get("confidence", 0.75),
+                item.get("entity_type") or item.get("type"),
+                item.get("aliases"),
+                item.get("id") or item.get("local_id"),
             )
             if sum(1 for x in out if x.kind == "entity") >= MAX_ENTITIES:
                 break
@@ -235,7 +304,7 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
             if sum(1 for x in out if x.kind == "claim") >= MAX_CLAIMS:
                 break
 
-    return out
+    return [item for item in out if item.local_ref not in ambiguous_local_refs]
 
 
 def parse_grounded_relations(
@@ -259,9 +328,12 @@ def parse_grounded_relations(
     if not isinstance(parsed, dict) or not isinstance(parsed.get("relations"), list):
         return []
 
-    known = {slugify_label(item.label): item for item in items}
+    known_by_ref = {item.local_ref: item for item in items if item.local_ref}
+    known_by_slug: dict[str, list[GroundedItem]] = {}
+    for item in items:
+        known_by_slug.setdefault(slugify_label(item.label), []).append(item)
     out: list[GroundedRelation] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str, str]] = set()
     kind_map = {
         "supports": "SUPPORTS",
         "contradicts": "CONTRADICTS",
@@ -285,15 +357,27 @@ def parse_grounded_relations(
         subject_label = " ".join(subject.split()).strip()[:80]
         object_label = " ".join(obj.split()).strip()[:80]
         predicate_label = " ".join(predicate.split()).strip()[:80]
-        subject_item = known.get(slugify_label(subject_label))
-        object_item = known.get(slugify_label(object_label))
+        subject_ref_raw = relation.get("subject_id") or relation.get("subject_ref")
+        object_ref_raw = relation.get("object_id") or relation.get("object_ref")
+        subject_ref = normalize_local_ref(subject_ref_raw)
+        object_ref = normalize_local_ref(object_ref_raw)
+        subject_matches = known_by_slug.get(slugify_label(subject_label), [])
+        object_matches = known_by_slug.get(slugify_label(object_label), [])
+        subject_item = known_by_ref.get(subject_ref) if subject_ref else None
+        object_item = known_by_ref.get(object_ref) if object_ref else None
+        if subject_item is None and len(subject_matches) == 1:
+            subject_item = subject_matches[0]
+        if object_item is None and len(object_matches) == 1:
+            object_item = object_matches[0]
         kind = kind_map.get(str(relation.get("kind") or predicate_label).strip().lower())
         evidence = " ".join(excerpt.split()).strip()[:400]
         if (
             not subject_item
             or not object_item
             or not kind
-            or subject_item.label == object_item.label
+            or slugify_label(subject_item.label) != slugify_label(subject_label)
+            or slugify_label(object_item.label) != slugify_label(object_label)
+            or subject_item.local_ref == object_item.local_ref
             or len(predicate_label) < 2
             or not is_grounded(evidence, source_text)
         ):
@@ -308,7 +392,24 @@ def parse_grounded_relations(
             or conf < ALIAS_CONFIDENCE_MIN
         ):
             continue
-        key = (slugify_label(subject_item.label), kind, slugify_label(object_item.label))
+        raw_valid_from = relation.get("valid_from", relation.get("validAt"))
+        raw_valid_to = relation.get("valid_to", relation.get("invalidAt"))
+        valid_from = parse_iso_timestamp(raw_valid_from)
+        valid_to = parse_iso_timestamp(raw_valid_to)
+        if (raw_valid_from is not None and valid_from is None) or (
+            raw_valid_to is not None and valid_to is None
+        ):
+            continue
+        if valid_from and valid_to and valid_to <= valid_from:
+            continue
+        key = (
+            subject_item.local_ref,
+            kind,
+            object_item.local_ref,
+            predicate_label.casefold(),
+            valid_from or "",
+            valid_to or "",
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -320,6 +421,10 @@ def parse_grounded_relations(
                 kind=kind,
                 excerpt=evidence,
                 confidence=conf,
+                valid_from=valid_from,
+                valid_to=valid_to,
+                subject_ref=subject_item.local_ref,
+                object_ref=object_item.local_ref,
             )
         )
     return out
@@ -342,38 +447,7 @@ async def extract_grounded_concepts(
     # O título contextualiza o modelo, mas a evidência deve existir no segmento;
     # assim toda citação recebe uma localização verificável no documento.
     source_for_ground = body
-    if language == "en":
-        system = (
-            "Extract structured knowledge for a personal KB. Reply ONLY with JSON:\n"
-            '{"entities":[{"label":"...","excerpt":"verbatim quote from the text",'
-            '"confidence":0.0-1.0}],'
-            '"claims":[{"label":"short factual claim","excerpt":"verbatim quote",'
-            '"confidence":0.0-1.0}],'
-            '"relations":[{"subject":"exact extracted label","predicate":"...",'
-            '"object":"exact extracted label",'
-            '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
-            '"excerpt":"verbatim quote","confidence":0.0-1.0}]}\n'
-            "excerpt MUST be a contiguous substring of the content. Max 8 entities, 6 claims. "
-            "Relations must reference extracted labels. SAME_AS only for unambiguous aliases. "
-            "No invented quotes."
-        )
-        user = f"Title: {title.strip() or '(none)'}\n\nContent:\n{body}"
-    else:
-        system = (
-            "Extraia conhecimento estruturado para uma base pessoal. Responda SÓ JSON:\n"
-            '{"entities":[{"label":"...","excerpt":"trecho literal do texto",'
-            '"confidence":0.0-1.0}],'
-            '"claims":[{"label":"afirmação curta","excerpt":"trecho literal",'
-            '"confidence":0.0-1.0}],'
-            '"relations":[{"subject":"rótulo extraído exato","predicate":"...",'
-            '"object":"rótulo extraído exato",'
-            '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
-            '"excerpt":"trecho literal","confidence":0.0-1.0}]}\n'
-            "excerpt DEVE ser substring contígua do conteúdo. Máx. 8 entidades, 6 claims. "
-            "Relações devem usar rótulos extraídos. SAME_AS só para aliases sem ambiguidade. "
-            "Sem citações inventadas."
-        )
-        user = f"Título: {title.strip() or '(sem título)'}\n\nConteúdo:\n{body}"
+    system, user = build_grounded_extract_prompt(title=title, body=body, language=language)
 
     payload: dict[str, object] = {
         "model": model,

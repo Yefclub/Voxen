@@ -4,6 +4,7 @@ import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { reindexTranscriptBrain } from '../lib/brain';
 import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
+import { applyTranscriptLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
@@ -41,7 +42,7 @@ import {
   parseTranscriptGraphScope,
   readTranscriptLocalGraph,
 } from '../lib/transcript-local-graph';
-import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
+import { TRANSCRIPT_LIST_SELECT } from '../lib/transcript-list-select';
 import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
 import { registerTranscriptInterestRoutes } from './transcript-interest';
 import {
@@ -53,7 +54,6 @@ import {
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
-
 type Vars = { userId: string };
 
 export const transcriptsRoutes = new Hono<{ Variables: Vars }>();
@@ -400,30 +400,6 @@ transcriptsRoutes.get('/', async (c) => {
     hasMore: offset + transcripts.length < total,
   });
 });
-
-const TRANSCRIPT_LIST_SELECT = {
-  id: true,
-  source: true,
-  url: true,
-  title: true,
-  channel: true,
-  durationSec: true,
-  language: true,
-  transcriptionMethod: true,
-  thumbnailUrl: true,
-  originalObjectKey: true,
-  originalFilename: true,
-  originalMimeType: true,
-  previewObjectKey: true,
-  previewMimeType: true,
-  costUsd: true,
-  folderId: true,
-  folder: { select: { id: true, name: true, parentId: true } },
-  status: true,
-  archivedAt: true,
-  trashedAt: true,
-  createdAt: true,
-} as const;
 
 async function loadTagsForTranscripts(
   userId: string,
@@ -1086,23 +1062,10 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
   });
   if (!existing) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const transcript = await db.$transaction(async (tx) => {
-    const now = new Date();
-    const updated = await tx.transcript.update({
-      where: { id },
-      data: {
-        status,
-        archivedAt: status === 'ARCHIVED' ? now : null,
-        trashedAt: status === 'TRASH' ? now : null,
-      },
-      select: TRANSCRIPT_LIST_SELECT,
-    });
-    if (status !== 'ACTIVE') {
-      await cancelTranscriptEnrichmentsForInactiveParent(tx, userId, id, now);
-    }
-    return updated;
-  });
-  await reindexTranscriptBrain(userId, id);
+  const transcript = await applyTranscriptLifecycle(userId, id, status);
+  if (!transcript) {
+    return c.json({ error: 'O grafo está sendo atualizado. Tente novamente em instantes.' }, 409);
+  }
   await syncTranscriptEnrichmentBrainLifecycle(userId, id, status);
   await invalidateGraphCache(userId);
   return c.json({ transcript });

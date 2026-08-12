@@ -10,7 +10,7 @@ from typing import Any, cast
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, db
+from src import brain_compilation_db, brain_temporal_store, db
 
 
 class _FakeLease:
@@ -284,7 +284,7 @@ class _SegmentConnection:
         return {"id": "content-node"}
 
     async def execute(self, query: str, *_args: object) -> str:
-        if 'DELETE FROM "BrainSource" source' in query:
+        if 'UPDATE "BrainSource" source' in query and 'source."segmentKey" = $3' in query:
             self.lease.owned = False
         return "OK"
 
@@ -307,7 +307,7 @@ class _CompilationResetConnection:
         return "OK"
 
 
-async def test_recompilation_removes_relation_evidence_without_touching_manual_edges(
+async def test_recompilation_invalidates_relation_evidence_without_erasing_history(
     monkeypatch: Any,
 ) -> None:
     conn = _CompilationResetConnection()
@@ -329,7 +329,10 @@ async def test_recompilation_removes_relation_evidence_without_touching_manual_e
     )
 
     queries = "\n".join(query for query, _args in conn.execute_calls)
-    assert 'DELETE FROM "BrainSource" source' in queries
+    assert 'UPDATE "BrainSource" source' in queries
+    assert 'SET "invalidatedAt" = NOW()' in queries
+    assert 'UPDATE "BrainEntityAlias"' in queries
+    assert 'UPDATE "BrainFact" fact' in queries
     assert "edge.method LIKE 'llm-grounded%'" in queries
     assert 'source."sourceId" = $2' in queries
     assert "NOT EXISTS" in queries
@@ -341,6 +344,7 @@ class _RelationConnection:
         self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
         self._edge_number = 0
+        self._fact_number = 0
 
     def transaction(self) -> _SegmentTransaction:
         return _SegmentTransaction()
@@ -356,6 +360,9 @@ class _RelationConnection:
         if 'INSERT INTO "BrainEdge"' in query:
             self._edge_number += 1
             return {"id": f"edge-{self._edge_number}"}
+        if 'INSERT INTO "BrainFact"' in query:
+            self._fact_number += 1
+            return {"id": f"fact-{self._fact_number}"}
         raise AssertionError(f"Unexpected fetchrow query: {query}")
 
     async def execute(self, query: str, *args: object) -> str:
@@ -410,6 +417,8 @@ async def test_stale_compilation_hash_cannot_persist_grounded_evidence(
 
     claim_query, claim_args = conn.fetchrow_calls[0]
     assert 'compilation."contentHash" = $4' in claim_query
+    assert "transcript.status = 'ACTIVE'" in claim_query
+    assert "FOR UPDATE OF segment, transcript" in claim_query
     assert claim_args[3] == "stale-hash"
     assert conn.execute_calls == []
 
@@ -427,7 +436,7 @@ async def test_contradiction_requires_two_independent_grounded_sources(
         return f"node-{kwargs['key']}"
 
     monkeypatch.setattr(db, "connection", relation_connection)
-    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
 
     await db.upsert_grounded_brain_items(
         user_id="user-1",
@@ -480,7 +489,7 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
         return f"node-{kwargs['key']}"
 
     monkeypatch.setattr(db, "connection", relation_connection)
-    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
 
     await db.upsert_grounded_brain_items(
         user_id="user-1",
@@ -513,6 +522,80 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
         and args[4] == "CONTRADICTS"
         for query, args in conn.fetchrow_calls
     )
+    assert any('INSERT INTO "BrainFact"' in query for query, _args in conn.fetchrow_calls)
+    assert any('"factId"' in query for query, _args in conn.execute_calls)
+
+
+async def test_distinct_temporal_episodes_keep_independent_evidence_rows(
+    monkeypatch: Any,
+) -> None:
+    conn = _RelationConnection({"subject_sources": 0, "object_sources": 0, "total_sources": 0})
+
+    @asynccontextmanager
+    async def relation_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    async def concept_node(_conn: object, **kwargs: object) -> str:
+        return f"node-{kwargs['key']}"
+
+    monkeypatch.setattr(db, "connection", relation_connection)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
+
+    await db.upsert_grounded_brain_items(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        compilation_id="compilation-1",
+        segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+        items=[
+            {
+                "slug": "ana",
+                "local_ref": "ana",
+                "label": "Ana",
+                "kind": "claim",
+                "excerpt": "Ana voltou à Acme.",
+            },
+            {
+                "slug": "acme",
+                "local_ref": "acme",
+                "label": "Acme",
+                "kind": "claim",
+                "excerpt": "Ana voltou à Acme.",
+            },
+        ],
+        relations=[
+            {
+                "subject_ref": "ana",
+                "object_ref": "acme",
+                "predicate": "worked_at",
+                "kind": "RELATED_TO",
+                "excerpt": "Ana voltou à Acme.",
+                "valid_from": "2020-01-01T00:00:00Z",
+                "valid_to": "2021-01-01T00:00:00Z",
+            },
+            {
+                "subject_ref": "ana",
+                "object_ref": "acme",
+                "predicate": "worked_at",
+                "kind": "RELATED_TO",
+                "excerpt": "Ana voltou à Acme.",
+                "valid_from": "2024-01-01T00:00:00Z",
+            },
+        ],
+        lease=_FakeLease(),
+        worker_id="worker-1",
+        content_hash="content-hash",
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
+    )
+
+    temporal_sources = [
+        args
+        for query, args in conn.execute_calls
+        if 'INSERT INTO "BrainSource"' in query and args[3] is not None
+    ]
+    assert [args[3] for args in temporal_sources] == ["fact-1", "fact-2"]
+    assert len({args[10] for args in temporal_sources}) == 2
 
 
 async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) -> None:

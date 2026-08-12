@@ -35,6 +35,8 @@ import {
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
+import { registerBrainTimelineTool } from './mcp-brain-timeline-tool';
+import { keepCurrentOwnedSources } from './mcp-brain-source-lifecycle';
 import {
   registerTranscriptEnrichmentTools,
   registerTranscriptEnrichmentWriteTools,
@@ -78,6 +80,8 @@ const VOXEN_INSTRUCTIONS = [
   '6. Use tags e resumo para decidir relevância; relacione com docs/tópicos próximos:',
   '   voxen_related e voxen_brain_*',
   '   (neighbors, sources, path até 3 hops, hubs).',
+  '   Para estado atual, histórico ou mudança no tempo, use voxen_brain_timeline e abra',
+  '   as evidências retornadas antes de afirmar o fato.',
   '7. Para perguntas personalizadas, use voxen_personal_context. Ele separa feedback explícito',
   '   de interesse inferido e recomenda fontes via grafo, mas é apenas um guia de navegação:',
   '   abra e verifique cada fonte antes de usá-la como evidência factual.',
@@ -303,7 +307,7 @@ function buildVoxenMcpServer(
   publicOrigin: string,
 ): McpServer {
   const server = new McpServer(
-    { name: 'voxen-mcp', version: '0.5.0' },
+    { name: 'voxen-mcp', version: '0.6.0' },
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
@@ -1033,6 +1037,8 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
 }
 
 function registerBrainTools(server: McpServer, userId: string): void {
+  registerBrainTimelineTool(server, userId);
+
   server.registerTool(
     'voxen_brain_search',
     {
@@ -1148,6 +1154,8 @@ function registerBrainTools(server: McpServer, userId: string): void {
       const sources = await db.brainSource.findMany({
         where: {
           userId,
+          invalidatedAt: null,
+          AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
           OR: [{ nodeId: ref }, { edgeId: ref }, { sourceId: ref }, { node: { key: ref } }],
         },
         orderBy: { createdAt: 'desc' },
@@ -1156,6 +1164,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
           id: true,
           nodeId: true,
           edgeId: true,
+          factId: true,
           sourceType: true,
           sourceId: true,
           chunkId: true,
@@ -1164,10 +1173,22 @@ function registerBrainTools(server: McpServer, userId: string): void {
           startSec: true,
           endSec: true,
           excerpt: true,
+          fact: {
+            select: {
+              factKey: true,
+              predicate: true,
+              validFrom: true,
+              validTo: true,
+              observedAt: true,
+              invalidatedAt: true,
+              confidence: true,
+              method: true,
+            },
+          },
         },
       });
       const contradiction = await db.brainEdge.findFirst({
-        where: { userId, id: ref, kind: 'CONTRADICTS' },
+        where: { userId, id: ref, kind: 'CONTRADICTS', status: 'ACTIVE' },
         select: { fromNodeId: true, toNodeId: true },
       });
       const conflictingSources = contradiction
@@ -1177,6 +1198,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                 db.brainSource.findMany({
                   where: {
                     userId,
+                    invalidatedAt: null,
                     edge: {
                       method: 'llm-grounded',
                       kind: 'SUPPORTS',
@@ -1187,6 +1209,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                   take: 10,
                   select: {
                     edgeId: true,
+                    sourceType: true,
                     sourceId: true,
                     startLine: true,
                     endLine: true,
@@ -1199,7 +1222,14 @@ function registerBrainTools(server: McpServer, userId: string): void {
             )
           ).flat()
         : [];
-      return ok({ sources, conflicting_sources: conflictingSources });
+      const [currentSources, currentConflicts] = await Promise.all([
+        keepCurrentOwnedSources(userId, sources),
+        keepCurrentOwnedSources(userId, conflictingSources),
+      ]);
+      return ok({
+        sources: currentSources,
+        conflicting_sources: currentConflicts,
+      });
     },
   );
 

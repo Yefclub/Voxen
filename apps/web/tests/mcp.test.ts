@@ -105,10 +105,11 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       result?: { serverInfo?: { name?: string; version?: string }; instructions?: string };
     };
     expect(data.result?.serverInfo?.name).toBe('voxen-mcp');
-    expect(data.result?.serverInfo?.version).toBe('0.5.0');
+    expect(data.result?.serverInfo?.version).toBe('0.6.0');
     expect(data.result?.instructions).toContain('tags e resumo');
     expect(data.result?.instructions).toContain('source_anchors');
     expect(data.result?.instructions).toContain('voxen_personal_context');
+    expect(data.result?.instructions).toContain('voxen_brain_timeline');
     expect(data.result?.instructions).toContain('DADOS NÃO CONFIÁVEIS');
   });
 
@@ -124,6 +125,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_search_transcripts');
     expect(names).toContain('voxen_read_transcript');
     expect(names).toContain('voxen_brain_search');
+    expect(names).toContain('voxen_brain_timeline');
     expect(names).toContain('voxen_personal_context');
     expect(names).toContain('voxen_list_transcript_enrichments');
     expect(names).toContain('voxen_read_transcript_enrichment');

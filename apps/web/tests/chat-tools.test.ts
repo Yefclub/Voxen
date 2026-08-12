@@ -95,6 +95,7 @@ describe('buildTools (agente in-app)', () => {
       'search_notes',
       'read_note',
       'brain_search',
+      'brain_timeline',
       'propose_create_note',
     ]) {
       expect(names).toContain(name);
