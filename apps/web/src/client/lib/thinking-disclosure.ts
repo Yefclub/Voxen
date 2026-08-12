@@ -18,6 +18,13 @@
 //   3. se o usuário acionou o cabeçalho, a automação larga o controle
 //      (`manual`) pelo resto daquele turno.
 //
+// A spec 200 corrigiu QUANDO o recolhimento acontece. Amarrado só a `live`, ele
+// esperava o turno inteiro terminar, então a timeline de raciocínio ficava por
+// cima da resposta durante todo o streaming dela — exatamente o conteúdo que
+// importa empurrado para baixo. Agora o primeiro pedaço da resposta recolhe o
+// bloco, e o ponto 2 acima permanece como caminho do turno que termina só com
+// ferramentas, sem texto final nenhum.
+//
 // O ponto 3 vale inclusive para o recolhimento do fim do turno: fechar por
 // baixo de quem abriu o bloco para ler é exatamente o salto que esta spec veio
 // remover. É a regra específica ("parar de controlá-lo automaticamente")
@@ -43,11 +50,15 @@ export type ThinkingDisclosureState = {
   readonly expanded: boolean;
   /** O usuário acionou o cabeçalho neste turno — a automação parou. */
   readonly manual: boolean;
+  /** A resposta final já começou neste turno. Trava de uma via (spec 200). */
+  readonly answered: boolean;
 };
 
 export type ThinkingDisclosureEvent =
   /** O stream do turno abriu. */
   | { type: 'turn-started' }
+  /** Chegou o primeiro pedaço da resposta final (spec 200). */
+  | { type: 'answer-started' }
   /** Venceu o atraso depois que o stream fechou. */
   | { type: 'auto-close' }
   /** O usuário clicou no cabeçalho. */
@@ -59,7 +70,7 @@ export type ThinkingDisclosureEvent =
  * armaria um timer para fechar o que já está fechado.
  */
 export function initialThinkingDisclosure(live: boolean): ThinkingDisclosureState {
-  return { expanded: live, manual: false };
+  return { expanded: live, manual: false, answered: false };
 }
 
 export function thinkingDisclosureReducer(
@@ -72,13 +83,19 @@ export function thinkingDisclosureReducer(
       // pelo id da mensagem, e turno novo é mensagem nova, logo componente
       // novo (com `manual` zerado pela montagem). Então um `live` que volta a
       // ser verdadeiro AQUI é o mesmo turno se recuperando de uma queda de
-      // stream — e reabrir o bloco nesse caso atropelaria quem já clicou.
-      if (state.manual) return state;
+      // stream — e reabrir o bloco nesse caso atropelaria quem já clicou, ou
+      // desfaria o recolhimento que a resposta já provocou.
+      if (state.manual || state.answered) return state;
       return { ...state, expanded: true };
+    case 'answer-started':
+      // Trava de uma via: marca `answered` mesmo sob controle manual, para que
+      // nenhuma reabertura automática posterior encontre o turno "sem resposta".
+      if (state.manual) return { ...state, answered: true };
+      return { ...state, expanded: false, answered: true };
     case 'auto-close':
       return { ...state, expanded: false };
     case 'toggled':
-      return { expanded: !state.expanded, manual: true };
+      return { ...state, expanded: !state.expanded, manual: true };
   }
 }
 
@@ -96,12 +113,21 @@ const timeoutScheduler: DisclosureScheduler = (run, delayMs) => {
 /**
  * Estado de abertura do bloco "Pensando" de um turno.
  *
- * `live` é o único gatilho automático, de propósito: qualquer sinal que mude no
- * meio do turno (a resposta começando, uma ferramenta entrando) traz de volta a
- * oscilação que a spec 130 corrigiu.
+ * Dois gatilhos automáticos, e a distinção entre eles é o que a spec 130 não
+ * tinha: `live` abre no começo do turno, `answerStarted` recolhe UMA vez quando
+ * o primeiro pedaço da resposta chega.
+ *
+ * O que quebrou na spec 126 foi o vínculo BIDIRECIONAL a `thinkingInFlight`,
+ * que alterna nos dois sentidos dentro do turno (abre no raciocínio, fecha no
+ * texto, abre de novo na próxima ferramenta) — um ciclo por ida-e-volta. Uma
+ * trava de uma via não oscila: depois que a resposta começou, `answered` impede
+ * qualquer reabertura automática pelo resto do turno, inclusive se o harness
+ * chamar mais ferramentas ou o stream cair e voltar. Por isso `answerStarted`
+ * pode ser gatilho e `thinkingInFlight` não podia.
  */
 export function useThinkingDisclosure(
   live: boolean,
+  answerStarted: boolean,
   schedule: DisclosureScheduler = timeoutScheduler,
 ): { expanded: boolean; toggle: () => void } {
   const [state, dispatch] = useReducer(thinkingDisclosureReducer, live, initialThinkingDisclosure);
@@ -110,6 +136,13 @@ export function useThinkingDisclosure(
   useEffect(() => {
     if (live) dispatch({ type: 'turn-started' });
   }, [live]);
+
+  useEffect(() => {
+    // Só num turno vivo: mensagem do histórico chega com a resposta inteira
+    // pronta e já monta recolhida — disparar aqui seria recolher o que já está
+    // recolhido e sujar o log de transições.
+    if (live && answerStarted) dispatch({ type: 'answer-started' });
+  }, [live, answerStarted]);
 
   useEffect(() => {
     // Só há o que recolher com o turno encerrado, o bloco aberto e a automação

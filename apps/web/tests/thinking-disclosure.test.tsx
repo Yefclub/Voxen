@@ -149,7 +149,7 @@ function DisclosureProbe({
   log: boolean[];
   probe: Probe;
 }): React.ReactElement | null {
-  const { expanded, toggle } = useThinkingDisclosure(frame.live, schedule);
+  const { expanded, toggle } = useThinkingDisclosure(frame.live, frame.answering, schedule);
   probe.toggle = toggle;
   useEffect(() => {
     if (log.length === 0 || log[log.length - 1] !== expanded) log.push(expanded);
@@ -201,24 +201,63 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
     expect(THINKING_AUTO_CLOSE_DELAY_MS).toBeLessThanOrEqual(2_000);
   });
 
-  test('abre uma vez e recolhe uma vez, mesmo com ferramenta no meio da resposta', async () => {
+  test('abre uma vez e recolhe uma vez, na chegada da resposta (spec 200)', async () => {
+    // A propriedade que a spec 130 conquistou — uma abertura, um recolhimento,
+    // sem salto por ferramenta — continua valendo. O que a spec 200 muda é o
+    // INSTANTE do recolhimento: quando a resposta começa, não quando o turno
+    // acaba. Por isso o log de transições é a asserção certa: ele distingue
+    // "recolheu uma vez, cedo" de "recolheu a cada ida-e-volta".
     const clock = fakeClock();
     const log: boolean[] = [];
     const probe: Probe = { toggle: () => {} };
     const turn = agenticTurn();
 
     const renderer = await mount(turn.start, clock.schedule, log, probe);
-    for (const frame of turn.middle) {
-      await step(renderer, frame, clock.schedule, log, probe);
-    }
-
-    // Durante o turno inteiro: nenhuma mudança depois da abertura.
     expect(log).toEqual([true]);
+
+    // Primeiro pedaço da resposta: recolhe na hora, sem esperar o turno.
+    const [answering, calling, answeringAgain] = turn.middle;
+    await step(renderer, answering!, clock.schedule, log, probe);
+    expect(log).toEqual([true, false]);
     expect(clock.pending()).toBe(0);
 
-    // Fim do turno: o recolhimento espera o atraso curto em vez de acontecer
-    // no mesmo frame em que a resposta aparece.
+    // Ferramenta no meio da resposta e o texto voltando a fluir: a trava
+    // segura. Reabrir aqui seria a oscilação que a spec 130 removeu.
+    await step(renderer, calling!, clock.schedule, log, probe);
+    await step(renderer, answeringAgain!, clock.schedule, log, probe);
+    expect(log).toEqual([true, false]);
+
+    // Fim do turno não mexe mais em nada — já está recolhido, e o agendamento
+    // pós-turno só existe para o turno que termina sem texto final.
     await step(renderer, turn.ended, clock.schedule, log, probe);
+    act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
+    expect(log).toEqual([true, false]);
+    expect(clock.pending()).toBe(0);
+
+    await act(async () => renderer.unmount());
+  });
+
+  test('turno que termina só com ferramentas ainda recolhe pelo atraso', async () => {
+    // Sem texto final, `answerStarted` nunca fica verdadeiro, então o caminho
+    // da spec 130 continua sendo o único que fecha o bloco.
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+
+    let segments: MessageSegment[] = [];
+    segments = applySegmentEvent(segments, { type: 'reasoning', delta: 'analisando' }, 1_000);
+    segments = applySegmentEvent(
+      segments,
+      { type: 'tool', tool: { id: 't1', name: 'list_transcripts', state: 'completed' } },
+      2_000,
+    );
+    const running: TurnFrame = { segments, live: true, answering: false };
+    const ended: TurnFrame = { segments, live: false, answering: false };
+
+    const renderer = await mount(running, clock.schedule, log, probe);
+    expect(log).toEqual([true]);
+
+    await step(renderer, ended, clock.schedule, log, probe);
     expect(log).toEqual([true]);
 
     act(() => clock.advance(THINKING_AUTO_CLOSE_DELAY_MS - 1));
@@ -226,11 +265,98 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
 
     act(() => clock.advance(1));
     expect(log).toEqual([true, false]);
+    expect(clock.pending()).toBe(0);
 
-    // E não volta a se mexer sozinho depois disso.
+    await act(async () => renderer.unmount());
+  });
+
+  test('queda e volta do stream depois da resposta não reabre o bloco', async () => {
+    // `live` voltando a ser verdadeiro dispara `turn-started` de novo. Sem a
+    // trava, isso reabriria um bloco que a resposta já recolheu.
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+    const turn = agenticTurn();
+    const [answering] = turn.middle;
+
+    const renderer = await mount(turn.start, clock.schedule, log, probe);
+    await step(renderer, answering!, clock.schedule, log, probe);
+    expect(log).toEqual([true, false]);
+
+    // Stream cai…
+    await step(renderer, { ...answering!, live: false }, clock.schedule, log, probe);
+    // …e volta, no MESMO turno (mesma instância do componente).
+    await step(renderer, answering!, clock.schedule, log, probe);
+
     act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
     expect(log).toEqual([true, false]);
     expect(clock.pending()).toBe(0);
+
+    await act(async () => renderer.unmount());
+  });
+
+  test('bloco aberto à mão não é fechado pela chegada da resposta', async () => {
+    // O usuário abriu para ler o raciocínio. Recolher por baixo dele quando a
+    // resposta começa é o mesmo atropelo que a spec 130 removeu do fim do turno.
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+    const turn = agenticTurn();
+
+    const renderer = await mount(turn.start, clock.schedule, log, probe);
+    await act(async () => probe.toggle()); // fecha
+    await act(async () => probe.toggle()); // reabre, agora por decisão dele
+    expect(log).toEqual([true, false, true]);
+
+    for (const frame of [...turn.middle, turn.ended]) {
+      await step(renderer, frame, clock.schedule, log, probe);
+    }
+    act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
+    expect(log).toEqual([true, false, true]);
+    expect(clock.pending()).toBe(0);
+
+    await act(async () => renderer.unmount());
+  });
+
+  test('clique depois da trava mantém o controle do usuário', async () => {
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+    const turn = agenticTurn();
+    const [answering, calling] = turn.middle;
+
+    const renderer = await mount(turn.start, clock.schedule, log, probe);
+    await step(renderer, answering!, clock.schedule, log, probe);
+    expect(log).toEqual([true, false]);
+
+    // Reabre depois de a resposta já ter recolhido.
+    await act(async () => probe.toggle());
+    expect(log).toEqual([true, false, true]);
+
+    // Nem a ferramenta seguinte, nem o fim do turno, tomam de volta.
+    await step(renderer, calling!, clock.schedule, log, probe);
+    await step(renderer, turn.ended, clock.schedule, log, probe);
+    act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
+    expect(log).toEqual([true, false, true]);
+    expect(clock.pending()).toBe(0);
+
+    await act(async () => renderer.unmount());
+  });
+
+  test('mensagem do histórico monta recolhida e não agenda nada', async () => {
+    // Resposta inteira já presente (`answering: true`) mas turno morto: nada
+    // deve disparar, nem o recolhimento do que já está recolhido.
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+    const turn = agenticTurn();
+
+    const renderer = await mount(turn.ended, clock.schedule, log, probe);
+    expect(log).toEqual([false]);
+    expect(clock.pending()).toBe(0);
+
+    act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
+    expect(log).toEqual([false]);
 
     await act(async () => renderer.unmount());
   });

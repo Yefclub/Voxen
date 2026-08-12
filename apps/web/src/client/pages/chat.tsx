@@ -318,20 +318,27 @@ function thinkingSummaryLabel(duration: number | null, toolCount: number, t: Tra
 function ThinkingBlock({
   segments,
   live,
+  answerStarted,
   startedAt,
 }: {
   segments: MessageSegment[];
   /** O stream deste turno ainda está aberto. */
   live: boolean;
+  /** Já chegou o primeiro pedaço da resposta final deste turno (spec 200). */
+  answerStarted: boolean;
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  // Spec 130: bloco E cabeçalho dirigidos por `live`, o único sinal do turno
-  // que não oscila. O gatilho anterior (`thinkingInFlight`) alternava a cada
-  // ida-e-volta de ferramenta — abrindo/fechando a timeline e trocando o
-  // rótulo entre "Pensando" e "Pensou por Xs" no meio da resposta, contra a
-  // própria regra da spec 078.
-  const { expanded, toggle } = useThinkingDisclosure(live);
+  // Spec 130: o CABEÇALHO segue dirigido por `live`. Enquanto o turno corre há
+  // atividade a sinalizar, e `thinkingDuration` devolve `null` com o turno
+  // vivo — trocar para o rótulo de resumo no meio renderizaria a contagem de
+  // ferramentas sem tempo decorrido, contra a spec 078.
+  //
+  // Spec 200: o BLOCO recolhe quando a resposta começa, não quando o turno
+  // acaba. O gatilho aposentado (`thinkingInFlight`) não servia porque alternava
+  // nos dois sentidos a cada ida-e-volta de ferramenta; `answerStarted` é trava
+  // de uma via e por isso não traz a oscilação de volta.
+  const { expanded, toggle } = useThinkingDisclosure(live, answerStarted);
   const duration = thinkingDuration(segments, live, startedAt);
   const toolCount = segmentsToolCount(segments);
 
@@ -1849,6 +1856,10 @@ export function ChatPage(): React.ReactElement {
                         <ThinkingBlock
                           segments={segments}
                           live={isStreamingAssistant}
+                          // `content` fica vazio até o primeiro delta de texto
+                          // final — o render logo abaixo já depende disso — então
+                          // "a resposta começou" não precisa de estado novo.
+                          answerStarted={Boolean(message.content)}
                           startedAt={Date.parse(message.createdAt)}
                         />
                       )}
