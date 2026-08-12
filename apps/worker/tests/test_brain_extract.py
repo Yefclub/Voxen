@@ -592,10 +592,15 @@ async def test_grounded_model_runs_before_short_write_lease_and_contention_retri
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
     monkeypatch.setattr(brain_compilation, "acquire_graph_index_lease", acquire)
 
+    logged: list[tuple[str, str, dict[str, Any]]] = []
+
     await brain_compilation.extract_grounded_brain(
         user_id="user-1",
         transcript_id="transcript-1",
-        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        log=SimpleNamespace(
+            info=lambda event, **k: logged.append(("info", event, k)),
+            warning=lambda event, **k: logged.append(("warning", event, k)),
+        ),
         worker_id="worker-test",
     )
 
@@ -606,6 +611,22 @@ async def test_grounded_model_runs_before_short_write_lease_and_contention_retri
     assert retry.await_args.kwargs["segment_key"] == "only"
     assert retry.await_args.kwargs["error"] == "GRAPH_WRITE_LEASE_UNAVAILABLE"
     assert retry.await_args.kwargs["worker_id"].startswith("worker-test:")
+
+    # Nada foi escrito no grafo, então a passada não concluiu. Reportar
+    # `brain-extract-done` com zeros aqui é indistinguível, no log, de um
+    # transcript que legitimamente não tinha conceito nenhum — e só um dos dois
+    # volta a acontecer na próxima passada.
+    events_logged = [(level, event) for level, event, _ in logged]
+    assert ("info", "brain-extract-done") not in events_logged
+    assert ("warning", "brain-extract-incomplete") in events_logged
+
+    incomplete = next(k for level, event, k in logged if event == "brain-extract-incomplete")
+    assert incomplete["deferred_segments"] == 1
+    assert incomplete["items"] == 0
+    assert incomplete["edges"] == 0
+
+    deferred = next(k for _, event, k in logged if event == "brain-extract-deferred-lease")
+    assert deferred["segment_key"] == "only"
 
 
 class _ExternalErrorClient:

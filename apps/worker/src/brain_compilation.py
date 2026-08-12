@@ -116,6 +116,10 @@ async def extract_grounded_brain(
         claimed_any = False
         total_items = 0
         total_edges = 0
+        # Segmento que não conseguiu o lease de escrita no grafo não foi extraído
+        # nem falhou de verdade — fica para a próxima passada. Contar separado
+        # evita o log de conclusão dizer "done" com zero em cima de um adiamento.
+        deferred_segments = 0
         for segment in segment_payload:
             if segment["key"] not in due_keys:
                 continue
@@ -189,7 +193,12 @@ async def extract_grounded_brain(
                         error="GRAPH_WRITE_LEASE_UNAVAILABLE",
                         worker_id=claim_owner,
                     )
-                    log.info("brain-extract-deferred-lease", transcript_id=transcript_id)
+                    deferred_segments += 1
+                    log.info(
+                        "brain-extract-deferred-lease",
+                        transcript_id=transcript_id,
+                        segment_key=segment["key"],
+                    )
                     continue
                 async with lease.heartbeat():
                     total_edges += await db.upsert_grounded_brain_items(
@@ -226,6 +235,19 @@ async def extract_grounded_brain(
                     await lease.release()
         if not claimed_any:
             log.info("brain-extract-already-claimed", transcript_id=transcript_id)
+            return
+        if deferred_segments:
+            # `done` aqui seria mentira: os contadores zerados vêm de adiamento,
+            # não de um transcript sem conceitos. Quem lê o log precisa separar
+            # "não havia o que extrair" de "não deu para escrever agora", porque
+            # só o segundo volta a acontecer na próxima passada.
+            log.warning(
+                "brain-extract-incomplete",
+                transcript_id=transcript_id,
+                items=total_items,
+                edges=total_edges,
+                deferred_segments=deferred_segments,
+            )
             return
         log.info(
             "brain-extract-done",
