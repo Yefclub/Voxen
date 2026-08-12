@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.14.5-dev.1786497875 — 2026-08-11 · Dev
+
+### ✨ An explainable Guide for personal knowledge trends
+
+Voxen now turns the signed-in user's own interest signals and knowledge graph
+into a dedicated personal Guide. It separates emerging, steady, and cooling
+interests across short-, medium-, and long-term horizons, then recommends
+existing sources using weighted Personalized PageRank.
+
+Every trend and recommendation includes inspectable evidence: explicit
+feedback, observed actions, supporting sources, community membership, or
+structural graph relevance. The Guide is deterministic, never asks a language
+model to invent preferences, discloses uniform fallbacks and truncated graph
+snapshots, and remains isolated to active content owned by the current user.
+
 ## v0.14.5-dev.1786492801 — 2026-08-11 · Dev
 
 ### ✨ Weighted graph importance shaped by durable interests

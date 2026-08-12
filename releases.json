@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.14.5-dev.1786497875",
+    "channel": "dev",
+    "type": "feat",
+    "title": "An explainable Guide for personal knowledge trends",
+    "body": "Voxen now turns the signed-in user's own interest signals and knowledge graph\ninto a dedicated personal Guide. It separates emerging, steady, and cooling\ninterests across short-, medium-, and long-term horizons, then recommends\nexisting sources using weighted Personalized PageRank.\n\nEvery trend and recommendation includes inspectable evidence: explicit\nfeedback, observed actions, supporting sources, community membership, or\nstructural graph relevance. The Guide is deterministic, never asks a language\nmodel to invent preferences, discloses uniform fallbacks and truncated graph\nsnapshots, and remains isolated to active content owned by the current user.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-11T22:24:23-03:00",
+    "translations": {
+      "en": {
+        "title": "An explainable Guide for personal knowledge trends",
+        "body": "Voxen now turns the signed-in user's own interest signals and knowledge graph\ninto a dedicated personal Guide. It separates emerging, steady, and cooling\ninterests across short-, medium-, and long-term horizons, then recommends\nexisting sources using weighted Personalized PageRank.\n\nEvery trend and recommendation includes inspectable evidence: explicit\nfeedback, observed actions, supporting sources, community membership, or\nstructural graph relevance. The Guide is deterministic, never asks a language\nmodel to invent preferences, discloses uniform fallbacks and truncated graph\nsnapshots, and remains isolated to active content owned by the current user."
+      },
+      "pt-BR": {
+        "title": "Um Guia explicável para tendências do conhecimento pessoal",
+        "body": "A Voxen agora transforma os sinais de interesse e o grafo de conhecimento do\npróprio usuário autenticado em um Guia pessoal dedicado. Ele separa interesses\nemergentes, constantes e em queda nos horizontes curto, médio e longo, e então\nrecomenda fontes existentes usando Personalized PageRank ponderado.\n\nCada tendência e recomendação inclui evidências inspecionáveis: feedback\nexplícito, ações observadas, fontes de apoio, comunidade ou relevância\nestrutural no grafo. O Guia é determinístico, não pede a um modelo de linguagem\npara inventar preferências, identifica fallbacks uniformes e recortes truncados\ndo grafo e permanece isolado aos conteúdos ativos do usuário atual."
+      }
+    }
+  },
+  {
     "version": "0.14.5-dev.1786492801",
     "channel": "dev",
     "type": "feat",
