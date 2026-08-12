@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+import ast
 from pathlib import Path
 
 import pytest
@@ -8,15 +8,57 @@ import pytest
 from src.safe_diagnostics import _ALLOWED_ERROR_CODES, error_diagnostic
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
-_CALL = re.compile(r'error_diagnostic\([^,]+,\s*"([A-Z_]+)"')
 
 
-def _codes_used_in_source() -> dict[str, list[str]]:
-    """Códigos passados a `error_diagnostic`, por arquivo que os usa."""
-    found: dict[str, list[str]] = {}
+def _string_arg(node: ast.Call, index: int) -> str | None:
+    if len(node.args) <= index:
+        return None
+    arg = node.args[index]
+    return arg.value if isinstance(arg, ast.Constant) and isinstance(arg.value, str) else None
+
+
+def _keyword(node: ast.Call, name: str) -> str | None:
+    for keyword in node.keywords:
+        if keyword.arg == name and isinstance(keyword.value, ast.Constant):
+            value = keyword.value.value
+            return value if isinstance(value, str) else None
+    return None
+
+
+def _called_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return getattr(func, "id", None)
+
+
+def _codes_used_in_source() -> dict[str, set[str]]:
+    """Códigos internos que podem chegar a `error_diagnostic`, por arquivo.
+
+    Percorre a AST em vez de casar texto: os códigos entram por dois caminhos,
+    e um deles não é literal no ponto da chamada. `pipeline.py` faz
+    `error_diagnostic(e, e.code)` sobre um `PermanentError`, então o valor real
+    está lá atrás, no `PermanentError.public(...)` que construiu a exceção. Uma
+    varredura textual de `error_diagnostic` enxerga só o primeiro caminho e dá
+    a lista como completa — foi assim que oito códigos, incluindo
+    `OPENROUTER_RATE_LIMITED`, sobreviveram à primeira passada desta correção.
+    """
+    found: dict[str, set[str]] = {}
     for path in sorted(_SRC.rglob("*.py")):
-        for code in _CALL.findall(path.read_text(encoding="utf-8")):
-            found.setdefault(code, []).append(path.name)
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = _called_name(node)
+            code: str | None = None
+            if name == "error_diagnostic":
+                code = _string_arg(node, 1) or _keyword(node, "code")
+            elif name == "public":
+                code = _string_arg(node, 0) or _keyword(node, "code")
+            elif name == "PermanentError":
+                code = _keyword(node, "code")
+            if code:
+                found.setdefault(code, set()).add(path.name)
     return found
 
 
@@ -42,18 +84,28 @@ def test_every_code_passed_in_source_is_allowlisted() -> None:
 
 
 def test_the_scan_actually_finds_call_sites() -> None:
-    """Guarda do próprio teste: regex que não casa nada passaria vazio."""
+    """Guarda do próprio teste: varredura que não acha nada passaria vazia.
+
+    E precisa achar pelos DOIS caminhos — uma que só enxergasse
+    `error_diagnostic` daria a lista como completa com oito códigos de fora.
+    """
     used = _codes_used_in_source()
     assert len(used) > 30, f"esperava dezenas de call sites, achei {len(used)}"
-    assert "BRAIN_EXTRACTION_FAILED" in used
+    assert "BRAIN_EXTRACTION_FAILED" in used, "caminho do error_diagnostic literal"
+    assert "OPENROUTER_RATE_LIMITED" in used, "caminho do PermanentError.public"
 
 
 @pytest.mark.parametrize(
     "code",
     [
+        # Chegam por `error_diagnostic(exc, "LITERAL")`.
         "RESEARCH_UPSTREAM_UNAVAILABLE",
         "BRAIN_EXTRACTION_SEGMENT_FAILED",
         "SUMMARY_RECONCILIATION_FAILED",
+        # Chegam por `error_diagnostic(e, e.code)` sobre um PermanentError.
+        "OPENROUTER_RATE_LIMITED",
+        "SAVED_MEDIA_TOO_LARGE",
+        "SOURCE_REFRESH_MISSING",
     ],
 )
 def test_previously_swallowed_codes_survive(code: str) -> None:
