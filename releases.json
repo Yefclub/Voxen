@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786556385",
+    "channel": "dev",
+    "type": "chore",
+    "title": "The AI SDK is back on a current patch release",
+    "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them.",
+    "pr": 783,
+    "author": "Kalyel",
+    "date": "2026-08-12T14:26:32-03:00",
+    "translations": {
+      "en": {
+        "title": "The AI SDK is back on a current patch release",
+        "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them."
+      },
+      "pt-BR": {
+        "title": "O AI SDK volta a uma versão de patch atual",
+        "body": "O pacote `ai`, que roda todo o laço do agente — aprovação de ferramenta, orçamento\nde timeout e streaming —, estava travado quarenta releases de patch atrás, com\nessa quantidade de correções paradas na dependência mais crítica do app.\n\nAtualizar mudou um comportamento do qual o chat dependia: a versão nova entrega\npedaços de texto vazios que a antiga filtrava, o que partiria um raciocínio\ncontínuo em dois blocos separados. Isso foi tratado, então o painel de raciocínio\ncontinua se comportando como antes.\n\nAgora está atualizado. A automação de dependências também foi reagrupada para\nque isso não se repita do mesmo jeito: atualização de rotina da mesma família\npassa a chegar numa PR só em vez de uma cada, o que impede que um punhado de\nrevisões paradas trave todas as outras atualizações atrás delas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/783"
+  },
+  {
     "version": "0.14.5-dev.1786552219",
     "channel": "dev",
     "type": "chore",

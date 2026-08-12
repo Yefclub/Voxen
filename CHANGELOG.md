@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.14.5-dev.1786556385 — 2026-08-12 · Dev
+
+### 🧹 The AI SDK is back on a current patch release
+
+The `ai` package, which runs the whole agent loop — tool approvals, timeout
+budgets and streaming — had been pinned forty patch releases behind, with that
+many releases of fixes sitting unapplied on the most critical dependency in the
+app.
+
+Catching up changed one behaviour the chat depended on: the newer package
+delivers empty text chunks that the old one filtered out, which would have split
+a single stretch of reasoning into two separate blocks. That is handled, so the
+reasoning panel keeps behaving as before.
+
+It is now current. The dependency automation was also regrouped so this cannot
+happen the same way again: routine updates from the same family now arrive as
+one pull request instead of one each, which stops a handful of parked reviews
+from blocking every other update behind them.
+
 ## v0.14.5-dev.1786552219 — 2026-08-12 · Dev
 
 ### 🧹 Components from shadcn-format registries can now be installed by CLI
