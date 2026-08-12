@@ -31,7 +31,7 @@ from typing import Any
 
 import structlog
 
-from . import db, storage, ytdl
+from . import db, storage, youtube_captions, ytdl
 from .safe_diagnostics import error_diagnostic
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
 
@@ -53,7 +53,7 @@ def looks_rolling(plain_text: str) -> bool:
 
 async def _fresh_segments(url: str, user_id: str) -> tuple[tuple[Segment, ...], str] | None:
     """Mesmos caminhos do pipeline: transcript API → fallback VTT/SRT."""
-    fetch = await ytdl.fetch_youtube_transcript(url)
+    fetch = await youtube_captions.fetch_youtube_transcript(url)
     if fetch is not None:
         return fetch.segments, fetch.language
     probe = await ytdl.probe(url, user_id=user_id)

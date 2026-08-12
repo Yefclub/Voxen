@@ -29,6 +29,7 @@ from . import (
     uploaded_media,
     video_url,
     voxen_settings,
+    youtube_captions,
     ytdl,
 )
 from .audio_chunking import AudioChunk, split_audio
@@ -404,7 +405,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "downloading", percent=5)
 
-    transcript_fetch = await ytdl.fetch_youtube_transcript(source_url)
+    transcript_fetch = await youtube_captions.fetch_youtube_transcript(source_url)
     if transcript_fetch is not None:
         log.info("path-youtube-transcript-api", lang=transcript_fetch.language)
         probe_info = transcript_fetch.probe

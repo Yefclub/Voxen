@@ -38,7 +38,6 @@
     "apps/worker/src/db.py": 2530,
     "apps/worker/src/openrouter.py": 900,
     "apps/worker/src/pipeline.py": 1944,
-    "apps/worker/src/scrape_pipeline.py": 538,
-    "apps/worker/src/ytdl.py": 598
+    "apps/worker/src/scrape_pipeline.py": 538
   }
 }
