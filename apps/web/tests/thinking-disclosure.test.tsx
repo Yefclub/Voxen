@@ -278,6 +278,28 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
     await act(async () => renderer.unmount());
   });
 
+  test('montar com a resposta já em curso nasce recolhido, sem pisca', async () => {
+    // O bloco só monta com `segments.length > 0` (`chat.tsx`), e no cliente o
+    // texto vai para `content` enquanto raciocínio e ferramenta vão para
+    // `segments`. Turno que responde ANTES de chamar a primeira ferramenta
+    // monta o bloco tarde, já com `live` e `answerStarted` verdadeiros.
+    //
+    // Este é o único teste em forma de produção da ligação do inicializador:
+    // os testes do reducer provam a função, não que o hook a alimenta com o
+    // `answerStarted` real. Sem isso, montar aberto para recolher no efeito
+    // seguinte devolve o frame de pisca.
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+    const [answering] = agenticTurn().middle;
+
+    const renderer = await mount(answering!, clock.schedule, log, probe);
+    expect(log).toEqual([false]);
+    expect(clock.pending()).toBe(0);
+
+    await act(async () => renderer.unmount());
+  });
+
   test('queda e volta do stream depois da resposta não reabre o bloco', async () => {
     // `live` voltando a ser verdadeiro dispara `turn-started` de novo. Sem a
     // trava, isso reabriria um bloco que a resposta já recolheu.
@@ -379,10 +401,18 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
       // da resposta — stream que cai e volta no mesmo turno.
       const afterRecovery = thinkingDisclosureReducer(afterAnswer, { type: 'turn-started' });
       expect(afterRecovery.expanded).toBe(false);
+      // Identidade de referência de propósito, não descuido: é ela que faz o
+      // `useReducer` desistir do re-render (`Object.is`). Trocar por `toEqual`
+      // deixaria passar um `return { ...state }` que custa um render por
+      // recuperação de stream.
       expect(afterRecovery).toBe(afterAnswer);
     });
 
-    test('mais ferramentas depois da resposta não reabrem', () => {
+    // Ferramenta no meio do turno não gera evento nenhum nesta máquina — `live`
+    // continua verdadeiro e o efeito não re-dispara. Quem cobre aquele caso é o
+    // teste de ciclo de vida acima. `turn-started` repetido é queda-e-volta de
+    // stream, e o que se prova aqui é que repetir não desfaz a trava.
+    test('`turn-started` repetido depois da resposta não reabre', () => {
       const state = run([
         { type: 'answer-started' },
         { type: 'turn-started' },

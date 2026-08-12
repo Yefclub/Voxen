@@ -152,9 +152,9 @@ export function useThinkingDisclosure(
   }, [live]);
 
   useEffect(() => {
-    // Só num turno vivo: mensagem do histórico chega com a resposta inteira
-    // pronta e já monta recolhida — disparar aqui seria recolher o que já está
-    // recolhido e sujar o log de transições.
+    // Só num turno vivo. Com o inicializador já ciente da resposta, despachar
+    // no histórico seria no-op em valor — a guarda economiza um render por
+    // mensagem antiga da conversa, que é o volume onde isso aparece.
     if (live && answerStarted) dispatch({ type: 'answer-started' });
   }, [live, answerStarted]);
 
