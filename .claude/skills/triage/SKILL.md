@@ -1,3 +1,8 @@
+---
+name: triage
+description: Use quando pedirem organização das issues abertas ("organiza as issues", "faz a triagem", "o que atacar primeiro") — categoriza por área/prioridade/esforço, detecta duplicatas e sugere agrupamento em sprint.
+---
+
 # Triage — Triagem e Categorização de Issues
 
 Lê issues abertas, categoriza por área/prioridade/esforço, detecta duplicatas e sugere agrupamento para sprints.

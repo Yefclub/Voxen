@@ -43,7 +43,7 @@ Neste modo:
 
 Quando o usuário já sabe o que quer e pede para executar. Sinais: instruções diretas ("implementa X", "corrige Y", "cria PR"), issues do GitHub, tarefas definidas.
 
-Neste modo: seguir as regras de implementação incremental, checklist pre-PR, verificação visual, etc.
+Neste modo: seguir a implementação incremental (abaixo) e o fluxo Git — o detalhe operacional de cada etapa está na tabela de roteamento em "Workflow Git & PR".
 
 ### Transição entre modos
 
@@ -67,77 +67,20 @@ Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecime
 - ✅ Priorizar: DX da instalação self-hosted, docs multi-cenário (VPS/Proxmox/Easypanel), profile compose pra nginx/HTTPS, backups, paridade dev/prod, agente útil e ferramentas determinísticas
 - Critério de "pronto pra prod" = self-hosted estável pra uso interno, NÃO SaaS pronto pra cadastro público
 
-### Stack
+### Onde levantar o que não está aqui
 
-- **Web/API/agente**: Bun + Hono 4 + Vite + React 19 + AI SDK 7 + OpenRouter (SSE)
-- **Worker**: Python 3.13 + jobs duráveis no Postgres + `yt-dlp` + `ffmpeg`
-- **Auth**: Better Auth (Prisma), email/senha, OIDC opcional e aprovação admin
-- **DB**: Postgres 17 + Prisma 6 + FTS (`tsvector` GIN, dicionário `portuguese`)
-- **Fila/cache**: Redis 7
-- **Storage**: MinIO/S3-compatible (`S3_*`)
-- **LLM/Transcrição**: OpenRouter (chat, busca, documentos, visão e áudio)
-- **Infra**: Docker + Docker Compose
-- **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
+Stack, layout de diretórios, serviços e portas do Compose e a lista de comandos
+mudam com o código — ler da fonte, não de memória:
 
-### Estrutura do Projeto
+- Stack e versões: `package.json`, `apps/worker/pyproject.toml`, `docs/STACK.md`
+- Layout: `ls` na raiz; visão narrativa em `docs/ARCHITECTURE.md`
+- Serviços, portas e volumes: `docker-compose.yml`
+- Comandos de dev, teste, lint, typecheck e migrations: `Makefile` (é o entry
+  point único — não invocar `pnpm`/`pytest` direto sem checar o alvo lá)
 
-```
-voxen/
-├── apps/
-│   ├── web/         # Bun + Hono + React + agente integrado
-│   └── worker/      # Python + fila Postgres + yt-dlp + ffmpeg
-├── packages/
-│   └── shared-types/   # tipos TS compartilhados
-├── prisma/             # schema + migrations
-├── docs/               # ARCH, STACK, DECISIONS, SECURITY, DEV, DEPLOY, TRANSCRIPT-FORMAT
-├── .specs/             # specs EARS por feature
-├── .claude/            # config + agents + skills
-├── .github/workflows/  # ci.yml, security.yml, release.yml
-├── scripts/            # ensure-env.sh, easypanel-entrypoint.sh
-├── docker-compose.yml
-├── Makefile
-└── .env.example        # APENAS na raiz; nunca em apps/*
-```
-
-### Docker Compose (dev)
-
-```bash
-make dev   # docker compose up -d --build (postgres, redis, minio, web, worker)
-```
-
-Serviços e portas (dev):
-
-- web: `http://localhost:3000`
-- postgres: interno na rede `voxen-net`
-- redis: interno
-- minio: `http://localhost:9000` (S3) e `http://localhost:9001` (console)
-
-## Comandos do Projeto
-
-Tudo via Makefile na raiz:
-
-```bash
-make dev               # Sobe tudo localmente
-make down              # Para tudo (preserva volumes)
-make restart           # Reinicia
-make logs              # Tail dos logs
-make ps                # Status dos serviços
-
-make test              # Testes TS + Python
-make test-ts           # Bun test em apps/web
-make test-py           # pytest em apps/worker
-
-make lint              # Lint completo (eslint+prettier+ruff)
-make typecheck         # tsc + mypy
-make migrate           # Aplica migrations Prisma
-make seed              # Seed de dev
-
-make shell-db          # psql no postgres
-make shell-redis       # redis-cli
-make minio-init        # Reroda criação do bucket MinIO
-make master-key-show   # Mostra MASTER_KEY (cuidado — secret)
-make clean             # Remove volumes (PERDE DADOS)
-```
+Duas armadilhas que o `Makefile` não conta sozinho: `make clean` **remove
+volumes e perde dados**, e `make master-key-show` imprime a `MASTER_KEY` em
+claro no terminal.
 
 ## Análise de Código & Debugging
 
@@ -154,29 +97,23 @@ Para features complexas:
 3. Só depois estender para os demais arquivos
 4. Commitar em pontos estáveis — não acumular mudanças não testadas
 
-## Implementação de UI/UX
-
-Voxen tem tema **cinza (zinc)** via Tailwind v4 + shadcn/ui. Modern e bonito. Ao implementar UI:
-
-- Estudar componentes shadcn existentes antes de criar do zero
-- Manter tema consistente (zinc-50 a zinc-950 como paleta principal)
-- Acentos podem usar zinc + um destaque (mas confirmar com o user)
-- Markdown rendering deve respeitar o tema (cores e tipografia consistentes)
-
-### Verificação Visual com Playwright (OBRIGATÓRIO para mudanças de UI)
-
-Antes de commitar QUALQUER fix visual ou mudança de UI:
-
-1. Abrir a página afetada via Playwright e tirar screenshot do estado atual (antes)
-2. Aplicar as mudanças
-3. Tirar screenshot do resultado (depois) e analisar visualmente
-4. Para modais/botões/interações: **clicar em CADA elemento** e verificar resultado
-5. Verificar: alinhamento, contraste, hover states, z-index, animações, overflow de texto, responsividade
-6. Se o usuário enviar prints/screenshots — verificar PRIMEIRO no ambiente local via Playwright. NUNCA assumir que são de outro ambiente. Investigar, não descartar.
-
 ## Workflow Git & PR — FLUXO INVIOLÁVEL
 
 Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo é mais grave que entregar atrasado.
+
+O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
+
+| Procedimento                                  | Onde                   |
+| --------------------------------------------- | ---------------------- |
+| Checklist pre-PR, comandos de branch/PR/merge  | skill `ship`           |
+| Espera robusta de CI e os furos de "verde falso" | skill `ci-status`    |
+| Review técnica do diff                         | skill `review-pr`      |
+| Release `dev`→`main`                           | skill `release`        |
+| Várias issues em lote (worktrees paralelas)    | skill `batch-issues`   |
+| Spec EARS + ciclo SDD/TDD                      | skill `spec`           |
+| Migrations Prisma                              | `prisma/CLAUDE.md`     |
+| UI/UX, tema zinc, verificação visual           | `apps/web/CLAUDE.md`   |
+| Formato `.md` de transcrição                   | `apps/worker/CLAUDE.md` |
 
 ### Os 7 passos (em ordem)
 
@@ -189,7 +126,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
    NUNCA branchar de feature anterior. NUNCA branchar de stale.
 3. **Trabalhar + testar** localmente (lint, typecheck, test, build) → **retornar pro owner** com o que foi feito.
 4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em inglês, sem emojis, **sem rodapés nem co-autoria de IA (nem no corpo da PR, nem nos commits)** — ver "Sem co-autoria de IA" abaixo. Use Conventional Commits no título: `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
-5. **Monitorar CI até terminar**: usar o padrão de espera robusto (ver "Espera de CI" abaixo) — NÃO confiar em `gh pr checks` cru (exit code não diferencia pendente de falho; pode mostrar checks de runs cancelados antigos). Se vermelho, investigar e corrigir antes de prosseguir.
+5. **Monitorar CI até terminar**: usar o padrão de espera robusto da skill `ci-status` — NÃO confiar em `gh pr checks` cru (exit code não diferencia pendente de falho; pode mostrar checks de runs cancelados antigos). Se vermelho, investigar e corrigir antes de prosseguir.
 6. **Disparar agente Opus 4.7 (skill `review-pr`)** em background pra revisar diffs, segurança, escopo.
 7. **Se CI verde + review APROVADO (com ou sem ressalvas) → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + veredito do agente), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** Exceção: review retornou "MUDANÇAS NECESSÁRIAS" → corrige antes de mergear. PR de release (`dev→main`) sim aguarda owner.
 8. **Pós-merge OBRIGATÓRIO** — `git fetch && git checkout dev && git pull --ff-only` + `docker compose build <serviços-afetados>` + `docker compose up -d <serviços>`. Owner aplica no host de deploy local (self-hosted); se o ambiente local não atualizar, o GitHub diverge do que o owner vê. Skipa só PRs docs-only (que não mudam runtime). Depois → volta pro passo 1.
@@ -216,52 +153,6 @@ Este projeto **proíbe qualquer marca de autoria de IA**, em qualquer lugar:
 - **Issues, comentários, docs, código**: idem — nada de assinatura de IA.
 - **Comentários em PR/issue**: NÃO usar `gh pr comment`/`gh pr review`/`gh issue comment` a menos que o owner peça explicitamente. O agente `review-pr` **retorna o relatório ao Claude principal — NUNCA comenta na PR**. Evitar ruído desnecessário em PRs.
 
-### Espera de CI (antes de mergear)
-
-NÃO confiar em `gh pr checks <num>` cru pra decidir merge: o exit code é `0` só quando todos passaram e `8` para "qualquer pendente **ou** falho" (não diferencia), e a saída pode incluir checks de runs cancelados antigos. Usar `statusCheckRollup` e esperar **terminar** antes de decidir.
-
-⚠️ **Dois furos REAIS que já causaram "verde falso" + merge recusado ("X of Y required status checks are expected"):**
-
-1. **Lag de replicação / rollup vazio.** Logo após um `git push`, o `statusCheckRollup` pode (a) ainda refletir o **commit anterior** (verde do commit velho) ou (b) vir **vazio** porque os checks ainda não registraram. Contar "0 pendentes" num rollup vazio ou velho = verde falso. **Sempre exigir que os checks estejam REGISTRADOS no head ATUAL**: `total >= (nº de required checks)` **E** `pendentes == 0` **E** `falhas == 0`, e confirmar o head com `gh pr view <num> --json headRefOid`.
-2. **Push que não dispara CI.** Às vezes o evento `synchronize` não gera run (hiccup do Actions). Sintoma: `gh run list --branch <branch>` não mostra run pro head novo. **Fix:** forçar com `gh pr close <num> && gh pr reopen <num>` (dispara `reopened`).
-
-Antes de mergear, o gate final é `mergeStateStatus == CLEAN` (não só "checks verdes").
-
-```bash
-# Espera robusta (rodar com run_in_background: true)
-for i in $(seq 1 70); do
-  total=$(gh pr view <num> --json statusCheckRollup -q '.statusCheckRollup|length')
-  pend=$(gh pr view <num> --json statusCheckRollup -q '[.statusCheckRollup[]|select(.status!="COMPLETED")]|length')
-  fail=$(gh pr view <num> --json statusCheckRollup -q '[.statusCheckRollup[]|select(.conclusion=="FAILURE" or .conclusion=="CANCELLED" or .conclusion=="TIMED_OUT")]|length')
-  [ -n "$fail" ] && [ "$fail" != "0" ] && { echo "FALHOU"; exit 1; }
-  [ "${total:-0}" -ge 9 ] && [ "${pend:-1}" = "0" ] && { echo "VERDE E REGISTRADO"; exit 0; }
-  sleep 30
-done
-```
-
-Avisar no chat ("ativei poll de CI em background, aviso quando voltar"). Entre dois merges seguidos, a branch protection exige `gh api -X PUT repos/Yefclub/Voxen/pulls/<num>/update-branch` antes do segundo merge (se a branch ficou atrás do `dev`).
-
-### Checklist Pre-PR (OBRIGATÓRIO)
-
-0. **Branch criada de `dev` sincronizada** (`git fetch && git checkout dev && git pull --ff-only && git checkout -b feat/<slug>`)
-1. `make lint` — Linting sem erros (eslint, prettier, ruff)
-2. `make typecheck` — TypeScript + mypy sem erros
-3. `make test` — Testes passando (bun test + pytest)
-4. Spec em `.specs/` criada/atualizada se a mudança é não-trivial
-5. Migrations sincronizadas: se mudou `prisma/schema.prisma`, há migration?
-6. `docker compose build` — build real funciona (pega erros que tsc/mypy não pegam)
-7. Só então criar PR via `gh pr create --base dev`
-8. **Pós-criação**: esperar o CI terminar com o padrão de "Espera de CI" acima (não `gh pr checks` cru), e só com CI verde disparar a skill `review-pr` em background
-
-### Migrations (CRÍTICO)
-
-- Mudou `prisma/schema.prisma`? Criar migration: `pnpm prisma migrate dev --name <nome>`
-- Em prod: `prisma migrate deploy` roda no startup do App Easypanel ou no entrypoint do `web` no Compose
-- Colunas no schema sem migration passam no dev mas QUEBRAM no deploy
-- Para mudanças complexas, SQL manual em migration: SEMPRE com `IF NOT EXISTS` / `IF EXISTS`
-- SQL deve ser idempotente; usar locks para prevenir operações concorrentes
-- **FTS**: o `tsvector` em `Transcript.searchVector` é gerenciado via trigger SQL — quando atualizar texto, garantir que a trigger ainda funciona
-
 ## Padrões de Código
 
 ### Env e Secrets (CRÍTICO)
@@ -285,23 +176,6 @@ Cada user tem seu workspace. Tudo do user (transcrições, chunks, jobs, custos)
 - Admin pode ver tudo via flag explícita no endpoint (`?scope=all`) protegida por role
 - RAG/chat: o agente integrado SÓ vê dados do `userId` corrente. As tools
   recebem o escopo derivado da sessão e filtram no servidor.
-
-### Agente sem embeddings (harness/Karpathy)
-
-O chat-agente integrado NÃO depende de embeddings/RAG vetorial. Em vez disso,
-recebe tools:
-
-- `list_transcripts(workspace_id)` → metadata
-- `search_transcripts(workspace_id, query)` → Postgres FTS, retorna trechos com timestamps
-- `read_transcript(id)` → markdown completo
-- `read_transcript_section(id, from_ts, to_ts)` → recorte
-- `get_metadata(id)` → frontmatter
-
-Ao adicionar tool nova, manter o padrão: tools devem ser **simples, determinísticas, sem efeito colateral** (read-only sobre a Base de conhecimento). Decisão em `docs/DECISIONS.md` ADR-004.
-
-### Formato `.md` de transcrição
-
-Cada vídeo transcrito vira um `.md` com frontmatter YAML + corpo com timestamps clicáveis. Schema completo em `docs/TRANSCRIPT-FORMAT.md`. O texto puro + frontmatter são espelhados em Postgres pra FTS rápida.
 
 ### Código Limpo e Sem Legado
 
@@ -350,116 +224,28 @@ Projeto open source do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen`. Owner/m
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: MinIO/S3-compatible (sem dependência obrigatória de cloud externa)
 - **LLM**: OpenRouter como agregador único (1 chave, billing unificado)
-- **CI/CD**: GitHub Actions com CI, release e segurança (Trivy, CodeQL, Dependency Review, Bandit, gitleaks)
+- **CI/CD**: GitHub Actions (workflows em `.github/workflows/`)
 
 Decisões técnicas devem considerar: segurança self-hosted, soberania de dados, escalabilidade horizontal modesta (poucos users, muitos vídeos), e fácil deploy num único container/host.
 
 ## CI/CD (GitHub Actions)
 
-- `.github/workflows/ci.yml` — Lint (eslint, prettier, ruff), format check, typecheck (tsc, mypy), test (bun test, pytest), build (docker build cada app). Roda em PR pra `dev` e `main`
-- `.github/workflows/security.yml` — Dependency Review, CodeQL (TS/JS), Trivy (FS + container), Bandit (Python), pip-audit, pnpm audit, gitleaks (secrets). Roda em PR + push + schedule semanal
-- `.github/workflows/release.yml` — Trigger em tag `v*` no `main`. Build imagens, push pra `ghcr.io`, cria GitHub Release com changelog
+O que cada workflow roda está em `.github/workflows/` — ler de lá, não daqui.
 
-Branch protection em `dev` e `main`:
+Branch protection em `dev` e `main` (não é visível no repo, é config do GitHub):
 
 - Require PR
 - Required status checks do CI
 - No force push
 - No delete
 
-## Implementação Paralela com Worktrees (Issues em Lote)
-
-Quando o usuário fornecer múltiplas issues para implementar em paralelo, seguir este protocolo:
-
-### Fluxo Completo (4 fases)
-
-**Fase 1 — Preparação**
-
-1. Ler todas as issues via `gh issue view` — entender escopo e dependências
-2. Detectar conflitos potenciais — se duas issues tocam os mesmos arquivos, avisar ANTES de iniciar
-
-**Fase 2 — Implementação Paralela** 3. Para cada issue, disparar um sub-agente com `isolation: "worktree"`:
-
-- O agente recebe: número da issue, contexto completo do problema, arquivos relevantes
-- O agente deve: ler a issue → atualizar/criar spec em `.specs/` se ainda não houver → implementar → escrever testes → rodar checklist pre-PR → criar PR
-- O agente NÃO deve modificar arquivos fora do escopo da sua issue
-- A worktree é automaticamente limpa se o agente não fizer mudanças
-
-**Fase 3 — Limpeza + Aguardar CI** 4. Limpar worktrees (ver seção abaixo) 5. Gerar tabela resumo parcial com status das PRs 6. Aguardar CI de todas as PRs: `gh pr checks <PR_NUMBER> --watch` para cada uma
-
-- Se CI falhar em alguma PR, reportar quais falharam e por quê
-- NÃO prosseguir para review de PRs com CI vermelho
-
-**Fase 4 — Review Automatizado** 7. Para cada PR com CI verde, disparar um sub-agente de review (em background):
-
-- O agente usa a skill `review-pr` (`.claude/skills/review-pr/SKILL.md`)
-- Analisa diff, tipagem, segurança, testes, escopo, migrations, spec alinhada
-- Retorna relatório estruturado com veredicto: APROVADO ou MUDANÇAS NECESSÁRIAS
-
-8. Após todos os reviews completarem, retornar ao Claude principal com:
-
-   | Issue | PR  | CI  | Review | Problemas |
-   | ----- | --- | --- | ------ | --------- |
-
-9. Sinalizar PRs que toquem arquivos sobrepostos para revisão manual
-10. Merge é SEMPRE decisão humana — nunca mergear automaticamente
-
-### Limpeza de Worktrees (OBRIGATÓRIO)
-
-Worktrees que não geraram mudanças são limpas automaticamente. Para as que geraram:
-
-- Após a PR ser criada e o branch pushado, remover a worktree: `git worktree remove <path>`
-- Ao final do lote, verificar com `git worktree list` que não sobrou nenhuma worktree órfã
-- Se sobrar, limpar: `git worktree remove <path> --force` (só worktrees deste lote, nunca a principal)
-- NUNCA deixar worktrees acumulando entre sessões
-
-### Regras dos Sub-agentes de Implementação
-
-- Cada sub-agente deve rodar o checklist pre-PR completo (lint, typecheck, test, build)
-- PRs criadas a partir de `dev`, direcionadas para `dev`
-- Se um sub-agente falhar, reportar o erro — não silenciar
-- Não tentar resolver conflitos entre PRs automaticamente — apenas reportar para revisão humana
-
-### Controles de Loop e Verificação (autonomia)
+## Controles de Loop e Verificação (autonomia)
 
 Princípios pra rodar subagentes autônomos sem alucinar progresso (verificação externa > auto-introspecção):
 
 - **Maker ≠ checker**: quem implementa NÃO é quem aprova. O review (`review-pr`) é **pré-requisito do merge, não opcional** — modelo que se auto-avalia é leniente. Vale também pra correções de ressalva: re-revisar o commit de fix antes de mergear (o ciclo já pegou bugs reais em re-review).
 - **Definition of Done escrita antes de despachar**: definir a condição de sucesso verificável (testes passam, checklist verde, PR criada). Se não dá pra escrever a condição, a tarefa não está pronta pra autonomia — quebrar ou esclarecer.
 - **Fail-closed em runaway**: ao repetir o mesmo erro/ação ~3× ou bater teto de retries, **parar e reportar o estado real** — nunca declarar sucesso nem insistir em loop. Confiar pela fonte (CI real, `statusCheckRollup`), não pelo que o subagente reportou (já houve subagente reportando "CI verde" com CI vermelho).
-
-### Regras do Agente de Review
-
-- Só inicia após CI verde — PR com CI vermelho não é revisada
-- Usa a skill em `.claude/skills/review-pr/SKILL.md` como guia
-- Roda em background (`run_in_background: true`) para não bloquear reviews de outras PRs
-- Retorna relatório para o Claude principal — NUNCA comenta na PR ou aprova diretamente
-
-## SDD (Spec-Driven Development) + TDD
-
-Voxen segue **SDD + TDD** rigorosamente:
-
-### Fluxo SDD
-
-1. Feature nova ou não-trivial → criar `.specs/NNN-slug.md` via skill `spec` (EARS format)
-2. Co-autorar a spec com o usuário (perguntar até estar claro)
-3. Spec aprovada → atualizar `docs/DECISIONS.md` se há decisão arquitetural
-4. Spec entra no MESMO PR da implementação (ou PR `docs/*` separado antes, se for grande)
-
-### Fluxo TDD
-
-1. Para cada critério de aceite da spec, escrever teste primeiro (falhando)
-2. Implementar o mínimo pra fazer o teste passar
-3. Refatorar com testes verdes
-4. Repetir até todos critérios cobertos
-
-### Quando spec NÃO é necessária
-
-- Typo, rename trivial, fix de lint
-- Bump de dependência sem mudança de API
-- Refactor interno sem mudança de comportamento
-
-Em dúvida: criar spec curta. O custo é baixo.
 
 ## Poder de Decisão do Claude
 
@@ -474,17 +260,9 @@ O Claude tem autonomia para tomar decisões operacionais sem perguntar. Isso exi
 - Verificar se há worktrees órfãs (`git worktree list`)
 - Reportar estado em 3-4 linhas antes de perguntar o que fazer
 
-**Seleção de skill**:
-
-- "o que fizemos essa semana?" → `changelog` ou `sprint-summary`
-- "como estão as PRs?" → `ci-status`
-- "analisa o módulo X" → `audit`
-- "pesquisa sobre Y" → `research`
-- "prepara a release" → `release`
-- "organiza as issues" → `triage`
-- "faz a PR", "shipa isso", "manda pra dev" → `ship`
-- "spec p/ X" / "escreve a spec" → `spec`
-- Lista de issues em lote → fluxo de worktrees paralelas
+**Seleção de skill**: escolher pela `description` do frontmatter de cada
+`SKILL.md`. Não manter mapa de gatilho→skill aqui — mapa desatualiza; se uma
+skill não está sendo invocada quando deveria, o defeito é a `description` dela.
 
 **Coleta de contexto**:
 
@@ -501,27 +279,6 @@ O Claude tem autonomia para tomar decisões operacionais sem perguntar. Isso exi
 - Escolher entre opções de implementação quando há trade-offs significativos
 - Qualquer operação destrutiva do git
 
-### Skills Disponíveis
-
-As skills ficam em `.claude/skills/`:
-
-| Skill            | Quando usar                                       |
-| ---------------- | ------------------------------------------------- |
-| `architect`      | Discovery e scaffolding de novos módulos/projetos |
-| `audit`          | Auditoria profunda de módulo ou concern           |
-| `changelog`      | Resumo executivo p/ gestão                        |
-| `ci-status`      | Panorama do CI e PRs                              |
-| `monday`         | Integração Monday.com via MCP                     |
-| `release`        | Preparar PR de release dev→main                   |
-| `research`       | Pesquisa estruturada com trade-offs               |
-| `review-pr`      | Revisão técnica de PR (pós-CI)                    |
-| `ship`           | Branch → PR → CI → review → merge                 |
-| `spec`           | Criar/editar spec EARS em `.specs/`               |
-| `sprint-summary` | Radiografia técnica do projeto                    |
-| `triage`         | Categorizar issues abertas                        |
-
-**Como usar**: Ler o `SKILL.md` da skill relevante antes de executar.
-
 ### Feedback Loop de Skills
 
 Após executar qualquer skill, perguntar:
@@ -531,14 +288,3 @@ Após executar qualquer skill, perguntar:
 Se feedback com ajuste → editar o `SKILL.md` imediatamente.
 
 Se durante execução o agente identificar problema no skill (output errado, passo desnecessário, comando que falhou) → corrigir proativamente e informar.
-
-### Localização dos Arquivos de Configuração
-
-| Arquivo             | Path                                | Escopo                  |
-| ------------------- | ----------------------------------- | ----------------------- |
-| Skills do projeto   | `.claude/skills/<nome>/SKILL.md`    | Projeto (todos os devs) |
-| Agentes do projeto  | `.claude/agents/<nome>.md`          | Projeto                 |
-| CLAUDE.md (regras)  | `./CLAUDE.md`                       | Projeto                 |
-| Settings do projeto | `./.claude/settings.json`           | Projeto                 |
-| Settings do usuário | `~/.claude/settings.json`           | Pessoal                 |
-| Memórias            | `~/.claude/projects/<hash>/memory/` | Pessoal                 |

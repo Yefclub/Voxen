@@ -1,3 +1,8 @@
+---
+name: ship
+description: Use quando for entregar uma mudança pelo fluxo completo do repositório ("faz a PR", "shipa isso", "manda pra dev", "abre PR pra essa correção") — branch a partir de dev sincronizada, checklist pre-PR, PR, espera robusta de CI, review independente e merge.
+---
+
 # Ship — branch, PR, CI, review, and merge
 
 Use this flow to deliver one focused change through the complete repository
@@ -37,7 +42,20 @@ git commit -m "<type>(<scope>): <concise English description>"
 Do not use `git add -A`. Never include environment files, credentials, personal
 files, unrelated work, AI attribution, or generated authorship trailers.
 
-### 3. Push and open the PR
+### 3. Pre-PR checklist (MANDATORY)
+
+Run every item before pushing. A red item is a stop, not a warning.
+
+0. Branch was created from a synchronized `dev` (step 1)
+1. `make lint` — eslint, prettier, and ruff clean
+2. `make typecheck` — tsc and mypy clean
+3. `make test` — bun test and pytest passing
+4. Specification in `.specs/` created or updated when the change is non-trivial
+5. Migrations in sync: if `prisma/schema.prisma` changed, a migration exists
+6. `docker compose build` — the real build works; it catches errors tsc and mypy
+   do not
+
+### 4. Push and open the PR
 
 ```bash
 git push -u origin <branch>
@@ -50,11 +68,18 @@ gh pr create --base dev --head <branch> \
 The body uses these English sections: Context, What changed, Technical details,
 Test plan, and References. Do not add emoji or AI attribution.
 
-### 4. Monitor CI robustly
+### 5. Monitor CI robustly
 
 Confirm that the rollup belongs to the current head SHA, contains every
 required check, has no pending or failed conclusions, and ends with
 `mergeStateStatus: CLEAN`. An empty or stale rollup is never success.
+
+Never decide a merge from raw `gh pr checks <num>`: its exit code is `0` only
+when everything passed and `8` for "any pending **or** failed" — it does not
+tell them apart — and its output can include checks from old cancelled runs.
+Use `statusCheckRollup` and wait for completion. See the `ci-status` skill for
+the two real failure modes (replication lag / empty rollup, and a push that
+never triggers CI) and the background polling loop.
 
 If CI fails, investigate, fix, push, and repeat. Do not review or merge a red
 head.
@@ -71,7 +96,7 @@ and the referenced redacted stage log. Add or correct a new ordered migration;
 never edit, rename, or delete a migration that already exists on the target
 branch.
 
-### 5. Independent review — always required
+### 6. Independent review — always required
 
 After CI is green, read and run the `review-pr` skill at
 `.claude/skills/review-pr/SKILL.md` in a background sub-agent. The reviewer
@@ -81,7 +106,7 @@ commenting on GitHub.
 If the verdict is `MUDANÇAS NECESSÁRIAS`, fix every blocking finding and repeat
 CI and review on the new head. If the verdict is `APROVADO`, continue.
 
-### 6. Merge
+### 7. Merge
 
 For an authorized normal PR:
 
@@ -98,7 +123,7 @@ gh pr merge <PR_NUMBER> --squash --delete-branch \
   --body ""
 ```
 
-### 7. Return to updated dev
+### 8. Return to updated dev
 
 ```bash
 git fetch origin --prune

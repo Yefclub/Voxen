@@ -2,19 +2,13 @@
 
 Skills são fluxos completos para tarefas recorrentes. Cada uma vive em `.claude/skills/<nome>/SKILL.md` e o Claude/Codex lê o arquivo antes de executar a tarefa.
 
-| Skill | Quando usar | Trigger natural |
-|-------|-------------|-----------------|
-| `architect` | Discovery e scaffolding de novos projetos/módulos | "quero construir X" |
-| `audit` | Auditoria profunda de código por módulo/concern | "analisa o módulo X" |
-| `changelog` | Resumo executivo de atividade p/ gestão | "o que fizemos essa semana?" |
-| `ci-status` | Panorama de PRs abertas e estado do CI | "como estão as PRs?" |
-| `monday` | Integração com Monday.com via MCP | "atualiza o Monday" |
-| `release` | Preparar PR de release dev→main | "prepara a release" |
-| `research` | Pesquisa estruturada com trade-offs | "pesquisa sobre Y" |
-| `review-pr` | Revisão técnica automatizada de PR | "review da PR #N" |
-| `ship` | Branch → PR → CI → review → merge | "shipa isso" |
-| `spec` | Criar/editar `.specs/<slug>.md` em EARS | "spec p/ feature X" |
-| `sprint-summary` | Radiografia técnica do projeto p/ o dev | "como está o projeto?" |
-| `triage` | Triagem e categorização de issues | "organiza as issues" |
+**Não há índice aqui de propósito.** A lista canônica é o próprio diretório, e o que decide quando cada skill é invocada é o campo `description` do frontmatter dela — é esse texto que o modelo lê. Índice paralelo desatualiza sem ninguém perceber: a tabela que existia aqui ficou uma skill atrás na primeira vez que uma nova foi criada.
+
+```bash
+ls .claude/skills/                                              # quais existem
+grep -H -E '^(name|description):' .claude/skills/*/SKILL.md     # name + description de cada uma
+```
+
+Skill nova precisa de `name` e `description` no frontmatter. Sem eles ela não é indexada e o modelo nunca a invoca sozinho. Padrão do `description`: `Use quando <gatilho concreto> — <o que entrega>`, com as palavras que o usuário realmente digita.
 
 Modelo de evolução: após executar uma skill, o agente pergunta se atendeu bem. Feedback edita o `SKILL.md` na hora — skills são vivos, não estáticos.
