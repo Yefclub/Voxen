@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { db } from './db';
+import { loadPersonalAgentContext } from './personal-agent-context-service';
 import { loadPersonalGuide, loadPersonalGuideSources } from './personal-guide-service';
 
 const describeIfDatabase = process.env.DATABASE_URL ? describe : describe.skip;
@@ -56,7 +57,14 @@ describeIfDatabase('personal Guide source isolation', () => {
     ownerTranscriptId = ownerTranscript.id;
     archivedTranscriptId = archivedTranscript.id;
     foreignTranscriptId = foreignTranscript.id;
-    const [contentNode, topicNode] = await Promise.all([
+    const [
+      contentNode,
+      topicNode,
+      archivedContentNode,
+      archivedTopicNode,
+      archivedActiveSourceTopic,
+      archivedEdgeTopic,
+    ] = await Promise.all([
       db.brainNode.create({
         data: {
           userId: ownerId,
@@ -75,12 +83,78 @@ describeIfDatabase('personal Guide source isolation', () => {
           label: 'Grounded guide topic',
         },
       }),
+      db.brainNode.create({
+        data: {
+          userId: ownerId,
+          key: `TRANSCRIPT:${archivedTranscript.id}`,
+          type: 'CONTENT',
+          label: archivedTranscript.title,
+          sourceType: 'TRANSCRIPT',
+          sourceId: archivedTranscript.id,
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId: ownerId,
+          key: `TOPIC:archived-guide:${suffix}`,
+          type: 'TOPIC',
+          label: 'Archived secret guide topic',
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId: ownerId,
+          key: `TOPIC:archived-active-source:${suffix}`,
+          type: 'TOPIC',
+          label: 'Archived node from active source',
+          status: 'ARCHIVED',
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId: ownerId,
+          key: `TOPIC:archived-edge:${suffix}`,
+          type: 'TOPIC',
+          label: 'Active node behind archived edge',
+        },
+      }),
     ]);
     await Promise.all([
       db.brainEdge.create({
         data: {
           userId: ownerId,
           fromNodeId: contentNode.id,
+          toNodeId: topicNode.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId: ownerId,
+          fromNodeId: contentNode.id,
+          toNodeId: archivedActiveSourceTopic.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId: ownerId,
+          fromNodeId: contentNode.id,
+          toNodeId: archivedEdgeTopic.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+          status: 'ARCHIVED',
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId: ownerId,
+          fromNodeId: archivedContentNode.id,
           toNodeId: topicNode.id,
           kind: 'MENTIONS',
           confidence: 0.9,
@@ -94,6 +168,25 @@ describeIfDatabase('personal Guide source isolation', () => {
           origin: 'EXPLICIT',
           kind: 'PREFERENCE_MORE',
           signal: 1,
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId: ownerId,
+          fromNodeId: archivedContentNode.id,
+          toNodeId: archivedTopicNode.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+        },
+      }),
+      db.interestEvent.create({
+        data: {
+          userId: ownerId,
+          transcriptId: archivedTranscript.id,
+          origin: 'EXPLICIT',
+          kind: 'PREFERENCE_LESS',
+          signal: -1,
         },
       }),
     ]);
@@ -139,5 +232,24 @@ describeIfDatabase('personal Guide source isolation', () => {
     expect(guide.recommendations.some((item) => item.transcriptId === foreignTranscriptId)).toBe(
       false,
     );
+  });
+
+  test('builds agent context without archived or foreign source metadata', async () => {
+    const context = await loadPersonalAgentContext(ownerId, new Date());
+    const serialized = JSON.stringify(context);
+
+    expect(context.preferences).toContainEqual(
+      expect.objectContaining({
+        label: 'Grounded guide topic',
+        provenance: 'DECLARED',
+        declaredScore: 1,
+      }),
+    );
+    expect(serialized).toContain(ownerTranscriptId);
+    expect(serialized).not.toContain(archivedTranscriptId);
+    expect(serialized).not.toContain(foreignTranscriptId);
+    expect(serialized).not.toContain('Archived secret guide topic');
+    expect(serialized).not.toContain('Archived node from active source');
+    expect(serialized).not.toContain('Active node behind archived edge');
   });
 });

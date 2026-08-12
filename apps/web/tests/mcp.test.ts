@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
+import { PERSONAL_AGENT_CONTEXT_MAX_CHARS } from '../src/lib/personal-agent-context';
 import { deleteSetting, setSetting } from '../src/lib/settings';
 import {
   transcriptCorrectionChecksum,
@@ -104,9 +105,10 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       result?: { serverInfo?: { name?: string; version?: string }; instructions?: string };
     };
     expect(data.result?.serverInfo?.name).toBe('voxen-mcp');
-    expect(data.result?.serverInfo?.version).toBe('0.4.0');
+    expect(data.result?.serverInfo?.version).toBe('0.5.0');
     expect(data.result?.instructions).toContain('tags e resumo');
     expect(data.result?.instructions).toContain('source_anchors');
+    expect(data.result?.instructions).toContain('voxen_personal_context');
     expect(data.result?.instructions).toContain('DADOS NÃO CONFIÁVEIS');
   });
 
@@ -122,10 +124,119 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_search_transcripts');
     expect(names).toContain('voxen_read_transcript');
     expect(names).toContain('voxen_brain_search');
+    expect(names).toContain('voxen_personal_context');
     expect(names).toContain('voxen_list_transcript_enrichments');
     expect(names).toContain('voxen_read_transcript_enrichment');
     const search = tools.find((t) => t.name === 'voxen_search_transcripts');
     expect(search?.annotations?.readOnlyHint).toBe(true);
+  });
+
+  it('voxen_personal_context is user-scoped, bounded, and uses public source URLs', async () => {
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: `https://example.com/personal-context-${Date.now()}`,
+        title: 'Personal MCP source',
+        durationSec: 0,
+        language: 'en',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/personal-context.md`,
+        plainText: 'Personal graph context.',
+        frontmatter: {},
+      },
+    });
+    const [contentNode, topicNode] = await Promise.all([
+      db.brainNode.create({
+        data: {
+          userId,
+          key: `TRANSCRIPT:${transcript.id}`,
+          type: 'CONTENT',
+          label: transcript.title,
+          sourceType: 'TRANSCRIPT',
+          sourceId: transcript.id,
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId,
+          key: `TOPIC:personal-context:${transcript.id}`,
+          type: 'TOPIC',
+          label: 'Personal context topic',
+        },
+      }),
+    ]);
+    await Promise.all([
+      db.brainEdge.create({
+        data: {
+          userId,
+          fromNodeId: contentNode.id,
+          toNodeId: topicNode.id,
+          kind: 'MENTIONS',
+          confidence: 0.9,
+          method: 'test-extraction',
+        },
+      }),
+      db.interestEvent.create({
+        data: {
+          userId,
+          transcriptId: transcript.id,
+          origin: 'EXPLICIT',
+          kind: 'PREFERENCE_MORE',
+          signal: 1,
+        },
+      }),
+    ]);
+
+    const previous = process.env.APP_BASE_URL;
+    process.env.APP_BASE_URL = 'https://voxen.example.test';
+    try {
+      const res = await call(
+        {
+          jsonrpc: '2.0',
+          id: 31,
+          method: 'tools/call',
+          params: { name: 'voxen_personal_context', arguments: {} },
+        },
+        READ_TOKEN,
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        result?: {
+          structuredContent?: {
+            metadata?: { algorithmVersion?: string; empty?: boolean };
+            preferences?: Array<{
+              label?: string;
+              provenance?: string;
+              evidence?: Array<{ href?: string }>;
+            }>;
+          };
+        };
+      };
+      expect(data.result?.structuredContent?.metadata?.algorithmVersion).toBe(
+        'personal-agent-context-v1',
+      );
+      expect(data.result?.structuredContent?.metadata?.empty).toBe(false);
+      expect(JSON.stringify(data.result?.structuredContent).length).toBeLessThanOrEqual(
+        PERSONAL_AGENT_CONTEXT_MAX_CHARS,
+      );
+      expect(data.result?.structuredContent?.preferences).toContainEqual(
+        expect.objectContaining({
+          label: 'Personal context topic',
+          provenance: 'DECLARED',
+          evidence: [
+            expect.objectContaining({
+              href: `https://voxen.example.test/transcricoes/${transcript.id}`,
+            }),
+          ],
+        }),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.APP_BASE_URL;
+      else process.env.APP_BASE_URL = previous;
+      await db.brainNode.deleteMany({ where: { id: { in: [contentNode.id, topicNode.id] } } });
+      await db.transcript.delete({ where: { id: transcript.id } }).catch(() => undefined);
+    }
   });
 
   it('recusa token expirado', async () => {
@@ -314,6 +425,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(readNames).toContain('voxen_read_transcript_enrichment');
     expect(readNames).toContain('voxen_search_transcript_content');
     expect(readNames).toContain('voxen_list_transcript_corrections');
+    expect(readNames).toContain('voxen_personal_context');
     expect(readNames).not.toContain('voxen_create_note');
     expect(readNames).not.toContain('voxen_review_transcript_enrichment');
     expect(readNames).not.toContain('voxen_patch_transcript');
@@ -331,6 +443,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(writeNames).not.toContain('voxen_read_transcript');
     expect(writeNames).not.toContain('voxen_read_transcript_enrichment');
     expect(writeNames).not.toContain('voxen_search_transcript_content');
+    expect(writeNames).not.toContain('voxen_personal_context');
   });
 
   it('voxen_delete_knowledge exige confirmação exata e apenas enfileira a exclusão', async () => {

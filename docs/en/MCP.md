@@ -24,6 +24,21 @@ or client-secret field. Revoking it does not sign you out of Voxen.
 Use a read-only token first. Enable write access only for a client that needs to
 modify your knowledge base and whose approval behavior you understand.
 
+## Personal and graph context
+
+Read-capable credentials expose `voxen_personal_context`. The tool combines
+explicit feedback, activity-inferred interests, trends, and graph-ranked
+sources into a bounded, versioned contract. Its `provenance` field separates
+`DECLARED`, `INFERRED`, and `MIXED` signals; `stance: LESS` means lower interest
+and is never used as a positive recommendation seed.
+
+This context guides discovery and recommendations, but it is not factual
+evidence or a psychological profile. Clients must open the returned links,
+read the source, and use verification tools before claiming what it says. The
+result also reports algorithm versions, the projection watermark, and whether
+the graph or context snapshot was truncated. Write-only tokens do not discover
+this tool.
+
 ## Safe note editing workflow
 
 Note reads return a monotonic `revision` and an opaque `checksum`. Agents should

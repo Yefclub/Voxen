@@ -158,6 +158,7 @@ function buildTrends(
   for (const snapshot of projections) {
     const horizonKey = horizonScoreKey(snapshot.horizon);
     for (const item of snapshot.items) {
+      if (!item.evidence.transcriptIds.some((id) => sourcesByTranscriptId.has(id))) continue;
       const score = finiteScore(item.score);
       const aggregateKey = `${item.dimension}:${item.key}`;
       const aggregate = aggregates.get(aggregateKey) ?? {

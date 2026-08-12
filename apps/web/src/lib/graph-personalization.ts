@@ -41,7 +41,7 @@ export function buildGraphPersonalization(
       const score = Number(item.score);
       if (!Number.isFinite(score)) continue;
       if (score < 0 || item.explicitScore < 0) ignoredNegativeItems += 1;
-      if (score <= 0 || !item.brainNodeId) continue;
+      if (score <= 0 || item.explicitScore < 0 || !item.brainNodeId) continue;
       seedWeights.set(
         item.brainNodeId,
         (seedWeights.get(item.brainNodeId) ?? 0) + score * horizonWeight,
