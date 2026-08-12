@@ -46,6 +46,9 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
   successful and a content-free diagnostic may be emitted.
 - When an administrator deletes a user while Mem0 shadow mode is enabled, remote
   deletion shall succeed before canonical user deletion proceeds.
+- When account deletion overlaps a shadow write on another application replica,
+  a durable per-user fence shall block or compensating-delete the late write
+  even if the Redis lease is lost.
 
 ### State-driven
 
@@ -82,6 +85,8 @@ sources, evidence ledger, temporal graph, preference controls, or citations.
 - [x] User scope is stable, opaque, and isolated across all operations.
 - [x] Completed-turn provenance and algorithm version are preserved.
 - [x] Failures are soft for chat writes and strict for account deletion.
+- [x] Cross-replica deletion fencing survives Redis lease loss and prevents late
+      remote data recreation.
 - [x] Search candidates are explicitly unverified and never injected in prompts.
 - [x] Configuration rejects unsafe URLs, credentials in URLs, and unbounded values.
 - [x] A live evaluation command reports recall, false-memory rate, isolation,

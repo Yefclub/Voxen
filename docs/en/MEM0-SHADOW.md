@@ -108,11 +108,17 @@ states and must be evaluated separately before any future controlled mode.
 - Chat writes are best-effort. A Mem0 outage cannot fail a canonical reply.
 - Aborted, failed, and tool-approval-paused turns are not written.
 - A Redis per-user mutex serializes shadow writes and account deletion across
-  application replicas, preventing a late write from recreating deleted data.
+  application replicas. A persistent PostgreSQL fencing token remains effective
+  even if a Redis lease is lost. Writers recheck the token and canonical account
+  after the remote call and compensating-delete any late write, preventing data
+  from being recreated.
 - Account deletion is strict: if enabled Mem0 cannot delete the remote subject,
   Voxen keeps the canonical account instead of orphaning derived personal data.
 - Set `VOXEN_MEMORY_PROVIDER=disabled` (or remove it) to stop all network calls.
   No database migration or canonical-data rollback is required.
+- If the process crashes during account deletion, the persistent token blocks
+  new writes fail-closed. Retry account deletion to resume; do not remove the
+  token manually before confirming that Mem0 has been cleaned.
 - Removing Mem0 storage does not remove transcripts, notes, Brain facts, chat
   history, or user-controlled preferences from Voxen.
 

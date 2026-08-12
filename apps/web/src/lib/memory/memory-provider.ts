@@ -331,7 +331,7 @@ export async function deleteUserMemoryShadow(
 export async function beginUserMemoryShadowDeletion(
   userId: string,
   dependencies: MemoryProviderDependencies = {},
-): Promise<() => Promise<void>> {
+): Promise<(canonicalDeleted: boolean) => Promise<void>> {
   const config = resolveMemoryProviderConfig(dependencies.env ?? process.env);
   if (config.kind === 'disabled') return async () => {};
   return acquireUserMemoryShadowDeletionFence(userId, () =>

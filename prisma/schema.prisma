@@ -78,6 +78,7 @@ model User {
   chatApprovals                 ChatApproval[]
   chatTurns                     ChatTurn[]
   chatStreamLease               ChatStreamLease?
+  memoryShadowFence             MemoryShadowFence?
   notes                         Note[]
   noteRevisions                 NoteRevision[]
   libraryFolders                LibraryFolder[]
@@ -100,6 +101,16 @@ model User {
 
   @@index([status])
   @@index([role])
+}
+
+// Persistent fencing token for optional external conversational memory.
+// A row blocks every replica from writing while account deletion is in flight.
+model MemoryShadowFence {
+  userId    String   @id
+  owner     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Vínculo Telegram chat_id ↔ Voxen userId.

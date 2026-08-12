@@ -1,6 +1,7 @@
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import {
+  deleteUserMemoryShadow,
   memoryShadowWriteEnabled,
   recordCompletedTurnInMemoryShadow,
 } from '../memory/memory-provider';
@@ -39,25 +40,29 @@ export function scheduleCompletedTurnMemoryShadow(input: {
   if (!input.eligible || !input.userMessageId || !memoryShadowWriteEnabled()) return;
   // Reload the canonical row instead of trusting runtime input: HITL resumes
   // use synthetic prompts and must never become user memory.
-  scheduleUserMemoryShadowWrite(input.userId, async () => {
-    const userMessage = await db.chatMessage.findFirst({
-      where: {
-        id: input.userMessageId ?? undefined,
+  scheduleUserMemoryShadowWrite(
+    input.userId,
+    async () => {
+      const userMessage = await db.chatMessage.findFirst({
+        where: {
+          id: input.userMessageId ?? undefined,
+          conversationId: input.conversationId,
+          role: 'USER',
+          kind: 'NORMAL',
+        },
+        select: { id: true, content: true },
+      });
+      if (!userMessage) return;
+      await recordCompletedTurnInMemoryShadow({
+        userId: input.userId,
         conversationId: input.conversationId,
-        role: 'USER',
-        kind: 'NORMAL',
-      },
-      select: { id: true, content: true },
-    });
-    if (!userMessage) return;
-    await recordCompletedTurnInMemoryShadow({
-      userId: input.userId,
-      conversationId: input.conversationId,
-      userMessageId: userMessage.id,
-      assistantMessageId: input.assistantMessageId,
-      userContent: userMessage.content,
-      assistantContent: input.assistantContent,
-      completedAt: new Date(),
-    });
-  });
+        userMessageId: userMessage.id,
+        assistantMessageId: input.assistantMessageId,
+        userContent: userMessage.content,
+        assistantContent: input.assistantContent,
+        completedAt: new Date(),
+      });
+    },
+    { compensate: () => deleteUserMemoryShadow(input.userId) },
+  );
 }

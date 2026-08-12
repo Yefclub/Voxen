@@ -230,6 +230,7 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
     // an unreachable provider cannot leave personal memories orphaned after the
     // canonical user row disappears.
     const releaseMemoryFence = await beginUserMemoryShadowDeletion(target.id);
+    let canonicalDeleted = false;
     try {
       await storageDeletePrefix(`workspaces/${target.id}/`);
       await withAdminRosterLock(async (tx) => {
@@ -245,8 +246,9 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
         await tx.verification.deleteMany({ where: { identifier: current.email } });
         await tx.user.delete({ where: { id: current.id } });
       });
+      canonicalDeleted = true;
     } finally {
-      await releaseMemoryFence().catch(() => {
+      await releaseMemoryFence(canonicalDeleted).catch(() => {
         console.warn('[memory-shadow] deletion fence release failed');
       });
     }
