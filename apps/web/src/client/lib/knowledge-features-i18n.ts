@@ -22,6 +22,8 @@ export const ptBrKnowledgeFeatureMessages = {
   'library.additionalContextNoResearch': 'A fonte já contém contexto suficiente.',
   'library.additionalContextFailed':
     'A pesquisa falhou sem afetar a transcrição ou o resumo. Você pode solicitar outra execução.',
+  'library.additionalContextCreditsExhausted':
+    'A conta da OpenRouter está sem créditos. O admin precisa recarregar o saldo ou configurar outro provedor antes de repetir a pesquisa.',
   'library.additionalContextWhy': 'Por que foi pesquisado:',
   'library.additionalContextSources': 'Fontes externas',
   'library.additionalContextAccept': 'Aceitar contexto',
@@ -56,6 +58,8 @@ export const enKnowledgeFeatureMessages: Record<keyof typeof ptBrKnowledgeFeatur
     'library.additionalContextNoResearch': 'The source already contains enough context.',
     'library.additionalContextFailed':
       'Research failed without affecting the transcript or summary. You can request another run.',
+    'library.additionalContextCreditsExhausted':
+      'The OpenRouter account is out of credits. An admin must add credits or configure another provider before retrying research.',
     'library.additionalContextWhy': 'Why it was researched:',
     'library.additionalContextSources': 'External sources',
     'library.additionalContextAccept': 'Accept context',

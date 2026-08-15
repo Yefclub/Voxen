@@ -31,6 +31,7 @@ export interface TranscriptEnrichment {
   noResearchReason: string | null;
   model: string | null;
   staleReason: string | null;
+  lastError: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -182,7 +183,9 @@ export function AdditionalContextBlock({
               )}
               {item.status === 'FAILED' && (
                 <p className="text-sm text-[var(--color-app-muted)]">
-                  {t('library.additionalContextFailed')}
+                  {item.lastError === 'OPENROUTER_CREDITS_EXHAUSTED'
+                    ? t('library.additionalContextCreditsExhausted')
+                    : t('library.additionalContextFailed')}
                 </p>
               )}
               {['PENDING', 'RUNNING', 'RETRY'].includes(item.status) && (

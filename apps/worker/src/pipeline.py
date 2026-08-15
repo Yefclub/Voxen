@@ -25,6 +25,7 @@ from . import (
     storage,
     summary,
     tags,
+    tiktok_ingestion,
     transcript_metadata,
     uploaded_media,
     video_url,
@@ -291,13 +292,7 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
 
 
 def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
-    text = str(exc).lower()
-    return "tiktok" in text and (
-        "unable to extract" in text
-        or "rehydration" in text
-        or "universal data" in text
-        or "unexpected response from webpage request" in text
-    )
+    return tiktok_ingestion.is_extraction_error(exc)
 
 
 def _is_rate_limit_error(exc: BaseException) -> bool:
@@ -429,6 +424,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         cost_total: Decimal | None = None
         language = transcript_fetch.language
     else:
+        player_item = None
         try:
             probe_info = await _retry_transient(
                 lambda: ytdl.probe(source_url, user_id=user_id),
@@ -436,18 +432,14 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 immediate_passthrough=_is_tiktok_rehydration_error,
             )
         except _TRANSIENT_EXC as e:
-            # TikTok: retry forçando impersonate chrome quando rehydration falha.
-            if _is_tiktok_rehydration_error(e) and video_url.detect_source(source_url) == "TIKTOK":
-                log.warning(
-                    "tiktok-probe-retry-impersonate-chrome",
-                    **_error_diagnostic(e, "TIKTOK_PROBE_RETRY"),
-                )
-                probe_info = await _retry_transient(
-                    lambda: ytdl.probe(source_url, user_id=user_id, force_impersonate="chrome"),
-                    tries=2,
-                )
-            else:
-                raise
+            fallback_probe = await tiktok_ingestion.probe_after_extraction_error(
+                source_url,
+                user_id=user_id,
+                initial_error=e,
+                log=log,
+            )
+            probe_info = fallback_probe.probe
+            player_item = fallback_probe.player_item
         if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
             raise PermanentError.public(
                 "VIDEO_TOO_LONG",
@@ -502,31 +494,30 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 language = subtitle_lang.split("-")[0]
             else:
                 log.info("path-api")
-                try:
-                    audio_path = await _retry_transient(
-                        lambda: ytdl.download_audio_opus(source_url, tmpdir, user_id=user_id),
-                        tries=3,
-                        immediate_passthrough=_is_tiktok_rehydration_error,
+                if player_item is not None:
+                    audio_path = await tiktok_ingestion.download_known_player_audio(
+                        player_item,
+                        tmpdir,
                     )
-                except _TRANSIENT_EXC as e:
-                    if video_url.detect_source(
-                        source_url
-                    ) == "TIKTOK" and _is_tiktok_rehydration_error(e):
-                        log.warning(
-                            "tiktok-audio-retry-impersonate-chrome",
-                            **_error_diagnostic(e, "TIKTOK_AUDIO_RETRY"),
-                        )
+                else:
+                    try:
                         audio_path = await _retry_transient(
                             lambda: ytdl.download_audio_opus(
                                 source_url,
                                 tmpdir,
                                 user_id=user_id,
-                                force_impersonate="chrome",
                             ),
-                            tries=2,
+                            tries=3,
+                            immediate_passthrough=_is_tiktok_rehydration_error,
                         )
-                    else:
-                        raise
+                    except _TRANSIENT_EXC as e:
+                        audio_path = await tiktok_ingestion.download_after_extraction_error(
+                            source_url,
+                            tmpdir,
+                            user_id=user_id,
+                            initial_error=e,
+                            log=log,
+                        )
                 await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
                 segments, model, cost_total = await _transcribe_via_api(
                     audio_path=audio_path,
@@ -1919,6 +1910,13 @@ async def _retry_transient_or[T](
                 "Chave da OpenRouter rejeitada — admin precisa revalidar.",
             ) from e
         except OpenrouterRejectedError as e:
+            if e.status_code == 402:
+                raise PermanentError.public(
+                    "OPENROUTER_CREDITS_EXHAUSTED",
+                    "A conta da OpenRouter está sem créditos suficientes. "
+                    "O admin precisa recarregar os créditos ou configurar outro "
+                    "provedor antes de reprocessar.",
+                ) from e
             raise PermanentError.public(
                 "OPENROUTER_REQUEST_REJECTED",
                 "A OpenRouter rejeitou esta requisição. Verifique a compatibilidade "

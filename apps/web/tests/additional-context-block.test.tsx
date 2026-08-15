@@ -57,6 +57,7 @@ const enrichment: TranscriptEnrichment = {
   noResearchReason: null,
   model: 'test/model',
   staleReason: null,
+  lastError: null,
   createdAt: '2026-08-07T13:00:00.000Z',
   updatedAt: '2026-08-07T13:00:00.000Z',
 };
@@ -103,5 +104,38 @@ describe('AdditionalContextBlock', () => {
       );
     expect(renderedText).toContain('library.additionalContextAccept');
     expect(renderedText).toContain('library.additionalContextDismiss');
+  });
+
+  test('renders an actionable message for exhausted OpenRouter credits', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        <I18nProvider>
+          <AdditionalContextBlock
+            enrichments={[
+              {
+                ...enrichment,
+                status: 'FAILED',
+                lastError: 'OPENROUTER_CREDITS_EXHAUSTED',
+              },
+            ]}
+            researchMode="MANUAL"
+            loading={false}
+            locale="en"
+            onQueue={() => undefined}
+            onUpdate={async () => undefined}
+            onDelete={async () => undefined}
+            t={t}
+          />
+        </I18nProvider>,
+      );
+    });
+
+    const renderedText = renderer.root
+      .findAll((node) => node.children.some((child) => typeof child === 'string'))
+      .flatMap((node) =>
+        node.children.filter((child): child is string => typeof child === 'string'),
+      );
+    expect(renderedText).toContain('library.additionalContextCreditsExhausted');
   });
 });

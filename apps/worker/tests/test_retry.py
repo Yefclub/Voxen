@@ -167,6 +167,23 @@ async def test_openrouter_non_retryable_rejection_is_actionable_without_retries(
     assert "modelo" in raised.value.public_message.lower()
 
 
+async def test_openrouter_insufficient_credits_is_specific_without_retries() -> None:
+    attempts = 0
+
+    async def fn() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise OpenrouterRejectedError(402, request_id="req-safe")
+
+    with pytest.raises(PermanentError) as raised:
+        await _retry_transient_or(fn, tries=3, base_delay=0)
+
+    assert attempts == 1
+    assert raised.value.code == "OPENROUTER_CREDITS_EXHAUSTED"
+    assert "créditos" in raised.value.public_message.lower()
+    assert "recarreg" in raised.value.public_message.lower()
+
+
 async def test_runtime_options_without_proxy_returns_base_opts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

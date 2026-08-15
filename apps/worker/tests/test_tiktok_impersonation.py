@@ -9,12 +9,12 @@ força um alvo específico quando o padrão falha.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 import yt_dlp.utils
 
-from src import pipeline, ytdl
+from src import pipeline, tiktok_ingestion, tiktok_player, ytdl
 
 
 class _Logger:
@@ -261,6 +261,80 @@ async def test_run_pipeline_retries_probe_with_impersonate_after_rehydration(
     }
 
 
+async def test_run_pipeline_retries_transient_chrome_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = AsyncMock(
+        side_effect=[
+            yt_dlp.utils.DownloadError(
+                "ERROR: [TikTok] 123: Unable to extract universal data for rehydration"
+            ),
+            OSError("temporary Chrome transport failure"),
+            _tiktok_probe(duration_sec=ytdl.MAX_DURATION_SEC + 1),
+        ]
+    )
+    sleep = AsyncMock(return_value=None)
+    monkeypatch.setattr(pipeline.ytdl, "probe", probe)
+    monkeypatch.setattr(tiktok_ingestion.asyncio, "sleep", sleep)
+    monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
+
+    with pytest.raises(pipeline.PermanentError, match="4 horas"):
+        await pipeline._run_pipeline(
+            job_id="job-1",
+            user_id="user-1",
+            source_url="https://www.tiktok.com/@user/video/7123456789012345678",
+            log=_Logger(),
+        )
+
+    assert probe.await_count == 3
+    assert (
+        probe.await_args_list[1].kwargs
+        == probe.await_args_list[2].kwargs
+        == {
+            "user_id": "user-1",
+            "force_impersonate": "chrome",
+        }
+    )
+    sleep.assert_awaited_once_with(1.0)
+
+
+async def test_run_pipeline_uses_official_player_after_both_tiktok_probes_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = AsyncMock(
+        side_effect=yt_dlp.utils.DownloadError(
+            "ERROR: [TikTok] 123: Unexpected response from webpage request"
+        )
+    )
+    player_item = tiktok_player.PlayerItem(
+        video_id="7000000000000000000",
+        title="Vídeo de teste",
+        author="autor",
+        author_handle="autor",
+        duration_sec=ytdl.MAX_DURATION_SEC + 1,
+        thumbnail_url=None,
+        canonical_url="https://www.tiktok.com/@autor/video/7000000000000000000",
+        media_url="https://v16-webapp-prime.tiktok.com/video/path",
+    )
+    official_probe = AsyncMock(
+        return_value=(_tiktok_probe(duration_sec=ytdl.MAX_DURATION_SEC + 1), player_item)
+    )
+    monkeypatch.setattr(pipeline.ytdl, "probe", probe)
+    monkeypatch.setattr(pipeline.tiktok_ingestion, "probe_player", official_probe)
+    monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
+
+    with pytest.raises(pipeline.PermanentError, match="4 horas"):
+        await pipeline._run_pipeline(
+            job_id="job-1",
+            user_id="user-1",
+            source_url="https://vt.tiktok.com/ZSVJHUMAG",
+            log=_Logger(),
+        )
+
+    assert probe.await_count == 2
+    official_probe.assert_awaited_once_with("https://vt.tiktok.com/ZSVJHUMAG")
+
+
 async def test_run_pipeline_retries_audio_download_with_impersonate_after_rehydration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -297,3 +371,91 @@ async def test_run_pipeline_retries_audio_download_with_impersonate_after_rehydr
     assert len(calls) >= 2
     assert calls[0] == {"user_id": "user-1"}
     assert calls[1] == {"user_id": "user-1", "force_impersonate": "chrome"}
+
+
+async def test_run_pipeline_retries_transient_chrome_audio_download(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pipeline.ytdl, "probe", AsyncMock(return_value=_tiktok_probe()))
+    monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
+    sleep = AsyncMock(return_value=None)
+    monkeypatch.setattr(tiktok_ingestion.asyncio, "sleep", sleep)
+    audio_path = Path("chrome-audio.opus")
+    download = AsyncMock(
+        side_effect=[
+            yt_dlp.utils.DownloadError(
+                "ERROR: [TikTok] 123: Unable to extract universal data for rehydration"
+            ),
+            RuntimeError("temporary Chrome download failure"),
+            audio_path,
+        ]
+    )
+    transcribe = AsyncMock(
+        side_effect=pipeline.PermanentError.public("TEST_STOP", "stop after transcribe")
+    )
+    monkeypatch.setattr(pipeline.ytdl, "download_audio_opus", download)
+    monkeypatch.setattr(pipeline, "_transcribe_via_api", transcribe)
+
+    with pytest.raises(pipeline.PermanentError, match="stop after transcribe"):
+        await pipeline._run_pipeline(
+            job_id="job-1",
+            user_id="user-1",
+            source_url="https://www.tiktok.com/@user/video/7123456789012345678",
+            log=_Logger(),
+        )
+
+    assert download.await_count == 3
+    assert (
+        download.await_args_list[1].kwargs
+        == download.await_args_list[2].kwargs
+        == {
+            "user_id": "user-1",
+            "force_impersonate": "chrome",
+        }
+    )
+    sleep.assert_awaited_once_with(1.0)
+    assert transcribe.await_args.kwargs["audio_path"] == audio_path
+
+
+async def test_run_pipeline_uses_official_player_after_both_audio_downloads_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pipeline.ytdl, "probe", AsyncMock(return_value=_tiktok_probe()))
+    monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
+    failed_download = AsyncMock(
+        side_effect=yt_dlp.utils.DownloadError(
+            "ERROR: [TikTok] 123: Unexpected response from webpage request"
+        )
+    )
+    monkeypatch.setattr(pipeline.ytdl, "download_audio_opus", failed_download)
+    player_item = tiktok_player.PlayerItem(
+        video_id="7000000000000000000",
+        title="Vídeo de teste",
+        author="autor",
+        author_handle="autor",
+        duration_sec=30,
+        thumbnail_url=None,
+        canonical_url="https://www.tiktok.com/@autor/video/7000000000000000000",
+        media_url="https://v16-webapp-prime.tiktok.com/video/path",
+    )
+    official_probe = AsyncMock(return_value=(_tiktok_probe(), player_item))
+    official_download = AsyncMock(return_value=Path("player-audio.opus"))
+    transcribe = AsyncMock(
+        side_effect=pipeline.PermanentError.public("TEST_STOP", "stop after transcribe")
+    )
+    monkeypatch.setattr(pipeline.tiktok_ingestion, "probe_player", official_probe)
+    monkeypatch.setattr(pipeline.tiktok_ingestion, "download_player_audio", official_download)
+    monkeypatch.setattr(pipeline, "_transcribe_via_api", transcribe)
+
+    with pytest.raises(pipeline.PermanentError, match="stop after transcribe"):
+        await pipeline._run_pipeline(
+            job_id="job-1",
+            user_id="user-1",
+            source_url="https://www.tiktok.com/@user/video/7123456789012345678",
+            log=_Logger(),
+        )
+
+    assert failed_download.await_count == 2
+    official_probe.assert_awaited_once()
+    official_download.assert_awaited_once_with(player_item, ANY)
+    assert transcribe.await_args.kwargs["audio_path"] == Path("player-audio.opus")
