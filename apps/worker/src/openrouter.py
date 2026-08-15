@@ -13,6 +13,7 @@ import httpx
 from .openrouter_transport import (
     OR_BASE_URL,
     OpenrouterAuthError,
+    OpenrouterRejectedError,
     OpenrouterTransientError,
     TranscriptionResult,
     transcribe_audio,
@@ -27,6 +28,7 @@ from .openrouter_transport import (
 __all__ = [
     "OR_BASE_URL",
     "OpenrouterAuthError",
+    "OpenrouterRejectedError",
     "OpenrouterTransientError",
     "TranscriptionResult",
     "_raise_for_openrouter_status",
@@ -278,7 +280,13 @@ async def analyze_x_url(
             },
             {"role": "user", "content": prompt},
         ],
-        "plugins": [{"id": "web", "engine": "native"}],
+        "tools": [
+            {
+                "type": "openrouter:web_search",
+                "parameters": {"engine": "native", "max_uses": 1},
+            }
+        ],
+        "max_tool_calls": 1,
         "x_search_filter": {
             "enable_image_understanding": True,
             "enable_video_understanding": True,

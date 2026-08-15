@@ -44,6 +44,7 @@ from .job_lease import (
 )
 from .openrouter import (
     OpenrouterAuthError,
+    OpenrouterRejectedError,
     OpenrouterTransientError,
     analyze_document_text,
     analyze_image,
@@ -292,7 +293,10 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
 def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
     text = str(exc).lower()
     return "tiktok" in text and (
-        "unable to extract" in text or "rehydration" in text or "universal data" in text
+        "unable to extract" in text
+        or "rehydration" in text
+        or "universal data" in text
+        or "unexpected response from webpage request" in text
     )
 
 
@@ -324,7 +328,10 @@ def _friendly_external_error(exc: BaseException) -> str | None:
             "o proxy nas configurações para o servidor baixar direto."
         )
     if "tiktok" in text and (
-        "unable to extract" in text or "rehydration" in text or "universal data" in text
+        "unable to extract" in text
+        or "rehydration" in text
+        or "universal data" in text
+        or "unexpected response from webpage request" in text
     ):
         return (
             "Não consegui extrair este conteúdo do TikTok agora. "
@@ -1089,6 +1096,17 @@ async def _run_x_analysis_pipeline(
     log.info("x-analysis-job-done", transcript_id=new_transcript_id)
 
 
+async def _reindex_brain_with_retry(user_id: str, transcript_id: str) -> bool:
+    """Absorb short-lived graph lease contention before exposing a job warning."""
+    retry_delays = (0.25, 0.5, 1.0, 2.0)
+    for attempt in range(len(retry_delays) + 1):
+        if await db.reindex_transcript_brain_node(user_id, transcript_id):
+            return True
+        if attempt < len(retry_delays):
+            await asyncio.sleep(retry_delays[attempt])
+    return False
+
+
 async def _enrich_persisted_transcript(
     *,
     user_id: str,
@@ -1120,8 +1138,8 @@ async def _enrich_persisted_transcript(
         await events.publish_job_event(
             user_id, job_id, "indexing_brain", percent=92, transcript_id=transcript_id
         )
-        if not await db.reindex_transcript_brain_node(user_id, transcript_id):
-            warnings.append("A indexação no Brain será repetida automaticamente.")
+        if not await _reindex_brain_with_retry(user_id, transcript_id):
+            warnings.append(db.BRAIN_INDEX_RETRY_MESSAGE)
         await _maybe_grounded_brain_extract(
             user_id=user_id,
             transcript_id=transcript_id,
@@ -1899,6 +1917,12 @@ async def _retry_transient_or[T](
             raise PermanentError.public(
                 "OPENROUTER_AUTH_REJECTED",
                 "Chave da OpenRouter rejeitada — admin precisa revalidar.",
+            ) from e
+        except OpenrouterRejectedError as e:
+            raise PermanentError.public(
+                "OPENROUTER_REQUEST_REJECTED",
+                "A OpenRouter rejeitou esta requisição. Verifique a compatibilidade "
+                "do modelo e do fallback configurados e tente novamente.",
             ) from e
         except OpenrouterTransientError as e:
             last_exc = e

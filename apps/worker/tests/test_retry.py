@@ -15,7 +15,7 @@ import pytest
 import yt_dlp.utils
 
 from src import ytdl
-from src.openrouter import OpenrouterTransientError
+from src.openrouter import OpenrouterRejectedError, OpenrouterTransientError
 from src.pipeline import PermanentError, TransientError, _retry_transient, _retry_transient_or
 
 
@@ -149,6 +149,22 @@ async def test_openrouter_retry_honors_retry_after_and_fails_with_public_message
     assert raised.value.code == "OPENROUTER_RATE_LIMITED"
     assert "limite temporário" in raised.value.public_message
     assert sleep.await_args_list == [call(7), call(7)]
+
+
+async def test_openrouter_non_retryable_rejection_is_actionable_without_retries() -> None:
+    attempts = 0
+
+    async def fn() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise OpenrouterRejectedError(400, request_id="req-safe")
+
+    with pytest.raises(PermanentError) as raised:
+        await _retry_transient_or(fn, tries=3, base_delay=0)
+
+    assert attempts == 1
+    assert raised.value.code == "OPENROUTER_REQUEST_REJECTED"
+    assert "modelo" in raised.value.public_message.lower()
 
 
 async def test_runtime_options_without_proxy_returns_base_opts(

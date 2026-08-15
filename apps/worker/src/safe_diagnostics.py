@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 _ALLOWED_ERROR_CODES = frozenset(
     {
         "AUDIO_VALIDATION_FAILED",
@@ -30,15 +32,19 @@ _ALLOWED_ERROR_CODES = frozenset(
         "OPENROUTER_AUTH_REJECTED",
         "OPENROUTER_NOT_CONFIGURED",
         "OPENROUTER_RATE_LIMITED",
+        "OPENROUTER_REQUEST_REJECTED",
         "PERMANENT_FAILURE",
         "PROCESS_JOB_CRASHED",
         "REPAIR_FETCH_FAILED",
         "RESEARCH_CLAIM_FAILED",
         "RESEARCH_COST_EVENT_FAILED",
         "RESEARCH_FAILED",
-        "RESEARCH_PROGRESS_EVENT_FAILED",
         "RESEARCH_QUEUE_FAILED",
+        "RESEARCH_RATE_LIMITED",
         "RESEARCH_RECONCILIATION_FAILED",
+        "RESEARCH_AUTH_ERROR",
+        "RESEARCH_RESPONSE_INVALID",
+        "RESEARCH_UPSTREAM_REJECTED",
         "RESEARCH_UPSTREAM_UNAVAILABLE",
         "ROBOTS_CHECK_FAILED",
         "SAVED_MEDIA_INVALID",
@@ -108,6 +114,7 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "NetworkError",
         "NoTranscriptFound",
         "OpenrouterAuthError",
+        "OpenrouterRejectedError",
         "OpenrouterTransientError",
         "OSError",
         "PermanentError",
@@ -117,6 +124,7 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "ReadError",
         "ReadTimeout",
         "RequestBlocked",
+        "ResearchOutputError",
         "RobotsBlockedError",
         "RuntimeError",
         "TimeoutError",
@@ -134,9 +142,19 @@ _ALLOWED_ERROR_TYPES = frozenset(
 
 
 def error_diagnostic(exc: BaseException, code: str) -> dict[str, str]:
-    """Retorna somente código interno e tipo normalizado da exceção."""
+    """Return allowlisted error fields without serializing provider payloads."""
     error_type = type(exc).__name__
     if error_type not in _ALLOWED_ERROR_TYPES:
         error_type = "Exception"
     normalized_code = code if code in _ALLOWED_ERROR_CODES else "UNEXPECTED_FAILURE"
-    return {"error_code": normalized_code, "error_type": error_type}
+    diagnostic = {"error_code": normalized_code, "error_type": error_type}
+    operational_error = exc
+    if not hasattr(operational_error, "status_code") and exc.__cause__ is not None:
+        operational_error = exc.__cause__
+    status_code = getattr(operational_error, "status_code", None)
+    if isinstance(status_code, int) and 100 <= status_code <= 599:
+        diagnostic["status_code"] = str(status_code)
+    request_id = getattr(operational_error, "request_id", None)
+    if isinstance(request_id, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", request_id):
+        diagnostic["request_id"] = request_id
+    return diagnostic

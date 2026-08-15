@@ -21,7 +21,11 @@ from src.openrouter import (
     generate_content_title,
     transcribe_audio,
 )
-from src.openrouter_transport import retry_after_seconds
+from src.openrouter_transport import (
+    OpenrouterRejectedError,
+    raise_for_openrouter_status,
+    retry_after_seconds,
+)
 
 
 def test_retry_after_accepts_bounded_seconds_and_http_date() -> None:
@@ -84,7 +88,14 @@ async def test_analyze_x_url_uses_native_x_search_with_media_understanding() -> 
 
     assert result.text == "Resumo do post"
     assert client.payload is not None
-    assert client.payload["plugins"] == [{"id": "web", "engine": "native"}]
+    assert client.payload["tools"] == [
+        {
+            "type": "openrouter:web_search",
+            "parameters": {"engine": "native", "max_uses": 1},
+        }
+    ]
+    assert client.payload["max_tool_calls"] == 1
+    assert "plugins" not in client.payload
     assert client.payload["x_search_filter"] == {
         "enable_image_understanding": True,
         "enable_video_understanding": True,
@@ -368,6 +379,22 @@ async def test_openrouter_429_is_transient_and_keeps_bounded_retry_hint(
     assert raised.value.status_code == 429
     assert raised.value.retry_after == 7
     assert "Provider returned" not in str(raised.value)
+    assert "secret" not in str(raised.value)
+
+
+def test_openrouter_rejection_preserves_only_safe_operational_metadata() -> None:
+    response = httpx.Response(
+        400,
+        headers={"x-request-id": "req_01H-safe"},
+        text='{"error":{"message":"private provider body","token":"secret"}}',
+    )
+
+    with pytest.raises(OpenrouterRejectedError) as raised:
+        raise_for_openrouter_status(response)
+
+    assert raised.value.status_code == 400
+    assert raised.value.request_id == "req_01H-safe"
+    assert "private provider body" not in str(raised.value)
     assert "secret" not in str(raised.value)
 
 

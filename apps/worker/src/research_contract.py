@@ -170,7 +170,7 @@ def _build_web_search_payload(*, model: str, system: str, user: str) -> dict[str
             {
                 "type": "openrouter:web_search",
                 "parameters": {
-                    "engine": "exa",
+                    "engine": "auto",
                     "max_results": MAX_RESULTS_PER_SEARCH,
                     "max_uses": 1,
                     "max_total_results": MAX_TOTAL_SEARCH_RESULTS,

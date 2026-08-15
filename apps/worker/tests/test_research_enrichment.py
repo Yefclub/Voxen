@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src import research_enrichment
+from src import events, research_enrichment
 from src.research_contract import (
     MAX_COMPLETION_PRICE_PER_MILLION_USD,
     MAX_PROMPT_PRICE_PER_MILLION_USD,
@@ -27,15 +27,19 @@ from src.research_contract import (
 class _Log:
     def __init__(self) -> None:
         self.events: list[tuple[str, str]] = []
+        self.details: list[tuple[str, str, dict[str, object]]] = []
 
-    def info(self, event: str, **_kwargs: object) -> None:
+    def info(self, event: str, **kwargs: object) -> None:
         self.events.append(("info", event))
+        self.details.append(("info", event, kwargs))
 
-    def warning(self, event: str, **_kwargs: object) -> None:
+    def warning(self, event: str, **kwargs: object) -> None:
         self.events.append(("warning", event))
+        self.details.append(("warning", event, kwargs))
 
-    def error(self, event: str, **_kwargs: object) -> None:
+    def error(self, event: str, **kwargs: object) -> None:
         self.events.append(("error", event))
+        self.details.append(("error", event, kwargs))
 
 
 class _Client:
@@ -193,7 +197,7 @@ def test_payload_separates_untrusted_planning_from_the_only_web_tool() -> None:
         {
             "type": "openrouter:web_search",
             "parameters": {
-                "engine": "exa",
+                "engine": "auto",
                 "max_results": 4,
                 "max_uses": 1,
                 "max_total_results": 4,
@@ -556,12 +560,12 @@ async def test_process_never_exposes_raw_source_to_tool_enabled_request(
     assert secret not in json.dumps(_Client.requests[1:])
 
 
-async def test_process_consults_canonical_source_and_persists_sanitized_job_trail(
+async def test_process_consults_canonical_source_without_mutating_parent_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     insert_cost, complete, fail = _install_process_mocks(monkeypatch)
     publish = AsyncMock()
-    monkeypatch.setattr(research_enrichment.events, "publish_job_event", publish)
+    monkeypatch.setattr(events, "publish_job_event", publish)
     _Client.responses = [
         _response(_plan_data(queries=[], source_lookup=True)),
         _response(_search_data(suffix="source")),
@@ -575,13 +579,7 @@ async def test_process_consults_canonical_source_and_persists_sanitized_job_trai
         _Log(),
     )
 
-    assert [call.args[2] for call in publish.await_args_list] == [
-        "research_planning",
-        "research_source_lookup",
-        "research_synthesizing",
-        "research_ready",
-    ]
-    assert all(call.kwargs["percent"] == 100 for call in publish.await_args_list)
+    publish.assert_not_awaited()
     requests = json.dumps(_Client.requests)
     assert "https://www.youtube.com/watch?v=v1wZwxY3CMg" in requests
     assert "token=secret" not in requests
@@ -591,22 +589,21 @@ async def test_process_consults_canonical_source_and_persists_sanitized_job_trai
 
 
 @pytest.mark.parametrize(
-    ("db_status", "expected_stage"),
+    "db_status",
     [
-        ("RETRY", "research_retry"),
-        ("FAILED", "research_failed"),
-        ("CANCELLED", "research_cancelled"),
+        "RETRY",
+        "FAILED",
+        "CANCELLED",
     ],
 )
-async def test_failure_publishes_only_sanitized_terminal_stage(
+async def test_failure_does_not_mutate_parent_job(
     monkeypatch: pytest.MonkeyPatch,
     db_status: str,
-    expected_stage: str,
 ) -> None:
     _, _, fail = _install_process_mocks(monkeypatch)
     fail.return_value = db_status
     publish = AsyncMock()
-    monkeypatch.setattr(research_enrichment.events, "publish_job_event", publish)
+    monkeypatch.setattr(events, "publish_job_event", publish)
     monkeypatch.setattr(
         research_enrichment,
         "_post_completion",
@@ -617,11 +614,7 @@ async def test_failure_publishes_only_sanitized_terminal_stage(
         _item(jobId="job-1", sourceUrl="https://example.org/page?secret=value"), _Log()
     )
 
-    assert [call.args[2] for call in publish.await_args_list] == [
-        "research_planning",
-        expected_stage,
-    ]
-    assert "secret" not in repr(publish.await_args_list)
+    publish.assert_not_awaited()
 
 
 async def test_process_fails_closed_without_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -645,32 +638,67 @@ async def test_process_fails_closed_without_config(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.parametrize(
-    ("response", "retry", "expected_event"),
+    ("status", "retry", "expected_error", "expected_event", "expected_code"),
     [
-        (SimpleNamespace(status_code=401, is_success=False, json=lambda: {}), False, None),
         (
-            SimpleNamespace(status_code=429, is_success=False, headers={}, json=lambda: {}),
-            True,
-            "research-enrichment-transient-failure",
+            401,
+            False,
+            "RESEARCH_AUTH_ERROR",
+            "research-enrichment-auth-failure",
+            "OPENROUTER_AUTH_REJECTED",
         ),
-        (SimpleNamespace(status_code=418, is_success=False, json=lambda: {}), False, None),
+        (
+            429,
+            True,
+            "RESEARCH_RATE_LIMITED",
+            "research-enrichment-transient-failure",
+            "OPENROUTER_RATE_LIMITED",
+        ),
+        (
+            503,
+            True,
+            "RESEARCH_UPSTREAM_UNAVAILABLE",
+            "research-enrichment-transient-failure",
+            "RESEARCH_UPSTREAM_UNAVAILABLE",
+        ),
+        (
+            400,
+            False,
+            "RESEARCH_UPSTREAM_REJECTED",
+            "research-enrichment-provider-rejected",
+            "OPENROUTER_REQUEST_REJECTED",
+        ),
     ],
 )
 async def test_process_classifies_provider_failures(
     monkeypatch: pytest.MonkeyPatch,
-    response: object,
+    status: int,
     retry: bool,
-    expected_event: str | None,
+    expected_error: str,
+    expected_event: str,
+    expected_code: str,
 ) -> None:
     _, _, fail = _install_process_mocks(monkeypatch)
-    _Client.responses = [response]
+    _Client.responses = [
+        SimpleNamespace(
+            status_code=status,
+            is_success=False,
+            headers={"x-request-id": "req-safe-123"},
+            json=lambda: {"secret": "provider-body-must-not-leak"},
+        )
+    ]
     log = _Log()
 
     await research_enrichment.process(_item(), log)
 
     assert fail.await_args.kwargs["retry"] is retry
-    if expected_event:
-        assert ("warning", expected_event) in log.events
+    assert fail.await_args.kwargs["error"] == expected_error
+    assert ("warning", expected_event) in log.events
+    diagnostic = next(details for _, event, details in log.details if event == expected_event)
+    assert diagnostic["error_code"] == expected_code
+    assert diagnostic["status_code"] == str(status)
+    assert diagnostic["request_id"] == "req-safe-123"
+    assert "provider-body-must-not-leak" not in repr(log.details)
 
 
 async def test_total_deadline_is_classified_as_transient(monkeypatch: pytest.MonkeyPatch) -> None:

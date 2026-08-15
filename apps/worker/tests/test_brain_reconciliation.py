@@ -6,11 +6,12 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, brain_temporal_store, db
+from src import brain_compilation_db, brain_temporal_store, db, pipeline
 
 
 class _FakeLease:
@@ -686,6 +687,80 @@ async def test_reconciliation_detects_transcript_updates_after_index(
     assert 'n."updatedAt" < t."updatedAt"' in conn.query
     assert "COALESCE(n.metadata->>'topicIndexVersion', '') <> $1" in conn.query
     assert conn.args == (str(db.BRAIN_TOPIC_INDEX_VERSION), 7)
+
+
+class _ResolvedWarningConnection:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args: tuple[object, ...] = ()
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        yield
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        self.query = query
+        self.args = args
+        return [
+            {
+                "id": "job-1",
+                "userId": "user-1",
+                "transcriptId": "transcript-1",
+            }
+        ]
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return "INSERT 0 1"
+
+
+async def test_resolved_brain_warning_reconciliation_is_narrow_and_records_done_event(
+    monkeypatch: Any,
+) -> None:
+    conn = _ResolvedWarningConnection()
+
+    @asynccontextmanager
+    async def warning_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", warning_connection)
+
+    repaired = await db.reconcile_resolved_brain_warning_jobs(limit=7)
+
+    assert repaired[0]["id"] == "job-1"
+    assert "COMPLETED_WITH_WARNINGS" in conn.query
+    assert 'COALESCE(j."transcriptId", j."refreshTranscriptId")' in conn.query
+    assert "topicIndexVersion" in conn.query
+    assert 'n."updatedAt" >= t."updatedAt"' in conn.query
+    assert "summaryStatus" in conn.query and "taggingStatus" in conn.query
+    assert conn.args[0] == str(db.BRAIN_TOPIC_INDEX_VERSION)
+    assert conn.args[1] == 7
+    event_query, event_args = conn.execute_calls[0]
+    assert 'INSERT INTO "JobProgressEvent"' in event_query
+    assert event_args[3:] == ("done", 100, "transcript-1", event_args[-1])
+
+
+async def test_pipeline_waits_for_busy_brain_index_lease(monkeypatch: Any) -> None:
+    reindex = AsyncMock(side_effect=[False, False, True])
+    sleep = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "reindex_transcript_brain_node", reindex)
+    monkeypatch.setattr(pipeline.asyncio, "sleep", sleep)
+
+    assert await pipeline._reindex_brain_with_retry("user-1", "transcript-1") is True
+    assert reindex.await_count == 3
+    assert [call.args[0] for call in sleep.await_args_list] == [0.25, 0.5]
+
+
+async def test_pipeline_exposes_brain_warning_only_after_retry_budget(monkeypatch: Any) -> None:
+    reindex = AsyncMock(return_value=False)
+    sleep = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "reindex_transcript_brain_node", reindex)
+    monkeypatch.setattr(pipeline.asyncio, "sleep", sleep)
+
+    assert await pipeline._reindex_brain_with_retry("user-1", "transcript-1") is False
+    assert reindex.await_count == 5
+    assert [call.args[0] for call in sleep.await_args_list] == [0.25, 0.5, 1.0, 2.0]
 
 
 class _GroundedClaimConnection:
