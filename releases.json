@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786776377",
+    "channel": "dev",
+    "type": "fix",
+    "title": "More reliable TikTok imports and clearer provider errors",
+    "body": "Public TikTok links now have an additional recovery path when the standard media\nextractor is blocked, while still retrying temporary network failures. Voxen also\nidentifies exhausted OpenRouter credits explicitly in the queue and research\ncontext instead of presenting the failure as a model compatibility problem.",
+    "pr": 796,
+    "author": "Kalyel",
+    "date": "2026-08-15T03:46:05-03:00",
+    "translations": {
+      "en": {
+        "title": "More reliable TikTok imports and clearer provider errors",
+        "body": "Public TikTok links now have an additional recovery path when the standard media\nextractor is blocked, while still retrying temporary network failures. Voxen also\nidentifies exhausted OpenRouter credits explicitly in the queue and research\ncontext instead of presenting the failure as a model compatibility problem."
+      },
+      "pt-BR": {
+        "title": "Importações do TikTok mais confiáveis e erros de provedor mais claros",
+        "body": "Links públicos do TikTok agora contam com uma recuperação adicional quando o\nextrator padrão de mídia é bloqueado, sem perder as tentativas para falhas\ntemporárias de rede. A Voxen também identifica explicitamente créditos esgotados\ndo OpenRouter na fila e no contexto de pesquisa, em vez de apresentar a falha\ncomo um problema de compatibilidade do modelo."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/796"
+  },
+  {
     "version": "0.14.5-dev.1786770366",
     "channel": "dev",
     "type": "fix",
