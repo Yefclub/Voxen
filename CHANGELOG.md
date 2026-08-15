@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786770366 — 2026-08-15 · Dev
+
+### 🐛 Ingestions now recover without stale failures
+
+The processing queue now retries temporary Brain contention and automatically
+clears resolved warnings without repeating the canonical ingestion. Research
+enrichment no longer changes a completed ingestion into a failure, while X,
+TikTok, and OpenRouter errors provide safer and more actionable guidance.
+
 ## v0.14.5-dev.1786577267 — 2026-08-12 · Dev
 
 ### 🐛 A blocked YouTube download now names every way to unblock it
