@@ -1,4 +1,7 @@
 import { db } from './db';
+import { findTranscriptBySourceIdentity } from './transcript-source-identity';
+import { parseVideoUrl } from './video-url';
+import { resolveVideoSourceIdentity } from './video-source-identity';
 
 export type QueuedJobType =
   | 'DOWNLOAD_MEDIA'
@@ -62,6 +65,34 @@ export async function retryQueuedJobForUser(
   userId: string,
   jobId: string,
 ): Promise<RetryQueuedJobResult> {
+  const preflight = await db.job.findFirst({
+    where: { id: jobId, userId },
+    select: { sourceUrl: true, status: true, type: true },
+  });
+  const parsedSource = preflight ? parseVideoUrl(preflight.sourceUrl) : null;
+  let retrySourceIdentity = preflight?.sourceUrl;
+  if (
+    preflight &&
+    parsedSource &&
+    ['FAILED', 'CANCELLED'].includes(preflight.status) &&
+    !['DOWNLOAD_MEDIA', 'DELETE_KNOWLEDGE'].includes(preflight.type)
+  ) {
+    const [existing, active] = await Promise.all([
+      findTranscriptBySourceIdentity(db, userId, preflight.sourceUrl),
+      db.job.findFirst({
+        where: {
+          userId,
+          sourceUrl: preflight.sourceUrl,
+          status: { in: ['QUEUED', 'RUNNING'] },
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (!existing && !active) {
+      retrySourceIdentity = await resolveVideoSourceIdentity(parsedSource);
+    }
+  }
+
   try {
     return await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} AND "userId" = ${userId} FOR UPDATE`;
@@ -81,6 +112,32 @@ export async function retryQueuedJobForUser(
       if (!original) return { outcome: 'missing' as const };
       if (!['FAILED', 'CANCELLED'].includes(original.status)) {
         return { outcome: 'invalid_state' as const };
+      }
+      const sourceIdentity =
+        preflight?.sourceUrl === original.sourceUrl
+          ? (retrySourceIdentity ?? original.sourceUrl)
+          : original.sourceUrl;
+      const sourceCandidates = [...new Set([original.sourceUrl, sourceIdentity])];
+
+      // Different historical failures can be retried concurrently. Serialize
+      // the decision by workspace + resolved source before inspecting active
+      // jobs or mutating SavedMedia state.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${sourceIdentity}))`;
+      const active = await tx.job.findFirst({
+        where: {
+          userId,
+          sourceUrl: { in: sourceCandidates },
+          status: { in: ['QUEUED', 'RUNNING'] },
+        },
+        select: { id: true, status: true, sourceUrl: true },
+      });
+      if (active) {
+        return {
+          outcome: 'inflight' as const,
+          jobId: active.id,
+          status: active.status,
+          sourceUrl: active.sourceUrl,
+        };
       }
 
       let mediaStatus: 'QUEUED' | 'PROCESSING' | undefined;
@@ -125,11 +182,12 @@ export async function retryQueuedJobForUser(
       }
 
       if (original.type !== 'DOWNLOAD_MEDIA' && original.type !== 'DELETE_KNOWLEDGE') {
-        const existing = await tx.transcript.findFirst({
-          where: { userId, url: original.sourceUrl, status: { not: 'TRASH' } },
-          select: { id: true },
-        });
-        if (existing) return { outcome: 'existing_transcript' as const, transcriptId: existing.id };
+        for (const sourceUrl of sourceCandidates) {
+          const existing = await findTranscriptBySourceIdentity(tx, userId, sourceUrl);
+          if (existing) {
+            return { outcome: 'existing_transcript' as const, transcriptId: existing.id };
+          }
+        }
       }
 
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
@@ -142,7 +200,7 @@ export async function retryQueuedJobForUser(
           userId,
           type: original.type,
           status: 'QUEUED',
-          sourceUrl: original.sourceUrl,
+          sourceUrl: sourceIdentity,
           configRevisionId: revision?.id,
           savedMediaId: original.savedMediaId,
           deletionTargetType: original.deletionTargetType,
@@ -205,14 +263,13 @@ export async function retryQueuedJobForUser(
         },
       });
       if (!original) return { outcome: 'inflight' };
+      const sourceCandidates = [
+        ...new Set([original.sourceUrl, retrySourceIdentity ?? original.sourceUrl]),
+      ];
       const active = await db.job.findFirst({
         where: {
           userId,
-          sourceUrl: original.sourceUrl,
-          type: original.type,
-          savedMediaId: original.savedMediaId,
-          deletionTargetType: original.deletionTargetType,
-          deletionTargetId: original.deletionTargetId,
+          sourceUrl: { in: sourceCandidates },
           status: { in: ['QUEUED', 'RUNNING'] },
         },
         select: { id: true, status: true, sourceUrl: true },

@@ -1,10 +1,8 @@
 """Voxen Worker — entrypoint asyncio.
 
-Arquitetura (spec 002):
   1. Subscribe Redis pub/sub `jobs:new` (publicado pelo web ao criar Job)
   2. Quando recebe notify, claim job no DB com SKIP LOCKED
   3. Processa em pipeline.process_job
-  4. Semáforo limita concorrência (max 2 jobs simultâneos)
 
 Reconciliação: ao iniciar e a cada 60s, recupera leases RUNNING vencidos e
 escaneia Job(status=QUEUED) pra pegar jobs perdidos (notify pode ter sumido).
@@ -33,9 +31,11 @@ from . import (
     ytdl,
 )
 from .cancellation import cancel_subscriber
+from .logging_config import configure_logging
 from .pipeline import _maybe_generate_tags, process_job
 from .safe_diagnostics import error_diagnostic
 
+configure_logging()
 log = structlog.get_logger(__name__)
 research_db = research_reconciliation.research_db
 research_enrichment = research_reconciliation.research_enrichment

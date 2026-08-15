@@ -371,6 +371,25 @@ def test_usage_contract_fails_closed_when_cost_or_search_proof_is_missing(
         parse_provider_usage(data, require_search=require_search)
 
 
+def test_usage_contract_infers_one_bounded_search_from_valid_citations() -> None:
+    data = _search_data(usage={"input_tokens": 11, "output_tokens": 7, "cost": "0.012"})
+
+    usage = parse_provider_usage(data, require_search=True)
+
+    assert usage.search_calls == 1
+    assert usage.search_usage_inferred is True
+
+
+def test_usage_contract_does_not_infer_search_without_valid_citations() -> None:
+    data = _search_data(
+        usage={"input_tokens": 11, "output_tokens": 7, "cost": "0.012"},
+        cited=False,
+    )
+
+    with pytest.raises(ResearchOutputError, match="RESEARCH_SEARCH_USAGE_MISSING"):
+        parse_provider_usage(data, require_search=True)
+
+
 async def test_process_persists_cited_research_with_aggregated_usage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -391,10 +410,31 @@ async def test_process_persists_cited_research_with_aggregated_usage(
     )
     cost_meta = insert_cost.await_args.kwargs["meta"]
     assert cost_meta["provider_call_count"] == 2
+    assert cost_meta["inferred_search_call_count"] == 0
     assert cost_meta["web_search_cost_usd"] == "0.005"
     assert cost_meta["research_inference_cost_usd"] == "0.009"
     assert ("info", "research-enrichment-finished") in log.events
     fail.assert_not_awaited()
+
+
+async def test_process_accepts_cited_search_when_provider_omits_tool_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    insert_cost, complete, fail = _install_process_mocks(monkeypatch)
+    missing_tool_usage = {"input_tokens": 11, "output_tokens": 7, "cost": "0.012"}
+    _Client.responses = [
+        _response(_plan_data()),
+        _response(_search_data(usage=missing_tool_usage)),
+    ]
+    log = _Log()
+
+    await research_enrichment.process(_item(), log)
+
+    complete.assert_awaited_once()
+    fail.assert_not_awaited()
+    assert complete.await_args.kwargs["search_call_count"] == 1
+    assert insert_cost.await_args.kwargs["meta"]["inferred_search_call_count"] == 1
+    assert ("info", "research-search-usage-inferred") in log.events
 
 
 async def test_process_accepts_no_search_or_two_application_owned_searches(
@@ -464,7 +504,10 @@ async def test_process_caps_citations_across_source_and_topic_searches(
         ),
         (
             _plan_data(),
-            _search_data(usage={"input_tokens": 1, "output_tokens": 1, "cost": "0.01"}),
+            _search_data(
+                usage={"input_tokens": 1, "output_tokens": 1, "cost": "0.01"},
+                cited=False,
+            ),
             "RESEARCH_SEARCH_USAGE_MISSING",
         ),
     ],

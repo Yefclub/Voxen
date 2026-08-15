@@ -76,6 +76,7 @@ class ProviderUsage:
     tokens_out: int
     cost_usd: Decimal
     search_calls: int
+    search_usage_inferred: bool = False
 
 
 def _provider_budget() -> dict[str, Any]:
@@ -335,8 +336,16 @@ def parse_provider_usage(data: dict[str, Any], *, require_search: bool) -> Provi
         raise ResearchOutputError("RESEARCH_COST_INVALID")
 
     server_tool_use = usage.get("server_tool_use")
+    search_usage_inferred = False
     if server_tool_use is None and not require_search:
         search_calls = 0
+    elif server_tool_use is None and _citations(_message(data).get("annotations")):
+        # OpenRouter server tools are still beta and some otherwise valid
+        # responses omit the documented accounting object. The request itself
+        # is capped to one tool call, so a validated URL citation is bounded,
+        # provider-originated evidence that exactly one search ran.
+        search_calls = 1
+        search_usage_inferred = True
     elif not isinstance(server_tool_use, dict) or "web_search_requests" not in server_tool_use:
         raise ResearchOutputError("RESEARCH_SEARCH_USAGE_MISSING")
     else:
@@ -345,7 +354,7 @@ def parse_provider_usage(data: dict[str, Any], *, require_search: bool) -> Provi
         )
     if require_search and search_calls < 1:
         raise ResearchOutputError("RESEARCH_SEARCH_NOT_EXECUTED")
-    return ProviderUsage(tokens_in, tokens_out, cost_usd, search_calls)
+    return ProviderUsage(tokens_in, tokens_out, cost_usd, search_calls, search_usage_inferred)
 
 
 def _message(data: dict[str, Any]) -> dict[str, Any]:

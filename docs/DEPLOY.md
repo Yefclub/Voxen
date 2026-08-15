@@ -680,6 +680,31 @@ Outras ferramentas:
 - `docker compose ps` — status dos containers
 - `docker compose logs -f web worker` — logs ao vivo
 
+### Logs estruturados e coleta de incidentes
+
+Web e worker emitem eventos JSON de uma linha com `service`, `event`, `level`,
+`timestamp` e, quando aplicável, `request_id`, `job_id` e `error_code`. O web
+também devolve `x-request-id` em cada resposta. Payloads, mensagens externas,
+cookies, tokens e secrets não entram nesses eventos.
+
+O coletor ignora linhas legadas ou prefixos do Docker/Easypanel e aceita filtros
+combináveis:
+
+```bash
+docker compose logs --since 2h web worker 2>&1 \
+  | node scripts/collect-voxen-logs.mjs --level error
+
+docker service logs yefclub_voxen-app --since 2h 2>&1 \
+  | node scripts/collect-voxen-logs.mjs --job JOB_ID
+
+node scripts/collect-voxen-logs.mjs --file easypanel.log \
+  --error-code RESEARCH_SEARCH_USAGE_MISSING
+```
+
+Também é possível filtrar por `--service`, `--event`, `--request` e `--since`.
+O resumo final informa quantos eventos foram reconhecidos, quantos passaram nos
+filtros e a distribuição por severidade e código de erro.
+
 ---
 
 ## Reset de senha

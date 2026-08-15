@@ -32,6 +32,11 @@ quando apenas uma etapa derivada precisar de repetição.
   estado da indexação do Brain e o estado da pesquisa complementar.
 - The system shall preservar conteúdo canônico já persistido quando uma etapa
   derivada falhar ou precisar ser repetida.
+- The system shall tratar a URL enviada e a URL canônica resolvida como aliases
+  da mesma fonte dentro do workspace, sem criar uma segunda transcrição ativa.
+- The system shall emitir logs operacionais estruturados em JSON de uma linha,
+  com serviço, evento, severidade, timestamp e identificadores de correlação
+  aplicáveis, sem conteúdo privado ou credenciais.
 - The system shall registrar para falhas externas um código estável, a etapa, a
   categoria da falha e metadados operacionais seguros suficientes para o admin
   distinguir rejeição, indisponibilidade, limite e bloqueio da fonte.
@@ -58,6 +63,16 @@ quando apenas uma etapa derivada precisar de repetição.
   tentativa, configuração de acesso ou upload manual.
 - When registros legados contiverem pendência de Brain já resolvida, the system
   shall reconciliá-los idempotentemente sem repetir a ingestão canônica.
+- When uma repetição receber uma URL que já aparece como URL persistida, URL
+  submetida ou URL canônica de uma transcrição ativa, the system shall retornar
+  essa transcrição sem criar um novo job de ingestão.
+- When uma repetição encontrar um job equivalente já ativo, the system shall
+  retornar o job existente antes de tentar um novo insert no banco.
+- When a resposta de pesquisa omitir a contagem de server tools, mas contiver
+  citações URL válidas e a requisição estiver limitada a uma única busca, the
+  system shall inferir conservadoramente uma busca para contabilização.
+- When uma requisição HTTP atravessar o web, the system shall devolver e
+  registrar um request ID validado, duração, método, rota e status.
 
 ### State-driven (durante um estado)
 
@@ -94,37 +109,57 @@ quando apenas uma etapa derivada precisar de repetição.
 - If uma repetição manual for solicitada para uma pendência já resolvida, then the
   system shall reconciliar o estado sem executar novamente etapas canônicas ou
   chamadas externas desnecessárias.
+- If a resposta de pesquisa declarar zero buscas, omitir citações válidas ou
+  exceder o limite de tools, then the system shall continuar rejeitando o
+  resultado como não comprovado.
+- If dois requests equivalentes disputarem a criação de um job, then the system
+  shall serializar a decisão por workspace e fonte, mantendo o índice parcial
+  único como última barreira contra corrida.
 
 ## Critérios de Aceite
 
 - [ ] Dois jobs simultâneos do mesmo workspace não permanecem com pendência de
-  Brain apenas porque um deles encontrou o lease ocupado.
+      Brain apenas porque um deles encontrou o lease ocupado.
 - [ ] Um job com Brain posteriormente reconciliado muda para concluído e perde a
-  mensagem antiga sem repetir a ingestão canônica.
+      mensagem antiga sem repetir a ingestão canônica.
 - [ ] A reparação de registros legados é idempotente e só promove jobs cujas
-  etapas obrigatórias estejam verificavelmente concluídas.
+      etapas obrigatórias estejam verificavelmente concluídas.
 - [ ] Eventos de pesquisa complementar não alteram o estágio terminal da
-  ingestão nem substituem sua mensagem de erro.
+      ingestão nem substituem sua mensagem de erro.
 - [ ] Pesquisa complementar expõe estado e ação próprios quando esgota as
-  tentativas, mantendo o conteúdo principal utilizável.
+      tentativas, mantendo o conteúdo principal utilizável.
 - [ ] Falhas OpenRouter preservam código seguro, etapa, HTTP status quando
-  disponível e identificador de requisição quando seguro.
+      disponível e identificador de requisição quando seguro.
 - [ ] HTTP 402 da OpenRouter é exibido como créditos insuficientes, com código
-  próprio e sem novas tentativas automáticas.
+      próprio e sem novas tentativas automáticas.
 - [ ] A análise do X usa fallback configurado e retorna mensagem acionável quando
-  todos os caminhos forem rejeitados.
+      todos os caminhos forem rejeitados.
 - [ ] O fluxo do TikTok reconhece resposta inesperada, tenta impersonação, usa o
-  player público oficial para obter e transcrever a mídia e só então retorna uma
-  mensagem específica se ainda não conseguir extrair.
+      player público oficial para obter e transcrever a mídia e só então retorna uma
+      mensagem específica se ainda não conseguir extrair.
 - [ ] O fallback do player do TikTok aceita apenas HTTPS e hosts oficiais,
-  limita o tamanho da resposta e nunca registra URLs assinadas ou payloads
-  externos brutos.
+      limita o tamanho da resposta e nunca registra URLs assinadas ou payloads
+      externos brutos.
 - [ ] O admin consegue distinguir configuração ausente, autenticação rejeitada,
-  rate limit, indisponibilidade e payload recusado sem acessar dados sensíveis.
+      rate limit, indisponibilidade e payload recusado sem acessar dados sensíveis.
 - [ ] Testes automatizados cobrem reconciliação, concorrência, estados separados,
-  fallbacks e sanitização de diagnósticos.
+      fallbacks e sanitização de diagnósticos.
+- [ ] Reprocessar o mesmo short link do TikTok após sua resolução retorna a
+      transcrição existente e não repete download, transcrição ou enriquecimentos.
+- [ ] Submissões e retries concorrentes do short link e da URL canônica do
+      TikTok convergem, antes da criação, para o mesmo lock e índice único.
+- [ ] A busca de conteúdo existente reconhece `url`,
+      `sourceMetadata.submittedUrl` e `sourceMetadata.canonicalUrl`.
+- [ ] Retry concorrente retorna o job ativo sem produzir uma violação P2002
+      esperada nos logs.
+- [ ] Pesquisa com citações válidas e uso de busca omitido pelo provedor conclui
+      com uma busca contabilizada; zero explícito ou ausência de citações falha.
+- [ ] Web e worker emitem JSON parseável, usam request/job IDs allowlisted e não
+      serializam mensagens ou payloads externos em diagnósticos.
+- [ ] Um coletor operacional filtra logs por janela, serviço, severidade, evento,
+      job ID, request ID ou código de erro sem depender de busca textual frágil.
 - [ ] O deploy aplica qualquer reparação necessária sem indisponibilidade
-  prolongada e mantém web, worker, banco e cache saudáveis.
+      prolongada e mantém web, worker, banco e cache saudáveis.
 
 ## Fora de Escopo
 
@@ -146,3 +181,7 @@ quando apenas uma etapa derivada precisar de repetição.
 > 2026-08-15: ajustado o fallback do TikTok para usar o player público oficial
 > após a impersonação e a classificação do HTTP 402 da OpenRouter após evidência
 > dos reprocessamentos em produção.
+>
+> 2026-08-15: adicionado o contrato de identidade por aliases de URL, contenção
+> de retries concorrentes, tolerância conservadora ao campo de uso ausente em
+> pesquisas citadas e observabilidade estruturada para web e worker.

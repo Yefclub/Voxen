@@ -24,6 +24,7 @@ import {
 } from './sso-oidc';
 import { currentSsoProviderId } from './sso-request-context';
 import { resolveAuthBaseURL } from './auth-base-url';
+import { structuredLog } from './structured-log';
 
 export { resolveAuthBaseURL } from './auth-base-url';
 
@@ -138,6 +139,20 @@ export function resolveMcpOAuthResource(): string {
 
 const config = {
   database: encryptedSsoPrismaAdapter,
+  logger: {
+    disableColors: true,
+    level: 'warn',
+    log: (level: 'debug' | 'info' | 'warn' | 'error') => {
+      structuredLog(
+        level === 'error' ? 'error' : level === 'warn' ? 'warning' : 'info',
+        'auth-library-log',
+        { component: 'better-auth' },
+      );
+    },
+  },
+  // Propagate unexpected provider/database failures to Hono's structured
+  // boundary instead of letting better-call print raw multi-line payloads.
+  onAPIError: { throw: true },
   // Mínimo 32 chars pra HMAC seguro. Em prod, gerar com `openssl rand -base64 32`.
   secret: requireEnv('BETTER_AUTH_SECRET', 32),
   baseURL: authBaseURL,
