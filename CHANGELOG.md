@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786800398 — 2026-08-15 · Dev
+
+### 🐛 More reliable reprocessing, duplicate prevention, and diagnostics
+
+Voxen now recognizes TikTok short links and their canonical URLs as the same source before creating or retrying jobs, preventing duplicate processing even under concurrent requests. Complementary research also tolerates provider responses that contain valid citations but omit the search-usage field, while preserving conservative cost accounting.
+
+Application diagnostics are now emitted as safe, structured JSON with request and job correlation fields. A new operational collector can filter copied Docker or Easypanel logs by time, service, severity, event, job, request, or error code without exposing provider payloads or credentials.
+
 ## v0.14.5-dev.1786776377 — 2026-08-15 · Dev
 
 ### 🐛 More reliable TikTok imports and clearer provider errors
