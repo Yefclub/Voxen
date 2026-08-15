@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786770366",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Ingestions now recover without stale failures",
+    "body": "The processing queue now retries temporary Brain contention and automatically\nclears resolved warnings without repeating the canonical ingestion. Research\nenrichment no longer changes a completed ingestion into a failure, while X,\nTikTok, and OpenRouter errors provide safer and more actionable guidance.",
+    "pr": 794,
+    "author": "Kalyel",
+    "date": "2026-08-15T02:05:56-03:00",
+    "translations": {
+      "en": {
+        "title": "Ingestions now recover without stale failures",
+        "body": "The processing queue now retries temporary Brain contention and automatically\nclears resolved warnings without repeating the canonical ingestion. Research\nenrichment no longer changes a completed ingestion into a failure, while X,\nTikTok, and OpenRouter errors provide safer and more actionable guidance."
+      },
+      "pt-BR": {
+        "title": "Ingestões agora se recuperam sem falhas obsoletas",
+        "body": "A fila de processamento agora repete contenções temporárias do Brain e remove\nautomaticamente avisos já resolvidos sem refazer a ingestão canônica. A pesquisa\ncomplementar não transforma mais uma ingestão concluída em falha, enquanto erros\ndo X, TikTok e OpenRouter oferecem orientações mais seguras e acionáveis."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/794"
+  },
+  {
     "version": "0.14.5-dev.1786577267",
     "channel": "dev",
     "type": "fix",
