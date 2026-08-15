@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import asyncpg
 import pytest
 
-from src import db, research_db, voxen_settings
+from src import brain_reconciliation, db, research_db, voxen_settings
 from src.source_freshness import mark_reviewable_derivatives_stale
 from src.voxen_crypto import encrypt
 
@@ -903,7 +903,7 @@ async def test_resolved_brain_warning_is_promoted_atomically_and_idempotently(
         """
     )
 
-    repaired = await db.reconcile_resolved_brain_warning_jobs(limit=10)
+    repaired = await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10)
 
     assert len(repaired) == 1
     assert repaired[0]["id"] == "brain-warning-job"
@@ -929,7 +929,7 @@ async def test_resolved_brain_warning_is_promoted_atomically_and_idempotently(
         "transcriptId": "brain-warning-transcript",
         "errorMsg": None,
     }
-    assert await db.reconcile_resolved_brain_warning_jobs(limit=10) == []
+    assert await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10) == []
 
 
 async def test_refresh_warning_waits_for_fresh_brain_node_before_promotion(
@@ -979,13 +979,13 @@ async def test_refresh_warning_waits_for_fresh_brain_node_before_promotion(
         """
     )
 
-    assert await db.reconcile_resolved_brain_warning_jobs(limit=10) == []
+    assert await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10) == []
 
     await postgres.execute(
         'UPDATE "BrainNode" SET "updatedAt" = NOW() WHERE id = $1',
         "brain-refresh-node",
     )
-    repaired = await db.reconcile_resolved_brain_warning_jobs(limit=10)
+    repaired = await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10)
 
     assert len(repaired) == 1
     assert repaired[0]["transcriptId"] == "brain-refresh-transcript"

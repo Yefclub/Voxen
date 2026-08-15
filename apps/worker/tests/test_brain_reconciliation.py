@@ -11,7 +11,13 @@ from unittest.mock import AsyncMock
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, brain_temporal_store, db, pipeline
+from src import (
+    brain_compilation_db,
+    brain_reconciliation,
+    brain_temporal_store,
+    db,
+    pipeline,
+)
 
 
 class _FakeLease:
@@ -726,7 +732,7 @@ async def test_resolved_brain_warning_reconciliation_is_narrow_and_records_done_
 
     monkeypatch.setattr(db, "connection", warning_connection)
 
-    repaired = await db.reconcile_resolved_brain_warning_jobs(limit=7)
+    repaired = await brain_reconciliation.reconcile_resolved_warning_jobs(limit=7)
 
     assert repaired[0]["id"] == "job-1"
     assert "COMPLETED_WITH_WARNINGS" in conn.query

@@ -25,6 +25,7 @@ import structlog
 from . import (
     automation,
     brain_compilation,
+    brain_reconciliation,
     db,
     events,
     research_reconciliation,
@@ -142,12 +143,7 @@ async def _enrichment_reconciliation_loop(
     """Reconcilia melhorias em loop independente do reaper de jobs."""
     while not stop.is_set():
         try:
-            indexed = await db.reindex_missing_transcript_brain_nodes(limit=50)
-            if indexed:
-                log.info("brain-reconciliation-indexed", count=indexed)
-            resolved_warnings = await _reconcile_resolved_brain_warnings_once()
-            if resolved_warnings:
-                log.info("brain-reconciliation-jobs-promoted", count=resolved_warnings)
+            await brain_reconciliation.reconcile_once(log, limit=50)
         except Exception as exc:  # noqa: BLE001
             log.error(
                 "brain-reconciliation-failed",
@@ -177,21 +173,6 @@ async def _enrichment_reconciliation_loop(
             await asyncio.wait_for(stop.wait(), timeout=RECONCILIATION_INTERVAL_SEC)
         except TimeoutError:
             continue
-
-
-async def _reconcile_resolved_brain_warnings_once() -> int:
-    repaired = await db.reconcile_resolved_brain_warning_jobs(limit=50)
-    for item in repaired:
-        await events.publish_recorded_job_event(
-            str(item["userId"]),
-            str(item["id"]),
-            "done",
-            event_id=str(item["eventId"]),
-            created_at=item["createdAt"],
-            percent=100,
-            transcript_id=str(item["transcriptId"]),
-        )
-    return len(repaired)
 
 
 async def _reconcile_jobs_once(

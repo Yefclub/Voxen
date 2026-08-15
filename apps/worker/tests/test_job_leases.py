@@ -4,13 +4,14 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import ANY, AsyncMock
 
 import asyncpg
 import pytest
 
-from src import db, events, main, pipeline
+from src import brain_reconciliation, db, events, main, pipeline
 from src.job_lease import (
     JobLease,
     JobLeaseLostError,
@@ -565,10 +566,14 @@ async def test_brain_warning_reconciler_publishes_atomically_recorded_done_event
         ]
     )
     publish = AsyncMock()
-    monkeypatch.setattr(db, "reconcile_resolved_brain_warning_jobs", reconcile)
-    monkeypatch.setattr(events, "publish_recorded_job_event", publish)
+    reindex = AsyncMock(return_value=0)
+    monkeypatch.setattr(brain_reconciliation.db, "reindex_missing_transcript_brain_nodes", reindex)
+    monkeypatch.setattr(brain_reconciliation, "reconcile_resolved_warning_jobs", reconcile)
+    monkeypatch.setattr(brain_reconciliation.events, "publish_recorded_job_event", publish)
 
-    assert await main._reconcile_resolved_brain_warnings_once() == 1
+    log = SimpleNamespace(info=lambda *_args, **_kwargs: None)
+    assert await brain_reconciliation.reconcile_once(log, limit=50) == 1
+    reindex.assert_awaited_once_with(limit=50)
     reconcile.assert_awaited_once_with(limit=50)
     publish.assert_awaited_once_with(
         "user-1",
