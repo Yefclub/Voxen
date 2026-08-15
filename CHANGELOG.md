@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786776377 — 2026-08-15 · Dev
+
+### 🐛 More reliable TikTok imports and clearer provider errors
+
+Public TikTok links now have an additional recovery path when the standard media
+extractor is blocked, while still retrying temporary network failures. Voxen also
+identifies exhausted OpenRouter credits explicitly in the queue and research
+context instead of presenting the failure as a model compatibility problem.
+
 ## v0.14.5-dev.1786770366 — 2026-08-15 · Dev
 
 ### 🐛 Ingestions now recover without stale failures
