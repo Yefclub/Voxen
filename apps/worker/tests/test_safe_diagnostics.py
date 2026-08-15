@@ -128,6 +128,7 @@ def test_the_scan_actually_finds_call_sites() -> None:
     [
         # Chegam por `error_diagnostic(exc, "LITERAL")`.
         "RESEARCH_UPSTREAM_UNAVAILABLE",
+        "RESEARCH_SEARCH_USAGE_MISSING",
         "BRAIN_EXTRACTION_SEGMENT_FAILED",
         "SUMMARY_RECONCILIATION_FAILED",
         # Chegam por `error_diagnostic(e, e.code)` sobre um PermanentError.

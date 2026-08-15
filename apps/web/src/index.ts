@@ -40,8 +40,21 @@ import { resolveStorageDriver, storageGet } from './lib/storage';
 import { publicAuthenticationRoutes } from './routes/public-authentication';
 import { mcpOAuthDiscoveryRoutes } from './routes/mcp-oauth';
 import { mcpOAuthAccountRoutes } from './routes/mcp-oauth-account';
+import { requestLogging } from './lib/request-logging';
+import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
+
+app.use('*', requestLogging);
+
+app.onError((error, c) => {
+  structuredDiagnostic('error', 'unhandled-request-error', 'UNHANDLED_REQUEST_ERROR', error, {
+    request_id: validCorrelationId(c.res.headers.get('x-request-id')) ?? undefined,
+    method: c.req.method,
+    path: new URL(c.req.url).pathname,
+  });
+  return c.json({ error: 'Erro interno ao processar a solicitação.' }, 500);
+});
 
 // Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
@@ -395,8 +408,7 @@ if (process.env.NODE_ENV === 'production') {
   void import('./lib/proxy-agent-tunnel')
     .then(({ syncChiselAuthfile }) => syncChiselAuthfile())
     .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[proxy-agent] sync no boot falhou: ${message}`);
+      structuredDiagnostic('warning', 'proxy-agent-sync-failed', 'PROXY_AGENT_SYNC_FAILED', err);
     });
 
   // Turnos do chat são duráveis: Redis impede execução duplicada e esta
@@ -404,35 +416,50 @@ if (process.env.NODE_ENV === 'production') {
   void import('./lib/chat/turn-runtime')
     .then(({ reconcilePendingChatTurns }) => {
       void reconcilePendingChatTurns().catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(`[chat] reconciliação inicial falhou: ${message}`);
+        structuredDiagnostic(
+          'warning',
+          'chat-reconciliation-failed',
+          'CHAT_RECONCILIATION_FAILED',
+          err,
+        );
       });
       setInterval(() => {
         void reconcilePendingChatTurns().catch((err) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.warn(`[chat] reconciliação periódica falhou: ${message}`);
+          structuredDiagnostic(
+            'warning',
+            'chat-reconciliation-failed',
+            'CHAT_RECONCILIATION_FAILED',
+            err,
+          );
         });
       }, 30_000);
     })
     .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[chat] runtime de continuidade indisponível: ${message}`);
+      structuredDiagnostic('warning', 'chat-runtime-unavailable', 'CHAT_RUNTIME_UNAVAILABLE', err);
     });
 
   void import('./routes/graph')
     .then(({ reconcileGraphUsers }) => {
       const reconcile = (): void => {
         void reconcileGraphUsers().catch((err) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.warn(`[graph] reconciliação automática falhou: ${message}`);
+          structuredDiagnostic(
+            'warning',
+            'graph-reconciliation-failed',
+            'GRAPH_RECONCILIATION_FAILED',
+            err,
+          );
         });
       };
       reconcile();
       setInterval(reconcile, 60_000);
     })
     .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[graph] rotina automática indisponível: ${message}`);
+      structuredDiagnostic(
+        'warning',
+        'graph-runtime-unavailable',
+        'GRAPH_RUNTIME_UNAVAILABLE',
+        err,
+      );
     });
 }
 

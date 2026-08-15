@@ -44,6 +44,7 @@ class _UsageTotal:
     cost_usd: Decimal = Decimal("0")
     search_calls: int = 0
     provider_calls: int = 0
+    inferred_search_calls: int = 0
 
     def add(self, usage: ProviderUsage) -> None:
         self.tokens_in += usage.tokens_in
@@ -51,6 +52,8 @@ class _UsageTotal:
         self.cost_usd += usage.cost_usd
         self.search_calls += usage.search_calls
         self.provider_calls += 1
+        if usage.search_usage_inferred:
+            self.inferred_search_calls += usage.search_calls
         conservative_cost = self.cost_usd + (EXA_SEARCH_COST_USD * self.search_calls)
         if conservative_cost > MAX_COST_USD:
             raise ResearchOutputError("RESEARCH_COST_LIMIT_EXCEEDED")
@@ -119,6 +122,13 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                     )
                     source_usage = parse_provider_usage(source_data, require_search=True)
                     usage.add(source_usage)
+                    if source_usage.search_usage_inferred:
+                        log.info(
+                            "research-search-usage-inferred",
+                            enrichment_id=enrichment_id,
+                            evidence="url_citation",
+                            search_calls=source_usage.search_calls,
+                        )
                     if source_usage.search_calls != 1:
                         raise ResearchOutputError("RESEARCH_SEARCH_LIMIT_EXCEEDED")
                     model = str(source_data.get("model") or model)
@@ -133,6 +143,13 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                     )
                     search_usage = parse_provider_usage(search_data, require_search=True)
                     usage.add(search_usage)
+                    if search_usage.search_usage_inferred:
+                        log.info(
+                            "research-search-usage-inferred",
+                            enrichment_id=enrichment_id,
+                            evidence="url_citation",
+                            search_calls=search_usage.search_calls,
+                        )
                     if search_usage.search_calls != 1:
                         raise ResearchOutputError("RESEARCH_SEARCH_LIMIT_EXCEEDED")
                     model = str(search_data.get("model") or model)
@@ -408,6 +425,7 @@ async def _record_cost_event(
                 "query_count": query_count,
                 "source_lookup_count": max(0, source_lookup_count),
                 "search_call_count": usage.search_calls,
+                "inferred_search_call_count": usage.inferred_search_calls,
                 "search_result_count": result_count,
                 "provider_cost_usd": str(usage.cost_usd),
                 "conservative_budget_cost_usd": str(

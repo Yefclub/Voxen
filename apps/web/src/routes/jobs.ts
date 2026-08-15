@@ -30,7 +30,9 @@ import {
 import { storageCreateDirectUpload, storageDelete, storageHead } from '../lib/storage';
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
-import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
+import { findTranscriptBySourceIdentity } from '../lib/transcript-source-identity';
+import { inspectVideoSource } from '../lib/video-source-identity';
+import { structuredDiagnostic } from '../lib/structured-log';
 import { createQueuedJob, retryQueuedJobForUser } from '../lib/job-queue';
 import { knowledgeDeletionCancellationResponse } from '../lib/knowledge-deletion-cancellation';
 import { cancelActiveSavedMediaJob } from '../lib/saved-media-lifecycle';
@@ -48,7 +50,6 @@ import { registerDirectUploadRoute } from './jobs-direct-upload';
 type JobsVariables = {
   userId: string;
 };
-
 export const jobsRoutes = new Hono<{ Variables: JobsVariables }>();
 
 type SseMessage = {
@@ -252,33 +253,26 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   if (video) {
     const jobType = await jobTypeForVideo(video);
     const kind: AutoJobKind = jobType === 'ANALYZE_X' ? 'x' : 'video';
-    const existing = await db.transcript.findFirst({
-      where: { userId, url: video.canonical, status: { not: 'TRASH' } },
-      select: { id: true },
-    });
-    if (existing) {
+    const inspection = await inspectVideoSource(userId, video);
+    if (inspection.outcome === 'existing_transcript') {
       return {
         outcome: 'existing_transcript',
         error: 'Você já transcreveu esta URL.',
-        transcriptId: existing.id,
+        transcriptId: inspection.transcriptId,
         kind,
       };
     }
-    const inflight = await db.job.findFirst({
-      where: { userId, sourceUrl: video.canonical, status: { in: ['QUEUED', 'RUNNING'] } },
-      select: { id: true },
-    });
-    if (inflight) {
+    if (inspection.outcome === 'inflight') {
       return {
         outcome: 'inflight',
         error: 'Esta URL já está sendo processada.',
-        jobId: inflight.id,
+        jobId: inspection.jobId,
         kind,
       };
     }
     let job: { id: string; status: string; sourceUrl: string };
     try {
-      job = await createQueuedJob(userId, jobType, video.canonical);
+      job = await createQueuedJob(userId, jobType, inspection.sourceUrl);
     } catch (err) {
       if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
         return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind };
@@ -286,7 +280,9 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
       throw err;
     }
     await notifyNewJob(job.id).catch((err) => {
-      console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+      structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+        job_id: job.id,
+      });
     });
     await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
     return {
@@ -303,10 +299,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   if (!normalized) {
     return { outcome: 'invalid', error: 'URL inválida — informe um link http(s) válido.' };
   }
-  const existingWeb = await db.transcript.findFirst({
-    where: { userId, url: normalized, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
+  const existingWeb = await findTranscriptBySourceIdentity(db, userId, normalized);
   if (existingWeb) {
     return {
       outcome: 'existing_transcript',
@@ -337,7 +330,9 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     throw err;
   }
   await notifyNewJob(webJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: webJob.id,
+    });
   });
   await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
   return {
@@ -358,7 +353,9 @@ export async function createAutoJobsForUser(
     try {
       items.push({ index, input, result: await createAutoJobForUser(userId, input) });
     } catch (error) {
-      console.error('[jobs] batch item failed', safeErrorDiagnostic('BATCH_ITEM_FAILED', error));
+      structuredDiagnostic('error', 'batch-job-item-failed', 'BATCH_ITEM_FAILED', error, {
+        item_index: index,
+      });
       items.push({
         index,
         input,
@@ -392,7 +389,9 @@ async function enqueueUploadJob(
   const job = await createQueuedJob(userId, jobTypeForKind(kind), sourceUrl);
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: job.id,
+    });
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -448,7 +447,7 @@ export async function createUploadJobForUser(
       contentType,
     });
   } catch (err) {
-    console.error('[jobs] upload to S3 failed', safeErrorDiagnostic('UPLOAD_STORE_FAILED', err));
+    structuredDiagnostic('error', 'upload-store-failed', 'UPLOAD_STORE_FAILED', err);
     return {
       outcome: 'error',
       status: 502,
@@ -509,36 +508,23 @@ jobsRoutes.post('/', async (c) => {
     );
   }
   const jobType = await jobTypeForVideo(video);
-
-  const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: video.canonical, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  if (existingTranscript) {
+  const inspection = await inspectVideoSource(userId, video);
+  if (inspection.outcome === 'existing_transcript') {
     return c.json(
       {
         error: 'Você já transcreveu esta URL.',
-        transcriptId: existingTranscript.id,
+        transcriptId: inspection.transcriptId,
       },
       409,
     );
   }
-
-  const inflight = await db.job.findFirst({
-    where: {
-      userId,
-      sourceUrl: video.canonical,
-      status: { in: ['QUEUED', 'RUNNING'] },
-    },
-    select: { id: true },
-  });
-  if (inflight) {
+  if (inspection.outcome === 'inflight') {
     return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
   }
 
   let job: { id: string; status: string; sourceUrl: string };
   try {
-    job = await createQueuedJob(userId, jobType, video.canonical);
+    job = await createQueuedJob(userId, jobType, inspection.sourceUrl);
   } catch (err) {
     // Partial unique index `Job_user_url_active_unique` cobre a race entre
     // 2 POSTs simultâneos da mesma URL: o primeiro cria, o segundo cai aqui.
@@ -549,7 +535,9 @@ jobsRoutes.post('/', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: job.id,
+    });
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -692,10 +680,9 @@ jobsRoutes.post('/upload/presign', async (c) => {
         expiresIn: PRESIGN_EXPIRES_SEC,
       })) ?? `/api/jobs/upload/direct/${uploadId}?filename=${encodeURIComponent(filename)}`;
   } catch (err) {
-    console.error('[jobs] presign failed', {
+    structuredDiagnostic('error', 'upload-presign-failed', 'UPLOAD_PRESIGN_FAILED', err, {
       upload_id: uploadId,
       content_kind: kind,
-      ...safeErrorDiagnostic('UPLOAD_PRESIGN_FAILED', err),
     });
     return c.json({ error: 'Falha ao gerar URL de upload.' }, 502);
   }
@@ -761,10 +748,9 @@ jobsRoutes.post('/upload/confirm', async (c) => {
     if (name === 'NotFound' || name === 'NoSuchKey') {
       return c.json({ error: 'Upload não encontrado. Reenvie o arquivo.' }, 400);
     }
-    console.error('[jobs] confirm HeadObject failed', {
+    structuredDiagnostic('error', 'upload-head-failed', 'UPLOAD_HEAD_FAILED', err, {
       upload_id: parsed.data.uploadId,
       content_kind: kind,
-      ...safeErrorDiagnostic('UPLOAD_HEAD_FAILED', err),
     });
     return c.json({ error: 'Falha ao validar upload no armazenamento.' }, 502);
   }
@@ -807,10 +793,7 @@ jobsRoutes.post('/scrape', async (c) => {
     return c.json({ error: 'URL inválida — informe um link http(s) válido.' }, 400);
   }
 
-  const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: normalized, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
+  const existingTranscript = await findTranscriptBySourceIdentity(db, userId, normalized);
   if (existingTranscript) {
     return c.json(
       { error: 'Você já indexou esta página.', transcriptId: existingTranscript.id },
@@ -837,7 +820,9 @@ jobsRoutes.post('/scrape', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: job.id,
+    });
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -1047,7 +1032,9 @@ jobsRoutes.post('/:id/retry', async (c) => {
   const newJob = { id: result.jobId, status: result.status, sourceUrl: result.sourceUrl };
 
   await notifyNewJob(newJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: result.jobId,
+    });
   });
   await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
 

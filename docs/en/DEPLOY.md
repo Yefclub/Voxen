@@ -211,6 +211,31 @@ and sends short heartbeats so `/api/jobs/events/me` remains stable.
 
 ## Operations
 
+### Structured logs and incident collection
+
+The web and worker processes emit one-line JSON events with `service`, `event`,
+`level`, `timestamp`, and, when applicable, `request_id`, `job_id`, and
+`error_code`. Web responses also include `x-request-id`. Provider payloads,
+messages, cookies, tokens, and secrets are excluded from these events.
+
+The collector ignores legacy lines and Docker/Easypanel prefixes and supports
+composable filters:
+
+```bash
+docker compose logs --since 2h web worker 2>&1 \
+  | node scripts/collect-voxen-logs.mjs --level error
+
+docker service logs yefclub_voxen-app --since 2h 2>&1 \
+  | node scripts/collect-voxen-logs.mjs --job JOB_ID
+
+node scripts/collect-voxen-logs.mjs --file easypanel.log \
+  --error-code RESEARCH_SEARCH_USAGE_MISSING
+```
+
+Additional filters include `--service`, `--event`, `--request`, and `--since`.
+The final summary reports parsed and matched events plus counts by severity and
+error code.
+
 Safe updates that preserve volumes:
 
 ```bash
