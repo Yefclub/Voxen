@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -18,6 +19,17 @@ OR_BASE_URL = "https://openrouter.ai/api/v1"
 class OpenrouterAuthError(Exception):
     """401/403 da OpenRouter — admin precisa revalidar a key."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.request_id = request_id
+
 
 class OpenrouterTransientError(Exception):
     """Erro temporário da OpenRouter que aceita nova tentativa."""
@@ -28,15 +40,35 @@ class OpenrouterTransientError(Exception):
         *,
         status_code: int | None = None,
         retry_after: float | None = None,
+        request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.retry_after = retry_after
+        self.request_id = request_id
 
 
-def unexpected_response_error(status_code: int) -> RuntimeError:
+class OpenrouterRejectedError(RuntimeError):
+    """Non-retryable provider rejection with allowlisted operational metadata."""
+
+    def __init__(self, status_code: int, *, request_id: str | None = None) -> None:
+        super().__init__(f"OpenRouter retornou uma resposta inesperada (HTTP {status_code}).")
+        self.status_code = status_code
+        self.request_id = request_id
+
+
+def _safe_request_id(response: httpx.Response) -> str | None:
+    raw = response.headers.get("x-request-id") or response.headers.get("x-openrouter-request-id")
+    if isinstance(raw, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", raw):
+        return raw
+    return None
+
+
+def unexpected_response_error(
+    status_code: int, *, request_id: str | None = None
+) -> OpenrouterRejectedError:
     """Cria erro acionável sem propagar o corpo não confiável do provedor."""
-    return RuntimeError(f"OpenRouter retornou uma resposta inesperada (HTTP {status_code}).")
+    return OpenrouterRejectedError(status_code, request_id=request_id)
 
 
 def retry_after_seconds(value: str | None, *, now: datetime | None = None) -> float | None:
@@ -60,14 +92,19 @@ def raise_for_openrouter_status(response: httpx.Response) -> None:
         return
     status = response.status_code
     if status in (401, 403):
-        raise OpenrouterAuthError(f"OpenRouter rejeitou a key (HTTP {status})")
+        raise OpenrouterAuthError(
+            f"OpenRouter rejeitou a key (HTTP {status})",
+            status_code=status,
+            request_id=_safe_request_id(response),
+        )
     if status in (408, 429) or 500 <= status < 600:
         raise OpenrouterTransientError(
             f"OpenRouter temporariamente indisponível (HTTP {status}).",
             status_code=status,
             retry_after=retry_after_seconds(response.headers.get("Retry-After")),
+            request_id=_safe_request_id(response),
         )
-    raise unexpected_response_error(status)
+    raise unexpected_response_error(status, request_id=_safe_request_id(response))
 
 
 def payload_with_fallback(

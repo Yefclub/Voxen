@@ -42,9 +42,7 @@ async def reconcile_once(
 ) -> int:
     """Claim and dispatch due research while failing closed on reconciliation errors."""
     try:
-        transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
-        for transition in transitions:
-            await research_enrichment.publish_stage(transition, str(transition["stage"]), log)
+        await research_db.reconcile_transcript_enrichment_lifecycle()
         capacity = min(limit, max(0, max_in_flight - len(tasks)))
         pending = await research_db.claim_pending_transcript_enrichments(limit=capacity)
     except Exception as exc:  # noqa: BLE001 -- do not starve the other queues

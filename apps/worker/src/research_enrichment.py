@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from . import db, events, openrouter, research_db, scraper, voxen_settings
+from . import db, openrouter, research_db, scraper, voxen_settings
 from .research_contract import (
     EXA_SEARCH_COST_USD,
     MAX_CITATIONS,
@@ -76,15 +76,13 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                 ("default_web_search_model", "default_chat_model")
             )
             if not config.api_key or not config.model:
-                await _fail_and_publish(
+                await _fail_enrichment(
                     item=item,
                     retry=True,
                     error="RESEARCH_CONFIG_MISSING",
-                    log=log,
                 )
                 return
             model = config.model
-            await publish_stage(item, "research_planning", log)
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SEC) as client:
                 plan_data = await _post_completion(
                     client,
@@ -110,7 +108,6 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                 )
 
                 if plan.inspect_source:
-                    await publish_stage(item, "research_source_lookup", log)
                     source_data = await _post_completion(
                         client,
                         config.api_key,
@@ -128,7 +125,6 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                     results.append(parse_search_response(source_data))
 
                 for query in plan.queries:
-                    await publish_stage(item, "research_searching", log)
                     search_data = await _post_completion(
                         client,
                         config.api_key,
@@ -173,7 +169,6 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                 search_result_count=0,
             )
         else:
-            await publish_stage(item, "research_synthesizing", log)
             citations = _unique_citations(results)
             persisted = await research_db.complete_transcript_enrichment(
                 enrichment_id=enrichment_id,
@@ -192,12 +187,6 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                 search_call_count=usage.search_calls,
                 search_result_count=len(citations),
             )
-        if persisted:
-            await publish_stage(
-                item,
-                "research_not_needed" if plan.decision == "no_research" else "research_ready",
-                log,
-            )
         log.info(
             "research-enrichment-finished" if persisted else "research-enrichment-discarded",
             enrichment_id=enrichment_id,
@@ -215,8 +204,13 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
             outcome=str(exc),
             log=log,
         )
-        await _fail_and_publish(item=item, retry=False, error=str(exc), log=log)
-    except (TimeoutError, httpx.TransportError, openrouter.OpenrouterTransientError) as exc:
+        log.warning(
+            "research-enrichment-output-rejected",
+            enrichment_id=enrichment_id,
+            **error_diagnostic(exc, str(exc)),
+        )
+        await _fail_enrichment(item=item, retry=False, error=str(exc))
+    except openrouter.OpenrouterAuthError as exc:
         await _record_failure_cost(
             item=item,
             model=model,
@@ -224,17 +218,53 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
             results=results,
             plan=plan,
             started=started,
-            outcome="RESEARCH_UPSTREAM_UNAVAILABLE",
+            outcome="RESEARCH_AUTH_ERROR",
+            log=log,
+        )
+        log.warning(
+            "research-enrichment-auth-failure",
+            enrichment_id=enrichment_id,
+            **error_diagnostic(exc, "OPENROUTER_AUTH_REJECTED"),
+        )
+        await _fail_enrichment(item=item, retry=False, error="RESEARCH_AUTH_ERROR")
+    except openrouter.OpenrouterRejectedError as exc:
+        await _record_failure_cost(
+            item=item,
+            model=model,
+            usage=usage,
+            results=results,
+            plan=plan,
+            started=started,
+            outcome="RESEARCH_UPSTREAM_REJECTED",
+            log=log,
+        )
+        log.warning(
+            "research-enrichment-provider-rejected",
+            enrichment_id=enrichment_id,
+            **error_diagnostic(exc, "OPENROUTER_REQUEST_REJECTED"),
+        )
+        await _fail_enrichment(item=item, retry=False, error="RESEARCH_UPSTREAM_REJECTED")
+    except (TimeoutError, httpx.TransportError, openrouter.OpenrouterTransientError) as exc:
+        rate_limited = (
+            isinstance(exc, openrouter.OpenrouterTransientError) and exc.status_code == 429
+        )
+        outcome = "RESEARCH_RATE_LIMITED" if rate_limited else "RESEARCH_UPSTREAM_UNAVAILABLE"
+        await _record_failure_cost(
+            item=item,
+            model=model,
+            usage=usage,
+            results=results,
+            plan=plan,
+            started=started,
+            outcome=outcome,
             log=log,
         )
         log.warning(
             "research-enrichment-transient-failure",
             enrichment_id=enrichment_id,
-            **error_diagnostic(exc, "RESEARCH_UPSTREAM_UNAVAILABLE"),
+            **error_diagnostic(exc, "OPENROUTER_RATE_LIMITED" if rate_limited else outcome),
         )
-        await _fail_and_publish(
-            item=item, retry=True, error="RESEARCH_UPSTREAM_UNAVAILABLE", log=log
-        )
+        await _fail_enrichment(item=item, retry=True, error=outcome)
     except Exception as exc:  # noqa: BLE001
         await _record_failure_cost(
             item=item,
@@ -251,52 +281,22 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
             enrichment_id=enrichment_id,
             **error_diagnostic(exc, "RESEARCH_FAILED"),
         )
-        await _fail_and_publish(item=item, retry=False, error="RESEARCH_FAILED", log=log)
+        await _fail_enrichment(item=item, retry=False, error="RESEARCH_FAILED")
 
 
-async def publish_stage(item: dict[str, Any], stage: str, log: Any) -> None:  # noqa: ANN401
-    """Persist a sanitized research stage without regressing a completed ingestion job."""
-    job_id = str(item.get("jobId") or "")
-    if not job_id:
-        return
-    try:
-        await events.publish_job_event(
-            str(item["userId"]),
-            job_id,
-            stage,
-            percent=100,
-            transcript_id=str(item["transcriptId"]),
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.warning(
-            "research-progress-event-failed",
-            enrichment_id=str(item["id"]),
-            stage=stage,
-            **error_diagnostic(exc, "RESEARCH_PROGRESS_EVENT_FAILED"),
-        )
-
-
-async def _fail_and_publish(
+async def _fail_enrichment(
     *,
     item: dict[str, Any],
     retry: bool,
     error: str,
-    log: Any,  # noqa: ANN401
 ) -> None:
-    status = await research_db.fail_transcript_enrichment(
+    await research_db.fail_transcript_enrichment(
         enrichment_id=str(item["id"]),
         user_id=str(item["userId"]),
         attempt=int(item["attempt"]),
         retry=retry,
         error=error,
     )
-    stage = {
-        "RETRY": "research_retry",
-        "FAILED": "research_failed",
-        "CANCELLED": "research_cancelled",
-    }.get(status or "")
-    if stage:
-        await publish_stage(item, stage, log)
 
 
 async def _validated_source_reference(value: Any) -> str:
@@ -323,12 +323,8 @@ async def _post_completion(
         headers={"Authorization": f"Bearer {api_key}"},
         json=payload,
     )
-    if response.status_code in {401, 403}:
-        raise ResearchOutputError("RESEARCH_AUTH_ERROR")
-    if response.status_code == 429 or response.status_code >= 500:
-        openrouter._raise_for_openrouter_status(response)  # noqa: SLF001
     if not response.is_success:
-        raise ResearchOutputError("RESEARCH_UPSTREAM_REJECTED")
+        openrouter._raise_for_openrouter_status(response)  # noqa: SLF001
     try:
         data = response.json()
     except Exception as exc:  # noqa: BLE001

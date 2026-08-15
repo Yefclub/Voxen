@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src import knowledge_deletion, pipeline, safe_diagnostics
+from src.openrouter import OpenrouterRejectedError
 
 
 class _BoundLogger:
@@ -216,6 +217,23 @@ def test_error_diagnostic_normalizes_values_outside_the_contract() -> None:
     }
     assert "ClienteAcme" not in repr(diagnostic)
     assert "conteúdo sigiloso" not in repr(diagnostic)
+
+
+def test_error_diagnostic_keeps_safe_openrouter_status_and_request_id_from_cause() -> None:
+    rejected = OpenrouterRejectedError(400, request_id="req_01H-safe")
+    try:
+        raise pipeline.PermanentError.public(
+            "OPENROUTER_REQUEST_REJECTED", "safe public message"
+        ) from rejected
+    except pipeline.PermanentError as error:
+        diagnostic = safe_diagnostics.error_diagnostic(error, "OPENROUTER_REQUEST_REJECTED")
+
+    assert diagnostic == {
+        "error_code": "OPENROUTER_REQUEST_REJECTED",
+        "error_type": "PermanentError",
+        "status_code": "400",
+        "request_id": "req_01H-safe",
+    }
 
 
 async def test_arbitrary_permanent_error_is_not_public_without_explicit_opt_in(

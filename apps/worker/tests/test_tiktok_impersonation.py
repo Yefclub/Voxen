@@ -78,6 +78,14 @@ def test_friendly_error_tiktok_rehydration() -> None:
     assert "upload" in msg.lower()
 
 
+def test_friendly_error_tiktok_unexpected_webpage_response() -> None:
+    exc = RuntimeError("ERROR: [TikTok] ZSvJHUMAG: Unexpected response from webpage request")
+    msg = pipeline._friendly_external_error(exc)
+    assert msg is not None
+    assert "TikTok" in msg
+    assert "upload" in msg.lower()
+
+
 def test_friendly_error_http_403() -> None:
     msg = pipeline._friendly_external_error(RuntimeError("HTTP Error 403: Forbidden"))
     assert msg is not None
@@ -95,6 +103,12 @@ def test_is_tiktok_rehydration_error() -> None:
         RuntimeError("ERROR: [TikTok] Unable to extract universal data for rehydration")
     )
     assert not pipeline._is_tiktok_rehydration_error(RuntimeError("HTTP Error 404"))
+
+
+def test_is_tiktok_unexpected_webpage_response_error() -> None:
+    assert pipeline._is_tiktok_rehydration_error(
+        RuntimeError("ERROR: [TikTok] ZSvJHUMAG: Unexpected response from webpage request")
+    )
 
 
 def test_runtime_versions_has_ytdlp() -> None:

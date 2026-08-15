@@ -37,6 +37,7 @@ _pool: asyncpg.Pool | None = None
 TOPIC_LIMIT = 8
 TOPIC_MIN_LEN = 4
 BRAIN_TOPIC_INDEX_VERSION = 1
+BRAIN_INDEX_RETRY_MESSAGE = "A indexação no Brain será repetida automaticamente."
 JOB_LEASE_TTL_SEC = 90
 JOB_MAX_ATTEMPTS = 3
 JOB_CHECKPOINT_EXTRA_ATTEMPTS = 1

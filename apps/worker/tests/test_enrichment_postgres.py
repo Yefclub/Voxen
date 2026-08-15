@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import asyncpg
 import pytest
 
-from src import db, research_db, voxen_settings
+from src import brain_reconciliation, db, research_db, voxen_settings
 from src.source_freshness import mark_reviewable_derivatives_stale
 from src.voxen_crypto import encrypt
 
@@ -855,3 +855,142 @@ async def test_source_refresh_marker_is_durable_until_reconciliation(
     monkeypatch.setattr(db, "reindex_transcript_brain_node", reindex)
     assert await db.reindex_missing_transcript_brain_nodes(limit=10) == 1
     reindex.assert_awaited_once_with("refresh-user", "refresh-transcript")
+
+
+async def test_resolved_brain_warning_is_promoted_atomically_and_idempotently(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "brain-warning-user")
+    await _insert_transcript(
+        postgres,
+        transcript_id="brain-warning-transcript",
+        user_id="brain-warning-user",
+        tagging_status="COMPLETE",
+    )
+    await postgres.execute(
+        """
+        UPDATE "Transcript"
+        SET "summaryStatus" = 'COMPLETE'::"EnrichmentStatus"
+        WHERE id = 'brain-warning-transcript'
+        """
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "BrainNode" (
+          id, "userId", key, type, label, status, metadata,
+          "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+          'brain-warning-node', 'brain-warning-user',
+          'TRANSCRIPT:brain-warning-transcript', 'CONTENT'::"BrainNodeType",
+          'Indexed', 'ACTIVE'::"ContentStatus", '{"topicIndexVersion":1}'::jsonb,
+          'TRANSCRIPT'::"BrainSourceType", 'brain-warning-transcript', NOW(), NOW()
+        )
+        """
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "Job" (
+          id, "userId", type, status, "sourceUrl", "transcriptId", "errorMsg",
+          "progressStage", "progressPercent", "queuedAt", "finishedAt"
+        ) VALUES (
+          'brain-warning-job', 'brain-warning-user',
+          'DOWNLOAD_AND_TRANSCRIBE'::"JobType", 'COMPLETED_WITH_WARNINGS'::"JobStatus",
+          'https://example.test/brain-warning', 'brain-warning-transcript',
+          'A indexação no Brain será repetida automaticamente. '
+          'Resumo pendente de nova tentativa. Tags pendentes de nova tentativa.',
+          'research_failed', 100, NOW(), NOW()
+        )
+        """
+    )
+
+    repaired = await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10)
+
+    assert len(repaired) == 1
+    assert repaired[0]["id"] == "brain-warning-job"
+    job = await postgres.fetchrow(
+        'SELECT status::text, "errorMsg", "progressStage", "progressPercent" '
+        'FROM "Job" WHERE id = $1',
+        "brain-warning-job",
+    )
+    assert dict(job) == {
+        "status": "DONE",
+        "errorMsg": None,
+        "progressStage": "done",
+        "progressPercent": 100,
+    }
+    event = await postgres.fetchrow(
+        'SELECT stage, percent, "transcriptId", "errorMsg" '
+        'FROM "JobProgressEvent" WHERE "jobId" = $1',
+        "brain-warning-job",
+    )
+    assert dict(event) == {
+        "stage": "done",
+        "percent": 100,
+        "transcriptId": "brain-warning-transcript",
+        "errorMsg": None,
+    }
+    assert await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10) == []
+
+
+async def test_refresh_warning_waits_for_fresh_brain_node_before_promotion(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "brain-refresh-user")
+    await _insert_transcript(
+        postgres,
+        transcript_id="brain-refresh-transcript",
+        user_id="brain-refresh-user",
+        tagging_status="COMPLETE",
+    )
+    await postgres.execute(
+        """
+        UPDATE "Transcript"
+        SET "summaryStatus" = 'COMPLETE'::"EnrichmentStatus",
+            "updatedAt" = NOW() - INTERVAL '1 hour'
+        WHERE id = 'brain-refresh-transcript'
+        """
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "BrainNode" (
+          id, "userId", key, type, label, status, metadata,
+          "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+          'brain-refresh-node', 'brain-refresh-user',
+          'TRANSCRIPT:brain-refresh-transcript', 'CONTENT'::"BrainNodeType",
+          'Stale index', 'ACTIVE'::"ContentStatus", '{"topicIndexVersion":1}'::jsonb,
+          'TRANSCRIPT'::"BrainSourceType", 'brain-refresh-transcript',
+          NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'
+        )
+        """
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "Job" (
+          id, "userId", type, status, "sourceUrl", "refreshTranscriptId", "errorMsg",
+          "progressStage", "progressPercent", "queuedAt", "finishedAt"
+        ) VALUES (
+          'brain-refresh-job', 'brain-refresh-user',
+          'SCRAPE_WEB'::"JobType", 'COMPLETED_WITH_WARNINGS'::"JobStatus",
+          'https://example.test/brain-refresh', 'brain-refresh-transcript',
+          'A indexação no Brain será repetida automaticamente.',
+          'completed_with_warnings', 100, NOW(), NOW()
+        )
+        """
+    )
+
+    assert await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10) == []
+
+    await postgres.execute(
+        'UPDATE "BrainNode" SET "updatedAt" = NOW() WHERE id = $1',
+        "brain-refresh-node",
+    )
+    repaired = await brain_reconciliation.reconcile_resolved_warning_jobs(limit=10)
+
+    assert len(repaired) == 1
+    assert repaired[0]["transcriptId"] == "brain-refresh-transcript"
+    event_transcript_id = await postgres.fetchval(
+        'SELECT "transcriptId" FROM "JobProgressEvent" WHERE "jobId" = $1',
+        "brain-refresh-job",
+    )
+    assert event_transcript_id == "brain-refresh-transcript"

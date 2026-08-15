@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import ANY, AsyncMock
 
 import asyncpg
 import pytest
 
-from src import db, events, main, pipeline
+from src import brain_reconciliation, db, events, main, pipeline
 from src.job_lease import (
     JobLease,
     JobLeaseLostError,
@@ -508,7 +510,7 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     assert summary_queue == tag_queue == research_queue == brain_queue == []
 
 
-async def test_research_dispatcher_uses_atomic_policy_claim(
+async def test_research_dispatcher_reconciles_lifecycle_without_mutating_parent_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     claim = AsyncMock(return_value=[])
@@ -526,12 +528,11 @@ async def test_research_dispatcher_uses_atomic_policy_claim(
     publish = AsyncMock()
     monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
     monkeypatch.setattr(main.research_db, "reconcile_transcript_enrichment_lifecycle", reconcile)
-    monkeypatch.setattr(main.research_enrichment, "publish_stage", publish)
+    monkeypatch.setattr(main.events, "publish_job_event", publish)
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
     claim.assert_awaited_once_with(limit=2)
-    publish.assert_awaited_once()
-    assert publish.await_args.args[1] == "research_cancelled"
+    publish.assert_not_awaited()
 
 
 async def test_research_dispatcher_fails_closed_when_atomic_claim_fails(
@@ -547,6 +548,42 @@ async def test_research_dispatcher_fails_closed_when_atomic_claim_fails(
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
     claim.assert_awaited_once_with(limit=2)
+
+
+async def test_brain_warning_reconciler_publishes_atomically_recorded_done_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_at = datetime(2026, 8, 15, tzinfo=UTC)
+    reconcile = AsyncMock(
+        return_value=[
+            {
+                "id": "job-1",
+                "userId": "user-1",
+                "transcriptId": "transcript-1",
+                "eventId": "event-1",
+                "createdAt": created_at,
+            }
+        ]
+    )
+    publish = AsyncMock()
+    reindex = AsyncMock(return_value=0)
+    monkeypatch.setattr(brain_reconciliation.db, "reindex_missing_transcript_brain_nodes", reindex)
+    monkeypatch.setattr(brain_reconciliation, "reconcile_resolved_warning_jobs", reconcile)
+    monkeypatch.setattr(brain_reconciliation.events, "publish_recorded_job_event", publish)
+
+    log = SimpleNamespace(info=lambda *_args, **_kwargs: None)
+    assert await brain_reconciliation.reconcile_once(log, limit=50) == 1
+    reindex.assert_awaited_once_with(limit=50)
+    reconcile.assert_awaited_once_with(limit=50)
+    publish.assert_awaited_once_with(
+        "user-1",
+        "job-1",
+        "done",
+        event_id="event-1",
+        created_at=created_at,
+        percent=100,
+        transcript_id="transcript-1",
+    )
 
 
 async def test_job_event_survives_redis_outage_after_postgres_snapshot(

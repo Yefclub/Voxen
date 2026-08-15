@@ -25,6 +25,7 @@ import structlog
 from . import (
     automation,
     brain_compilation,
+    brain_reconciliation,
     db,
     events,
     research_reconciliation,
@@ -142,9 +143,7 @@ async def _enrichment_reconciliation_loop(
     """Reconcilia melhorias em loop independente do reaper de jobs."""
     while not stop.is_set():
         try:
-            indexed = await db.reindex_missing_transcript_brain_nodes(limit=50)
-            if indexed:
-                log.info("brain-reconciliation-indexed", count=indexed)
+            await brain_reconciliation.reconcile_once(log, limit=50)
         except Exception as exc:  # noqa: BLE001
             log.error(
                 "brain-reconciliation-failed",
