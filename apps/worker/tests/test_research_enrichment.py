@@ -668,6 +668,13 @@ async def test_process_fails_closed_without_config(monkeypatch: pytest.MonkeyPat
             "research-enrichment-provider-rejected",
             "OPENROUTER_REQUEST_REJECTED",
         ),
+        (
+            402,
+            False,
+            "OPENROUTER_CREDITS_EXHAUSTED",
+            "research-enrichment-provider-rejected",
+            "OPENROUTER_CREDITS_EXHAUSTED",
+        ),
     ],
 )
 async def test_process_classifies_provider_failures(

@@ -53,8 +53,9 @@ quando apenas uma etapa derivada precisar de repetição.
 - When uma requisição externa admitir fallback configurado, the system shall
   tentar as alternativas elegíveis antes de declarar falha terminal.
 - When o TikTok devolver uma resposta de challenge ou extração inesperada, the
-  system shall repetir a extração com impersonação compatível antes de orientar
-  nova tentativa, configuração de acesso ou upload manual.
+  system shall repetir a extração com impersonação compatível e, se a falha
+  persistir, usar o player público oficial como fallback antes de orientar nova
+  tentativa, configuração de acesso ou upload manual.
 - When registros legados contiverem pendência de Brain já resolvida, the system
   shall reconciliá-los idempotentemente sem repetir a ingestão canônica.
 
@@ -81,6 +82,12 @@ quando apenas uma etapa derivada precisar de repetição.
   system shall não classificar essa contenção isolada como falha terminal.
 - If o provedor retornar uma resposta não retentável, then the system shall não
   reduzi-la a erro inesperado sem código e etapa identificáveis.
+- If a OpenRouter responder que a conta não possui créditos suficientes, then
+  the system shall classificar a falha como saldo insuficiente, não repetir a
+  chamada e orientar o admin a recarregar os créditos ou trocar de provedor.
+- If o player público do TikTok devolver mídia fora dos hosts oficiais, tamanho
+  acima do limite ou payload incompatível, then the system shall rejeitar o
+  fallback sem baixar ou processar o conteúdo.
 - If todas as tentativas automáticas forem esgotadas, then the system shall parar
   o loop, preservar o estado utilizável e oferecer uma ação manual compatível com
   a etapa que falhou.
@@ -102,10 +109,16 @@ quando apenas uma etapa derivada precisar de repetição.
   tentativas, mantendo o conteúdo principal utilizável.
 - [ ] Falhas OpenRouter preservam código seguro, etapa, HTTP status quando
   disponível e identificador de requisição quando seguro.
+- [ ] HTTP 402 da OpenRouter é exibido como créditos insuficientes, com código
+  próprio e sem novas tentativas automáticas.
 - [ ] A análise do X usa fallback configurado e retorna mensagem acionável quando
   todos os caminhos forem rejeitados.
-- [ ] O fluxo do TikTok reconhece resposta inesperada, tenta impersonação e retorna
+- [ ] O fluxo do TikTok reconhece resposta inesperada, tenta impersonação, usa o
+  player público oficial para obter e transcrever a mídia e só então retorna uma
   mensagem específica se ainda não conseguir extrair.
+- [ ] O fallback do player do TikTok aceita apenas HTTPS e hosts oficiais,
+  limita o tamanho da resposta e nunca registra URLs assinadas ou payloads
+  externos brutos.
 - [ ] O admin consegue distinguir configuração ausente, autenticação rejeitada,
   rate limit, indisponibilidade e payload recusado sem acessar dados sensíveis.
 - [ ] Testes automatizados cobrem reconciliação, concorrência, estados separados,
@@ -129,3 +142,7 @@ quando apenas uma etapa derivada precisar de repetição.
   não bloqueia a conclusão da ingestão canônica.
 - Diagnósticos externos devem privilegiar códigos e headers allowlisted; corpos de
   resposta permanecem fora do banco e dos logs.
+
+> 2026-08-15: ajustado o fallback do TikTok para usar o player público oficial
+> após a impersonação e a classificação do HTTP 402 da OpenRouter após evidência
+> dos reprocessamentos em produção.

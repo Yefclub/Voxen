@@ -228,6 +228,11 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
         )
         await _fail_enrichment(item=item, retry=False, error="RESEARCH_AUTH_ERROR")
     except openrouter.OpenrouterRejectedError as exc:
+        diagnostic_code = (
+            "OPENROUTER_CREDITS_EXHAUSTED"
+            if exc.status_code == 402
+            else "OPENROUTER_REQUEST_REJECTED"
+        )
         await _record_failure_cost(
             item=item,
             model=model,
@@ -241,9 +246,14 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
         log.warning(
             "research-enrichment-provider-rejected",
             enrichment_id=enrichment_id,
-            **error_diagnostic(exc, "OPENROUTER_REQUEST_REJECTED"),
+            **error_diagnostic(exc, diagnostic_code),
         )
-        await _fail_enrichment(item=item, retry=False, error="RESEARCH_UPSTREAM_REJECTED")
+        persisted_error = (
+            "OPENROUTER_CREDITS_EXHAUSTED"
+            if exc.status_code == 402
+            else "RESEARCH_UPSTREAM_REJECTED"
+        )
+        await _fail_enrichment(item=item, retry=False, error=persisted_error)
     except (TimeoutError, httpx.TransportError, openrouter.OpenrouterTransientError) as exc:
         rate_limited = (
             isinstance(exc, openrouter.OpenrouterTransientError) and exc.status_code == 429
