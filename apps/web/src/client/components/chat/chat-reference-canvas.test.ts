@@ -27,11 +27,13 @@ const citation = (overrides: Partial<ChatCitation> = {}): ChatCitation => ({
 describe('chat reference canvas contract', () => {
   test('source cards select an in-app reference instead of navigating directly', () => {
     expect(panelSource).toContain('onClick={() => onSelect(citation)}');
-    expect(panelSource).not.toContain('href={citation.href}\n            className');
+    expect(panelSource).toContain("citation.sourceType === 'WEB'");
+    expect(panelSource).toContain('target="_blank"');
   });
 
   test('inline citations delegate primary activation to the chat canvas', () => {
     expect(markdownSource).toContain('onClick={() => onOpen(citation)}');
+    expect(markdownSource).toContain("citation.sourceType === 'WEB'");
     expect(chatSource).toContain('onCitationOpen={(citation) =>');
     expect(chatSource).toContain('setSelectedSourceCitation(citation)');
   });

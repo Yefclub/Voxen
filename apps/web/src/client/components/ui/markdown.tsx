@@ -239,12 +239,13 @@ function InlineCitation({
   children: React.ReactNode;
   onOpen?: (citation: ChatCitation) => void;
 }) {
+  const external = citation.sourceType === 'WEB';
   const className =
     'mx-0.5 inline-flex -translate-y-px items-center rounded-full bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[var(--color-app-muted)] no-underline transition-colors hover:bg-[var(--color-accent-primary)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]';
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {onOpen ? (
+        {onOpen && !external ? (
           <button
             type="button"
             className={className}
@@ -254,7 +255,12 @@ function InlineCitation({
             {children}
           </button>
         ) : (
-          <a href={citation.href} className={className}>
+          <a
+            href={citation.href}
+            target={external ? '_blank' : undefined}
+            rel={external ? 'noopener noreferrer' : undefined}
+            className={className}
+          >
             {children}
           </a>
         )}

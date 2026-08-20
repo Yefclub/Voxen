@@ -23,9 +23,9 @@ const verified: ChatCitation = {
 };
 
 describe('citações inline do chat', () => {
-  test('transforma somente marcadores associados a evidência verificada', () => {
+  test('transforma evidência verificada e oculta marcadores sem fonte', () => {
     expect(renderInlineCitations('Afirmação [[1]] e marcador ausente [[2]].', [verified])).toBe(
-      `Afirmação [1](${inlineCitationHref(1)}) e marcador ausente [[2]].`,
+      `Afirmação [1](${inlineCitationHref(1)}) e marcador ausente .`,
     );
   });
 
@@ -37,7 +37,7 @@ describe('citações inline do chat', () => {
       verified: false,
       kind: 'NO_EVIDENCE' as const,
     };
-    expect(renderInlineCitations('[[1]]', [stale, unsupported])).toBe('[[1]]');
+    expect(renderInlineCitations('[[1]]', [stale, unsupported])).toBe('');
     expect(citationFromInlineHref(inlineCitationHref(1), [stale, unsupported])).toBeNull();
   });
 

@@ -26,8 +26,9 @@ WORKDIR /app
 # digest da instrução; atualize a data quando o scanner apontar fix disponível.
 # Runtime dependencies are copied from the uv-managed virtualenv below. The
 # global pip bundle is unnecessary in production and ships vendored packages.
-ARG VOXEN_APT_SECURITY_REFRESH=2026-08-03
-RUN apt-get update \
+ARG VOXEN_APT_SECURITY_REFRESH=2026-08-20
+RUN echo "Refreshing APT security packages: ${VOXEN_APT_SECURITY_REFRESH}" \
+    && apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
     && python -m pip uninstall --yes pip \
