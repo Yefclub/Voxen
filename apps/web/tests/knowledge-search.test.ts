@@ -4,16 +4,18 @@ import {
   mergeKnowledgeResults,
   applyHybridRanks,
   fallbackToLexical,
-  fuseKnowledgeQueryResults,
   fuseTranscriptCandidates,
-  normalizeKnowledgeQueries,
   preloadRelevantContent,
   searchKnowledgeBase,
-  searchKnowledgeBaseMultiQuery,
   semanticTranscriptNodeWhere,
   shouldUseSemanticRescue,
   type KnowledgeSearchResult,
 } from '../src/lib/retrieval';
+import {
+  fuseKnowledgeQueryResults,
+  normalizeKnowledgeQueries,
+  searchKnowledgeBaseMultiQuery,
+} from '../src/lib/knowledge-search-multiquery';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
