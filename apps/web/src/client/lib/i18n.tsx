@@ -28,6 +28,7 @@ import {
   ptBrTranscriptAnnotationMessages,
 } from './transcript-annotations-i18n';
 import { enTranscriptFlowMessages, ptBrTranscriptFlowMessages } from './transcript-flow-i18n';
+import { enKnowledgeSearchMessages, ptBrKnowledgeSearchMessages } from './knowledge-search-i18n';
 export type Locale = 'pt-BR' | 'en';
 export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> = {
   'pt-BR': { nativeName: 'Português (Brasil)', shortName: 'PT-BR' },
@@ -45,6 +46,7 @@ const ptBRMessages = {
   ...ptBrNoteVersioningMessages,
   ...ptBrMermaidCanvasMessages,
   ...ptBrKnowledgeDeletionMessages,
+  ...ptBrKnowledgeSearchMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -666,7 +668,6 @@ const ptBRMessages = {
   'chat.historyLabel': 'Histórico da conversa',
   'chat.scrollLatest': 'Ir ao mais recente',
   'chat.compactionStatus': 'Memória resumida: {before} → {after} tokens.',
-  'chat.toolParamsSafe': 'Parâmetros recebidos com segurança.',
   'tools.web_search': 'Pesquisa na web',
   'tools.scrape_url': 'Leitura de página',
   'tools.search_transcripts': 'Busca na biblioteca',
@@ -1423,6 +1424,7 @@ export type I18nKey = keyof typeof ptBRMessages;
 export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>) => string;
 
 const enMessages: Record<I18nKey, string> = {
+  ...enKnowledgeSearchMessages,
   ...enMermaidCanvasMessages,
   ...enNoteVersioningMessages,
   ...enReleaseUpdateMessages,
@@ -2045,7 +2047,6 @@ const enMessages: Record<I18nKey, string> = {
   'chat.historyLabel': 'Conversation history',
   'chat.scrollLatest': 'Jump to latest',
   'chat.compactionStatus': 'Memory compacted: {before} → {after} tokens.',
-  'chat.toolParamsSafe': 'Parameters received safely.',
   'tools.web_search': 'Web search',
   'tools.scrape_url': 'Page read',
   'tools.search_transcripts': 'Library search',

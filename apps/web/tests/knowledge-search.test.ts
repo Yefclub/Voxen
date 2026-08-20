@@ -11,6 +11,11 @@ import {
   shouldUseSemanticRescue,
   type KnowledgeSearchResult,
 } from '../src/lib/retrieval';
+import {
+  fuseKnowledgeQueryResults,
+  normalizeKnowledgeQueries,
+  searchKnowledgeBaseMultiQuery,
+} from '../src/lib/knowledge-search-multiquery';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -138,6 +143,65 @@ describe('mergeKnowledgeResults', () => {
         semanticRescue: true,
       }).map((item) => item.id),
     ).toEqual(['conceito-equivalente', 'keyword-fraca']);
+  });
+});
+
+describe('multiquery knowledge search', () => {
+  it('normaliza consultas e limita o plano a três variantes distintas', () => {
+    expect(
+      normalizeKnowledgeQueries(['  repo   oficial ', 'REPO oficial', 'GitHub origem', 'quarta']),
+    ).toEqual(['repo oficial', 'GitHub origem', 'quarta']);
+  });
+
+  it('funde e deduplica resultados por reciprocal-rank fusion', () => {
+    const fused = fuseKnowledgeQueryResults([
+      [result('transcript', 'a', 0.9), result('note', 'b', 0.8)],
+      [result('note', 'b', 0.9), result('external_enrichment', 'c', 0.8)],
+    ]);
+
+    expect(fused.map((item) => `${item.sourceType}:${item.id}`)).toEqual([
+      'note:b',
+      'transcript:a',
+      'external_enrichment:c',
+    ]);
+  });
+
+  it('mantém o limite padrão para valores não finitos', () => {
+    const candidates = Array.from({ length: 9 }, (_, index) =>
+      result('transcript', `resultado-${index}`, 0.9),
+    );
+
+    expect(fuseKnowledgeQueryResults([candidates], Number.NaN)).toHaveLength(8);
+    expect(fuseKnowledgeQueryResults([candidates], Number.POSITIVE_INFINITY)).toHaveLength(8);
+  });
+
+  it('executa as consultas normalizadas e expõe um plano seguro', async () => {
+    const calls: string[] = [];
+    const search = async (_userId: string, query: string) => {
+      calls.push(query);
+      return query === 'principal'
+        ? [result('transcript', 'video', 0.9)]
+        : [
+            { ...result('transcript', 'video', 0.8), retrievalSource: 'hybrid' as const },
+            result('note', 'nota', 0.7),
+          ];
+    };
+
+    const output = await searchKnowledgeBaseMultiQuery(
+      'user-a',
+      ['principal', 'variante', 'principal'],
+      8,
+      search,
+    );
+
+    expect(calls).toEqual(['principal', 'variante']);
+    expect(output.results.map((item) => item.id)).toEqual(['video', 'nota']);
+    expect(output.plan).toEqual({
+      queries: ['principal', 'variante'],
+      strategy: 'reciprocal-rank-fusion',
+      sourceCounts: { transcript: 1, note: 1, external_enrichment: 0 },
+      semanticRescueUsed: true,
+    });
   });
 });
 
