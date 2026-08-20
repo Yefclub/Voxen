@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1787243657",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Clearer knowledge-base search in chat",
+    "body": "Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped.",
+    "pr": 805,
+    "author": "Kalyel",
+    "date": "2026-08-20T13:34:05-03:00",
+    "translations": {
+      "en": {
+        "title": "Clearer knowledge-base search in chat",
+        "body": "Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped."
+      },
+      "pt-BR": {
+        "title": "Busca na Base de conhecimento mais clara no chat",
+        "body": "O chat agora pesquisa a Base de conhecimento com variações complementares de consulta e combina resultados repetidos. Expanda a etapa de busca para ver as consultas usadas, as fontes encontradas e se a recuperação semântica ajudou."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/805"
+  },
+  {
     "version": "0.14.5-dev.1787241267",
     "channel": "dev",
     "type": "fix",

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1787243657 — 2026-08-20 · Dev
+
+### ✨ Clearer knowledge-base search in chat
+
+Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped.
+
 ## v0.14.5-dev.1787241267 — 2026-08-20 · Dev
 
 ### 🐛 External research sources now open from chat citations
