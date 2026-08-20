@@ -54,6 +54,7 @@ import {
   type ToolEvent,
 } from '../lib/chat-segments';
 import { useThinkingDisclosure } from '../lib/thinking-disclosure';
+import { parseKnowledgeSearchDisclosure } from '../lib/knowledge-search-plan';
 import { useMediaQuery } from '../lib/use-media-query';
 import {
   MAX_MESSAGE_ATTACHMENTS,
@@ -218,6 +219,8 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
   const Icon = FAMILY_ICON[family];
   const awaitingHitl = tool.state === 'approval-required';
   const expandable = tool.output !== undefined && !awaitingHitl;
+  const searchPlan =
+    tool.name === 'search_knowledge' ? parseKnowledgeSearchDisclosure(tool.output) : null;
   const [open, setOpen] = useState(false);
 
   return (
@@ -275,7 +278,33 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
                 {t('chat.toolParamsSafe')}
               </p>
             )}
-            {tool.output !== undefined ? (
+            {searchPlan && (
+              <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+                <p className="font-medium text-[var(--color-app-subtle)]">
+                  {t('chat.searchPlanTitle')}
+                </p>
+                <p>{t('chat.searchPlanQueries', { count: searchPlan.queries.length })}</p>
+                <ul className="list-disc pl-4">
+                  {searchPlan.queries.map((query) => (
+                    <li key={query}>{query}</li>
+                  ))}
+                </ul>
+                <p>{t('chat.searchPlanFusion')}</p>
+                <p>
+                  {t('chat.searchPlanSources', {
+                    transcripts: searchPlan.sourceCounts.transcript,
+                    notes: searchPlan.sourceCounts.note,
+                    enrichments: searchPlan.sourceCounts.external_enrichment,
+                  })}
+                </p>
+                <p>
+                  {searchPlan.semanticRescueUsed
+                    ? t('chat.searchPlanSemanticUsed')
+                    : t('chat.searchPlanSemanticNotUsed')}
+                </p>
+              </div>
+            )}
+            {tool.output !== undefined && !searchPlan ? (
               <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)] break-words">
                 {toolSummary(tool.output)}
               </p>

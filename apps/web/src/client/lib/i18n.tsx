@@ -667,6 +667,14 @@ const ptBRMessages = {
   'chat.scrollLatest': 'Ir ao mais recente',
   'chat.compactionStatus': 'Memória resumida: {before} → {after} tokens.',
   'chat.toolParamsSafe': 'Parâmetros recebidos com segurança.',
+  'chat.searchPlanTitle': 'Como a busca foi feita',
+  'chat.searchPlanQueries': '{count} consultas semânticas usadas:',
+  'chat.searchPlanFusion': 'Resultados combinados e deduplicados por relevância recorrente.',
+  'chat.searchPlanSources':
+    '{transcripts} transcrições · {notes} notas · {enrichments} contextos externos',
+  'chat.searchPlanSemanticUsed': 'Resgate semântico contribuiu para estes resultados.',
+  'chat.searchPlanSemanticNotUsed':
+    'Resgate semântico não foi necessário ou não estava disponível.',
   'tools.web_search': 'Pesquisa na web',
   'tools.scrape_url': 'Leitura de página',
   'tools.search_transcripts': 'Busca na biblioteca',
@@ -2046,6 +2054,13 @@ const enMessages: Record<I18nKey, string> = {
   'chat.scrollLatest': 'Jump to latest',
   'chat.compactionStatus': 'Memory compacted: {before} → {after} tokens.',
   'chat.toolParamsSafe': 'Parameters received safely.',
+  'chat.searchPlanTitle': 'How the search was performed',
+  'chat.searchPlanQueries': '{count} semantic queries used:',
+  'chat.searchPlanFusion': 'Results combined and deduplicated by recurring relevance.',
+  'chat.searchPlanSources':
+    '{transcripts} transcripts · {notes} notes · {enrichments} external contexts',
+  'chat.searchPlanSemanticUsed': 'Semantic rescue contributed to these results.',
+  'chat.searchPlanSemanticNotUsed': 'Semantic rescue was not needed or was unavailable.',
   'tools.web_search': 'Web search',
   'tools.scrape_url': 'Page read',
   'tools.search_transcripts': 'Library search',
