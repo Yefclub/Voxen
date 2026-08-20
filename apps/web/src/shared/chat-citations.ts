@@ -1,7 +1,7 @@
 export type CitationKind = 'EVIDENCE' | 'NO_EVIDENCE' | 'INFERENCE';
 
 export type ChatCitation = {
-  sourceType: 'TRANSCRIPT';
+  sourceType: 'TRANSCRIPT' | 'WEB';
   sourceId: string;
   title: string;
   quote: string;
@@ -25,13 +25,27 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function normalizeExternalHref(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Defesa da fronteira JSONB para mensagens antigas/corrompidas. */
 export function parseChatCitations(value: unknown): ChatCitation[] | null {
   if (!Array.isArray(value)) return null;
   const result: ChatCitation[] = [];
   for (const raw of value) {
     const item = asRecord(raw);
-    if (!item || item.sourceType !== 'TRANSCRIPT' || typeof item.sourceId !== 'string') continue;
+    if (
+      !item ||
+      (item.sourceType !== 'TRANSCRIPT' && item.sourceType !== 'WEB') ||
+      typeof item.sourceId !== 'string'
+    )
+      continue;
     if (
       typeof item.title !== 'string' ||
       typeof item.quote !== 'string' ||
@@ -48,8 +62,10 @@ export function parseChatCitations(value: unknown): ChatCitation[] | null {
       item.inlineOrdinal > 0
         ? item.inlineOrdinal
         : null;
+    const href = item.sourceType === 'WEB' ? normalizeExternalHref(item.href) : item.href;
+    if (!href) continue;
     result.push({
-      sourceType: 'TRANSCRIPT',
+      sourceType: item.sourceType,
       sourceId: item.sourceId,
       title: item.title,
       quote: item.quote,
@@ -58,7 +74,7 @@ export function parseChatCitations(value: unknown): ChatCitation[] | null {
       toLine: num('toLine'),
       fromSec: num('fromSec'),
       toSec: num('toSec'),
-      href: item.href,
+      href,
       kind: item.kind,
       verified: item.verified === true,
       inlineOrdinal,

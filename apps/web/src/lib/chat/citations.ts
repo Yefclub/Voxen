@@ -1,6 +1,7 @@
 import { db } from '../db';
 import type { StoredToolEvent } from './runtime';
 import type { ChatCitation } from '../../shared/chat-citations';
+import { webCitationsFromToolEvents } from './external-citations';
 
 type CitationClaim = {
   transcriptId: string;
@@ -74,11 +75,13 @@ export async function citationsFromToolEvents(
     }
   }
   const ids = [...new Set(candidates.map(({ claim }) => claim.transcriptId))];
-  if (ids.length === 0) return [];
-  const sources = await db.transcript.findMany({
-    where: { id: { in: ids }, userId, status: 'ACTIVE' },
-    select: { id: true, title: true },
-  });
+  const sources =
+    ids.length === 0
+      ? []
+      : await db.transcript.findMany({
+          where: { id: { in: ids }, userId, status: 'ACTIVE' },
+          select: { id: true, title: true },
+        });
   const sourceById = new Map(sources.map((source) => [source.id, source]));
   const seen = new Set<string>();
   const citations: ChatCitation[] = [];
@@ -119,5 +122,6 @@ export async function citationsFromToolEvents(
       inlineOrdinal: citationInlineOrdinal,
     });
   }
+  citations.push(...webCitationsFromToolEvents(events, inlineOrdinal));
   return citations;
 }

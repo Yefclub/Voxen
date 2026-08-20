@@ -68,16 +68,12 @@ function CitationSourceList({
       {citations.map((citation, index) => {
         const location = citationLocation(citation, t);
         const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
-        return (
-          <button
-            type="button"
-            key={`${citation.sourceId}-${index}`}
-            onClick={() => onSelect(citation)}
-            className={cn(
-              'block w-full rounded-xl border p-3.5 text-left transition-colors hover:bg-[var(--color-app-surface)]',
-              verified ? 'border-emerald-500/30' : 'border-amber-500/35',
-            )}
-          >
+        const className = cn(
+          'block w-full rounded-xl border p-3.5 text-left transition-colors hover:bg-[var(--color-app-surface)]',
+          verified ? 'border-emerald-500/30' : 'border-amber-500/35',
+        );
+        const content = (
+          <>
             <div className="flex items-center gap-2 text-xs">
               <FileText
                 className={cn('h-3.5 w-3.5', verified ? 'text-emerald-400' : 'text-amber-300')}
@@ -99,6 +95,29 @@ function CitationSourceList({
             <blockquote className="mt-2 text-sm leading-relaxed text-[var(--color-app-subtle)]">
               “{citation.quote}”
             </blockquote>
+          </>
+        );
+        if (citation.sourceType === 'WEB') {
+          return (
+            <a
+              key={`${citation.sourceId}-${index}`}
+              href={citation.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={className}
+            >
+              {content}
+            </a>
+          );
+        }
+        return (
+          <button
+            type="button"
+            key={`${citation.sourceId}-${index}`}
+            onClick={() => onSelect(citation)}
+            className={className}
+          >
+            {content}
           </button>
         );
       })}
@@ -250,7 +269,7 @@ export function ChatSourcesPanel({
             }
             className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col bg-[var(--color-app-bg)] md:flex"
           >
-            {selectedCitation ? (
+            {selectedCitation?.sourceType === 'TRANSCRIPT' ? (
               <CitationCanvas
                 key={citationCanvasKey(selectedCitation)}
                 citation={selectedCitation}
@@ -288,7 +307,7 @@ export function ChatSourcesPanel({
         <SheetContent className="md:hidden">
           {citations && (
             <>
-              {selectedCitation ? (
+              {selectedCitation?.sourceType === 'TRANSCRIPT' ? (
                 <CitationCanvas
                   key={citationCanvasKey(selectedCitation)}
                   citation={selectedCitation}
