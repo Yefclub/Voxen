@@ -78,6 +78,7 @@ ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
 RUN apk upgrade --no-cache && \
     apk add --no-cache nodejs npm wget && \
     npm install -g prisma@6.19.3 --omit=dev && \
+    npm install --prefix /usr/local/lib/node_modules/prisma deepmerge-ts@8.0.0 --omit=dev && \
     addgroup -S voxen && adduser -S -G voxen -u 1001 voxen && \
     mkdir -p /data/storage && \
     chown -R voxen:voxen /data/storage && \
