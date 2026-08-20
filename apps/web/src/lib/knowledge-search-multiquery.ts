@@ -7,6 +7,11 @@ export type KnowledgeSearchPlan = {
   semanticRescueUsed: boolean;
 };
 
+function clampKnowledgeResultLimit(value: number, fallback = 8): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(Math.trunc(value), 25));
+}
+
 export function normalizeKnowledgeQueries(values: readonly string[]): string[] {
   const seen = new Set<string>();
   const queries: string[] = [];
@@ -49,7 +54,7 @@ export function fuseKnowledgeQueryResults(
   }
   return [...scores.values()]
     .sort((a, b) => b.score - a.score || b.item.createdAt.getTime() - a.item.createdAt.getTime())
-    .slice(0, Math.min(Math.max(Math.trunc(limit), 1), 25))
+    .slice(0, clampKnowledgeResultLimit(limit))
     .map(({ item }) => item);
 }
 

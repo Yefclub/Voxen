@@ -166,6 +166,15 @@ describe('multiquery knowledge search', () => {
     ]);
   });
 
+  it('mantém o limite padrão para valores não finitos', () => {
+    const candidates = Array.from({ length: 9 }, (_, index) =>
+      result('transcript', `resultado-${index}`, 0.9),
+    );
+
+    expect(fuseKnowledgeQueryResults([candidates], Number.NaN)).toHaveLength(8);
+    expect(fuseKnowledgeQueryResults([candidates], Number.POSITIVE_INFINITY)).toHaveLength(8);
+  });
+
   it('executa as consultas normalizadas e expõe um plano seguro', async () => {
     const calls: string[] = [];
     const search = async (_userId: string, query: string) => {
