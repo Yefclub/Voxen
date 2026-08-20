@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1787241267",
+    "channel": "dev",
+    "type": "fix",
+    "title": "External research sources now open from chat citations",
+    "body": "When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel.",
+    "pr": 802,
+    "author": "Kalyel",
+    "date": "2026-08-20T12:54:14-03:00",
+    "translations": {
+      "en": {
+        "title": "External research sources now open from chat citations",
+        "body": "When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel."
+      },
+      "pt-BR": {
+        "title": "Fontes de pesquisa externas agora abrem pelas citações do chat",
+        "body": "Quando uma resposta usa uma fonte de pesquisa da web ou do X, a citação agora vira um link de fonte clicável em vez de permanecer como marcador bruto. As citações da Biblioteca continuam abrindo o painel de referência interno."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/802"
+  },
+  {
     "version": "0.14.5-dev.1786800398",
     "channel": "dev",
     "type": "fix",

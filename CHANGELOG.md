@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1787241267 — 2026-08-20 · Dev
+
+### 🐛 External research sources now open from chat citations
+
+When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel.
+
 ## v0.14.5-dev.1786800398 — 2026-08-15 · Dev
 
 ### 🐛 More reliable reprocessing, duplicate prevention, and diagnostics
