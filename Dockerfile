@@ -71,7 +71,7 @@ COPY apps/worker/src ./src
 RUN uv sync --frozen --no-editable
 
 FROM node:22-bookworm-slim AS node-runtime
-FROM oven/bun:1.3 AS bun-runtime
+FROM oven/bun:1.4 AS bun-runtime
 
 # ---------------------------------------------------------------------------
 # chisel — servidor de túnel reverso embutido na imagem combinada.
