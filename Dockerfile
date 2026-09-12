@@ -51,7 +51,7 @@ COPY apps/web ./apps/web
 COPY packages ./packages
 
 
-FROM python:3.13-slim AS worker-builder
+FROM python:3.14-slim AS worker-builder
 WORKDIR /app/apps/worker
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -104,7 +104,7 @@ RUN set -eux; \
     /tmp/chisel --version; \
     rm -rf /var/lib/apt/lists/*
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 
 ARG VOXEN_VERSION
