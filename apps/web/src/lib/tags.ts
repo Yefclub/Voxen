@@ -6,9 +6,10 @@
 // ============================================================================
 
 import { db } from './db';
+import type { Prisma } from '../../prisma-generated/client';
 import { reindexLibraryFolderBrain, reindexTranscriptsBrain } from './brain';
 import { invalidateGraphCache } from './graph-cache';
-import { pickFolderId, slugifyTag } from './tags-generate';
+import { orderUniqueTagNames, pickFolderId, slugifyTag } from './tags-generate';
 
 export interface AppliedTag {
   id: string;
@@ -19,15 +20,16 @@ export interface AppliedTag {
 // Garante uma LibraryFolder de mesmo nome para a tag. Reutiliza uma pasta livre
 // (sem tag vinculada) se já existir; senão cria. Retorna o id da pasta.
 async function ensureFolderForTag(
+  tx: Prisma.TransactionClient,
   userId: string,
   name: string,
 ): Promise<{ folderId: string; created: boolean }> {
-  const free = await db.libraryFolder.findFirst({
+  const free = await tx.libraryFolder.findFirst({
     where: { userId, name: { equals: name, mode: 'insensitive' }, tag: { is: null } },
     select: { id: true },
   });
   if (free) return { folderId: free.id, created: false };
-  const created = await db.libraryFolder.create({
+  const created = await tx.libraryFolder.create({
     data: { userId, name: name.slice(0, 120), parentId: null },
     select: { id: true },
   });
@@ -36,11 +38,12 @@ async function ensureFolderForTag(
 
 // Cria/reutiliza a Tag por (userId, slug) e garante sua pasta. Idempotente.
 async function ensureTagWithFolder(
+  tx: Prisma.TransactionClient,
   userId: string,
   name: string,
 ): Promise<{ tag: AppliedTag; folderId: string; folderCreated: boolean }> {
   const slug = slugifyTag(name);
-  const existing = await db.tag.findUnique({
+  const existing = await tx.tag.findUnique({
     where: { userId_slug: { userId, slug } },
     select: { id: true, name: true, slug: true, folderId: true },
   });
@@ -49,10 +52,10 @@ async function ensureTagWithFolder(
     let folderId = existing.folderId;
     let folderCreated = false;
     if (!folderId) {
-      const f = await ensureFolderForTag(userId, existing.name);
+      const f = await ensureFolderForTag(tx, userId, existing.name);
       folderId = f.folderId;
       folderCreated = f.created;
-      await db.tag.update({ where: { id: existing.id }, data: { folderId } });
+      await tx.tag.update({ where: { id: existing.id }, data: { folderId } });
     }
     return {
       tag: { id: existing.id, name: existing.name, slug: existing.slug },
@@ -61,28 +64,12 @@ async function ensureTagWithFolder(
     };
   }
 
-  const { folderId, created: folderCreated } = await ensureFolderForTag(userId, name);
-  try {
-    const tag = await db.tag.create({
-      data: { userId, name: name.slice(0, 120), slug, folderId },
-      select: { id: true, name: true, slug: true },
-    });
-    return { tag, folderId, folderCreated };
-  } catch {
-    // Corrida: outra requisição criou a mesma tag. Relê.
-    const raced = await db.tag.findUnique({
-      where: { userId_slug: { userId, slug } },
-      select: { id: true, name: true, slug: true, folderId: true },
-    });
-    if (raced) {
-      return {
-        tag: { id: raced.id, name: raced.name, slug: raced.slug },
-        folderId: raced.folderId ?? folderId,
-        folderCreated: false,
-      };
-    }
-    throw new Error('Falha ao criar tag.');
-  }
+  const { folderId, created: folderCreated } = await ensureFolderForTag(tx, userId, name);
+  const tag = await tx.tag.create({
+    data: { userId, name: name.slice(0, 120), slug, folderId },
+    select: { id: true, name: true, slug: true },
+  });
+  return { tag, folderId, folderCreated };
 }
 
 /**
@@ -93,33 +80,50 @@ async function ensureTagWithFolder(
  */
 export async function applyTagsToTranscript(
   userId: string,
-  transcript: { id: string; folderId: string | null },
+  transcript: {
+    id: string;
+    folderId: string | null;
+    correctionRevision: number;
+    sourceVersion: number;
+    sourceChecksum: string | null;
+  },
   tagNames: string[],
 ): Promise<AppliedTag[]> {
-  const applied: AppliedTag[] = [];
-  const newFolderIds: string[] = [];
-  let firstFolderId: string | null = null;
-
-  for (const name of tagNames) {
-    const { tag, folderId, folderCreated } = await ensureTagWithFolder(userId, name);
-    if (firstFolderId === null) firstFolderId = folderId;
-    if (folderCreated) newFolderIds.push(folderId);
-    await db.transcriptTag.createMany({
-      data: [{ transcriptId: transcript.id, tagId: tag.id }],
+  const result = await db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ folderId: string | null }>>`
+      SELECT "folderId" FROM "Transcript"
+      WHERE id = ${transcript.id} AND "userId" = ${userId}
+        AND "correctionRevision" = ${transcript.correctionRevision}
+        AND "sourceVersion" = ${transcript.sourceVersion}
+        AND "sourceChecksum" IS NOT DISTINCT FROM ${transcript.sourceChecksum}
+      FOR UPDATE
+    `;
+    if (!rows[0]) return { applied: [] as AppliedTag[], newFolderIds: [] as string[] };
+    const orderedTagNames = orderUniqueTagNames(tagNames);
+    for (const { slug } of orderedTagNames) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${slug}`}))`;
+    }
+    const prepared: Array<{ tag: AppliedTag; folderId: string }> = [];
+    const newFolderIds: string[] = [];
+    for (const { name } of orderedTagNames) {
+      const { tag, folderId, folderCreated } = await ensureTagWithFolder(tx, userId, name);
+      if (folderCreated) newFolderIds.push(folderId);
+      prepared.push({ tag, folderId });
+    }
+    await tx.transcriptTag.createMany({
+      data: prepared.map(({ tag }) => ({ transcriptId: transcript.id, tagId: tag.id })),
       skipDuplicates: true,
     });
-    applied.push(tag);
-  }
-
-  // R-FOLDER: seta a pasta só quando ainda não há uma (não move conteúdo já
-  // organizado). updateMany com guarda folderId null evita corrida.
-  const targetFolderId = pickFolderId(transcript.folderId, firstFolderId);
-  if (targetFolderId && transcript.folderId === null) {
-    await db.transcript.updateMany({
-      where: { id: transcript.id, userId, folderId: null },
-      data: { folderId: targetFolderId },
-    });
-  }
+    const targetFolderId = pickFolderId(rows[0].folderId, prepared[0]?.folderId ?? null);
+    if (targetFolderId && rows[0].folderId === null) {
+      await tx.transcript.update({
+        where: { id: transcript.id },
+        data: { folderId: targetFolderId },
+      });
+    }
+    return { applied: prepared.map(({ tag }) => tag), newFolderIds };
+  });
+  const { applied, newFolderIds } = result;
 
   // Reindex Brain best-effort: pastas novas + transcript atualizado.
   if (newFolderIds.length > 0) {

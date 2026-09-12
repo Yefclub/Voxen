@@ -3,6 +3,15 @@ import type { GraphEdge as ReagraphEdge, GraphNode as ReagraphNode } from 'reagr
 import type { AppTheme } from './theme';
 import type { TranslateFn } from './i18n';
 import type { GraphIndexStatus } from '../../shared/graph-index';
+import type { GraphCommunity, GraphCommunityDetection } from '../../shared/graph-community';
+import type {
+  GraphCentralityMetadata,
+  GraphCentralityNodeScore,
+} from '../../shared/graph-centrality';
+import { buildGraphCommunitiesFromResponse, representativeFirst } from './graph-community-model';
+import { buildClientGraphCentrality } from './graph-centrality-model';
+
+export type { GraphCommunity } from '../../shared/graph-community';
 
 export type GraphNodeType =
   | 'transcript'
@@ -27,6 +36,7 @@ export type GraphEdgeKind =
   | 'next_to';
 
 export type GraphEvidence = 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+type CoreGraphSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
 
 export interface GraphNode {
   id: string;
@@ -35,11 +45,14 @@ export interface GraphNode {
   description: string | null;
   type: GraphNodeType;
   source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
-  sourceType: 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL' | null;
+  sourceType: CoreGraphSourceType | 'EXTERNAL_ENRICHMENT' | null;
   sourceId: string | null;
+  transcriptId?: string;
   weight: number;
   updatedAt: string;
 }
+
+export { nodePath } from './graph-node-path';
 
 export interface GraphEdge {
   id: string;
@@ -51,23 +64,19 @@ export interface GraphEdge {
   evidence?: GraphEvidence;
 }
 
-export interface GraphHub {
+export interface GraphHub extends Partial<Omit<GraphCentralityNodeScore, 'id'>> {
   id: string;
   label: string;
   type: GraphNodeType;
   degree: number;
 }
 
-export interface GraphCommunity {
-  id: number;
-  size: number;
-  label: string;
-  nodeIds: string[];
-}
-
 export interface GraphInsights {
   hubs: GraphHub[];
   communities: GraphCommunity[];
+  communityDetection?: GraphCommunityDetection;
+  nodeCentrality?: GraphCentralityNodeScore[];
+  centrality?: GraphCentralityMetadata;
   edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
@@ -338,67 +347,11 @@ export function filterGraphData(
 }
 
 export function buildGraphCommunities(data: GraphResp): GraphCommunity[] {
-  const nodeIds = new Set(data.nodes.map((node) => node.id));
-  const parent = new Map<string, string>(data.nodes.map((node) => [node.id, node.id]));
-  const degree = graphDegrees(data.edges);
-
-  const find = (id: string): string => {
-    let root = parent.get(id) ?? id;
-    while ((parent.get(root) ?? root) !== root) root = parent.get(root) ?? root;
-    let cursor = id;
-    while ((parent.get(cursor) ?? cursor) !== root) {
-      const next = parent.get(cursor) ?? root;
-      parent.set(cursor, root);
-      cursor = next;
-    }
-    return root;
-  };
-  const union = (from: string, to: string): void => {
-    const fromRoot = find(from);
-    const toRoot = find(to);
-    if (fromRoot !== toRoot) parent.set(toRoot, fromRoot);
-  };
-
-  for (const edge of data.edges) {
-    if (nodeIds.has(edge.from) && nodeIds.has(edge.to)) union(edge.from, edge.to);
-  }
-
-  const groups = new Map<string, GraphNode[]>();
-  for (const node of data.nodes) {
-    const root = find(node.id);
-    const group = groups.get(root) ?? [];
-    group.push(node);
-    groups.set(root, group);
-  }
-
-  return [...groups.values()]
-    .map((nodes) => {
-      const ordered = [...nodes].sort(
-        (a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || compareGraphNodes(a, b),
-      );
-      return { label: ordered[0]?.label ?? '', nodeIds: ordered.map((node) => node.id) };
-    })
-    .sort((a, b) => b.nodeIds.length - a.nodeIds.length || a.label.localeCompare(b.label))
-    .map((community, id) => ({
-      id,
-      size: community.nodeIds.length,
-      label: community.label,
-      nodeIds: community.nodeIds,
-    }));
+  return buildGraphCommunitiesFromResponse(data, compareGraphNodes);
 }
 
 export function buildGraphInsights(data: GraphResp): GraphInsights {
-  const degree = graphDegrees(data.edges);
-  const hubs = [...data.nodes]
-    .map<GraphHub>((node) => ({
-      id: node.id,
-      label: node.label,
-      type: node.type,
-      degree: degree.get(node.id) ?? 0,
-    }))
-    .filter((hub) => hub.degree > 0)
-    .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label))
-    .slice(0, 12);
+  const centrality = buildClientGraphCentrality(data);
   const edgeEvidence = { extracted: 0, inferred: 0, ambiguous: 0 };
   for (const edge of data.edges) {
     const evidence = edge.evidence ?? inferEdgeEvidence(edge);
@@ -406,7 +359,16 @@ export function buildGraphInsights(data: GraphResp): GraphInsights {
     else if (evidence === 'INFERRED') edgeEvidence.inferred += 1;
     else edgeEvidence.ambiguous += 1;
   }
-  return { hubs, communities: buildGraphCommunities(data), edgeEvidence };
+  return {
+    hubs: centrality.hubs,
+    communities: buildGraphCommunities(data),
+    ...(data.insights?.communityDetection
+      ? { communityDetection: data.insights.communityDetection }
+      : {}),
+    ...(centrality.nodeCentrality ? { nodeCentrality: centrality.nodeCentrality } : {}),
+    ...(centrality.centrality ? { centrality: centrality.centrality } : {}),
+    edgeEvidence,
+  };
 }
 
 export function buildSigmaGraphModel(
@@ -423,7 +385,7 @@ export function buildSigmaGraphModel(
   });
   const neighborhoods = new Map<string, Set<string>>();
   const nodeById = new Map(layout.nodes.map((node) => [node.id, node as GraphNode]));
-  const primaryNodeIds = communities[0]?.nodeIds ?? [];
+  const primaryNodeIds = communities[0]?.nodeIds ?? data.nodes.map((node) => node.id);
   const positions3d = buildGraphPositions3D(data, communities);
   const reagraphNodes: ReagraphNode[] = layout.nodes.map((node) => ({
     id: node.id,
@@ -507,7 +469,8 @@ export function buildGraphPositions3D(
     const localExtent = Math.min(330, 90 + Math.sqrt(community.size) * 15);
     const angleOffset = hashAngle(community.label);
 
-    community.nodeIds.forEach((nodeId, index) => {
+    const orderedNodeIds = representativeFirst(community);
+    orderedNodeIds.forEach((nodeId, index) => {
       if (index === 0) {
         positions.set(nodeId, center);
         return;
@@ -517,7 +480,7 @@ export function buildGraphPositions3D(
       const localRadius = localExtent * (0.22 + progress * 0.78);
       const direction = fibonacciSpherePoint(
         index - 1,
-        Math.max(community.size - 1, 1),
+        Math.max(orderedNodeIds.length - 1, 1),
         localRadius,
         hashAngle(nodeId) + angleOffset,
       );
@@ -529,6 +492,25 @@ export function buildGraphPositions3D(
     });
   }
 
+  const isolatedNodes = data.nodes
+    .filter((node) => !positions.has(node.id))
+    .sort(compareGraphNodes);
+  const isolatedRadius = communities.length > 0 ? Math.max(communityOrbit, 420) + 260 : 240;
+  isolatedNodes.forEach((node, index) => {
+    if (isolatedNodes.length === 1 && communities.length === 0) {
+      positions.set(node.id, { x: 0, y: 0, z: 0 });
+      return;
+    }
+    positions.set(
+      node.id,
+      fibonacciSpherePoint(
+        index,
+        isolatedNodes.length,
+        isolatedRadius,
+        hashAngle(isolatedNodes.map((item) => item.id).join('|')),
+      ),
+    );
+  });
   for (const node of data.nodes) {
     if (!positions.has(node.id)) positions.set(node.id, { x: 0, y: 0, z: 0 });
   }
@@ -576,17 +558,37 @@ export function buildGraphLayout(
     }
     const maxRadius = community.id === 0 ? coreMaxRadius : satMaxRadius;
     const angleOffset = ((hashString(community.label) % 360) * Math.PI) / 180;
-    community.nodeIds.forEach((nodeId, index) => {
+    const orderedNodeIds = representativeFirst(community);
+    orderedNodeIds.forEach((nodeId, index) => {
       if (index === 0) {
         positions.set(nodeId, { ...center, communityId: community.id });
         return;
       }
-      const progress = Math.sqrt(index / Math.max(community.nodeIds.length - 1, 1));
+      const progress = Math.sqrt(index / Math.max(orderedNodeIds.length - 1, 1));
       const angle = angleOffset + index * GOLDEN_ANGLE;
       const point = polarPoint(center, maxRadius * progress, angle);
       positions.set(nodeId, { ...point, communityId: community.id });
     });
   }
+
+  const isolatedNodes = data.nodes
+    .filter((node) => !positions.has(node.id))
+    .sort(compareGraphNodes);
+  const isolatedOrbit = Math.min(viewBox.width, viewBox.height) * 0.42;
+  isolatedNodes.forEach((node, index) => {
+    if (isolatedNodes.length === 1 && communities.length === 0) {
+      positions.set(node.id, { ...coreCenter, communityId: -1 });
+      return;
+    }
+    const angle =
+      (index / Math.max(isolatedNodes.length, 1)) * Math.PI * 2 -
+      Math.PI / 2 +
+      ((hashString(node.id) % 24) * Math.PI) / 180;
+    positions.set(node.id, {
+      ...polarPoint(coreCenter, isolatedOrbit, angle),
+      communityId: -1,
+    });
+  });
 
   const layoutNodes = [...data.nodes].sort(compareGraphNodes).map<GraphLayoutNode>((node) => {
     const point = positions.get(node.id) ?? {
@@ -616,13 +618,6 @@ export function buildGraphLayout(
     })
     .filter((edge): edge is GraphLayoutEdge => edge !== null);
   return { nodes: layoutNodes, edges: layoutEdges, viewBox };
-}
-
-export function nodePath(node: GraphNode): string | null {
-  if (!node.sourceId) return null;
-  if (node.sourceType === 'TRANSCRIPT') return `/transcricoes/${node.sourceId}`;
-  if (node.sourceType === 'NOTE') return `/notas/${node.sourceId}`;
-  return null;
 }
 
 export function resolveGraphViewBox(

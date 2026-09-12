@@ -8,6 +8,23 @@ describe('chat citation JSON boundary', () => {
     expect(parseChatCitations({ nope: true })).toBeNull();
     expect(parseChatCitations([{ sourceType: 'TRANSCRIPT', sourceId: 3 }])).toEqual([]);
   });
+
+  it('aceita apenas URLs HTTP(S) para fontes externas persistidas', () => {
+    const base = {
+      sourceType: 'WEB',
+      sourceId: 'external-source',
+      title: 'Fonte externa',
+      quote: 'Trecho',
+      href: 'https://example.com/article',
+      kind: 'INFERENCE',
+      verified: false,
+      inlineOrdinal: 1,
+    };
+    expect(parseChatCitations([{ ...base, href: 'javascript:alert(1)' }])).toEqual([]);
+    expect(parseChatCitations([{ ...base, href: 'https://example.com/article' }])).toEqual([
+      expect.objectContaining({ href: 'https://example.com/article' }),
+    ]);
+  });
 });
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;

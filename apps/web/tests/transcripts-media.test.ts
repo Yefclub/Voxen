@@ -6,14 +6,14 @@
 // ============================================================================
 
 import { describe, expect, it } from 'bun:test';
-import { buildOriginalResponseInit } from '../src/routes/transcripts';
+import { buildOriginalResponseInit } from '../src/lib/transcript-media-range';
 
 describe('buildOriginalResponseInit', () => {
   it('200 + accept-ranges + content-length quando não há Range', () => {
     const init = buildOriginalResponseInit({
       fallbackMime: 'video/mp4',
       filename: 'video.mp4',
-      s3ContentLength: 1000,
+      storageContentLength: 1000,
     });
     expect(init.status).toBe(200);
     expect(init.headers['accept-ranges']).toBe('bytes');
@@ -24,11 +24,11 @@ describe('buildOriginalResponseInit', () => {
     expect(init.headers['x-content-type-options']).toBe('nosniff');
   });
 
-  it('206 + content-range quando o S3 satisfaz o Range', () => {
+  it('206 + content-range quando o storage satisfaz o Range', () => {
     const init = buildOriginalResponseInit({
       rangeHeader: 'bytes=0-499',
-      s3ContentRange: 'bytes 0-499/1000',
-      s3ContentLength: 500,
+      storageContentRange: 'bytes 0-499/1000',
+      storageContentLength: 500,
       fallbackMime: 'video/mp4',
       filename: 'video.mp4',
     });
@@ -38,7 +38,7 @@ describe('buildOriginalResponseInit', () => {
     expect(init.headers['accept-ranges']).toBe('bytes');
   });
 
-  it('cai para 200 se veio Range mas o S3 não devolveu content-range', () => {
+  it('cai para 200 se veio Range mas o storage não devolveu content-range', () => {
     const init = buildOriginalResponseInit({
       rangeHeader: 'bytes=0-',
       fallbackMime: null,
@@ -48,10 +48,10 @@ describe('buildOriginalResponseInit', () => {
     expect(init.headers['content-type']).toBe('application/octet-stream');
   });
 
-  it('prioriza o MIME persistido sobre o do S3', () => {
+  it('prioriza o MIME persistido sobre o MIME do storage', () => {
     const init = buildOriginalResponseInit({
       fallbackMime: 'audio/mpeg',
-      s3ContentType: 'application/octet-stream',
+      storageContentType: 'application/octet-stream',
       filename: 'audio.mp3',
     });
     expect(init.headers['content-type']).toBe('audio/mpeg');

@@ -156,6 +156,52 @@ describeIfDb('jobs API', () => {
     expect(job!.status).toBe('QUEUED');
   });
 
+  it('POST /api/jobs/batch preserva ordem e resultados independentes', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    await completeSetup();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/batch', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: [VALID_URL, 'não-é-url', CANONICAL] }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{
+        index: number;
+        input: string;
+        result: { outcome: string; jobId?: string; sourceUrl?: string };
+      }>;
+    };
+    expect(body.items.map((item) => item.index)).toEqual([0, 1, 2]);
+    expect(body.items.map((item) => item.result.outcome)).toEqual([
+      'created',
+      'invalid',
+      'inflight',
+    ]);
+    expect(body.items[0]?.result.sourceUrl).toBe(CANONICAL);
+    expect(body.items[2]?.result.jobId).toBe(body.items[0]?.result.jobId);
+    expect(await db.job.count()).toBe(1);
+  });
+
+  it('POST /api/jobs/batch limita cada operação a 20 entradas', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/batch', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: Array.from({ length: 21 }, () => VALID_URL) }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(await db.job.count()).toBe(0);
+  });
+
   it('POST /api/jobs com link do X e modelo Grok configurado → cria ANALYZE_X', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
@@ -244,6 +290,81 @@ describeIfDb('jobs API', () => {
     expect(res2.status).toBe(409);
     const body = (await res2.json()) as { error: string; transcriptId: string };
     expect(body.transcriptId).toBe(t.id);
+  });
+
+  it('reconhece short link persistido como alias da URL canônica do TikTok', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    await completeSetup();
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const shortUrl = 'https://vt.tiktok.com/ZSVJHUMAG';
+    const canonicalUrl = 'https://www.tiktok.com/@renatoasse/video/7672827813124164872';
+    const transcript = await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'TIKTOK',
+        url: canonicalUrl,
+        title: 'TikTok já transcrito',
+        durationSec: 30,
+        language: 'pt',
+        transcriptionMethod: 'API',
+        mdPath: `workspaces/${admin.id}/transcripts/tiktok.md`,
+        plainText: 'conteúdo existente',
+        frontmatter: {},
+        sourceMetadata: { submittedUrl: shortUrl, canonicalUrl },
+      },
+    });
+
+    const response = await app.fetch(
+      new Request('http://localhost/api/jobs', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: shortUrl }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ transcriptId: transcript.id });
+    expect(await db.job.count()).toBe(0);
+  });
+
+  it('serializa submissões concorrentes da URL curta e canônica do TikTok', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    await completeSetup();
+    const shortUrl = 'https://vt.tiktok.com/ZSVJHUMAG';
+    const canonicalUrl = 'https://www.tiktok.com/@renatoasse/video/7672827813124164872';
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = input.toString();
+      if (url === shortUrl) {
+        return new Response(null, { status: 302, headers: { location: canonicalUrl } });
+      }
+      if (url === canonicalUrl) return new Response(null, { status: 200 });
+      throw new Error(`Unexpected URL in TikTok resolver test: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const request = (url: string) =>
+        app.fetch(
+          new Request('http://localhost/api/jobs', {
+            method: 'POST',
+            headers: { cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({ url }),
+          }),
+        );
+      const responses = await Promise.all([request(shortUrl), request(canonicalUrl)]);
+
+      expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+      expect(await db.job.count()).toBe(1);
+      expect(await db.job.findFirstOrThrow()).toMatchObject({
+        sourceUrl: canonicalUrl,
+        status: 'QUEUED',
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('POST /api/jobs/scrape URL inválida → 400', async () => {
@@ -430,6 +551,217 @@ describeIfDb('jobs API', () => {
     const body = (await res.json()) as { jobId: string };
     const retry = await db.job.findUniqueOrThrow({ where: { id: body.jobId } });
     expect(retry.type).toBe('SCRAPE_WEB');
+  });
+
+  it('retry reutiliza alias já persistido e retorna job ativo sem criar outro', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const shortUrl = 'https://vt.tiktok.com/ZSVJHUMAG';
+    const canonicalUrl = 'https://www.tiktok.com/@renatoasse/video/7672827813124164872';
+    const failed = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'FAILED',
+        sourceUrl: shortUrl,
+      },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'TIKTOK',
+        url: canonicalUrl,
+        title: 'TikTok já transcrito',
+        durationSec: 30,
+        language: 'pt',
+        transcriptionMethod: 'API',
+        mdPath: `workspaces/${admin.id}/transcripts/tiktok-retry.md`,
+        plainText: 'conteúdo existente',
+        frontmatter: {},
+        sourceMetadata: { submittedUrl: shortUrl, canonicalUrl },
+      },
+    });
+
+    const existingResponse = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(existingResponse.status).toBe(409);
+    expect(await existingResponse.json()).toMatchObject({ transcriptId: transcript.id });
+
+    await db.transcript.delete({ where: { id: transcript.id } });
+    const active = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'QUEUED',
+        sourceUrl: shortUrl,
+      },
+    });
+    const inflightResponse = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(inflightResponse.status).toBe(200);
+    expect(await inflightResponse.json()).toMatchObject({ jobId: active.id });
+    expect(await db.job.count({ where: { sourceUrl: shortUrl } })).toBe(2);
+  });
+
+  it('serializa retries concorrentes da URL curta e canônica do TikTok', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const shortUrl = 'https://vt.tiktok.com/ZSVJHUMAG';
+    const canonicalUrl = 'https://www.tiktok.com/@renatoasse/video/7672827813124164872';
+    const failedJobs = await Promise.all(
+      [shortUrl, canonicalUrl].map((sourceUrl) =>
+        db.job.create({
+          data: {
+            userId: admin.id,
+            type: 'DOWNLOAD_AND_TRANSCRIBE',
+            status: 'FAILED',
+            sourceUrl,
+          },
+        }),
+      ),
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = input.toString();
+      if (url === shortUrl) {
+        return new Response(null, { status: 302, headers: { location: canonicalUrl } });
+      }
+      if (url === canonicalUrl) return new Response(null, { status: 200 });
+      throw new Error(`Unexpected URL in TikTok retry resolver test: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const responses = await Promise.all(
+        failedJobs.map((job) =>
+          app.fetch(
+            new Request(`http://localhost/api/jobs/${job.id}/retry`, {
+              method: 'POST',
+              headers: { cookie },
+            }),
+          ),
+        ),
+      );
+
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 201]);
+      const active = await db.job.findMany({
+        where: { status: { in: ['QUEUED', 'RUNNING'] } },
+      });
+      expect(active).toHaveLength(1);
+      expect(active[0]?.sourceUrl).toBe(canonicalUrl);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('serializa retry de mídia e recusa jobs históricos ou sem relação', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const media = await db.savedMedia.create({
+      data: {
+        userId: admin.id,
+        sourceUrl: CANONICAL,
+        canonicalUrl: CANONICAL,
+        status: 'FAILED',
+      },
+    });
+    const failed = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'DOWNLOAD_MEDIA',
+        status: 'FAILED',
+        sourceUrl: CANONICAL,
+        savedMediaId: media.id,
+      },
+    });
+    await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'YOUTUBE',
+        url: CANONICAL,
+        title: 'Existing knowledge item',
+        durationSec: 1,
+        language: 'pt',
+        transcriptionMethod: 'SUBTITLES',
+        mdPath: `workspaces/${admin.id}/transcripts/existing.md`,
+        plainText: 'Existing transcript',
+        frontmatter: {},
+      },
+    });
+
+    const retryResponse = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(retryResponse.status).toBe(201);
+    const retry = (await retryResponse.json()) as { jobId: string };
+    expect(await db.savedMedia.findUniqueOrThrow({ where: { id: media.id } })).toMatchObject({
+      status: 'QUEUED',
+    });
+    expect(await db.job.findUniqueOrThrow({ where: { id: retry.jobId } })).toMatchObject({
+      type: 'DOWNLOAD_MEDIA',
+      savedMediaId: media.id,
+    });
+
+    await db.job.update({ where: { id: retry.jobId }, data: { status: 'DONE' } });
+    await db.savedMedia.update({ where: { id: media.id }, data: { status: 'READY' } });
+    const historicalRetry = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(historicalRetry.status).toBe(409);
+    expect(await db.job.count({ where: { savedMediaId: media.id } })).toBe(2);
+
+    await db.savedMedia.delete({ where: { id: media.id } });
+    const missingMediaRetry = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(missingMediaRetry.status).toBe(409);
+  });
+
+  it('preserva retry de upload comum sem relação com SavedMedia', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const failed = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'UPLOAD_AND_TRANSCRIBE',
+        status: 'FAILED',
+        sourceUrl: 'upload://11111111-1111-4111-8111-111111111111/video.mp4',
+      },
+    });
+
+    const response = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { jobId: string };
+    expect(await db.job.findUniqueOrThrow({ where: { id: body.jobId } })).toMatchObject({
+      type: 'UPLOAD_AND_TRANSCRIBE',
+      savedMediaId: null,
+    });
   });
 
   it('POST /api/jobs/:id/enrichment-retry reaproveita a transcrição e retoma só pendências', async () => {

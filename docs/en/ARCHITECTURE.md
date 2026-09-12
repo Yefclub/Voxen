@@ -1,7 +1,7 @@
 # Architecture — Voxen
 
 Voxen is a self-hosted knowledge platform with two application services and
-three infrastructure services. Docker Compose provides the reference
+two required infrastructure services. Docker Compose provides the reference
 deployment; the combined `voxen` image is the recommended Easypanel path.
 
 ## System Overview
@@ -13,7 +13,7 @@ Browser
 apps/web (Bun + Hono + React + AI SDK)
   |---- Postgres 17 (Prisma, FTS, graph data, users, jobs, settings)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  |---- MinIO / S3-compatible storage (transcripts and media)
+  |---- shared local volume (default) or S3-compatible storage
   `---- apps/worker (Python asyncio + durable Postgres job leases)
 ```
 
@@ -30,7 +30,7 @@ The Bun service serves the React SPA and the Hono API. It owns:
 - transcript, note, graph, automation, MCP, and cost APIs;
 - integrated agentic chat with AI SDK 7 and OpenRouter;
 - deterministic, user-scoped retrieval over Postgres FTS, graph relations,
-  and S3 transcripts;
+  and provider-neutral transcript storage;
 - SSE streaming of text, reasoning, tool calls, and progress;
 - encrypted global platform settings and per-user account integrations.
 
@@ -53,7 +53,7 @@ Main ingestion flow:
 3. Extract and segment media when transcription is required.
 4. Send supported inputs to the administrator-configured OpenRouter models.
 5. Build the canonical Markdown transcript and derived metadata.
-6. Upload artifacts to S3-compatible storage.
+6. Write artifacts through the selected local or S3 storage driver.
 7. Mirror searchable text, authorship, source, tags, and relationships in
    Postgres.
 8. Mark the content ready only after all required stages have reached a
@@ -94,11 +94,36 @@ and choose whether trusted SSO users are approved automatically.
   leases, and cost events.
 - Redis: ephemeral wakeups, realtime events, operational cache, and rate
   limits.
-- S3-compatible storage: canonical Markdown transcripts and media artifacts.
+- Storage: canonical Markdown and media artifacts in a shared local volume by
+  default, or an explicitly selected S3-compatible backend. Logical keys are
+  identical across drivers and switching drivers does not migrate data.
 
 Tag-backed folders are virtual many-to-many memberships. A transcript keeps a
 primary folder while tag-folder relations make the same content discoverable
 without duplication.
+
+## Authored annotations and derived external context
+
+- A note may retain verified transcript anchors. Each anchor stores line/time
+  bounds, the selected quote, and exact source version. Source refresh marks a
+  mismatch stale instead of silently relocating it.
+- Post-summary research is a separate durable enrichment. It never mutates
+  canonical Markdown or `summaryMd`, treats source/web text as untrusted data,
+  and is stored as `SUGGESTED` with structured URL citations.
+- Research separates a tool-free planning pass from bounded search passes.
+  Application validation sits between them, and the tool-enabled request never
+  receives the raw transcript, summary, title, or planner rationale.
+- Only fresh `READY + ACCEPTED` enrichments enter default retrieval and Brain,
+  explicitly typed as lower-authority external derivatives. Dismissal,
+  deletion, expiry, or source changes remove only their derivatives.
+- The administrator selects `OFF`, `MANUAL`, or `AUTO`; `OFF` is fail-closed.
+  Web and MCP requests share the same user-scoped durable queue as automatic
+  post-summary research. Policy changes and inactive parent content cancel
+  incompatible nonterminal work instead of allowing it to be reclaimed. Queue
+  and claim read policy under the settings transaction lock; parent
+  deactivation cancels work inside the lifecycle transaction itself. Every
+  enqueue also locks the transcript row through creation, closing the race
+  between enqueue, archive, and immediate restore.
 
 ## Design Direction
 

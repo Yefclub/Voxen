@@ -8,7 +8,6 @@
 //   GET  /api/jobs/:id/events   — SSE com eventos do canal Redis
 //
 // Guards: session + status=APPROVED. Setup incompleto → 412.
-// Outro user pedindo job alheio → 404 (não 403 — não vaza existência).
 // ============================================================================
 
 import { Hono, type Context } from 'hono';
@@ -28,12 +27,15 @@ import {
   uploadSourceUrl,
   type UploadKind,
 } from '../lib/media-upload';
-import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { deleteS3Object, presignClient, presignEnabled, s3Bucket, s3Client } from '../lib/s3';
+import { storageCreateDirectUpload, storageDelete, storageHead } from '../lib/storage';
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
-import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
+import { findTranscriptBySourceIdentity } from '../lib/transcript-source-identity';
+import { inspectVideoSource } from '../lib/video-source-identity';
+import { structuredDiagnostic } from '../lib/structured-log';
+import { createQueuedJob, retryQueuedJobForUser } from '../lib/job-queue';
+import { knowledgeDeletionCancellationResponse } from '../lib/knowledge-deletion-cancellation';
+import { cancelActiveSavedMediaJob } from '../lib/saved-media-lifecycle';
 import {
   isTerminalStage,
   jobChannel,
@@ -43,11 +45,11 @@ import {
   userChannel,
   type JobEvent,
 } from '../lib/job-events';
+import { registerDirectUploadRoute } from './jobs-direct-upload';
 
 type JobsVariables = {
   userId: string;
 };
-
 export const jobsRoutes = new Hono<{ Variables: JobsVariables }>();
 
 type SseMessage = {
@@ -63,34 +65,6 @@ type SseConnection = {
   isClosed(): boolean;
   onClose(fn: () => void | Promise<void>): void;
 };
-
-type QueuedJobType =
-  | 'DOWNLOAD_AND_TRANSCRIBE'
-  | 'SCRAPE_WEB'
-  | 'UPLOAD_AND_TRANSCRIBE'
-  | 'UPLOAD_AND_ANALYZE_IMAGE'
-  | 'UPLOAD_AND_ANALYZE_DOCUMENT'
-  | 'ANALYZE_X';
-
-async function createQueuedJob(
-  userId: string,
-  type: QueuedJobType,
-  sourceUrl: string,
-): Promise<{ id: string; status: string; sourceUrl: string }> {
-  return db.$transaction(async (tx) => {
-    // Compartilha o lock da publicação de settings: a revisão lida e o job
-    // nascem no mesmo corte lógico da configuração global.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
-    const revision = await tx.configRevision.findFirst({
-      orderBy: { number: 'desc' },
-      select: { id: true },
-    });
-    return tx.job.create({
-      data: { userId, type, status: 'QUEUED', sourceUrl, configRevisionId: revision?.id },
-      select: { id: true, status: true, sourceUrl: true },
-    });
-  });
-}
 
 const SSE_HEARTBEAT_MS = 10_000;
 const SSE_RETRY_MS = 5_000;
@@ -212,9 +186,13 @@ jobsRoutes.use('*', async (c, next) => {
   c.set('userId', session.user.id);
   return next();
 });
+registerDirectUploadRoute(jobsRoutes);
 
 const PostBody = z.object({
   url: z.string().min(1).max(2048),
+});
+const BatchPostBody = z.object({
+  urls: z.array(z.string().min(1).max(2048)).min(1).max(20),
 });
 
 export type AutoJobKind = 'video' | 'web' | 'x';
@@ -242,6 +220,14 @@ export type AutoJobResult =
   | { outcome: 'invalid'; error: string }
   | { outcome: 'setup_incomplete'; error: string };
 
+export type BatchAutoJobResult = AutoJobResult | { outcome: 'error'; error: string };
+
+export type BatchAutoJobItem = {
+  index: number;
+  input: string;
+  result: BatchAutoJobResult;
+};
+
 export type UploadJobResult =
   | {
       outcome: 'created';
@@ -267,33 +253,26 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   if (video) {
     const jobType = await jobTypeForVideo(video);
     const kind: AutoJobKind = jobType === 'ANALYZE_X' ? 'x' : 'video';
-    const existing = await db.transcript.findFirst({
-      where: { userId, url: video.canonical, status: { not: 'TRASH' } },
-      select: { id: true },
-    });
-    if (existing) {
+    const inspection = await inspectVideoSource(userId, video);
+    if (inspection.outcome === 'existing_transcript') {
       return {
         outcome: 'existing_transcript',
         error: 'Você já transcreveu esta URL.',
-        transcriptId: existing.id,
+        transcriptId: inspection.transcriptId,
         kind,
       };
     }
-    const inflight = await db.job.findFirst({
-      where: { userId, sourceUrl: video.canonical, status: { in: ['QUEUED', 'RUNNING'] } },
-      select: { id: true },
-    });
-    if (inflight) {
+    if (inspection.outcome === 'inflight') {
       return {
         outcome: 'inflight',
         error: 'Esta URL já está sendo processada.',
-        jobId: inflight.id,
+        jobId: inspection.jobId,
         kind,
       };
     }
     let job: { id: string; status: string; sourceUrl: string };
     try {
-      job = await createQueuedJob(userId, jobType, video.canonical);
+      job = await createQueuedJob(userId, jobType, inspection.sourceUrl);
     } catch (err) {
       if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
         return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind };
@@ -301,7 +280,9 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
       throw err;
     }
     await notifyNewJob(job.id).catch((err) => {
-      console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+      structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+        job_id: job.id,
+      });
     });
     await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
     return {
@@ -318,10 +299,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   if (!normalized) {
     return { outcome: 'invalid', error: 'URL inválida — informe um link http(s) válido.' };
   }
-  const existingWeb = await db.transcript.findFirst({
-    where: { userId, url: normalized, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
+  const existingWeb = await findTranscriptBySourceIdentity(db, userId, normalized);
   if (existingWeb) {
     return {
       outcome: 'existing_transcript',
@@ -352,7 +330,9 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     throw err;
   }
   await notifyNewJob(webJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: webJob.id,
+    });
   });
   await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
   return {
@@ -362,6 +342,28 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     sourceUrl: webJob.sourceUrl,
     kind: 'web',
   };
+}
+
+export async function createAutoJobsForUser(
+  userId: string,
+  urls: readonly string[],
+): Promise<BatchAutoJobItem[]> {
+  const items: BatchAutoJobItem[] = [];
+  for (const [index, input] of urls.entries()) {
+    try {
+      items.push({ index, input, result: await createAutoJobForUser(userId, input) });
+    } catch (error) {
+      structuredDiagnostic('error', 'batch-job-item-failed', 'BATCH_ITEM_FAILED', error, {
+        item_index: index,
+      });
+      items.push({
+        index,
+        input,
+        result: { outcome: 'error', error: 'Não foi possível enfileirar este conteúdo.' },
+      });
+    }
+  }
+  return items;
 }
 
 function jobTypeForKind(
@@ -387,7 +389,9 @@ async function enqueueUploadJob(
   const job = await createQueuedJob(userId, jobTypeForKind(kind), sourceUrl);
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: job.id,
+    });
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -443,7 +447,7 @@ export async function createUploadJobForUser(
       contentType,
     });
   } catch (err) {
-    console.error('[jobs] upload to S3 failed', safeErrorDiagnostic('UPLOAD_STORE_FAILED', err));
+    structuredDiagnostic('error', 'upload-store-failed', 'UPLOAD_STORE_FAILED', err);
     return {
       outcome: 'error',
       status: 502,
@@ -504,36 +508,23 @@ jobsRoutes.post('/', async (c) => {
     );
   }
   const jobType = await jobTypeForVideo(video);
-
-  const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: video.canonical, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  if (existingTranscript) {
+  const inspection = await inspectVideoSource(userId, video);
+  if (inspection.outcome === 'existing_transcript') {
     return c.json(
       {
         error: 'Você já transcreveu esta URL.',
-        transcriptId: existingTranscript.id,
+        transcriptId: inspection.transcriptId,
       },
       409,
     );
   }
-
-  const inflight = await db.job.findFirst({
-    where: {
-      userId,
-      sourceUrl: video.canonical,
-      status: { in: ['QUEUED', 'RUNNING'] },
-    },
-    select: { id: true },
-  });
-  if (inflight) {
+  if (inspection.outcome === 'inflight') {
     return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
   }
 
   let job: { id: string; status: string; sourceUrl: string };
   try {
-    job = await createQueuedJob(userId, jobType, video.canonical);
+    job = await createQueuedJob(userId, jobType, inspection.sourceUrl);
   } catch (err) {
     // Partial unique index `Job_user_url_active_unique` cobre a race entre
     // 2 POSTs simultâneos da mesma URL: o primeiro cria, o segundo cai aqui.
@@ -544,7 +535,9 @@ jobsRoutes.post('/', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: job.id,
+    });
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -564,6 +557,13 @@ jobsRoutes.post('/auto', async (c) => {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
   return autoJobResponse(c, await createAutoJobForUser(userId, parsed.data.url));
+});
+
+jobsRoutes.post('/batch', async (c) => {
+  const userId = c.get('userId');
+  const parsed = BatchPostBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Informe entre 1 e 20 URLs válidas.' }, 400);
+  return c.json({ items: await createAutoJobsForUser(userId, parsed.data.urls) });
 });
 
 // POST /api/jobs/upload — envia áudio/vídeo/imagem/documento para S3 e agenda processamento.
@@ -619,15 +619,10 @@ const ConfirmBody = z.object({
   contentType: z.string().min(1).max(255),
 });
 
-// POST /api/jobs/upload/presign — gera presigned PUT URL pra upload direto pro S3.
-// Aditivo: se S3_PUBLIC_ENDPOINT não estiver setado, retorna { enabled: false }
-// e o front cai no fluxo de upload via app (/api/jobs/upload).
+// POST /api/jobs/upload/presign — prepares the best upload transport. Public
+// S3 gets a presigned URL; local/private S3 gets a same-origin streaming PUT.
 jobsRoutes.post('/upload/presign', async (c) => {
   const userId = c.get('userId');
-
-  if (!presignEnabled()) {
-    return c.json({ enabled: false }, 200);
-  }
 
   if (!(await isSetupComplete())) {
     return c.json(
@@ -678,16 +673,16 @@ jobsRoutes.post('/upload/presign', async (c) => {
 
   let url: string;
   try {
-    url = await getSignedUrl(
-      presignClient(),
-      new PutObjectCommand({ Bucket: s3Bucket(), Key: key, ContentType: contentType }),
-      { expiresIn: PRESIGN_EXPIRES_SEC },
-    );
+    url =
+      (await storageCreateDirectUpload({
+        key,
+        contentType,
+        expiresIn: PRESIGN_EXPIRES_SEC,
+      })) ?? `/api/jobs/upload/direct/${uploadId}?filename=${encodeURIComponent(filename)}`;
   } catch (err) {
-    console.error('[jobs] presign failed', {
+    structuredDiagnostic('error', 'upload-presign-failed', 'UPLOAD_PRESIGN_FAILED', err, {
       upload_id: uploadId,
       content_kind: kind,
-      ...safeErrorDiagnostic('UPLOAD_PRESIGN_FAILED', err),
     });
     return c.json({ error: 'Falha ao gerar URL de upload.' }, 502);
   }
@@ -746,28 +741,27 @@ jobsRoutes.post('/upload/confirm', async (c) => {
 
   let contentLength: number;
   try {
-    const head = await s3Client().send(new HeadObjectCommand({ Bucket: s3Bucket(), Key: key }));
-    contentLength = head.ContentLength ?? 0;
+    const head = await storageHead(key);
+    contentLength = head.contentLength;
   } catch (err) {
     const name = err instanceof Error ? err.name : '';
     if (name === 'NotFound' || name === 'NoSuchKey') {
       return c.json({ error: 'Upload não encontrado. Reenvie o arquivo.' }, 400);
     }
-    console.error('[jobs] confirm HeadObject failed', {
+    structuredDiagnostic('error', 'upload-head-failed', 'UPLOAD_HEAD_FAILED', err, {
       upload_id: parsed.data.uploadId,
       content_kind: kind,
-      ...safeErrorDiagnostic('UPLOAD_HEAD_FAILED', err),
     });
-    return c.json({ error: 'Falha ao validar upload no armazenamento S3.' }, 502);
+    return c.json({ error: 'Falha ao validar upload no armazenamento.' }, 502);
   }
 
   if (contentLength <= 0) {
-    await deleteS3Object(key).catch(() => undefined);
+    await storageDelete(key).catch(() => undefined);
     return c.json({ error: 'Arquivo vazio.' }, 400);
   }
   // Tamanho REAL do objeto (não confiar no size informado no presign).
   if (contentLength > maxBytesForKind(kind)) {
-    await deleteS3Object(key).catch(() => undefined);
+    await storageDelete(key).catch(() => undefined);
     return c.json({ error: tooLargeMessageForKind(kind) }, 413);
   }
 
@@ -799,10 +793,7 @@ jobsRoutes.post('/scrape', async (c) => {
     return c.json({ error: 'URL inválida — informe um link http(s) válido.' }, 400);
   }
 
-  const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: normalized, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
+  const existingTranscript = await findTranscriptBySourceIdentity(db, userId, normalized);
   if (existingTranscript) {
     return c.json(
       { error: 'Você já indexou esta página.', transcriptId: existingTranscript.id },
@@ -829,7 +820,9 @@ jobsRoutes.post('/scrape', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: job.id,
+    });
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -878,6 +871,9 @@ jobsRoutes.get('/', async (c) => {
         queuedAt: true,
         startedAt: true,
         finishedAt: true,
+        deletionTargetType: true,
+        deletionTargetId: true,
+        deletionTargetTitle: true,
         transcript: {
           select: {
             title: true,
@@ -885,6 +881,9 @@ jobsRoutes.get('/', async (c) => {
             source: true,
             durationSec: true,
           },
+        },
+        savedMedia: {
+          select: { id: true, title: true, thumbnailUrl: true, durationSec: true },
         },
       },
     }),
@@ -904,10 +903,13 @@ jobsRoutes.get('/', async (c) => {
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      title: job.transcript?.title ?? null,
-      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      title: job.transcript?.title ?? job.savedMedia?.title ?? job.deletionTargetTitle ?? null,
+      deletionTargetType: job.deletionTargetType,
+      deletionTargetId: job.deletionTargetId,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? job.savedMedia?.thumbnailUrl ?? null,
       transcriptSource: job.transcript?.source ?? null,
-      durationSec: job.transcript?.durationSec ?? null,
+      durationSec: job.transcript?.durationSec ?? job.savedMedia?.durationSec ?? null,
+      savedMediaId: job.savedMedia?.id ?? null,
     })),
     page,
     limit,
@@ -934,6 +936,9 @@ jobsRoutes.get('/:id', async (c) => {
       queuedAt: true,
       startedAt: true,
       finishedAt: true,
+      deletionTargetType: true,
+      deletionTargetId: true,
+      deletionTargetTitle: true,
       transcript: {
         select: {
           id: true,
@@ -942,6 +947,9 @@ jobsRoutes.get('/:id', async (c) => {
           source: true,
           thumbnailUrl: true,
         },
+      },
+      savedMedia: {
+        select: { id: true, title: true, thumbnailUrl: true },
       },
       progressEvents: {
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -978,10 +986,13 @@ jobsRoutes.get('/:id', async (c) => {
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      title: job.transcript?.title ?? null,
+      title: job.transcript?.title ?? job.savedMedia?.title ?? job.deletionTargetTitle ?? null,
+      deletionTargetType: job.deletionTargetType,
+      deletionTargetId: job.deletionTargetId,
       summary,
       transcriptSource: job.transcript?.source ?? null,
-      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? job.savedMedia?.thumbnailUrl ?? null,
+      savedMediaId: job.savedMedia?.id ?? null,
       events: [...job.progressEvents].reverse().map((event) => ({
         id: event.id,
         jobId: job.id,
@@ -999,60 +1010,31 @@ jobsRoutes.get('/:id', async (c) => {
 jobsRoutes.post('/:id/retry', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const original = await db.job.findFirst({
-    where: { id, userId },
-    select: { id: true, status: true, sourceUrl: true, type: true },
-  });
-  if (!original) {
-    return c.json({ error: 'Job não encontrado.' }, 404);
-  }
-  if (original.status !== 'FAILED' && original.status !== 'CANCELLED') {
+  const result = await retryQueuedJobForUser(userId, id);
+  if (result.outcome === 'missing') return c.json({ error: 'Job não encontrado.' }, 404);
+  if (result.outcome === 'invalid_state') {
     return c.json({ error: 'Só é possível retentar jobs que falharam ou foram cancelados.' }, 400);
   }
-
-  // Se já existe Transcript com esta URL pro user, não vale retentar
-  const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: original.sourceUrl, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  if (existingTranscript) {
+  if (result.outcome === 'existing_transcript') {
     return c.json(
-      {
-        error: 'Você já transcreveu esta URL.',
-        transcriptId: existingTranscript.id,
-      },
+      { error: 'Você já transcreveu esta URL.', transcriptId: result.transcriptId },
       409,
     );
   }
-
-  // Cria novo job (partial unique index permite porque o original é FAILED)
-  let newJob: { id: string; status: string; sourceUrl: string };
-  try {
-    newJob = await createQueuedJob(userId, original.type, original.sourceUrl);
-  } catch (err) {
-    // Race: outro retry já criou um job ativo. Devolve o que existe.
-    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
-      const active = await db.job.findFirst({
-        where: {
-          userId,
-          sourceUrl: original.sourceUrl,
-          status: { in: ['QUEUED', 'RUNNING'] },
-        },
-        select: { id: true, status: true, sourceUrl: true },
-      });
-      if (active) {
-        return c.json(
-          { jobId: active.id, status: active.status, sourceUrl: active.sourceUrl },
-          200,
-        );
-      }
-      return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
-    }
-    throw err;
+  if (result.outcome === 'media_unavailable') {
+    return c.json({ error: 'A mídia não está disponível neste estado para nova tentativa.' }, 409);
   }
+  if (result.outcome === 'inflight') {
+    return result.jobId
+      ? c.json({ jobId: result.jobId, status: result.status, sourceUrl: result.sourceUrl }, 200)
+      : c.json({ error: 'Esta URL já está sendo processada.' }, 409);
+  }
+  const newJob = { id: result.jobId, status: result.status, sourceUrl: result.sourceUrl };
 
   await notifyNewJob(newJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
+    structuredDiagnostic('error', 'job-notify-failed', 'JOB_NOTIFY_FAILED', err, {
+      job_id: result.jobId,
+    });
   });
   await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
 
@@ -1121,7 +1103,14 @@ jobsRoutes.post('/:id/cancel', async (c) => {
   const id = c.req.param('id');
   const job = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      type: true,
+      savedMediaId: true,
+      deletionTargetType: true,
+      deletionTargetId: true,
+    },
   });
   if (!job) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -1129,14 +1118,12 @@ jobsRoutes.post('/:id/cancel', async (c) => {
   if (job.status !== 'QUEUED' && job.status !== 'RUNNING') {
     return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
   }
-  await db.job.update({
-    where: { id },
-    data: {
-      status: 'CANCELLED',
-      errorMsg: 'Cancelado pelo usuário.',
-      finishedAt: new Date(),
-    },
-  });
+  const deletionResponse = await knowledgeDeletionCancellationResponse(userId, job);
+  if (deletionResponse) return deletionResponse;
+  const cancelled = await cancelActiveSavedMediaJob(userId, job);
+  if (!cancelled) {
+    return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
+  }
   await requestCancel(id).catch(() => undefined);
   await publishJobEvent(userId, {
     jobId: id,

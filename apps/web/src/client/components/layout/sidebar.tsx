@@ -4,32 +4,20 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
-  House,
-  ListOrdered,
-  MessageCircle,
   FolderPlus,
-  ListVideo,
-  Link2,
-  KeyRound,
   LogOut,
-  Network,
-  Notebook,
   PanelLeftClose,
   PanelLeftOpen,
   PanelLeft,
   Plus,
-  Puzzle,
-  ShieldCheck,
   Sparkles,
-  User as UserIcon,
-  Workflow,
 } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useNotes } from '../../lib/use-notes';
-import { useI18n, type I18nKey } from '../../lib/i18n';
+import { useI18n } from '../../lib/i18n';
 import {
   ICON_CUE_DURATION,
   ICON_CUE_PANEL_DELAY_MS,
@@ -44,58 +32,15 @@ import { NotesTree } from '../notes/notes-tree';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { useInterfaceMode } from '../../lib/interface-mode-provider';
 import { toast } from '../../lib/toast';
-
-export interface NavItem {
-  to: string;
-  labelKey: I18nKey;
-  Icon: typeof House;
-  adminOnly?: boolean;
-  scope: 'workspace' | 'personal' | 'admin';
-}
+import { SidebarReleaseUpdateButton } from './sidebar-release-update';
+import { NAV, NAV_SCOPES, NAV_SCOPE_LABELS, isNavItemActive, type NavItem } from './sidebar-nav';
+export { NAV, isNavItemActive } from './sidebar-nav';
 
 /**
  * Canonical navigation destinations shared by desktop, the mobile drawer, and
  * the bottom-nav profile menu. Keep top-level tabs aligned with
  * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
-export const NAV: NavItem[] = [
-  { to: '/', labelKey: 'shell.nav.home', Icon: House, scope: 'workspace' },
-  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle, scope: 'workspace' },
-  { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo, scope: 'workspace' },
-  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered, scope: 'workspace' },
-  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
-  { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow, scope: 'workspace' },
-  { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
-  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle, scope: 'workspace' },
-  { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },
-  {
-    to: '/conta/plataformas',
-    labelKey: 'shell.nav.platformAccounts',
-    Icon: Link2,
-    scope: 'personal',
-  },
-  { to: '/conta/mcp', labelKey: 'shell.nav.mcpAccess', Icon: KeyRound, scope: 'personal' },
-  {
-    to: '/admin',
-    labelKey: 'shell.nav.administration',
-    Icon: ShieldCheck,
-    adminOnly: true,
-    scope: 'admin',
-  },
-];
-
-const NAV_SCOPES = ['workspace', 'personal', 'admin'] as const;
-const NAV_SCOPE_LABELS: Record<(typeof NAV_SCOPES)[number], I18nKey> = {
-  workspace: 'shell.navGroup.workspace',
-  personal: 'shell.navGroup.personal',
-  admin: 'shell.navGroup.admin',
-};
-
-export function isNavItemActive(pathname: string, to: string): boolean {
-  if (to === '/' || to === '/conta') return pathname === to;
-  return pathname === to || pathname.startsWith(`${to}/`);
-}
-
 const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
 const FOCUS_SURFACE_GAP = 8;
@@ -174,8 +119,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { interfaceMode } = useInterfaceMode();
   const focusInterface = interfaceMode === 'focus';
 
-  // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
-  // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
+  // A deixa dos ícones da nav é um contador: só uma MUDANÇA de sinal dispara.
   // (aí quem pontua é o cabeçalho da página), a troca de estado pontua uma
   // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
   // rerenderiza com as props congeladas da última vez em que esteve presente —
@@ -225,6 +169,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             <SidebarHeader focusInterface={focusInterface} onCollapse={() => setCollapsed(true)} />
             <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
             <SidebarInterfaceModeButton />
+            <SidebarReleaseUpdateButton />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -331,6 +276,7 @@ function SidebarRail({
         <div className="mt-auto flex w-full flex-col items-center gap-1">
           <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
           <SidebarInterfaceModeButton variant="rail" iconRef={registerIcon('interface-mode')} />
+          <SidebarReleaseUpdateButton variant="rail" iconRef={registerIcon('release-update')} />
           <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
           <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
         </div>

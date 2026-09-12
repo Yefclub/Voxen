@@ -5,10 +5,12 @@
 import { describe, expect, it } from 'bun:test';
 import {
   canonicalModelForPurpose,
+  fallbackSettingForPurpose,
   getModelCompatibilityFailures,
   isModelCompatibleWithPurpose,
   isModelPurpose,
   MODEL_PURPOSES,
+  suggestFallbackForPurpose,
 } from '../src/lib/model-defaults';
 
 const textModel = {
@@ -64,6 +66,17 @@ describe('MODEL_PURPOSES', () => {
     ]);
   });
 
+  it('maps every primary purpose to an independent fallback setting', () => {
+    expect(MODEL_PURPOSES.map(fallbackSettingForPurpose)).toEqual([
+      'fallback_chat_model',
+      'fallback_transcription_model',
+      'fallback_web_search_model',
+      'fallback_vision_model',
+      'fallback_document_model',
+      'fallback_x_analysis_model',
+    ]);
+  });
+
   it('isModelPurpose valida strings arbitrárias', () => {
     expect(isModelPurpose('default_chat_model')).toBe(true);
     expect(isModelPurpose('default_unknown_model')).toBe(false);
@@ -79,6 +92,38 @@ describe('MODEL_PURPOSES', () => {
     expect(canonicalModelForPurpose('default_vision_model')).toBe('openai/gpt-5.6-luna');
     expect(canonicalModelForPurpose('default_document_model')).toBe('openai/gpt-5.6-luna');
     expect(canonicalModelForPurpose('default_x_analysis_model')).toBe('x-ai/grok-4.5');
+  });
+});
+
+describe('suggestFallbackForPurpose', () => {
+  it('returns a compatible alternative and never repeats the primary', () => {
+    expect(
+      suggestFallbackForPurpose('default_vision_model', visionModel.id, [
+        visionModel,
+        textOnlyModel,
+        textModel,
+      ]),
+    ).toBe(textModel.id);
+  });
+
+  it('prefers a paid candidate before a shared free-tier candidate', () => {
+    const free = { ...textOnlyModel, id: 'openai/gpt-5-mini:free' };
+    expect(
+      suggestFallbackForPurpose('default_chat_model', textModel.id, [
+        textModel,
+        free,
+        textOnlyModel,
+      ]),
+    ).toBe(textOnlyModel.id);
+  });
+
+  it('returns null when the catalog has no compatible alternative', () => {
+    expect(
+      suggestFallbackForPurpose('default_transcription_model', transcriptionModel.id, [
+        transcriptionModel,
+        textOnlyModel,
+      ]),
+    ).toBeNull();
   });
 });
 

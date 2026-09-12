@@ -7,6 +7,13 @@ import pytest
 
 from src import pipeline, tags
 
+TAG_CLAIM = {
+    "claim_attempt": 1,
+    "correction_revision": 0,
+    "source_version": 0,
+    "source_checksum": None,
+}
+
 
 class _Logger:
     def __init__(self) -> None:
@@ -25,7 +32,16 @@ def _install_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         pipeline.db,
         "get_transcript_title_summary_folder",
-        AsyncMock(return_value=("Título", "Conteúdo suficientemente longo para gerar tags.", None)),
+        AsyncMock(
+            return_value=(
+                "Título",
+                "Conteúdo suficientemente longo para gerar tags.",
+                None,
+                0,
+                0,
+                None,
+            )
+        ),
     )
     monkeypatch.setattr(
         pipeline.voxen_settings,
@@ -66,6 +82,7 @@ async def test_existing_tags_complete_without_calling_model(
         transcript_id="transcript-1",
         log=_Logger(),
         already_claimed=True,
+        **TAG_CLAIM,
     )
 
     generate.assert_not_awaited()
@@ -74,6 +91,7 @@ async def test_existing_tags_complete_without_calling_model(
         "transcript-1",
         status="COMPLETE",
         error=None,
+        **TAG_CLAIM,
     )
 
 
@@ -106,6 +124,7 @@ async def test_empty_model_tags_transition_to_retry_without_persisting(
         transcript_id="transcript-1",
         log=_Logger(),
         already_claimed=True,
+        **TAG_CLAIM,
     )
 
     apply_tags.assert_not_awaited()
@@ -114,6 +133,7 @@ async def test_empty_model_tags_transition_to_retry_without_persisting(
         "transcript-1",
         status="RETRY",
         error="O modelo não retornou tags válidas.",
+        **TAG_CLAIM,
     )
 
 
@@ -121,7 +141,7 @@ async def test_inline_generation_returns_when_atomic_claim_is_not_acquired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_common(monkeypatch)
-    claim = AsyncMock(return_value=False)
+    claim = AsyncMock(return_value=None)
     monkeypatch.setattr(pipeline.db, "start_tag_enrichment", claim)
     logger = _Logger()
 
@@ -194,6 +214,7 @@ async def test_tag_names_are_not_written_to_logs_or_cost_metadata(
         transcript_id="transcript-1",
         log=logger,
         already_claimed=True,
+        **TAG_CLAIM,
     )
 
     cost_meta = pipeline.db.insert_cost_event.await_args.kwargs["meta"]

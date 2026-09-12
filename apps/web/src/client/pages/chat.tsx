@@ -54,6 +54,7 @@ import {
   type ToolEvent,
 } from '../lib/chat-segments';
 import { useThinkingDisclosure } from '../lib/thinking-disclosure';
+import { parseKnowledgeSearchDisclosure } from '../lib/knowledge-search-plan';
 import { useMediaQuery } from '../lib/use-media-query';
 import {
   MAX_MESSAGE_ATTACHMENTS,
@@ -80,6 +81,7 @@ import {
 } from '../lib/chat-versions';
 import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
 import { ChatSourcesPanel, CitationSourcesButton } from '../components/chat/chat-sources-panel';
+import { HitlConfirmBar } from '../components/chat/hitl-confirm-bar';
 import { parseChatCitations, type ChatCitation } from '../../shared/chat-citations';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
@@ -217,6 +219,8 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
   const Icon = FAMILY_ICON[family];
   const awaitingHitl = tool.state === 'approval-required';
   const expandable = tool.output !== undefined && !awaitingHitl;
+  const searchPlan =
+    tool.name === 'search_knowledge' ? parseKnowledgeSearchDisclosure(tool.output) : null;
   const [open, setOpen] = useState(false);
 
   return (
@@ -274,7 +278,33 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
                 {t('chat.toolParamsSafe')}
               </p>
             )}
-            {tool.output !== undefined ? (
+            {searchPlan && (
+              <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+                <p className="font-medium text-[var(--color-app-subtle)]">
+                  {t('chat.searchPlanTitle')}
+                </p>
+                <p>{t('chat.searchPlanQueries', { count: searchPlan.queries.length })}</p>
+                <ul className="list-disc pl-4">
+                  {searchPlan.queries.map((query) => (
+                    <li key={query}>{query}</li>
+                  ))}
+                </ul>
+                <p>{t('chat.searchPlanFusion')}</p>
+                <p>
+                  {t('chat.searchPlanSources', {
+                    transcripts: searchPlan.sourceCounts.transcript,
+                    notes: searchPlan.sourceCounts.note,
+                    enrichments: searchPlan.sourceCounts.external_enrichment,
+                  })}
+                </p>
+                <p>
+                  {searchPlan.semanticRescueUsed
+                    ? t('chat.searchPlanSemanticUsed')
+                    : t('chat.searchPlanSemanticNotUsed')}
+                </p>
+              </div>
+            )}
+            {tool.output !== undefined && !searchPlan ? (
               <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)] break-words">
                 {toolSummary(tool.output)}
               </p>
@@ -317,20 +347,27 @@ function thinkingSummaryLabel(duration: number | null, toolCount: number, t: Tra
 function ThinkingBlock({
   segments,
   live,
+  answerStarted,
   startedAt,
 }: {
   segments: MessageSegment[];
   /** O stream deste turno ainda está aberto. */
   live: boolean;
+  /** Já chegou o primeiro pedaço da resposta final deste turno (spec 200). */
+  answerStarted: boolean;
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  // Spec 130: bloco E cabeçalho dirigidos por `live`, o único sinal do turno
-  // que não oscila. O gatilho anterior (`thinkingInFlight`) alternava a cada
-  // ida-e-volta de ferramenta — abrindo/fechando a timeline e trocando o
-  // rótulo entre "Pensando" e "Pensou por Xs" no meio da resposta, contra a
-  // própria regra da spec 078.
-  const { expanded, toggle } = useThinkingDisclosure(live);
+  // Spec 130: o CABEÇALHO segue dirigido por `live`. Enquanto o turno corre há
+  // atividade a sinalizar, e `thinkingDuration` devolve `null` com o turno
+  // vivo — trocar para o rótulo de resumo no meio renderizaria a contagem de
+  // ferramentas sem tempo decorrido, contra a spec 078.
+  //
+  // Spec 200: o BLOCO recolhe quando a resposta começa, não quando o turno
+  // acaba. O gatilho aposentado (`thinkingInFlight`) não servia porque alternava
+  // nos dois sentidos a cada ida-e-volta de ferramenta; `answerStarted` é trava
+  // de uma via e por isso não traz a oscilação de volta.
+  const { expanded, toggle } = useThinkingDisclosure(live, answerStarted);
   const duration = thinkingDuration(segments, live, startedAt);
   const toolCount = segmentsToolCount(segments);
 
@@ -492,66 +529,6 @@ function MessageAttachments({
         );
       })}
     </ul>
-  );
-}
-
-function HitlConfirmBar({
-  pending,
-  approving,
-  onApprove,
-}: {
-  pending: PendingHitl[];
-  approving: ReadonlySet<string>;
-  onApprove: (id: string, options?: { alwaysAllow?: boolean }) => void;
-}): React.ReactElement | null {
-  const { t } = useI18n();
-  if (pending.length === 0) return null;
-  return (
-    <div className="mb-2 flex flex-col gap-2" role="region" aria-label={t('chat.hitlRegion')}>
-      {pending.map((item) => {
-        const busy = approving.has(item.approvalId);
-        return (
-          <div
-            key={item.approvalId}
-            className="flex flex-col gap-2 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-          >
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-[var(--color-app-fg)]">
-                {item.title
-                  ? t('chat.hitlProposeNote', { title: item.title })
-                  : t('chat.confirmationTitle')}
-              </p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                {t('chat.hitlConfirmHint')}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent-amber)]/40 bg-transparent px-2.5 py-1.5 text-xs font-medium text-[var(--color-app-fg)] hover:bg-[var(--color-accent-amber)]/15 disabled:cursor-wait disabled:opacity-60"
-              >
-                {t('chat.hitlAlwaysAllow')}
-              </button>
-              <button
-                type="button"
-                onClick={() => onApprove(item.approvalId)}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-              >
-                {busy ? (
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}{' '}
-                {t('chat.confirm')}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -788,6 +765,7 @@ export function ChatPage(): React.ReactElement {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [sourceCitations, setSourceCitations] = useState<ChatCitation[] | null>(null);
+  const [selectedSourceCitation, setSelectedSourceCitation] = useState<ChatCitation | null>(null);
   const [approvingHitl, setApprovingHitl] = useState<ReadonlySet<string>>(new Set());
   // Versionamento (spec 127): qual mensagem está aberta para edição e se uma
   // troca de trilha está em voo. Só o id vive aqui — o rascunho pertence ao
@@ -1907,6 +1885,10 @@ export function ChatPage(): React.ReactElement {
                         <ThinkingBlock
                           segments={segments}
                           live={isStreamingAssistant}
+                          // `content` fica vazio até o primeiro delta de texto
+                          // final — o render logo abaixo já depende disso — então
+                          // "a resposta começou" não precisa de estado novo.
+                          answerStarted={Boolean(message.content)}
                           startedAt={Date.parse(message.createdAt)}
                         />
                       )}
@@ -1915,6 +1897,10 @@ export function ChatPage(): React.ReactElement {
                           <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
                             <Markdown
                               citations={message.citations}
+                              onCitationOpen={(citation) => {
+                                setSourceCitations(message.citations ?? []);
+                                setSelectedSourceCitation(citation);
+                              }}
                               className="chat-response-markdown [&_p]:max-w-3xl [&_ul]:max-w-3xl [&_ol]:max-w-3xl [&_blockquote]:max-w-3xl"
                             >
                               {message.content}
@@ -1925,7 +1911,10 @@ export function ChatPage(): React.ReactElement {
                               <MessageCopyButton text={message.content} layout="row" />
                               <CitationSourcesButton
                                 citations={message.citations ?? []}
-                                onOpen={() => setSourceCitations(message.citations ?? [])}
+                                onOpen={() => {
+                                  setSourceCitations(message.citations ?? []);
+                                  setSelectedSourceCitation(null);
+                                }}
                               />
                             </div>
                           )}
@@ -1996,9 +1985,15 @@ export function ChatPage(): React.ReactElement {
 
       <ChatSourcesPanel
         citations={sourceCitations}
+        selectedCitation={selectedSourceCitation}
         isMobile={isMobile}
         reduceMotion={reduceMotion === true}
-        onClose={() => setSourceCitations(null)}
+        onSelect={setSelectedSourceCitation}
+        onBack={() => setSelectedSourceCitation(null)}
+        onClose={() => {
+          setSourceCitations(null);
+          setSelectedSourceCitation(null);
+        }}
       />
     </div>
   );

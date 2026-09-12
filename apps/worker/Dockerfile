@@ -24,15 +24,23 @@ WORKDIR /app
 # libudev1) que já têm fix upstream mas vêm desatualizadas na tag slim.
 # Cachebuster explícito: a disponibilidade de patches APT muda sem alterar o
 # digest da instrução; atualize a data quando o scanner apontar fix disponível.
-ARG VOXEN_APT_SECURITY_REFRESH=2026-08-03
-RUN apt-get update \
+# Runtime dependencies are copied from the uv-managed virtualenv below. The
+# global pip bundle is unnecessary in production and ships vendored packages.
+ARG VOXEN_APT_SECURITY_REFRESH=2026-08-20
+RUN echo "Refreshing APT security packages: ${VOXEN_APT_SECURITY_REFRESH}" \
+    && apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && python -m pip uninstall --yes pip \
+    && groupadd --system voxen \
+    && useradd --system --gid voxen --uid 1001 --home-dir /app voxen \
+    && mkdir -p /data/storage \
+    && chown -R voxen:voxen /app /data/storage \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/src /app/src
-COPY apps/worker/entrypoint.sh /entrypoint.sh
+COPY --from=builder --chown=voxen:voxen /app/.venv /app/.venv
+COPY --from=builder --chown=voxen:voxen /app/src /app/src
+COPY --chown=voxen:voxen apps/worker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -54,5 +62,6 @@ RUN deno --version >/dev/null \
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD python -c "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).ping()" || exit 1
 
+USER voxen
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "src.main"]

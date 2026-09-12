@@ -1,14 +1,15 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import { runWithBrainIndexLease, type BrainReindexGuard } from './brain-index-lease';
 import {
-  GRAPH_INDEX_HEARTBEAT_MS,
-  GRAPH_INDEX_LEASE_TTL_MS,
-  acquireGraphIndexLease,
-  releaseGraphIndexLease,
-  renewGraphIndexLease,
-} from './graph-index-coordinator';
+  buildNoteIndexes,
+  noteBrainSelect,
+  validNoteAnchorSources,
+  type NoteBrainRecord,
+} from './brain-note-anchors';
 
-type BrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
+type CoreBrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
+export type BrainSourceType = CoreBrainSourceType | 'EXTERNAL_ENRICHMENT';
 type BrainNodeType = 'CONTENT' | 'FOLDER' | 'ENTITY' | 'TOPIC' | 'CLAIM' | 'EVENT' | 'CLUSTER';
 type BrainEdgeKind =
   | 'BELONGS_TO'
@@ -54,70 +55,6 @@ export type BrainReindexOptions = {
   assertLeaseOwnership?: BrainReindexGuard;
 };
 
-export type BrainReindexGuard = () => Promise<void>;
-
-class BrainIndexLeaseLostError extends Error {
-  constructor() {
-    super('Brain index lease lost');
-  }
-}
-
-async function runWithBrainIndexLease(
-  userId: string,
-  operation: (assertLeaseOwnership: BrainReindexGuard) => Promise<void>,
-): Promise<boolean> {
-  const owner = `web-direct:${crypto.randomUUID()}`;
-  try {
-    if (!(await acquireGraphIndexLease(userId, owner))) return false;
-  } catch {
-    return false;
-  }
-
-  let leaseLost = false;
-  let leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
-  const renewLease = async (): Promise<void> => {
-    if (leaseLost) throw new BrainIndexLeaseLostError();
-    try {
-      if (!(await renewGraphIndexLease(userId, owner))) {
-        leaseLost = true;
-        throw new BrainIndexLeaseLostError();
-      }
-      leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
-    } catch (err) {
-      if (err instanceof BrainIndexLeaseLostError) throw err;
-      if (Date.now() >= leaseExpiresAt) {
-        leaseLost = true;
-        throw new BrainIndexLeaseLostError();
-      }
-    }
-  };
-  const assertLeaseOwnership = async (): Promise<void> => {
-    if (leaseLost || Date.now() >= leaseExpiresAt) {
-      leaseLost = true;
-      throw new BrainIndexLeaseLostError();
-    }
-    if (Date.now() >= leaseExpiresAt - GRAPH_INDEX_HEARTBEAT_MS) {
-      await renewLease();
-    }
-  };
-  const heartbeat = setInterval(() => {
-    void renewLease().catch(() => {
-      // O guard entre fases interrompe a materialização e mantém o marker ausente.
-    });
-  }, GRAPH_INDEX_HEARTBEAT_MS);
-  try {
-    await assertLeaseOwnership();
-    await operation(assertLeaseOwnership);
-    return true;
-  } catch (err) {
-    if (err instanceof BrainIndexLeaseLostError) return false;
-    throw err;
-  } finally {
-    clearInterval(heartbeat);
-    await releaseGraphIndexLease(userId, owner).catch(() => false);
-  }
-}
-
 type BrainEdgeInput = {
   userId: string;
   fromNodeId: string;
@@ -132,15 +69,6 @@ type BrainEdgeInput = {
   excerpt?: string | null;
   beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
-};
-
-type NoteRecord = {
-  id: string;
-  parentId: string | null;
-  kind: 'NOTE' | 'FOLDER';
-  title: string;
-  content: string;
-  updatedAt: Date;
 };
 
 type LibraryFolderRecord = {
@@ -182,7 +110,7 @@ type SemanticProfile = {
 export const BRAIN_INDEX_VERSION = 3;
 export const BRAIN_TOPIC_INDEX_VERSION = 1;
 
-const DESCRIPTION_LIMIT = 800;
+export const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
 const TOPIC_LIMIT = 10;
 const ENTITY_LIMIT = 8;
@@ -313,6 +241,23 @@ export async function deleteOrphanedBrainSourceNodes(
             WHERE folder.id = n."sourceId" AND folder."userId" = n."userId"
           )
         )
+        OR (
+          n."sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType"
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "TranscriptEnrichment" enrichment
+            JOIN "Transcript" enrichment_parent
+              ON enrichment_parent.id = enrichment."transcriptId"
+             AND enrichment_parent."userId" = enrichment."userId"
+            WHERE enrichment.id = n."sourceId"
+              AND enrichment."userId" = n."userId"
+              AND enrichment_parent.status = 'ACTIVE'::"ContentStatus"
+              AND enrichment.status = 'READY'::"TranscriptEnrichmentStatus"
+              AND enrichment."reviewState" = 'ACCEPTED'::"TranscriptEnrichmentReviewState"
+              AND enrichment."staleReason" IS NULL
+              AND (enrichment."expiresAt" IS NULL OR enrichment."expiresAt" >= NOW())
+          )
+        )
       )
   `;
   await assertLeaseOwnership();
@@ -349,6 +294,9 @@ export async function reindexTranscriptBrain(
       transcriptionMethod: true,
       thumbnailUrl: true,
       plainText: true,
+      correctedPlainText: true,
+      correctionRevision: true,
+      correctionState: true,
       summaryMd: true,
       createdAt: true,
       updatedAt: true,
@@ -360,13 +308,17 @@ export async function reindexTranscriptBrain(
     return;
   }
 
+  const effectivePlainText =
+    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
+      ? transcript.correctedPlainText
+      : transcript.plainText;
   await options.assertLeaseOwnership?.();
   const contentNode = await upsertBrainNode({
     userId,
     key: brainNodeKey('TRANSCRIPT', transcript.id),
     type: 'CONTENT',
     label: transcript.title,
-    description: truncate(transcript.summaryMd || transcript.plainText, DESCRIPTION_LIMIT),
+    description: truncate(transcript.summaryMd || effectivePlainText, DESCRIPTION_LIMIT),
     status: transcript.status,
     metadata: {
       source: transcript.source,
@@ -379,6 +331,8 @@ export async function reindexTranscriptBrain(
       folderId: transcript.folderId,
       createdAt: transcript.createdAt.toISOString(),
       updatedAt: transcript.updatedAt.toISOString(),
+      correctionRevision: transcript.correctionRevision,
+      correctionState: transcript.correctionState,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
@@ -427,7 +381,7 @@ export async function reindexTranscriptBrain(
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
     status: transcript.status,
-    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.author ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.author ?? ''}\n${transcript.summaryMd || effectivePlainText}`,
     beforeEdgeWrite: options.beforeEdgeWrite,
     assertLeaseOwnership: options.assertLeaseOwnership,
   });
@@ -566,14 +520,7 @@ export async function reindexNoteBrain(
   }
   const notes = await db.note.findMany({
     where: { userId },
-    select: {
-      id: true,
-      parentId: true,
-      kind: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-    },
+    select: noteBrainSelect,
   });
   const note = notes.find((item) => item.id === noteId);
   if (!note) {
@@ -597,14 +544,7 @@ export async function reindexNotesBrain(
   }
   const notes = await db.note.findMany({
     where: { userId },
-    select: {
-      id: true,
-      parentId: true,
-      kind: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-    },
+    select: noteBrainSelect,
   });
   const indexes = buildNoteIndexes(notes);
   for (const note of notes) {
@@ -620,8 +560,8 @@ export async function reindexNotesBrain(
 
 async function reindexNoteRecord(
   userId: string,
-  note: NoteRecord,
-  indexes: { byId: Map<string, NoteRecord>; byTitle: Map<string, NoteRecord> },
+  note: NoteBrainRecord,
+  indexes: { byId: Map<string, NoteBrainRecord>; byTitle: Map<string, NoteBrainRecord> },
   assertLeaseOwnership?: BrainReindexGuard,
 ): Promise<void> {
   await assertLeaseOwnership?.();
@@ -639,6 +579,16 @@ async function reindexNoteRecord(
     excerpt: note.title,
     assertLeaseOwnership,
   });
+  for (const anchorSource of validNoteAnchorSources(note.transcriptSources)) {
+    await addBrainSource({
+      userId,
+      nodeId: node.id,
+      sourceType: 'NOTE',
+      sourceId: note.id,
+      ...anchorSource,
+      assertLeaseOwnership,
+    });
+  }
 
   if (note.parentId) {
     const parent = indexes.byId.get(note.parentId);
@@ -754,7 +704,7 @@ async function removeSourceEvidence(
  * Limpa só evidências/arestas recriáveis por heurística no reprocesso do Brain.
  * Preserva llm-grounded (custa crédito) e manual/wikilink.
  */
-async function removeRefreshableSourceEvidence(
+export async function removeRefreshableSourceEvidence(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
@@ -805,7 +755,7 @@ async function removeRefreshableSourceEvidence(
   }
 }
 
-async function deleteAutomaticContentEdgesForSource(
+export async function deleteAutomaticContentEdgesForSource(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
@@ -868,7 +818,7 @@ async function upsertLibraryFolderNode(
 
 async function upsertNoteNode(
   userId: string,
-  note: NoteRecord,
+  note: NoteBrainRecord,
   options: { resetCompletion?: boolean } = {},
 ) {
   return upsertBrainNode({
@@ -1337,7 +1287,7 @@ function canonicalEdge(left: string, right: string): [string, string] {
   return left.localeCompare(right) <= 0 ? [left, right] : [right, left];
 }
 
-async function upsertBrainNode(input: BrainNodeInput) {
+export async function upsertBrainNode(input: BrainNodeInput) {
   const metadataMode = input.metadataMode ?? 'replace';
   const metadata = input.metadata ?? {};
   const upsertArgs = {
@@ -1416,7 +1366,7 @@ async function finalizeBrainNodeIndex(
   }
 }
 
-async function upsertBrainEdge(input: BrainEdgeInput) {
+export async function upsertBrainEdge(input: BrainEdgeInput) {
   // Até 2 tentativas: corrida com orphan cleanup / reindex paralelo pode apagar
   // nó ou aresta entre o upsert e o BrainSource.
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -1496,12 +1446,19 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
   throw new Error(`Brain edge materialization failed: ${input.fromNodeId} -> ${input.toNodeId}`);
 }
 
-async function addBrainSource(input: {
+export async function addBrainSource(input: {
   userId: string;
   nodeId?: string;
   edgeId?: string;
   sourceType: BrainSourceType;
   sourceId: string;
+  chunkId?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  startSec?: number | null;
+  endSec?: number | null;
+  segmentKey?: string | null;
+  evidenceKey?: string | null;
   excerpt?: string | null;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
@@ -1531,6 +1488,13 @@ async function addBrainSource(input: {
         edgeId: input.edgeId ?? null,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
+        chunkId: input.chunkId ?? null,
+        startLine: input.startLine ?? null,
+        endLine: input.endLine ?? null,
+        startSec: input.startSec ?? null,
+        endSec: input.endSec ?? null,
+        segmentKey: input.segmentKey ?? null,
+        evidenceKey: input.evidenceKey ?? null,
         excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
       },
     });
@@ -1548,16 +1512,6 @@ async function addBrainSource(input: {
     }
     throw err;
   }
-}
-
-function buildNoteIndexes(notes: NoteRecord[]): {
-  byId: Map<string, NoteRecord>;
-  byTitle: Map<string, NoteRecord>;
-} {
-  return {
-    byId: new Map(notes.map((note) => [note.id, note])),
-    byTitle: new Map(notes.map((note) => [note.title.trim().toLowerCase(), note])),
-  };
 }
 
 function parseWikiLinks(markdown: string): string[] {
@@ -1913,7 +1867,7 @@ function topicExcerpt(text: string, slug: string): string | null {
   return truncate(text, EVIDENCE_LIMIT);
 }
 
-function truncate(value: string | null | undefined, limit: number): string | null {
+export function truncate(value: string | null | undefined, limit: number): string | null {
   const normalized = value?.replace(/\s+/g, ' ').trim();
   if (!normalized) return null;
   return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;

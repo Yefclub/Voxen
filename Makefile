@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev update build down restart logs ps test test-scripts test-ts test-extension test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup clean
+.PHONY: help ensure-env dev dev-s3 update build down restart logs ps test test-scripts test-ts test-extension test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup restore-storage clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -19,13 +19,18 @@ export VOXEN_BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 ensure-env: ## Cria/completa .env local sem sobrescrever secrets existentes
 	@scripts/ensure-env.sh
 
-dev: ensure-env ## Sobe tudo localmente (postgres, redis, minio, web, worker)
+dev: ensure-env ## Starts PostgreSQL, Redis, web, and worker with local storage
 	docker compose up -d --build
 	@echo ""
 	@echo "✓ Voxen rodando em http://localhost:3000 (v$(VOXEN_VERSION))"
-	@echo "  MinIO Console: http://localhost:9001"
 	@echo "  Logs: make logs"
 	@echo "  Parar: make down"
+
+dev-s3: ensure-env ## Starts the optional MinIO/S3 profile (requires .env S3 values)
+	STORAGE_DRIVER=s3 docker compose --profile s3 up -d minio minio-init
+	STORAGE_DRIVER=s3 docker compose --profile s3 up -d --build web worker
+	@echo "✓ Voxen S3 profile running at http://localhost:3000"
+	@echo "  MinIO Console: http://localhost:9001"
 
 update: ensure-env ## Atualiza (rolling restart sem perda de dados — recomendado pra prod)
 	@# Rebuild + recriação dos containers sem mexer em volumes (DB preservado).
@@ -108,7 +113,7 @@ shell-redis: ## redis-cli
 
 # --- Infra utilidades ---
 minio-init: ## Reroda criação do bucket MinIO (idempotente)
-	docker compose up minio-init
+	docker compose --profile s3 up minio-init
 
 minio-cors: ## Aplica CORS no bucket p/ upload presigned: make minio-cors APP_ORIGIN=https://app.dominio.com
 	@if [ -z "$(APP_ORIGIN)" ]; then \
@@ -130,21 +135,21 @@ reset-password: ## Reseta senha via CLI: make reset-password EMAIL=x@y.com PASSW
 	docker compose exec -T -e VOXEN_NEW_PASSWORD="$(PASSWORD)" web \
 		bun apps/web/src/scripts/reset-password.ts "$(EMAIL)"
 
-backup: ## Backup dos volumes críticos (postgres, minio + MASTER_KEY do .env) em ./backups/
-	@mkdir -p backups
-	@DATE=$$(date +%Y-%m-%d_%H%M); \
-	echo "→ Postgres → backups/db-$$DATE.sql.gz"; \
-	docker compose exec -T postgres pg_dump -U voxen voxen | gzip > "backups/db-$$DATE.sql.gz"; \
-	echo "→ Master key → backups/master-key-$$DATE.env"; \
-	grep '^MASTER_KEY=' .env > "backups/master-key-$$DATE.env"; \
-	chmod 0600 "backups/master-key-$$DATE.env"; \
-	echo "→ MinIO data → backups/minio-$$DATE.tar.gz"; \
-	docker run --rm -v voxen_minio_data:/data alpine tar czf - -C /data . > "backups/minio-$$DATE.tar.gz"; \
-	echo ""; \
-	echo "✓ Backup completo em ./backups/ (timestamp $$DATE)"; \
-	ls -lh backups/ | tail -3
+backup: ## Backs up PostgreSQL, selected storage, and MASTER_KEY into ./backups/
+	@bash scripts/backup.sh
 
-clean: ## ⚠️  REMOVE VOLUMES (PERDE TODOS OS DADOS — postgres, redis, minio)
-	@echo "⚠️  ATENÇÃO: vai remover postgres, redis e minio. Dados perdidos sem backup."
+restore-storage: ## Restores BACKUP into the selected local/MinIO volume (destructive)
+	@if [ "$(RESTORE_CONFIRM)" != "restore" ] || [ -z "$(BACKUP)" ]; then \
+		echo "Usage: make restore-storage BACKUP=backups/storage-YYYY-MM-DD_HHMM.tar.gz RESTORE_CONFIRM=restore"; \
+		exit 2; \
+	fi
+	@test -f "$(BACKUP)" || (echo "Backup not found: $(BACKUP)" >&2; exit 2)
+	docker compose down
+	@if echo "$(notdir $(BACKUP))" | grep -q '^minio-'; then VOLUME=voxen_minio_data; else VOLUME=voxen_storage_data; fi; \
+	docker run --rm -v $$VOLUME:/data -v "$(abspath $(BACKUP)):/backup.tar.gz:ro" alpine sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar xzf /backup.tar.gz -C /data'
+	@echo "Storage restored. Run make dev (or make dev-s3) and verify /health/deep."
+
+clean: ## ⚠️  REMOVE VOLUMES (PERDE TODOS OS DADOS — postgres, redis, storage)
+	@echo "⚠️  ATENÇÃO: vai remover postgres, redis e storage. Dados perdidos sem backup."
 	@read -p "Digite 'sim' pra confirmar: " confirm && [ "$$confirm" = "sim" ] || (echo "Cancelado." && exit 1)
 	docker compose down -v

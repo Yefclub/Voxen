@@ -50,9 +50,14 @@ originally selected, but it was never used by the runtime. The current worker
 uses durable Postgres `Job` rows, `FOR UPDATE SKIP LOCKED`, and renewable leases.
 Redis Pub/Sub is only an ephemeral wakeup and realtime transport.
 
-## ADR-006: S3-Compatible Object Storage
+## ADR-006: Local-Volume Default with Optional S3
 
-Transcripts are Markdown files stored outside the database. Voxen uses S3-compatible storage with MinIO as the default local and Compose option. This keeps local, VPS, and Easypanel deployments aligned.
+Canonical Markdown and media remain outside PostgreSQL behind provider-neutral
+storage keys. New single-host installs use one shared persistent volume mounted
+at `/data/storage`; S3-compatible storage is an explicit option for external or
+multi-host deployments. Existing non-empty `S3_*`/`GARAGE_*` configuration is
+inferred as S3 when no driver was previously recorded, so an upgrade cannot
+silently expose an empty local library. Driver changes never migrate data.
 
 ## ADR-007: Better Auth with Admin Approval
 
@@ -68,3 +73,18 @@ The original separate agent required a custom stream bridge. The current
 integrated agent emits the application's SSE event contract directly from the
 authenticated Hono route and persists text, reasoning, sources, and tool events
 as ordered message segments.
+
+## ADR-013: Mem0 only as an optional conversational-memory shadow
+
+Mem0 OSS addresses a narrower problem than Voxen's knowledge base: recovering a
+small set of recurring conversational preferences and project facts without
+replaying long histories. Voxen keeps transcripts, notes, evidence, temporal
+facts, user-controlled preferences, and Brain as canonical. Mem0 is a separately
+hosted, disabled-by-default provider whose inferred results are unverified and
+cannot enter prompts, MCP, citations, or the graph during the evaluation stage.
+
+Completed chat writes fail soft; account deletion fails strict when the provider
+is enabled. A live harness must pass quality, isolation, deletion, latency, token,
+and cost review before a new ADR may authorize controlled retrieval. Mem0's
+native Platform graph is not adopted because it boosts retrieval through
+untyped entity co-occurrence rather than exposing Voxen's grounded typed graph.

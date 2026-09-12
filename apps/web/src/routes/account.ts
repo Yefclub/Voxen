@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { auth, QR_LOGIN_TTL_SEC } from '../lib/auth';
 import { db } from '../lib/db';
 import { rateLimit } from '../lib/rate-limit';
+import { registerAccountInterestRoutes } from './account-interests';
 
 type Vars = { userId: string };
 
@@ -31,6 +32,8 @@ accountRoutes.use('*', async (c, next) => {
   c.set('userId', session.user.id);
   return next();
 });
+
+registerAccountInterestRoutes(accountRoutes);
 
 accountRoutes.get('/', async (c) => {
   const userId = c.get('userId');

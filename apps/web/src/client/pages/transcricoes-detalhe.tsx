@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Archive,
   Calendar,
-  Check,
   Clock,
-  Copy,
   ExternalLink,
   FileText,
   Folder,
@@ -14,13 +12,11 @@ import {
   Languages,
   Loader2,
   MessageSquare,
-  NotebookPen,
   RotateCcw,
   RefreshCw,
   Sparkles,
   Tags,
   Trash2,
-  Wand2,
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
@@ -29,7 +25,7 @@ import { Badge } from '../components/ui/badge';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
-import { apiPost, ApiError } from '../lib/api';
+import { apiDelete, apiPatch, apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { PageShell } from '../components/ui/page-shell';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
@@ -49,7 +45,24 @@ import { cn } from '../lib/utils';
 import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
 import { stripMarkdownFrontmatter, transcriptRenderMode } from '../lib/transcript-render';
 import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
+import {
+  LinkedNotesCard,
+  type LinkedNote,
+  type LinkedNoteAnchorDraft,
+  type LinkedNotesResponse,
+} from '../components/library/linked-notes-card';
+import {
+  AdditionalContextBlock,
+  type TranscriptEnrichmentsResponse,
+} from '../components/library/additional-context-block';
+import {
+  TranscriptFlowBlock,
+  TranscriptSummaryBlock,
+} from '../components/library/transcript-derived-content';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
+import { TranscriptCorrectionsCard } from '../components/library/transcript-corrections-card';
+import { TranscriptKnowledgeGraph } from '../components/library/transcript-knowledge-graph';
+import { TranscriptInterestFeedback } from '../components/library/transcript-interest-feedback';
 
 interface TranscriptDetail {
   id: string;
@@ -80,6 +93,7 @@ interface TranscriptDetail {
   mdPath: string;
   plainText: string;
   summaryMd: string | null;
+  flowchartMd: string | null;
   frontmatter: unknown;
   sourceChecksum: string | null;
   sourceVersion: number;
@@ -87,6 +101,12 @@ interface TranscriptDetail {
   sourceMetadata: unknown;
   sourceRefreshStatus: 'CURRENT' | 'CHECKING' | 'FAILED';
   sourceRefreshError: string | null;
+  correctionRevision: number;
+  correctedChecksum: string | null;
+  correctionSourceVersion: number | null;
+  correctionSourceChecksum: string | null;
+  correctionState: 'ACTIVE' | 'STALE';
+  correctionStaleReason: string | null;
   sourceVersions: Array<{
     version: number;
     checksum: string;
@@ -101,6 +121,7 @@ interface TranscriptDetail {
 interface ResponseBody {
   transcript: TranscriptDetail;
   markdown: string;
+  canonicalMarkdown: string | null;
 }
 
 interface LibraryFolder {
@@ -112,18 +133,6 @@ interface LibraryFolder {
 
 interface FoldersResponse {
   folders: LibraryFolder[];
-}
-
-interface LinkedNote {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LinkedNotesResponse {
-  notes: LinkedNote[];
 }
 
 export function TranscricaoDetalhePage(): React.ReactElement {
@@ -140,9 +149,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   } = useFetch<LinkedNotesResponse>(
     id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/notes` : null,
   );
+  const {
+    data: enrichmentsData,
+    loading: enrichmentsLoading,
+    refresh: refreshEnrichments,
+  } = useFetch<TranscriptEnrichmentsResponse>(
+    id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/enrichments` : null,
+  );
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
+  const [generatingFlow, setGeneratingFlow] = useState(false);
   const [organizing, setOrganizing] = useState(false);
   const [taggingLoading, setTaggingLoading] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
@@ -150,7 +167,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
+  const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmFlowRegen, setConfirmFlowRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [refreshingSource, setRefreshingSource] = useState(false);
@@ -160,6 +179,57 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     const timer = window.setInterval(() => void refresh(), 7_500);
     return () => window.clearInterval(timer);
   }, [data?.transcript.sourceRefreshStatus, refresh]);
+
+  useEffect(() => {
+    const active = enrichmentsData?.enrichments.some((item) =>
+      ['PENDING', 'RUNNING', 'RETRY'].includes(item.status),
+    );
+    if (!active) return;
+    const timer = window.setInterval(() => void refreshEnrichments(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [enrichmentsData?.enrichments, refreshEnrichments]);
+
+  async function queueResearch(): Promise<void> {
+    if (!id) return;
+    try {
+      await apiPost(`/api/transcripts/${id}/enrichments`, {});
+      toast.success(translate('library.additionalContextQueued'));
+      await refreshEnrichments();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
+      );
+    }
+  }
+
+  async function updateEnrichment(
+    enrichmentId: string,
+    body: Record<string, unknown>,
+  ): Promise<void> {
+    if (!id) return;
+    try {
+      await apiPatch(`/api/transcripts/${id}/enrichments/${enrichmentId}`, body);
+      await refreshEnrichments();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
+      );
+      throw error;
+    }
+  }
+
+  async function deleteEnrichment(enrichmentId: string): Promise<void> {
+    if (!id) return;
+    try {
+      await apiDelete(`/api/transcripts/${id}/enrichments/${enrichmentId}`);
+      await refreshEnrichments();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
+      );
+      throw error;
+    }
+  }
 
   async function refreshSource(): Promise<void> {
     if (!id || refreshingSource) return;
@@ -208,6 +278,39 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateFlow(force: boolean): Promise<void> {
+    if (!id || generatingFlow) return;
+    setGeneratingFlow(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/flow`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        existing?: boolean;
+      };
+      if (res.status === 409 && body.existing) {
+        setConfirmFlowRegen(true);
+        return;
+      }
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.flowError'));
+        return;
+      }
+      toast.success(
+        force ? translate('library.flowRegenerated') : translate('library.flowGenerated'),
+      );
+      await refresh();
+    } catch {
+      toast.error(translate('library.flowError'));
+    } finally {
+      setGeneratingFlow(false);
     }
   }
 
@@ -380,9 +483,20 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       await apiPost<{ note: LinkedNote }>(`/api/transcripts/${transcript.id}/notes`, {
         title,
         content: linkedNoteContent,
+        anchors: linkedNoteAnchor
+          ? [
+              {
+                transcriptId: transcript.id,
+                ...linkedNoteAnchor,
+                sourceVersion: transcript.sourceVersion,
+                sourceChecksum: transcript.sourceChecksum,
+              },
+            ]
+          : [],
       });
       setLinkedNoteTitle('');
       setLinkedNoteContent('');
+      setLinkedNoteAnchor(null);
       refreshLinkedNotes();
       toast.success(translate('library.linkedNoteCreated'));
     } catch (e) {
@@ -542,11 +656,39 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
           <article className="min-w-0 space-y-7 sm:space-y-8">
-            <SummaryBlock
+            <TranscriptSummaryBlock
               summary={t.summaryMd}
               generating={generating}
               onGenerate={() => void generateSummary(false)}
               t={translate}
+            />
+            <TranscriptFlowBlock
+              flowchart={t.flowchartMd}
+              generating={generatingFlow}
+              onGenerate={() => void generateFlow(false)}
+              readOnly={!canUseContextualActions}
+              t={translate}
+            />
+            {canUseContextualActions && <TranscriptKnowledgeGraph transcriptId={t.id} />}
+            <AdditionalContextBlock
+              enrichments={enrichmentsData?.enrichments ?? []}
+              researchMode={enrichmentsData?.researchMode ?? 'OFF'}
+              loading={enrichmentsLoading}
+              locale={locale}
+              onQueue={() => void queueResearch()}
+              onUpdate={updateEnrichment}
+              onDelete={deleteEnrichment}
+              t={translate}
+            />
+            <TranscriptCorrectionsCard
+              transcriptId={t.id}
+              revision={t.correctionRevision}
+              state={t.correctionState}
+              staleReason={t.correctionStaleReason}
+              readOnly={!canUseContextualActions}
+              locale={locale}
+              canonicalMarkdown={data.canonicalMarkdown}
+              onUpdated={refresh}
             />
             {renderMode === 'markdown' ? (
               <section className="space-y-3">
@@ -560,7 +702,22 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 </Card>
               </section>
             ) : (
-              <TranscriptViewer markdown={data.markdown} />
+              <TranscriptViewer
+                markdown={data.markdown}
+                anchors={(linkedNotesData?.notes ?? []).flatMap((note) =>
+                  note.transcriptSources.flatMap((source) => source.anchors),
+                )}
+                onCreateAnnotation={(selection) => {
+                  setLinkedNoteAnchor(selection);
+                  window.setTimeout(
+                    () =>
+                      document
+                        .getElementById('linked-notes-card')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+                    0,
+                  );
+                }}
+              />
             )}
           </article>
 
@@ -584,7 +741,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               )}
             </Card>
 
-            <Card elevated className="order-3 lg:order-none">
+            {canUseContextualActions && (
+              <TranscriptInterestFeedback key={t.id} transcriptId={t.id} />
+            )}
+
+            <Card elevated className="order-4 lg:order-none">
               <CardContent className="pt-5 pb-5 space-y-4">
                 <LibraryFolderControl
                   folders={foldersData?.folders ?? []}
@@ -660,16 +821,18 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             </Card>
 
             {canUseContextualActions && (
-              <div className="order-4 lg:order-none">
+              <div className="order-5 lg:order-none">
                 <LinkedNotesCard
                   notes={linkedNotesData?.notes ?? []}
                   loading={linkedNotesLoading}
                   title={linkedNoteTitle}
                   content={linkedNoteContent}
+                  anchor={linkedNoteAnchor}
                   creating={creatingLinkedNote}
                   locale={locale}
                   onTitleChange={setLinkedNoteTitle}
                   onContentChange={setLinkedNoteContent}
+                  onAnchorChange={setLinkedNoteAnchor}
                   onCreate={() => void createLinkedNote(t)}
                   t={translate}
                 />
@@ -780,6 +943,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={generating}
       />
       <ConfirmDialog
+        open={confirmFlowRegen}
+        onOpenChange={setConfirmFlowRegen}
+        title={translate('library.regenerateFlowTitle')}
+        description={translate('library.regenerateFlowDescription')}
+        confirmLabel={translate('library.regenerateFlow')}
+        cancelLabel={translate('common.cancel')}
+        onConfirm={() => generateFlow(true)}
+        loading={generatingFlow}
+      />
+      <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={translate('library.deleteTitle')}
@@ -791,118 +964,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </>
-  );
-}
-
-function LinkedNotesCard({
-  notes,
-  loading,
-  title,
-  content,
-  creating,
-  locale,
-  onTitleChange,
-  onContentChange,
-  onCreate,
-  t,
-}: {
-  notes: LinkedNote[];
-  loading: boolean;
-  title: string;
-  content: string;
-  creating: boolean;
-  locale: Locale;
-  onTitleChange: (value: string) => void;
-  onContentChange: (value: string) => void;
-  onCreate: () => void;
-  t: TranslateFn;
-}): React.ReactElement {
-  return (
-    <Card elevated>
-      <CardContent className="pt-5 pb-5 space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-          <NotebookPen className="h-3.5 w-3.5 text-emerald-400" />
-          {t('library.linkedNotes')}
-        </div>
-
-        <div className="space-y-2">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
-            placeholder={t('library.linkedNoteTitle')}
-            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
-            disabled={creating}
-            maxLength={200}
-          />
-          <textarea
-            value={content}
-            onChange={(e) => onContentChange(e.target.value)}
-            placeholder={t('library.linkedNoteContent')}
-            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
-            disabled={creating}
-            maxLength={200_000}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={creating || title.trim().length === 0}
-            onClick={onCreate}
-          >
-            {creating ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('library.linkedNoteCreating')}
-              </>
-            ) : (
-              t('library.linkedNoteCreate')
-            )}
-          </Button>
-        </div>
-
-        <div className="space-y-2">
-          {loading && (
-            <>
-              <Skeleton className="h-16 w-full rounded-lg" />
-              <Skeleton className="h-16 w-full rounded-lg" />
-            </>
-          )}
-          {!loading && notes.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
-              {t('library.linkedNotesEmpty')}
-            </p>
-          )}
-          {!loading &&
-            notes.map((note) => {
-              const preview =
-                note.content.trim().replace(/\s+/g, ' ').slice(0, 140) || t('notes.emptyContent');
-              return (
-                <div
-                  key={note.id}
-                  className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-3 py-2.5"
-                >
-                  <p className="truncate text-sm font-medium text-[var(--color-app-fg)]">
-                    {note.title}
-                  </p>
-                  <p className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-[var(--color-app-muted)]">
-                    {preview}
-                  </p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="truncate text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]/80">
-                      {formatDateTime(new Date(note.updatedAt), locale)}
-                    </span>
-                    <Button asChild variant="ghost" size="sm" className="h-7 px-2">
-                      <Link to={`/notas/${note.id}`}>{t('library.openNote')}</Link>
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1032,143 +1093,6 @@ function TagsControl({
         </div>
       )}
     </div>
-  );
-}
-
-function SummaryBlock({
-  summary,
-  generating,
-  onGenerate,
-  t,
-}: {
-  summary: string | null;
-  generating: boolean;
-  onGenerate: () => void;
-  t: TranslateFn;
-}): React.ReactElement {
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-    };
-  }, []);
-
-  async function copySummary(): Promise<void> {
-    if (!summary?.trim()) return;
-    try {
-      await navigator.clipboard.writeText(summary);
-      setCopied(true);
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(false), 1500);
-      toast.success(t('library.summaryCopied'));
-    } catch {
-      toast.error(t('library.summaryCopyError'));
-    }
-  }
-
-  if (!summary) {
-    return (
-      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
-        <CardContent className="space-y-4 px-5 py-7 sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
-              <Wand2 className="h-4 w-4 text-violet-300" />
-            </div>
-            <div className="flex-1 space-y-1">
-              <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
-                {t('library.summary')}
-              </h2>
-              <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
-                {t('library.summaryDescription')}
-              </p>
-            </div>
-            <Button
-              onClick={onGenerate}
-              disabled={generating}
-              variant="primary"
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t('library.generating')}
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {t('library.generateSummary')}
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <section className="group/summary space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
-            <Wand2 className="h-3.5 w-3.5 text-violet-300" />
-          </div>
-          <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-fg)] sm:text-lg">
-            {t('library.summary')}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            type="button"
-            onClick={() => void copySummary()}
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
-            aria-label={t('library.copySummary')}
-            title={t('library.copySummary')}
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-            <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
-          </Button>
-          <Button
-            onClick={onGenerate}
-            disabled={generating}
-            variant="ghost"
-            size="sm"
-            className="h-8"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t('library.regenerating')}
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3 w-3" />
-                {t('library.regenerateSummary')}
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-      <Card
-        elevated
-        className={cn(
-          'border-[var(--color-app-border)]/80 transition-colors',
-          'hover:border-[var(--color-app-border-strong)]',
-        )}
-      >
-        <CardContent className="px-5 py-5 sm:px-6">
-          <Markdown>{summary}</Markdown>
-        </CardContent>
-      </Card>
-    </section>
   );
 }
 

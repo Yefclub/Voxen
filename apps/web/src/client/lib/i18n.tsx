@@ -9,18 +9,44 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import { enMermaidCanvasMessages, ptBrMermaidCanvasMessages } from './mermaid-canvas-i18n';
+import {
+  enKnowledgeDeletionMessages,
+  ptBrKnowledgeDeletionMessages,
+} from './knowledge-deletion-i18n';
+import { enNoteVersioningMessages, ptBrNoteVersioningMessages } from './note-versioning-i18n';
+import {
+  enChatReferenceCanvasMessages,
+  ptBrChatReferenceCanvasMessages,
+} from './chat-reference-canvas-i18n';
+import * as featureMessages from './feature-messages';
+import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
+import { enResearchPolicyMessages, ptBrResearchPolicyMessages } from './research-policy-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
-
+import {
+  enTranscriptAnnotationMessages,
+  ptBrTranscriptAnnotationMessages,
+} from './transcript-annotations-i18n';
+import { enTranscriptFlowMessages, ptBrTranscriptFlowMessages } from './transcript-flow-i18n';
+import { enKnowledgeSearchMessages, ptBrKnowledgeSearchMessages } from './knowledge-search-i18n';
 export type Locale = 'pt-BR' | 'en';
-
 export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> = {
   'pt-BR': { nativeName: 'Português (Brasil)', shortName: 'PT-BR' },
   en: { nativeName: 'English', shortName: 'EN' },
 };
-
 const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
+  ...ptBrReleaseUpdateMessages,
+  ...ptBrTranscriptAnnotationMessages,
+  ...featureMessages.ptBrFeatureMessages,
+  ...ptBrResearchPolicyMessages,
+  ...ptBrChatReferenceCanvasMessages,
+  ...ptBrTranscriptFlowMessages,
+  ...ptBrNoteVersioningMessages,
+  ...ptBrMermaidCanvasMessages,
+  ...ptBrKnowledgeDeletionMessages,
+  ...ptBrKnowledgeSearchMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -52,8 +78,6 @@ const ptBRMessages = {
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Contexto: {tokens} / {limit} tokens',
   'shell.contextSummary': 'Ver resumo da última compactação',
-  'shell.versionOpenChangelog': 'Clique para ver as novidades',
-  'shell.nav.changelog': 'Novidades',
   'novidades.back': 'Início',
   'novidades.eyebrow': 'Changelog',
   'novidades.title': 'Novidades',
@@ -482,7 +506,7 @@ const ptBRMessages = {
   'library.clearFolders': 'Apagar pastas',
   'library.clearFoldersConfirm':
     'Apagar TODAS as pastas? Os conteúdos permanecem na biblioteca (sem pasta), liberando o Organizar com IA.',
-  'library.clearFoldersDone': '{deleted} pastas removidas · {items} conteúdos liberados.',
+  'library.clearFoldersDone': 'Limpeza de pastas adicionada à fila.',
   'library.clearFoldersError': 'Falha ao apagar as pastas.',
   'library.loadMore': 'Carregar mais',
   'library.statusArchived': 'Arquivado',
@@ -501,21 +525,8 @@ const ptBRMessages = {
   'library.deleteTitle': 'Apagar definitivamente?',
   'library.deleteDescription':
     'O arquivo no armazenamento e a transcrição serão apagados. Esta ação não pode ser desfeita.',
-  'library.deleted': 'Conteúdo apagado definitivamente.',
+  'library.deleted': 'Exclusão adicionada à fila.',
   'library.deleteError': 'Falha ao apagar conteúdo.',
-  'library.summary': 'Resumo',
-  'library.summaryDescription': 'Use a IA para criar um resumo estruturado em markdown.',
-  'library.generateSummary': 'Gerar resumo',
-  'library.generating': 'Gerando…',
-  'library.regenerateSummary': 'Regenerar',
-  'library.regenerating': 'Regenerando…',
-  'library.summaryGenerated': 'Resumo gerado.',
-  'library.summaryRegenerated': 'Resumo regenerado.',
-  'library.summaryError': 'Falha ao gerar resumo.',
-  'library.summaryUnexpectedError': 'Erro ao gerar resumo.',
-  'library.copySummary': 'Copiar resumo',
-  'library.summaryCopied': 'Resumo copiado.',
-  'library.summaryCopyError': 'Não foi possível copiar o resumo.',
   'library.chatBarHint': 'Pergunte sobre este conteúdo — envia direto para o chat.',
   'library.chatBarPlaceholder': 'Pergunte algo sobre este conteúdo…',
   'library.chatBarContext': 'Perguntando sobre: {title}',
@@ -546,16 +557,6 @@ const ptBRMessages = {
   'library.openOriginalUpload': 'Abrir arquivo enviado',
   'library.audioUpload': 'Áudio enviado',
   'library.viewImage': 'Ampliar imagem',
-  'library.linkedNotes': 'Notas vinculadas',
-  'library.linkedNotesEmpty': 'Nenhuma nota vinculada a este conteúdo.',
-  'library.linkedNoteTitle': 'Título da nota',
-  'library.linkedNoteContent': 'Conteúdo em markdown',
-  'library.linkedNoteCreate': 'Adicionar nota',
-  'library.linkedNoteCreating': 'Salvando…',
-  'library.linkedNoteCreated': 'Nota vinculada criada.',
-  'library.linkedNoteError': 'Falha ao criar nota vinculada.',
-  'library.openNote': 'Abrir nota',
-
   'dashboard.welcome': 'Bem-vindo de volta',
   'dashboard.fallbackName': 'Olá',
   'dashboard.newContent': 'Novo conteúdo',
@@ -667,7 +668,6 @@ const ptBRMessages = {
   'chat.historyLabel': 'Histórico da conversa',
   'chat.scrollLatest': 'Ir ao mais recente',
   'chat.compactionStatus': 'Memória resumida: {before} → {after} tokens.',
-  'chat.toolParamsSafe': 'Parâmetros recebidos com segurança.',
   'tools.web_search': 'Pesquisa na web',
   'tools.scrape_url': 'Leitura de página',
   'tools.search_transcripts': 'Busca na biblioteca',
@@ -683,6 +683,7 @@ const ptBRMessages = {
   'tools.read_transcript': 'Leitura de transcrição',
   'tools.read_transcript_section': 'Trecho de transcrição',
   'tools.read_transcript_summary': 'Resumo de transcrição',
+  'tools.read_external_enrichment': 'Leitura de contexto externo',
   'tools.get_metadata': 'Metadados do conteúdo',
   'tools.list_notes': 'Listagem de notas',
   'tools.read_note': 'Leitura de nota',
@@ -762,7 +763,7 @@ const ptBRMessages = {
   'notes.createdNote': 'Nota criada.',
   'notes.createError': 'Erro ao criar.',
   'notes.deleteError': 'Falha ao apagar.',
-  'notes.deleted': 'Apagado.',
+  'notes.deleted': 'Exclusão adicionada à fila.',
   'notes.emptyTree': 'Sem notas ainda.',
   'notes.useButtonAbove': 'Use o botão acima.',
   'notes.deleteFolderTitle': 'Apagar pasta?',
@@ -777,6 +778,9 @@ const ptBRMessages = {
   'notes.saveError': 'Falha ao salvar.',
 
   'markdown.code': 'código',
+  'markdown.diagramLoading': 'Renderizando diagrama…',
+  'markdown.diagramUnavailable': 'Diagrama indisponível; exibindo o código seguro.',
+  'markdown.diagramLabel': 'Diagrama Mermaid',
   'transcript.title': 'Transcrição',
   'transcript.copyAll': 'Copiar tudo',
 
@@ -959,6 +963,8 @@ const ptBRMessages = {
   'admin.integrations.models.reset': 'Voltar ao padrão',
   'admin.integrations.models.resetSuccess': 'Finalidade restaurada para o modelo padrão.',
   'admin.integrations.models.changeSuccess': 'Modelo atualizado.',
+  'admin.integrations.models.changeFallback': 'Trocar fallback',
+  'admin.integrations.models.clearFallback': 'Desativar fallback',
   'admin.integrations.models.loadError': 'Não foi possível carregar a configuração de modelos.',
   'admin.integrations.models.catalogUnavailable':
     'Catálogo da OpenRouter indisponível agora. Os overrides já salvos continuam ativos — tente novamente mais tarde.',
@@ -1231,6 +1237,7 @@ const ptBRMessages = {
   'graph.buildingDescription':
     'O primeiro mapa aparecerá automaticamente assim que as fontes forem indexadas.',
   'graph.clearSearch': 'Limpar busca',
+  'graph.clearFocus': 'Mostrar grafo completo',
   'graph.closeExplorer': 'Fechar exploração',
   'graph.closeInspector': 'Fechar detalhes',
   'graph.connectionsLabel': 'Conexões',
@@ -1251,6 +1258,7 @@ const ptBRMessages = {
   'graph.createNote': 'Criar nota',
   'graph.addContent': 'Ver biblioteca',
   'graph.searchPlaceholder': 'Filtrar por título, tipo, fonte ou descrição…',
+  'graph.serverSearchPlaceholder': 'Pesquisar em todo o grafo…',
   'graph.refresh': 'Atualizar',
   'graph.controlsHint':
     'Arraste para mover · scroll para zoom · clique seleciona · duplo-clique abre a fonte',
@@ -1416,6 +1424,16 @@ export type I18nKey = keyof typeof ptBRMessages;
 export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>) => string;
 
 const enMessages: Record<I18nKey, string> = {
+  ...enKnowledgeSearchMessages,
+  ...enMermaidCanvasMessages,
+  ...enNoteVersioningMessages,
+  ...enReleaseUpdateMessages,
+  ...enTranscriptAnnotationMessages,
+  ...featureMessages.enFeatureMessages,
+  ...enKnowledgeDeletionMessages,
+  ...enResearchPolicyMessages,
+  ...enChatReferenceCanvasMessages,
+  ...enTranscriptFlowMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
@@ -1447,8 +1465,6 @@ const enMessages: Record<I18nKey, string> = {
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Context: {tokens} / {limit} tokens',
   'shell.contextSummary': 'View last compaction summary',
-  'shell.versionOpenChangelog': 'Click to view release notes',
-  'shell.nav.changelog': 'News',
   'novidades.back': 'Home',
   'novidades.eyebrow': 'Changelog',
   'novidades.title': "What's new",
@@ -1869,7 +1885,7 @@ const enMessages: Record<I18nKey, string> = {
   'library.clearFolders': 'Delete folders',
   'library.clearFoldersConfirm':
     'Delete ALL folders? Content stays in the library (unfoldered), so Organize with AI can run again.',
-  'library.clearFoldersDone': '{deleted} folders removed · {items} items unfoldered.',
+  'library.clearFoldersDone': 'Folder cleanup added to the queue.',
   'library.clearFoldersError': 'Failed to delete folders.',
   'library.loadMore': 'Load more',
   'library.statusArchived': 'Archived',
@@ -1888,21 +1904,8 @@ const enMessages: Record<I18nKey, string> = {
   'library.deleteTitle': 'Delete permanently?',
   'library.deleteDescription':
     'The stored file and transcript will be deleted. This action cannot be undone.',
-  'library.deleted': 'Content permanently deleted.',
+  'library.deleted': 'Deletion added to the queue.',
   'library.deleteError': 'Failed to delete content.',
-  'library.summary': 'Summary',
-  'library.summaryDescription': 'Use AI to create a structured markdown summary.',
-  'library.generateSummary': 'Generate summary',
-  'library.generating': 'Generating…',
-  'library.regenerateSummary': 'Regenerate',
-  'library.regenerating': 'Regenerating…',
-  'library.summaryGenerated': 'Summary generated.',
-  'library.summaryRegenerated': 'Summary regenerated.',
-  'library.summaryError': 'Failed to generate summary.',
-  'library.summaryUnexpectedError': 'Error generating summary.',
-  'library.copySummary': 'Copy summary',
-  'library.summaryCopied': 'Summary copied.',
-  'library.summaryCopyError': 'Could not copy the summary.',
   'library.chatBarHint': 'Ask about this content — sends you straight to chat.',
   'library.chatBarPlaceholder': 'Ask something about this content…',
   'library.chatBarContext': 'Asking about: {title}',
@@ -1933,16 +1936,6 @@ const enMessages: Record<I18nKey, string> = {
   'library.openOriginalUpload': 'Open uploaded file',
   'library.audioUpload': 'Uploaded audio',
   'library.viewImage': 'Expand image',
-  'library.linkedNotes': 'Linked notes',
-  'library.linkedNotesEmpty': 'No notes linked to this content.',
-  'library.linkedNoteTitle': 'Note title',
-  'library.linkedNoteContent': 'Markdown content',
-  'library.linkedNoteCreate': 'Add note',
-  'library.linkedNoteCreating': 'Saving…',
-  'library.linkedNoteCreated': 'Linked note created.',
-  'library.linkedNoteError': 'Failed to create linked note.',
-  'library.openNote': 'Open note',
-
   'dashboard.welcome': 'Welcome back',
   'dashboard.fallbackName': 'Hello',
   'dashboard.newContent': 'New content',
@@ -2054,7 +2047,6 @@ const enMessages: Record<I18nKey, string> = {
   'chat.historyLabel': 'Conversation history',
   'chat.scrollLatest': 'Jump to latest',
   'chat.compactionStatus': 'Memory compacted: {before} → {after} tokens.',
-  'chat.toolParamsSafe': 'Parameters received safely.',
   'tools.web_search': 'Web search',
   'tools.scrape_url': 'Page read',
   'tools.search_transcripts': 'Library search',
@@ -2070,6 +2062,7 @@ const enMessages: Record<I18nKey, string> = {
   'tools.read_transcript': 'Transcript read',
   'tools.read_transcript_section': 'Transcript section',
   'tools.read_transcript_summary': 'Transcript summary',
+  'tools.read_external_enrichment': 'External context read',
   'tools.get_metadata': 'Content metadata',
   'tools.list_notes': 'Notes listing',
   'tools.read_note': 'Note read',
@@ -2149,7 +2142,7 @@ const enMessages: Record<I18nKey, string> = {
   'notes.createdNote': 'Note created.',
   'notes.createError': 'Error creating.',
   'notes.deleteError': 'Failed to delete.',
-  'notes.deleted': 'Deleted.',
+  'notes.deleted': 'Deletion added to the queue.',
   'notes.emptyTree': 'No notes yet.',
   'notes.useButtonAbove': 'Use the button above.',
   'notes.deleteFolderTitle': 'Delete folder?',
@@ -2165,6 +2158,9 @@ const enMessages: Record<I18nKey, string> = {
   'notes.saveError': 'Failed to save.',
 
   'markdown.code': 'code',
+  'markdown.diagramLoading': 'Rendering diagram…',
+  'markdown.diagramUnavailable': 'Diagram unavailable; showing the safe source.',
+  'markdown.diagramLabel': 'Mermaid diagram',
   'transcript.title': 'Transcript',
   'transcript.copyAll': 'Copy all',
 
@@ -2345,6 +2341,8 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.models.reset': 'Reset to default',
   'admin.integrations.models.resetSuccess': 'Purpose restored to the default model.',
   'admin.integrations.models.changeSuccess': 'Model updated.',
+  'admin.integrations.models.changeFallback': 'Change fallback',
+  'admin.integrations.models.clearFallback': 'Disable fallback',
   'admin.integrations.models.loadError': 'Could not load the model configuration.',
   'admin.integrations.models.catalogUnavailable':
     'OpenRouter catalog unavailable right now. Saved overrides remain active — try again later.',
@@ -2615,6 +2613,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.buildingDescription':
     'The first map will appear automatically as soon as your sources are indexed.',
   'graph.clearSearch': 'Clear search',
+  'graph.clearFocus': 'Show full graph',
   'graph.closeExplorer': 'Close explorer',
   'graph.closeInspector': 'Close details',
   'graph.connectionsLabel': 'Connections',
@@ -2634,6 +2633,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.createNote': 'Create note',
   'graph.addContent': 'Open library',
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
+  'graph.serverSearchPlaceholder': 'Search the entire graph…',
   'graph.refresh': 'Refresh',
   'graph.controlsHint': 'Drag to pan · scroll to zoom · click to select · double-click to open',
   'graph.controlsHint3d':

@@ -5,6 +5,7 @@
 
 import { db } from './db';
 import { getAppLanguage, getSettings, type AppLanguage } from './settings';
+import { queueTranscriptResearch } from './transcript-enrichments';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -68,11 +69,15 @@ export async function generateAndPersistTranscriptSummary(input: {
   transcriptId: string;
   title: string;
   plainText: string;
+  correctionRevision: number;
+  sourceVersion: number;
+  sourceChecksum: string | null;
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const settings = await getSettings([
     'openrouter_api_key',
     'default_chat_model',
+    'fallback_chat_model',
     'summary_timeout_sec',
   ] as const);
   const apiKey = settings.openrouter_api_key;
@@ -116,6 +121,9 @@ export async function generateAndPersistTranscriptSummary(input: {
       },
       body: JSON.stringify({
         model,
+        ...(settings.fallback_chat_model && settings.fallback_chat_model !== model
+          ? { models: [settings.fallback_chat_model] }
+          : {}),
         messages: [
           { role: 'system', content: prompt },
           {
@@ -158,9 +166,11 @@ export async function generateAndPersistTranscriptSummary(input: {
   }
 
   const data = (await res.json()) as {
+    model?: string;
     choices?: Array<{ message?: { content?: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number | string };
   };
+  const selectedModel = data.model ?? model;
   const summary = (data.choices?.[0]?.message?.content ?? '').trim();
   if (!summary) {
     throw new TranscriptSummaryError('Modelo retornou resumo vazio.', 502);
@@ -173,26 +183,44 @@ export async function generateAndPersistTranscriptSummary(input: {
     costUsd = String(data.usage.cost);
   }
 
-  await db.transcript.updateMany({
-    where: { id: input.transcriptId, userId: input.userId },
-    data: { summaryMd: summary },
+  await db.$transaction(async (tx) => {
+    const update = await tx.transcript.updateMany({
+      where: {
+        id: input.transcriptId,
+        userId: input.userId,
+        correctionRevision: input.correctionRevision,
+        sourceVersion: input.sourceVersion,
+        sourceChecksum: input.sourceChecksum,
+      },
+      data: { summaryMd: summary },
+    });
+    if (update.count !== 1) {
+      throw new TranscriptSummaryError('O conteúdo mudou durante a geração. Gere novamente.', 409);
+    }
+    await tx.costEvent.create({
+      data: {
+        userId: input.userId,
+        kind: 'CHAT',
+        model: selectedModel,
+        tokensIn,
+        tokensOut,
+        costUsd,
+        meta: {
+          source: 'transcript_summary',
+          transcript_id: input.transcriptId,
+          language,
+        },
+      },
+    });
   });
 
-  await db.costEvent.create({
-    data: {
-      userId: input.userId,
-      kind: 'CHAT',
-      model,
-      tokensIn,
-      tokensOut,
-      costUsd,
-      meta: {
-        source: 'transcript_summary',
-        transcript_id: input.transcriptId,
-        language,
-      },
-    },
-  });
+  // A pesquisa é uma segunda etapa durável e opcional. A própria fila aplica
+  // a política OFF/MANUAL/AUTO e nunca altera o resumo canônico acima.
+  await queueTranscriptResearch({
+    userId: input.userId,
+    transcriptId: input.transcriptId,
+    trigger: 'AUTO',
+  }).catch(() => undefined);
 
   return summary;
 }

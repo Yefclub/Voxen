@@ -14,6 +14,15 @@ export const DEFAULT_OPENROUTER_MODELS = {
   default_x_analysis_model: DEFAULT_X_ANALYSIS_MODEL,
 } as const;
 
+export const OPENROUTER_FALLBACK_MODEL_KEYS = {
+  default_chat_model: 'fallback_chat_model',
+  default_transcription_model: 'fallback_transcription_model',
+  default_web_search_model: 'fallback_web_search_model',
+  default_vision_model: 'fallback_vision_model',
+  default_document_model: 'fallback_document_model',
+  default_x_analysis_model: 'fallback_x_analysis_model',
+} as const;
+
 type OpenRouterModelCapabilities = {
   id: string;
   name?: string;
@@ -49,6 +58,7 @@ export function hasCanonicalOpenRouterModels(
 // ============================================================================
 
 export type ModelPurpose = keyof typeof DEFAULT_OPENROUTER_MODELS;
+export type ModelFallbackSetting = (typeof OPENROUTER_FALLBACK_MODEL_KEYS)[ModelPurpose];
 
 export const MODEL_PURPOSES: readonly ModelPurpose[] = [
   'default_chat_model',
@@ -59,12 +69,43 @@ export const MODEL_PURPOSES: readonly ModelPurpose[] = [
   'default_x_analysis_model',
 ];
 
+export const MODEL_FALLBACK_SETTINGS: readonly ModelFallbackSetting[] = MODEL_PURPOSES.map(
+  (purpose) => OPENROUTER_FALLBACK_MODEL_KEYS[purpose],
+);
+
 export function isModelPurpose(value: string): value is ModelPurpose {
   return (MODEL_PURPOSES as readonly string[]).includes(value);
 }
 
 export function canonicalModelForPurpose(purpose: ModelPurpose): string {
   return DEFAULT_OPENROUTER_MODELS[purpose];
+}
+
+export function fallbackSettingForPurpose(purpose: ModelPurpose): ModelFallbackSetting {
+  return OPENROUTER_FALLBACK_MODEL_KEYS[purpose];
+}
+
+export function suggestFallbackForPurpose(
+  purpose: ModelPurpose,
+  primaryModelId: string,
+  models: readonly OpenRouterModelCapabilities[],
+): string | null {
+  const compatible = models.filter(
+    (model) => model.id !== primaryModelId && isModelCompatibleWithPurpose(purpose, model),
+  );
+  const paid = compatible.find((model) => !model.id.toLowerCase().endsWith(':free'));
+  return paid?.id ?? compatible[0]?.id ?? null;
+}
+
+export function isFallbackCompatible(
+  purpose: ModelPurpose,
+  primaryModelId: string,
+  fallbackModelId: string | null | undefined,
+  models: readonly OpenRouterModelCapabilities[],
+): boolean {
+  if (!fallbackModelId || fallbackModelId === primaryModelId) return false;
+  const model = models.find((candidate) => candidate.id === fallbackModelId);
+  return Boolean(model && isModelCompatibleWithPurpose(purpose, model));
 }
 
 /**

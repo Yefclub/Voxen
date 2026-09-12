@@ -42,6 +42,7 @@ export function LibrarySearch({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={t('library.searchPlaceholder')}
+          maxLength={240}
           autoComplete="off"
           spellCheck={false}
           className="h-12 w-full rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg)] pl-10 pr-11 text-sm text-[var(--color-app-fg)] shadow-inner placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-500/50 focus:outline-none focus:ring-2 focus:ring-violet-500/15"

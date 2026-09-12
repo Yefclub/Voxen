@@ -30,15 +30,17 @@ the account and applies the canonical models automatically.
 | [`STACK.md`](STACK.md)                         | Runtime, libraries, infrastructure images, CI tooling, and upgrade policy             |
 | [`DECISIONS.md`](DECISIONS.md)                 | Architecture Decision Records                                                         |
 | [`SECURITY.md`](SECURITY.md)                   | Threat model, auth, secrets, SSRF prevention, CI security, and incident response      |
+| [`MCP.md`](MCP.md)                             | MCP client setup, compatibility, security, and troubleshooting                        |
+| [`MEM0-SHADOW.md`](MEM0-SHADOW.md)             | Optional conversational-memory evaluation and safety boundary                         |
 | [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Canonical Markdown transcript format                                                  |
 
 ## Core Workflow
 
 1. A user submits a URL or uploads supported media.
 2. `apps/web` creates a job and stores metadata.
-3. `apps/worker` extracts media, downloads captions when available, transcribes audio when needed, and writes a Markdown transcript to S3-compatible storage.
+3. `apps/worker` extracts media, downloads captions when available, transcribes audio when needed, and writes canonical Markdown through the selected local-volume or S3 driver.
 4. Postgres mirrors searchable plain text and metadata.
-5. The integrated web agent uses deterministic, user-scoped tools over Postgres FTS, graph relations, and S3 transcripts to answer questions.
+5. The integrated web agent uses deterministic, user-scoped tools over Postgres FTS, graph relations, and provider-neutral transcript storage to answer questions.
 
 ## Branch and Release Flow
 

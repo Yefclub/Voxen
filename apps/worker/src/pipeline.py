@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -22,18 +20,23 @@ from . import (
     db,
     document_ingest,
     events,
+    job_defer_db,
+    saved_media,
     storage,
     summary,
     tags,
+    tiktok_ingestion,
+    transcript_metadata,
     uploaded_media,
     video_url,
     voxen_settings,
+    youtube_captions,
     ytdl,
 )
 from .audio_chunking import AudioChunk, split_audio
 from .audio_probe import AudioValidationError, validate_audio_for_transcription
+from .brain_compilation import extract_grounded_brain as _maybe_grounded_brain_extract
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
-from .graph_index_lease import acquire_graph_index_lease
 from .job_lease import (
     JobLease,
     JobLeaseLostError,
@@ -42,6 +45,7 @@ from .job_lease import (
 )
 from .openrouter import (
     OpenrouterAuthError,
+    OpenrouterRejectedError,
     OpenrouterTransientError,
     analyze_document_text,
     analyze_image,
@@ -51,40 +55,21 @@ from .openrouter import (
     generate_content_title,
     transcribe_audio,
 )
+from .pipeline_errors import (
+    GENERIC_JOB_FAILURE_MESSAGE,
+    DeferredJobError,
+    PermanentError,
+    TransientError,
+)
+from .pipeline_observability import (
+    log_openrouter_route,
+    source_kind_for_log,
+)
 from .safe_diagnostics import error_diagnostic as _error_diagnostic
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
 
 logger = structlog.get_logger(__name__)
-
-GENERIC_JOB_FAILURE_MESSAGE = (
-    "Não foi possível concluir este processamento. Tente novamente; "
-    "se o problema continuar, verifique a configuração e os serviços da instância."
-)
-
-
-class PermanentError(Exception):
-    """Erro não retentável com mensagem pública opt-in e código interno seguro."""
-
-    def __init__(
-        self,
-        detail: str = "",
-        *,
-        code: str = "PERMANENT_FAILURE",
-        public_message: str | None = None,
-    ) -> None:
-        super().__init__(detail or public_message or GENERIC_JOB_FAILURE_MESSAGE)
-        self.code = code if re.fullmatch(r"[A-Z][A-Z0-9_]{1,63}", code) else "PERMANENT_FAILURE"
-        self.public_message = public_message or GENERIC_JOB_FAILURE_MESSAGE
-
-    @classmethod
-    def public(cls, code: str, message: str) -> PermanentError:
-        """Cria falha explicitamente segura para Job.errorMsg e SSE."""
-        return cls(message, code=code, public_message=message)
-
-
-class TransientError(Exception):
-    """Erro retentável (rede, 5xx)."""
-
+__all__ = ["PermanentError", "TransientError"]
 
 # Exceptions externas tratadas como transientes pelo `_retry_transient`.
 # yt-dlp e botocore herdam direto de `Exception`, NÃO de OSError/RuntimeError —
@@ -98,17 +83,6 @@ _TRANSIENT_EXC: tuple[type[BaseException], ...] = (
     botocore.exceptions.BotoCoreError,
     botocore.exceptions.ClientError,
 )
-
-
-def _source_kind_for_log(source_url: str, job_type: str) -> str:
-    detected = video_url.detect_source(source_url)
-    if detected:
-        return detected
-    if source_url.lower().startswith("upload://"):
-        return "UPLOAD"
-    if job_type == "SCRAPE_WEB":
-        return "WEB"
-    return "UNKNOWN"
 
 
 JOB_HEARTBEAT_INTERVAL_SEC = 20
@@ -152,14 +126,16 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
     source_url: str = claimed["sourceUrl"]
     job_type: str = claimed["type"]
     refresh_transcript_id: str | None = claimed.get("refreshTranscriptId")
+    saved_media_id: str | None = claimed.get("savedMediaId")
+    deletion_target_type: str | None = claimed.get("deletionTargetType")
+    deletion_target_id: str | None = claimed.get("deletionTargetId")
     log = logger.bind(
         job_id=job_id,
         user_id=user_id,
         type=job_type,
-        source_kind=_source_kind_for_log(source_url, job_type),
+        source_kind=source_kind_for_log(source_url, job_type),
     )
     log.info("job-claimed")
-
     # Checkpoint canônico: se morreu após vincular o conteúdo, retomamos apenas
     # os enriquecimentos; o job não é concluído até a etapa final de fato.
     existing_transcript_id: str | None = claimed.get("transcriptId")
@@ -172,7 +148,6 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
             log=log,
         )
         return
-
     # Já cancelado antes mesmo de começar (DB já está CANCELLED via endpoint).
     if is_cancelled(job_id):
         log.info("job-cancelled-before-start")
@@ -183,9 +158,36 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         return
 
     await events.publish_job_event(user_id, job_id, "running", percent=0)
-
     try:
-        if job_type == "SCRAPE_WEB":
+        if job_type == "DOWNLOAD_MEDIA":
+            if not saved_media_id:
+                raise PermanentError.public(
+                    "SAVED_MEDIA_MISSING", "Registro de mídia não encontrado."
+                )
+            await saved_media.run_download(
+                job_id=job_id,
+                user_id=user_id,
+                media_id=saved_media_id,
+                log=log,
+                retry_transient=_retry_transient,
+                check_cancel=_check_cancel,
+            )
+        elif job_type == "DELETE_KNOWLEDGE":
+            from . import knowledge_deletion
+
+            if not deletion_target_type or not deletion_target_id:
+                raise PermanentError.public(
+                    "KNOWLEDGE_DELETION_TARGET_MISSING",
+                    "O destino da exclusão não foi encontrado.",
+                )
+            await knowledge_deletion.run(
+                job_id=job_id,
+                user_id=user_id,
+                target_type=str(deletion_target_type),
+                target_id=str(deletion_target_id),
+                log=log,
+            )
+        elif job_type == "SCRAPE_WEB":
             from . import scrape_pipeline
 
             await scrape_pipeline.run(
@@ -197,7 +199,11 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
             )
         elif job_type == "UPLOAD_AND_TRANSCRIBE":
             await _run_upload_pipeline(
-                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+                job_id=job_id,
+                user_id=user_id,
+                source_url=source_url,
+                saved_media_id=saved_media_id,
+                log=log,
             )
         elif job_type == "UPLOAD_AND_ANALYZE_IMAGE":
             await _run_image_pipeline(
@@ -221,19 +227,56 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         )
         if refresh_transcript_id:
             await db.clear_source_refresh_check(user_id, refresh_transcript_id)
+    except DeferredJobError as e:
+        log.info("job-deferred", retry_after_seconds=e.retry_after_seconds)
+        event_id, created_at = await job_defer_db.defer_job_lease(
+            job_id,
+            user_id,
+            delay_seconds=e.retry_after_seconds,
+        )
+        await events.publish_recorded_job_event(
+            user_id,
+            job_id,
+            "queued",
+            event_id=event_id,
+            created_at=created_at,
+            percent=0,
+        )
     except JobLeaseLostError:
         # O novo dono decide o estado; esta tentativa não pode publicar FAILED.
         raise
     except PermanentError as e:
         log.warning("job-failed-permanent", **_error_diagnostic(e, e.code))
-        await db.mark_job_failed(job_id, e.public_message)
+        if job_type == "DELETE_KNOWLEDGE":
+            await db.fail_knowledge_deletion(
+                job_id,
+                user_id,
+                deletion_target_type,
+                deletion_target_id,
+                e.public_message,
+            )
+        elif saved_media_id:
+            await saved_media.fail_job(job_id, user_id, saved_media_id, e.public_message)
+        else:
+            await db.mark_job_failed(job_id, e.public_message)
         if refresh_transcript_id:
             await db.mark_source_refresh_failed(user_id, refresh_transcript_id, e.public_message)
         await events.publish_job_event(user_id, job_id, "failed", error_msg=e.public_message)
     except Exception as e:  # noqa: BLE001 — propaga genérico p/ FAILED
         diagnostic = _error_diagnostic(e, "UNEXPECTED_JOB_FAILURE")
         log.error("job-failed-unexpected", **diagnostic)
-        await db.mark_job_failed(job_id, GENERIC_JOB_FAILURE_MESSAGE)
+        if job_type == "DELETE_KNOWLEDGE":
+            await db.fail_knowledge_deletion(
+                job_id,
+                user_id,
+                deletion_target_type,
+                deletion_target_id,
+                GENERIC_JOB_FAILURE_MESSAGE,
+            )
+        elif saved_media_id:
+            await saved_media.fail_job(job_id, user_id, saved_media_id, GENERIC_JOB_FAILURE_MESSAGE)
+        else:
+            await db.mark_job_failed(job_id, GENERIC_JOB_FAILURE_MESSAGE)
         if refresh_transcript_id:
             await db.mark_source_refresh_failed(
                 user_id, refresh_transcript_id, GENERIC_JOB_FAILURE_MESSAGE
@@ -249,10 +292,7 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
 
 
 def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
-    text = str(exc).lower()
-    return "tiktok" in text and (
-        "unable to extract" in text or "rehydration" in text or "universal data" in text
-    )
+    return tiktok_ingestion.is_extraction_error(exc)
 
 
 def _is_rate_limit_error(exc: BaseException) -> bool:
@@ -283,7 +323,10 @@ def _friendly_external_error(exc: BaseException) -> str | None:
             "o proxy nas configurações para o servidor baixar direto."
         )
     if "tiktok" in text and (
-        "unable to extract" in text or "rehydration" in text or "universal data" in text
+        "unable to extract" in text
+        or "rehydration" in text
+        or "universal data" in text
+        or "unexpected response from webpage request" in text
     ):
         return (
             "Não consegui extrair este conteúdo do TikTok agora. "
@@ -299,9 +342,13 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "Opções: envie o arquivo por upload manual, "
-            "ou peça ao admin para configurar um proxy residencial nas configurações da instância. "
-            "Por que isso acontece em VPS? Veja docs/DEPLOY.md (Home-lab vs VPS)."
+            "Upload manual resolve na hora. Você também pode salvar seus cookies do "
+            "YouTube nas integrações — isso vale só para os seus downloads. "
+            "Para destravar a instância inteira, o admin pode configurar o proxy "
+            "residencial (recomendado) ou, como mitigação frágil, um provider de PO "
+            "token próprio em YTDLP_BGUTIL_BASE_URL. "
+            "Por que isso acontece em VPS e como configurar cada uma: "
+            "docs/DEPLOY.md (Home-lab vs VPS)."
         )
     if "http error 403" in text or "status code 403" in text or "access denied" in text:
         return (
@@ -360,7 +407,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "downloading", percent=5)
 
-    transcript_fetch = await ytdl.fetch_youtube_transcript(source_url)
+    transcript_fetch = await youtube_captions.fetch_youtube_transcript(source_url)
     if transcript_fetch is not None:
         log.info("path-youtube-transcript-api", lang=transcript_fetch.language)
         probe_info = transcript_fetch.probe
@@ -377,6 +424,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         cost_total: Decimal | None = None
         language = transcript_fetch.language
     else:
+        player_item = None
         try:
             probe_info = await _retry_transient(
                 lambda: ytdl.probe(source_url, user_id=user_id),
@@ -384,18 +432,14 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 immediate_passthrough=_is_tiktok_rehydration_error,
             )
         except _TRANSIENT_EXC as e:
-            # TikTok: retry forçando impersonate chrome quando rehydration falha.
-            if _is_tiktok_rehydration_error(e) and video_url.detect_source(source_url) == "TIKTOK":
-                log.warning(
-                    "tiktok-probe-retry-impersonate-chrome",
-                    **_error_diagnostic(e, "TIKTOK_PROBE_RETRY"),
-                )
-                probe_info = await _retry_transient(
-                    lambda: ytdl.probe(source_url, user_id=user_id, force_impersonate="chrome"),
-                    tries=2,
-                )
-            else:
-                raise
+            fallback_probe = await tiktok_ingestion.probe_after_extraction_error(
+                source_url,
+                user_id=user_id,
+                initial_error=e,
+                log=log,
+            )
+            probe_info = fallback_probe.probe
+            player_item = fallback_probe.player_item
         if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
             raise PermanentError.public(
                 "VIDEO_TOO_LONG",
@@ -450,31 +494,30 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 language = subtitle_lang.split("-")[0]
             else:
                 log.info("path-api")
-                try:
-                    audio_path = await _retry_transient(
-                        lambda: ytdl.download_audio_opus(source_url, tmpdir, user_id=user_id),
-                        tries=3,
-                        immediate_passthrough=_is_tiktok_rehydration_error,
+                if player_item is not None:
+                    audio_path = await tiktok_ingestion.download_known_player_audio(
+                        player_item,
+                        tmpdir,
                     )
-                except _TRANSIENT_EXC as e:
-                    if video_url.detect_source(
-                        source_url
-                    ) == "TIKTOK" and _is_tiktok_rehydration_error(e):
-                        log.warning(
-                            "tiktok-audio-retry-impersonate-chrome",
-                            **_error_diagnostic(e, "TIKTOK_AUDIO_RETRY"),
-                        )
+                else:
+                    try:
                         audio_path = await _retry_transient(
                             lambda: ytdl.download_audio_opus(
                                 source_url,
                                 tmpdir,
                                 user_id=user_id,
-                                force_impersonate="chrome",
                             ),
-                            tries=2,
+                            tries=3,
+                            immediate_passthrough=_is_tiktok_rehydration_error,
                         )
-                    else:
-                        raise
+                    except _TRANSIENT_EXC as e:
+                        audio_path = await tiktok_ingestion.download_after_extraction_error(
+                            source_url,
+                            tmpdir,
+                            user_id=user_id,
+                            initial_error=e,
+                            log=log,
+                        )
                 await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
                 segments, model, cost_total = await _transcribe_via_api(
                     audio_path=audio_path,
@@ -529,10 +572,19 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     log.info("job-done", transcript_id=new_transcript_id)
 
 
-async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any) -> None:  # noqa: ANN401
+async def _run_upload_pipeline(
+    *,
+    job_id: str,
+    user_id: str,
+    source_url: str,
+    log: Any,  # noqa: ANN401
+    saved_media_id: str | None = None,
+) -> None:
     ref = uploaded_media.parse_upload_source_url(source_url)
     if ref is None:
         raise PermanentError.public("UPLOAD_INVALID", "Upload inválido ou corrompido.")
+
+    saved_media_record = await saved_media.resolve_upload(user_id, saved_media_id, ref)
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "preparing_upload", percent=5)
@@ -575,17 +627,7 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
                 "Envie uma mídia com faixa de áudio reproduzível.",
             ) from e
 
-        probe_info = ytdl.VideoProbe(
-            video_id=ref.upload_id,
-            title=Path(ref.filename).stem or ref.filename,
-            channel="Upload local",
-            duration_sec=duration_sec,
-            published_at=None,
-            thumbnail_url=None,
-            language_hint=None,
-            available_subtitles={},
-            automatic_captions={},
-        )
+        probe_info = saved_media.upload_probe(ref, duration_sec, saved_media_record)
         preview_object_key: str | None = None
         preview_mime_type: str | None = None
         if uploaded_media.is_video_mime(original_mime_type):
@@ -640,13 +682,13 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
             user_id=user_id,
             job_id=job_id,
             probe_info=probe_info,
-            source_url=source_url,
+            source_url=saved_media.original_source(saved_media_record, source_url),
             segments=segments,
             method="API",
             model=model,
             cost_usd=cost_total,
             language="auto",
-            source_override="UPLOAD",
+            source_override=None if saved_media_record else "UPLOAD",
             title_override=generated_title,
             original_object_key=key,
             original_filename=ref.filename,
@@ -706,10 +748,12 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
                 image_path=image_path,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 prompt=prompt,
             )
 
         result = await _retry_transient_or(_do_call, tries=3)
+        log_openrouter_route(log, "vision", model, result.model)
         if not result.text:
             raise PermanentError.public(
                 "IMAGE_ANALYSIS_EMPTY",
@@ -718,7 +762,7 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
-            model=model,
+            model=result.model,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
@@ -755,7 +799,7 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
             source_url=source_url,
             segments=(Segment(start_sec=0.0, text=result.text),),
             method="VISION",
-            model=model,
+            model=result.model,
             cost_usd=result.cost_usd,
             language="pt",
             source_override="UPLOAD",
@@ -814,9 +858,11 @@ async def _run_document_pipeline(
             filename=ref.filename,
             api_key=api_key,
             model=model,
+            fallback_model=config.fallback_model,
             user_id=user_id,
             job_id=job_id,
         )
+        log_openrouter_route(log, "document", model, result.model)
 
         if not result.text:
             raise PermanentError.public(
@@ -827,7 +873,7 @@ async def _run_document_pipeline(
         await db.insert_cost_event(
             user_id=user_id,
             kind="DOCUMENT",
-            model=model,
+            model=result.model,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
@@ -864,7 +910,7 @@ async def _run_document_pipeline(
             source_url=source_url,
             segments=(Segment(start_sec=0.0, text=result.text),),
             method="DOCUMENT",
-            model=model,
+            model=result.model,
             cost_usd=result.cost_usd,
             language="pt",
             source_override="UPLOAD",
@@ -888,6 +934,7 @@ async def _analyze_document_file(
     filename: str,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     user_id: str,
     job_id: str,
 ) -> tuple[Any, str]:
@@ -900,6 +947,7 @@ async def _analyze_document_file(
                 pdf_path=document_path,
                 api_key=api_key,
                 model=model,
+                fallback_model=fallback_model,
             )
 
         return await _retry_transient_or(_do_mistral_pdf, tries=2), "openrouter-mistral-ocr"
@@ -922,6 +970,7 @@ async def _analyze_document_file(
             filename=filename,
             api_key=api_key,
             model=model,
+            fallback_model=fallback_model,
         )
 
     return await _retry_transient_or(_do_text_doc, tries=3), "markitdown"
@@ -965,9 +1014,15 @@ async def _run_x_analysis_pipeline(
     await events.publish_job_event(user_id, job_id, "analyzing_x", percent=30)
 
     async def _do_call() -> Any:
-        return await analyze_x_url(url=source_url, api_key=api_key, model=model)
+        return await analyze_x_url(
+            url=source_url,
+            api_key=api_key,
+            model=model,
+            fallback_model=config.fallback_model,
+        )
 
     result = await _retry_transient_or(_do_call, tries=3)
+    log_openrouter_route(log, "x_analysis", model, result.model)
     if not result.text:
         raise PermanentError.public(
             "X_ANALYSIS_EMPTY",
@@ -977,7 +1032,7 @@ async def _run_x_analysis_pipeline(
     await db.insert_cost_event(
         user_id=user_id,
         kind="X_SEARCH",
-        model=model,
+        model=result.model,
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
         cost_usd=result.cost_usd,
@@ -1018,7 +1073,7 @@ async def _run_x_analysis_pipeline(
         source_url=source_url,
         segments=(Segment(start_sec=0.0, text=result.text),),
         method="X_SEARCH",
-        model=model,
+        model=result.model,
         cost_usd=result.cost_usd,
         language="pt",
         title_override=generated_title,
@@ -1030,6 +1085,17 @@ async def _run_x_analysis_pipeline(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("x-analysis-job-done", transcript_id=new_transcript_id)
+
+
+async def _reindex_brain_with_retry(user_id: str, transcript_id: str) -> bool:
+    """Absorb short-lived graph lease contention before exposing a job warning."""
+    retry_delays = (0.25, 0.5, 1.0, 2.0)
+    for attempt in range(len(retry_delays) + 1):
+        if await db.reindex_transcript_brain_node(user_id, transcript_id):
+            return True
+        if attempt < len(retry_delays):
+            await asyncio.sleep(retry_delays[attempt])
+    return False
 
 
 async def _enrich_persisted_transcript(
@@ -1063,12 +1129,13 @@ async def _enrich_persisted_transcript(
         await events.publish_job_event(
             user_id, job_id, "indexing_brain", percent=92, transcript_id=transcript_id
         )
-        if not await db.reindex_transcript_brain_node(user_id, transcript_id):
-            warnings.append("A indexação no Brain será repetida automaticamente.")
+        if not await _reindex_brain_with_retry(user_id, transcript_id):
+            warnings.append(db.BRAIN_INDEX_RETRY_MESSAGE)
         await _maybe_grounded_brain_extract(
             user_id=user_id,
             transcript_id=transcript_id,
             log=log,
+            refresh_embedding=False,
         )
         await events.publish_graph_invalidation(user_id)
         await _maybe_store_embedding(
@@ -1122,159 +1189,6 @@ async def _complete_persisted_job(
     )
 
 
-async def _maybe_grounded_brain_extract(
-    *,
-    user_id: str,
-    transcript_id: str,
-    log: Any,  # noqa: ANN401
-) -> None:
-    """Compila entidades/claims por segmentos, sem derrubar a ingestão."""
-    try:
-        from . import brain_extract
-
-        row = await db.get_transcript_title_content_md_path(user_id, transcript_id)
-        if not row:
-            return
-        title, fallback_content, md_path = row
-        content = fallback_content
-        if md_path:
-            try:
-                content = await storage.get_markdown(key=md_path)
-            except Exception as e:  # noqa: BLE001 — fallback sem localização temporal
-                log.warning(
-                    "brain-extract-markdown-unavailable",
-                    transcript_id=transcript_id,
-                    **_error_diagnostic(e, "BRAIN_MARKDOWN_UNAVAILABLE"),
-                )
-        if len((content or "").strip()) < 80:
-            return
-        segments = brain_extract.segment_content(content)
-        if not segments:
-            return
-        segment_payload: list[dict[str, Any]] = [
-            {
-                "key": segment.key,
-                "text": segment.text,
-                "start_line": segment.start_line,
-                "end_line": segment.end_line,
-                "start_sec": segment.start_sec,
-                "end_sec": segment.end_sec,
-            }
-            for segment in segments
-        ]
-        content_hash = sha256(
-            f"v{brain_extract.BRAIN_GROUNDED_EXTRACT_VERSION}\0{title}\0{content}".encode()
-        ).hexdigest()
-        compilation_id, pending_rows = await db.prepare_grounded_brain_compilation(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            content_hash=content_hash,
-            segments=segment_payload,
-        )
-        pending_keys = {str(row["segmentKey"]) for row in pending_rows}
-        if not pending_keys:
-            log.info("brain-extract-already-complete", transcript_id=transcript_id)
-            return
-        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
-        if not config.api_key or not config.model:
-            await db.mark_grounded_compilation_skipped(compilation_id)
-            log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
-            return
-        lease = await acquire_graph_index_lease(user_id)
-        if lease is None:
-            log.info("brain-extract-deferred-lease", transcript_id=transcript_id)
-            return
-        language = await voxen_settings.get_app_language()
-        total_items = 0
-        total_edges = 0
-        try:
-            async with lease.heartbeat():
-                for segment in segment_payload:
-                    if segment["key"] not in pending_keys:
-                        continue
-                    if not lease.locally_owned():
-                        log.info("brain-extract-interrupted-lease", transcript_id=transcript_id)
-                        return
-                    try:
-                        result = await brain_extract.extract_grounded_concepts(
-                            title=title,
-                            content=segment["text"],
-                            api_key=config.api_key,
-                            model=config.model,
-                            language=language,
-                        )
-                        await db.insert_cost_event(
-                            user_id=user_id,
-                            kind="CHAT",
-                            model=result.model,
-                            tokens_in=result.tokens_in,
-                            tokens_out=result.tokens_out,
-                            cost_usd=result.cost_usd,
-                            meta={
-                                "source": "brain_grounded_extract",
-                                "transcript_id": transcript_id,
-                                "segment_key": segment["key"],
-                            },
-                        )
-                        payload = [
-                            {
-                                "kind": item.kind,
-                                "label": item.label,
-                                "excerpt": item.excerpt,
-                                "confidence": item.confidence,
-                                "slug": brain_extract.slugify_label(item.label),
-                            }
-                            for item in result.items
-                        ]
-                        relations = [
-                            {
-                                "subject_slug": brain_extract.slugify_label(relation.subject),
-                                "predicate": relation.predicate,
-                                "object_slug": brain_extract.slugify_label(relation.object),
-                                "kind": relation.kind,
-                                "excerpt": relation.excerpt,
-                                "confidence": relation.confidence,
-                            }
-                            for relation in result.relations
-                        ]
-                        total_items += len(payload)
-                        total_edges += await db.upsert_grounded_brain_items(
-                            user_id=user_id,
-                            transcript_id=transcript_id,
-                            compilation_id=compilation_id,
-                            segment=segment,
-                            items=payload,
-                            relations=relations,
-                            lease=lease,
-                        )
-                    except Exception as e:  # noqa: BLE001 — um segmento não invalida os demais
-                        await db.mark_grounded_segment_failed(
-                            compilation_id=compilation_id,
-                            segment_key=segment["key"],
-                            error=type(e).__name__,
-                        )
-                        log.warning(
-                            "brain-extract-segment-failed",
-                            transcript_id=transcript_id,
-                            segment_key=segment["key"],
-                            **_error_diagnostic(e, "BRAIN_EXTRACTION_SEGMENT_FAILED"),
-                        )
-        finally:
-            await lease.release()
-        log.info(
-            "brain-extract-done",
-            transcript_id=transcript_id,
-            items=total_items,
-            edges=total_edges,
-        )
-    except Exception as e:  # noqa: BLE001 — best-effort
-        log.warning(
-            "brain-extract-failed",
-            transcript_id=transcript_id,
-            **_error_diagnostic(e, "BRAIN_EXTRACTION_FAILED"),
-        )
-
-
 async def _maybe_store_embedding(
     *,
     user_id: str,
@@ -1290,7 +1204,7 @@ async def _maybe_store_embedding(
         row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             return
-        title, content, _folder = row
+        title, content, _folder, correction_revision, source_version, source_checksum = row
         config = await voxen_settings.get_openrouter_model_config(("embedding_model",))
         if not config.api_key:
             return
@@ -1308,6 +1222,9 @@ async def _maybe_store_embedding(
             transcript_id=transcript_id,
             model=model,
             vector=vector,
+            correction_revision=correction_revision,
+            source_version=source_version,
+            source_checksum=source_checksum,
         )
         log.info(
             "embedding-stored" if ok else "embedding-store-skipped",
@@ -1330,6 +1247,10 @@ async def _maybe_generate_tags(
     transcript_id: str,
     log: Any,  # noqa: ANN401
     already_claimed: bool = False,
+    claim_attempt: int | None = None,
+    correction_revision: int | None = None,
+    source_version: int | None = None,
+    source_checksum: str | None = None,
 ) -> None:
     """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
     if not already_claimed:
@@ -1345,19 +1266,49 @@ async def _maybe_generate_tags(
         if not claimed:
             log.info("tags-skipped-not-claimed", transcript_id=transcript_id)
             return
+        claim_attempt = int(claimed["taggingAttempt"])
+        correction_revision = int(claimed["correctionRevision"])
+        source_version = int(claimed["sourceVersion"])
+        source_checksum = str(claimed["sourceChecksum"]) if claimed["sourceChecksum"] else None
+    if claim_attempt is None or correction_revision is None or source_version is None:
+        log.warning("tags-skipped-missing-claim-fence", transcript_id=transcript_id)
+        return
     try:
-        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
+        row = await db.get_transcript_title_summary_folder(
+            user_id,
+            transcript_id,
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+            source_version=source_version,
+            source_checksum=source_checksum,
+        )
         if not row:
             await _finish_tag_enrichment_safely(
-                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="SKIPPED",
+                error=None,
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
+                log=log,
             )
             return
-        title, content, folder_id = row
+        title, content, folder_id, _content_revision, _source_version, _source_checksum = row
         clean = content.strip()
         if len(clean) < 40 and len(title.strip()) < 3:
             log.info("tags-skipped-short", transcript_id=transcript_id)
             await _finish_tag_enrichment_safely(
-                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="SKIPPED",
+                error=None,
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
+                log=log,
             )
             return
         # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
@@ -1369,7 +1320,15 @@ async def _maybe_generate_tags(
                 count=len(existing_on_tx),
             )
             await _finish_tag_enrichment_safely(
-                user_id=user_id, transcript_id=transcript_id, status="COMPLETE", error=None, log=log
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="COMPLETE",
+                error=None,
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
+                log=log,
             )
             return
         config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
@@ -1380,6 +1339,10 @@ async def _maybe_generate_tags(
                 transcript_id=transcript_id,
                 status="RETRY",
                 error="Configuração OpenRouter ausente.",
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
                 log=log,
             )
             return
@@ -1394,10 +1357,12 @@ async def _maybe_generate_tags(
                 existing_tags=existing_tags,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 language=language,
             ),
             tries=2,
         )
+        log_openrouter_route(log, "tags", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
@@ -1415,6 +1380,10 @@ async def _maybe_generate_tags(
                 transcript_id=transcript_id,
                 status="RETRY",
                 error="O modelo não retornou tags válidas.",
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                source_version=source_version,
+                source_checksum=source_checksum,
                 log=log,
             )
             return
@@ -1423,6 +1392,10 @@ async def _maybe_generate_tags(
             transcript_id=transcript_id,
             tag_names=result.tags,
             current_folder_id=folder_id,
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+            source_version=source_version,
+            source_checksum=source_checksum,
         )
         log.info(
             "tags-assigned",
@@ -1434,6 +1407,10 @@ async def _maybe_generate_tags(
             transcript_id=transcript_id,
             status="COMPLETE" if applied else "RETRY",
             error=None if applied else "Nenhuma tag pôde ser persistida.",
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+            source_version=source_version,
+            source_checksum=source_checksum,
             log=log,
         )
     except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
@@ -1442,6 +1419,10 @@ async def _maybe_generate_tags(
             transcript_id=transcript_id,
             status="RETRY",
             error="Falha temporária ao gerar tags.",
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+            source_version=source_version,
+            source_checksum=source_checksum,
             log=log,
         )
         log.warning(
@@ -1457,10 +1438,23 @@ async def _finish_tag_enrichment_safely(
     transcript_id: str,
     status: str,
     error: str | None,
+    claim_attempt: int,
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
     log: Any,  # noqa: ANN401
 ) -> None:
     try:
-        await db.finish_tag_enrichment(user_id, transcript_id, status=status, error=error)
+        await db.finish_tag_enrichment(
+            user_id,
+            transcript_id,
+            status=status,
+            error=error,
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+            source_version=source_version,
+            source_checksum=source_checksum,
+        )
     except Exception as e:  # noqa: BLE001
         log.warning(
             "tags-status-finish-failed",
@@ -1507,6 +1501,7 @@ async def _transcribe_via_api(
     total_chunks = len(chunks)
     all_segments: list[Segment] = []
     total_cost = Decimal("0")
+    selected_model = model
 
     for i, chunk in enumerate(chunks):
         _check_cancel(job_id)
@@ -1520,13 +1515,20 @@ async def _transcribe_via_api(
         chunk_path = chunk.path
 
         async def _do_call(path: Path = chunk_path) -> Any:
-            return await _call_or(path, api_key, model)
+            return await transcribe_audio(
+                audio_path=path,
+                api_key=api_key,
+                model=model,
+                fallback_model=config.fallback_model,
+            )
 
         result = await _retry_transient_or(_do_call, tries=3)
+        selected_model = result.model
+        log_openrouter_route(log, "transcription", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="TRANSCRIBE",
-            model=model,
+            model=result.model,
             cost_usd=result.cost_usd,
             job_id=job_id,
             meta={"chunk_index": i, "duration_sec": chunk.duration_sec},
@@ -1539,7 +1541,7 @@ async def _transcribe_via_api(
             all_segments.append(Segment(start_sec=float(chunk.start_sec), text=result.text))
         log.info("chunk-done", index=i, chars=len(result.text), cost=str(result.cost_usd))
 
-    return tuple(all_segments), model, total_cost
+    return tuple(all_segments), selected_model, total_cost
 
 
 async def _maybe_assign_folder(
@@ -1571,10 +1573,12 @@ async def _maybe_assign_folder(
                 existing_folders=existing,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 language=language,
             ),
             tries=2,
         )
+        log_openrouter_route(log, "folder", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
@@ -1629,10 +1633,12 @@ async def _maybe_generate_title(
                 fallback_title=fallback_title,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 language=language,
             ),
             tries=2,
         )
+        log_openrouter_route(log, "title", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
@@ -1651,10 +1657,6 @@ async def _maybe_generate_title(
             **_error_diagnostic(e, "TITLE_GENERATION_FAILED"),
         )
         return None
-
-
-async def _call_or(audio_path: Path, api_key: str, model: str) -> Any:  # noqa: ANN401 — TranscriptionResult
-    return await transcribe_audio(audio_path=audio_path, api_key=api_key, model=model)
 
 
 async def _persist(
@@ -1744,7 +1746,7 @@ async def _persist(
     plain_text = render_plain_text(doc)
     md_key = storage.transcript_key(user_id, transcript_id)
 
-    frontmatter_json = _frontmatter_json(
+    frontmatter_json = transcript_metadata.frontmatter_json(
         doc,
         original_object_key=original_object_key,
         original_filename=original_filename,
@@ -1837,34 +1839,6 @@ async def _persist(
     return transcript_id
 
 
-def _frontmatter_json(
-    doc: TranscriptDoc,
-    *,
-    original_object_key: str | None = None,
-    original_filename: str | None = None,
-    original_mime_type: str | None = None,
-    preview_object_key: str | None = None,
-    preview_mime_type: str | None = None,
-) -> str:
-    import json
-
-    from .transcript_md import build_frontmatter
-
-    frontmatter = build_frontmatter(doc)
-    if original_object_key:
-        frontmatter["original"] = {
-            "objectKey": original_object_key,
-            "filename": original_filename,
-            "mimeType": original_mime_type,
-        }
-    if preview_object_key:
-        frontmatter["preview"] = {
-            "objectKey": preview_object_key,
-            "mimeType": preview_mime_type,
-        }
-    return json.dumps(frontmatter, default=str)
-
-
 # ============================================================================
 # Retry helpers
 # ============================================================================
@@ -1926,7 +1900,7 @@ async def _retry_transient_or[T](
     fn: Callable[[], Awaitable[T]], *, tries: int = 3, base_delay: float = 1.0
 ) -> T:
     """Retry específico OpenRouter: auth = permanente; transient = backoff."""
-    last_exc: Exception | None = None
+    last_exc: OpenrouterTransientError | None = None
     for attempt in range(tries):
         try:
             return await fn()
@@ -1935,10 +1909,30 @@ async def _retry_transient_or[T](
                 "OPENROUTER_AUTH_REJECTED",
                 "Chave da OpenRouter rejeitada — admin precisa revalidar.",
             ) from e
+        except OpenrouterRejectedError as e:
+            if e.status_code == 402:
+                raise PermanentError.public(
+                    "OPENROUTER_CREDITS_EXHAUSTED",
+                    "A conta da OpenRouter está sem créditos suficientes. "
+                    "O admin precisa recarregar os créditos ou configurar outro "
+                    "provedor antes de reprocessar.",
+                ) from e
+            raise PermanentError.public(
+                "OPENROUTER_REQUEST_REJECTED",
+                "A OpenRouter rejeitou esta requisição. Verifique a compatibilidade "
+                "do modelo e do fallback configurados e tente novamente.",
+            ) from e
         except OpenrouterTransientError as e:
             last_exc = e
             if attempt < tries - 1:
-                await asyncio.sleep(base_delay * (2**attempt))
+                delay = e.retry_after or base_delay * (2**attempt)
+                await asyncio.sleep(delay)
             continue
     assert last_exc is not None
+    if last_exc.status_code == 429:
+        raise PermanentError.public(
+            "OPENROUTER_RATE_LIMITED",
+            "O provedor da OpenRouter atingiu um limite temporário. "
+            "Tente novamente em instantes ou selecione outro modelo fallback.",
+        ) from last_exc
     raise last_exc

@@ -21,8 +21,11 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   search_transcripts: 'search',
   search_knowledge: 'search',
   search_notes: 'search',
+  search_note_content: 'search',
+  search_transcript_content: 'search',
   list_transcripts: 'search',
   list_notes: 'search',
+  list_deletable_knowledge: 'search',
   // leitura / recuperação progressiva
   outline_transcript: 'read',
   read_lines: 'read',
@@ -33,10 +36,14 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   read_transcript_section: 'read',
   read_transcript_summary: 'read',
   read_note: 'read',
+  read_external_enrichment: 'read',
   get_metadata: 'read',
   verify_citations: 'read',
   // notas (efeito colateral proposto)
   propose_create_note: 'notes',
+  propose_patch_note: 'notes',
+  propose_patch_transcript: 'transcript',
+  propose_delete_knowledge: 'notes',
   create_note: 'notes',
   edit_note: 'notes',
   delete_note: 'notes',
@@ -53,6 +60,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   // transcrição
   transcribe_video: 'transcript',
   request_transcription: 'transcript',
+  request_transcriptions: 'transcript',
   get_job_status: 'transcript',
 };
 
@@ -81,12 +89,66 @@ export {
   type ToolEventLike as HealableTool,
 } from '../../lib/chat/tool-outcomes';
 
+type PendingPatchOperationKind =
+  | 'replace'
+  | 'insert_before'
+  | 'insert_after'
+  | 'prepend'
+  | 'append';
+
 export type PendingHitl = {
   approvalId: string;
   toolName: string;
   title: string | null;
   action: string | null;
+  patchPreview: {
+    operationKind: PendingPatchOperationKind;
+    occurrence: number | null;
+    changeSummary: string;
+    target: string;
+    replacement: string;
+    line: number;
+    context: string;
+    truncatedTarget: boolean;
+    truncatedReplacement: boolean;
+    truncatedContext: boolean;
+  } | null;
 };
+
+function pendingPatchPreview(value: unknown): PendingHitl['patchPreview'] {
+  if (!value || typeof value !== 'object') return null;
+  const preview = value as Record<string, unknown>;
+  if (
+    !['replace', 'insert_before', 'insert_after', 'prepend', 'append'].includes(
+      String(preview.operationKind),
+    ) ||
+    !(
+      preview.occurrence === null ||
+      (typeof preview.occurrence === 'number' &&
+        Number.isInteger(preview.occurrence) &&
+        preview.occurrence >= 1)
+    ) ||
+    typeof preview.changeSummary !== 'string' ||
+    typeof preview.target !== 'string' ||
+    typeof preview.replacement !== 'string' ||
+    typeof preview.line !== 'number' ||
+    typeof preview.context !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    operationKind: preview.operationKind as PendingPatchOperationKind,
+    occurrence: preview.occurrence as number | null,
+    changeSummary: preview.changeSummary,
+    target: preview.target,
+    replacement: preview.replacement,
+    line: preview.line,
+    context: preview.context,
+    truncatedTarget: preview.truncatedTarget === true,
+    truncatedReplacement: preview.truncatedReplacement === true,
+    truncatedContext: preview.truncatedContext === true,
+  };
+}
 
 /** Extrai aprovações HITL ainda pendentes a partir do output de ferramentas. */
 export function pendingHitlFromTools(
@@ -99,11 +161,19 @@ export function pendingHitlFromTools(
       continue;
     const output = tool.output as Record<string, unknown>;
     if (output.approvalRequired !== true || typeof output.approvalId !== 'string') continue;
+    const action = typeof output.action === 'string' ? output.action : null;
+    const previewProofValid =
+      typeof output.previewProof === 'string' && /^[a-f0-9]{64}$/.test(output.previewProof);
+    const patchPreview = pendingPatchPreview(output.patchPreview);
     pending.push({
       approvalId: output.approvalId,
       toolName: tool.name,
       title: typeof output.title === 'string' ? output.title : null,
-      action: typeof output.action === 'string' ? output.action : null,
+      action,
+      patchPreview:
+        (action === 'patch_note' || action === 'patch_transcript') && !previewProofValid
+          ? null
+          : patchPreview,
     });
   }
   return pending;

@@ -1,3 +1,8 @@
+---
+name: architect
+description: Use quando o assunto for discovery, arquitetura ou scaffolding de um módulo/projeto novo ("como estruturar X?", "vamos criar o módulo Y", "monta o esqueleto de Z") — conduz conversa estruturada da ideia até o scaffolding, sem pular para implementação.
+---
+
 # Architect — Discovery e Scaffolding de Novos Projetos
 
 Skill de facilitação de pensamento para guiar conversas de discovery, arquitetura e scaffolding de novas aplicações.

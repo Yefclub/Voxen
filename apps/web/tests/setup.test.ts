@@ -101,6 +101,21 @@ const CANONICAL_MODELS: OrModel[] = [
       output_modalities: ['transcription'],
     },
   },
+  {
+    id: 'openai/gpt-4o-mini-transcribe',
+    name: 'GPT-4o mini Transcribe',
+    architecture: {
+      output_modalities: ['transcription'],
+    },
+  },
+  {
+    id: 'x-ai/grok-4.1-fast',
+    name: 'Grok 4.1 Fast',
+    architecture: {
+      input_modalities: ['text'],
+      output_modalities: ['text'],
+    },
+  },
 ];
 
 function installValidOpenRouterMock(models = CANONICAL_MODELS): void {
@@ -158,7 +173,7 @@ describeIfDb('setup flow', () => {
       where: { scope: 'GLOBAL', userId: null },
       select: { key: true, valueEnc: true },
     });
-    expect(stored).toHaveLength(7);
+    expect(stored).toHaveLength(13);
     for (const s of stored) {
       expect(s.valueEnc.length).toBeGreaterThan(0);
       expect(s.valueEnc.split('.')).toHaveLength(3);
@@ -197,6 +212,17 @@ describeIfDb('setup flow', () => {
     await expect(getSetting('default_vision_model')).resolves.toBe('openai/gpt-5.6-luna');
     await expect(getSetting('default_document_model')).resolves.toBe('openai/gpt-5.6-luna');
     await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
+    const fallbacks = await getSettings([
+      'fallback_chat_model',
+      'fallback_transcription_model',
+      'fallback_web_search_model',
+      'fallback_vision_model',
+      'fallback_document_model',
+      'fallback_x_analysis_model',
+    ] as const);
+    expect(Object.values(fallbacks).every(Boolean)).toBe(true);
+    expect(fallbacks.fallback_transcription_model).toBe('openai/gpt-4o-mini-transcribe');
+    expect(fallbacks.fallback_x_analysis_model).toBe('x-ai/grok-4.1-fast');
   });
 
   it('rejeita overrides manuais de modelo no contrato unificado', async () => {
@@ -442,6 +468,7 @@ describeIfDb('setup flow', () => {
         { id: 'deepseek/deepseek-v4-flash-0731', name: 'DeepSeek V4 Flash' },
         { id: 'openai/gpt-5.6-luna', name: 'GPT-5.6 Luna' },
         { id: 'x-ai/grok-4.5', name: 'Grok 4.5' },
+        { id: 'x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast' },
       ],
     });
     await expect(

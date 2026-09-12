@@ -9,6 +9,9 @@
 
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { APIError } from 'better-auth/api';
+import { randomUUID } from 'node:crypto';
+import { oauthProvider } from '@better-auth/oauth-provider';
+import { jwt } from 'better-auth/plugins/jwt';
 import { oneTimeToken } from 'better-auth/plugins/one-time-token';
 import { sso } from '@better-auth/sso';
 import { db } from './db';
@@ -21,12 +24,15 @@ import {
 } from './sso-oidc';
 import { currentSsoProviderId } from './sso-request-context';
 import { resolveAuthBaseURL } from './auth-base-url';
+import { structuredLog } from './structured-log';
 
 export { resolveAuthBaseURL } from './auth-base-url';
 
 // TTL do token de login por QR (spec 060). Curto de propósito: o handoff é
 // imediato (escanear → abrir). `expiresIn` do plugin é em MINUTOS.
 export const QR_LOGIN_TTL_SEC = 60;
+export const MCP_OAUTH_ACCESS_TOKEN_TTL_SEC = 5 * 60;
+export const MCP_OAUTH_REFRESH_TOKEN_TTL_SEC = 30 * 24 * 60 * 60;
 
 function requireEnv(name: string, minLength = 0): string {
   const v = process.env[name];
@@ -124,11 +130,32 @@ function verifiedEmailFromOidcIdToken(idToken: unknown): string {
 // tipos literais dos plugins, e `auth.api.generateOneTimeToken` ficaria
 // invisível. Usamos `satisfies` no fim para checar a forma sem perder a
 // inferência dos endpoints dos plugins.
+const authBaseURL = resolveAuthBaseURL(process.env.APP_BASE_URL);
+const mcpOAuthResource = `${new URL(authBaseURL).origin}/mcp`;
+
+export function resolveMcpOAuthResource(): string {
+  return mcpOAuthResource;
+}
+
 const config = {
   database: encryptedSsoPrismaAdapter,
+  logger: {
+    disableColors: true,
+    level: 'warn',
+    log: (level: 'debug' | 'info' | 'warn' | 'error') => {
+      structuredLog(
+        level === 'error' ? 'error' : level === 'warn' ? 'warning' : 'info',
+        'auth-library-log',
+        { component: 'better-auth' },
+      );
+    },
+  },
+  // Propagate unexpected provider/database failures to Hono's structured
+  // boundary instead of letting better-call print raw multi-line payloads.
+  onAPIError: { throw: true },
   // Mínimo 32 chars pra HMAC seguro. Em prod, gerar com `openssl rand -base64 32`.
   secret: requireEnv('BETTER_AUTH_SECRET', 32),
-  baseURL: resolveAuthBaseURL(process.env.APP_BASE_URL),
+  baseURL: authBaseURL,
   emailAndPassword: {
     enabled: true,
     autoSignIn: false, // login só após aprovação — fail-closed
@@ -155,6 +182,44 @@ const config = {
     },
   },
   plugins: [
+    jwt({
+      jwt: { issuer: `${new URL(authBaseURL).origin}/api/auth` },
+    }),
+    oauthProvider({
+      silenceWarnings: { oauthAuthServerConfig: true },
+      loginPage: '/entrar',
+      consentPage: '/oauth/consent',
+      scopes: ['mcp:read', 'mcp:write', 'offline_access'],
+      validAudiences: [mcpOAuthResource],
+      grantTypes: ['authorization_code', 'refresh_token'],
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+      clientRegistrationDefaultScopes: ['mcp:read'],
+      clientRegistrationAllowedScopes: ['mcp:read', 'mcp:write', 'offline_access'],
+      accessTokenExpiresIn: MCP_OAUTH_ACCESS_TOKEN_TTL_SEC,
+      refreshTokenExpiresIn: MCP_OAUTH_REFRESH_TOKEN_TTL_SEC,
+      codeExpiresIn: 5 * 60,
+      storeClientSecret: 'hashed',
+      storeTokens: 'hashed',
+      customAccessTokenClaims: async ({ user, resource }) => {
+        if (!user || user.status !== 'APPROVED') {
+          throw new APIError('FORBIDDEN', {
+            message: 'A conta Voxen não está aprovada para delegar acesso MCP.',
+            code: 'MCP_OAUTH_USER_NOT_APPROVED',
+          });
+        }
+        if (resource !== mcpOAuthResource) {
+          throw new APIError('BAD_REQUEST', {
+            message: 'O recurso OAuth solicitado não corresponde ao MCP desta instância.',
+            code: 'MCP_OAUTH_RESOURCE_MISMATCH',
+          });
+        }
+        return {
+          jti: randomUUID(),
+          'https://voxen.dev/claims/credential_class': 'mcp_oauth',
+        };
+      },
+    }),
     // Login rápido por QR (spec 060). O `generate` exige sessão válida
     // (sessionMiddleware interno), gerando token de alta entropia (32 chars)
     // single-use. `storeToken: 'hashed'` guarda só o hash no DB — dump não

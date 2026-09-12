@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Globe, Link2, PlayCircle, Plus, Upload, X } from '@/components/ui/icons';
+import { Link2, Plus, Upload, X } from '@/components/ui/icons';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from '@/lib/toast';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
-import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Spinner } from '../ui/spinner';
@@ -13,8 +13,10 @@ import { ApiError, apiPost } from '../../lib/api';
 import { uploadMedia } from '../../lib/upload';
 import type { JobStatus } from '../../lib/types';
 import { detectSourceFromUrl, type DetectedSource } from '../../lib/source-detect';
-import { useI18n, type TranslateFn } from '../../lib/i18n';
+import { useI18n } from '../../lib/i18n';
 import { MEDIA_ACCEPT, hasFileDrag, shareErrorMessage } from './ingest-helpers';
+import { MAX_BATCH_URLS, parseBatchUrls, type BatchIngestItem } from '../../lib/batch-ingest';
+import { BatchResultList, DetectedBadge } from './link-ingest-parts';
 
 export function ContentIngestCard(): React.ReactElement {
   const [mode, setMode] = useState<'link' | 'upload'>('link');
@@ -24,6 +26,7 @@ export function ContentIngestCard(): React.ReactElement {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [batchItems, setBatchItems] = useState<BatchIngestItem[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
   const uploadInFlightRef = useRef(false);
@@ -32,9 +35,10 @@ export function ContentIngestCard(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
 
+  const batchUrls = useMemo(() => parseBatchUrls(url), [url]);
   const detected: DetectedSource | null = useMemo(
-    () => (url.trim() ? detectSourceFromUrl(url.trim()) : null),
-    [url],
+    () => (batchUrls.length === 1 ? detectSourceFromUrl(batchUrls[0] ?? '') : null),
+    [batchUrls],
   );
 
   const handleAutoJobError = useCallback(
@@ -158,9 +162,26 @@ export function ContentIngestCard(): React.ReactElement {
   async function onSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
+    setBatchItems([]);
+    if (batchUrls.length > MAX_BATCH_URLS) {
+      setError(t('jobs.batch.tooMany'));
+      return;
+    }
     setSubmitting(true);
     try {
-      await submitUrl(url, { clearInput: true });
+      if (batchUrls.length === 1) {
+        await submitUrl(batchUrls[0] ?? '', { clearInput: true });
+      } else {
+        const response = await apiPost<{ items: BatchIngestItem[] }>('/api/jobs/batch', {
+          urls: batchUrls,
+        });
+        setBatchItems(response.items);
+        setUrl('');
+        const created = response.items.filter((item) => item.result.outcome === 'created').length;
+        const other = response.items.length - created;
+        if (other === 0) toast.success(t('jobs.batch.queued', { count: created }));
+        else toast(t('jobs.batch.partial', { created, other }));
+      }
     } catch (err) {
       handleAutoJobError(err);
     } finally {
@@ -174,7 +195,7 @@ export function ContentIngestCard(): React.ReactElement {
     await startUpload(mediaFile);
   }
 
-  function onContentPaste(e: React.ClipboardEvent<HTMLInputElement>): void {
+  function onContentPaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
     const files = e.clipboardData?.files;
     if (files && files.length > 0) {
       e.preventDefault();
@@ -341,32 +362,39 @@ export function ContentIngestCard(): React.ReactElement {
                         elevada, borda forte e foco no acento) e placeholder curto. */}
                     <div className="relative flex-1">
                       <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-accent-primary)] pointer-events-none" />
-                      <Input
+                      <Textarea
                         id="url"
-                        type="url"
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
                         onPaste={onContentPaste}
-                        placeholder={t('home.urlPlaceholder')}
+                        placeholder={t('jobs.batch.placeholder')}
                         autoComplete="off"
                         required
-                        className="h-12 border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] pl-10 font-mono text-[15px] placeholder:font-sans placeholder:text-[var(--color-app-subtle)] hover:border-[var(--color-accent-primary)]/50 focus:border-[var(--color-accent-primary)] focus:bg-[var(--color-app-bg-elevated)] focus:ring-4 focus:ring-[var(--color-accent-primary-soft)]"
+                        rows={batchUrls.length > 1 ? Math.min(batchUrls.length, 5) : 1}
+                        className="min-h-12 resize-y border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] py-3 pl-10 font-mono text-[15px] placeholder:font-sans placeholder:text-[var(--color-app-subtle)] hover:border-[var(--color-accent-primary)]/50 focus:border-[var(--color-accent-primary)] focus:bg-[var(--color-app-bg-elevated)] focus:ring-4 focus:ring-[var(--color-accent-primary-soft)]"
                       />
                     </div>
                     <Button
                       type="submit"
                       variant="primary"
                       size="lg"
-                      disabled={submitting || url.trim().length === 0}
+                      disabled={
+                        submitting || batchUrls.length === 0 || batchUrls.length > MAX_BATCH_URLS
+                      }
                       className="h-12 w-full px-5 sm:w-auto"
                     >
                       {submitting ? <Spinner /> : <Plus className="h-4 w-4" />}
-                      {t('jobs.add')}
+                      {batchUrls.length > 1
+                        ? t('jobs.batch.submit', { count: batchUrls.length })
+                        : t('jobs.add')}
                     </Button>
                   </div>
                   <p className="hidden text-xs text-[var(--color-app-muted)] sm:block">
-                    {t('jobs.linkHint')}
+                    {t('jobs.batch.hint')} · {t('jobs.batch.count', { count: batchUrls.length })}
                   </p>
+                  {batchItems.length > 0 && (
+                    <BatchResultList items={batchItems} navigate={navigate} t={t} />
+                  )}
                 </form>
               ) : (
                 <form onSubmit={onUploadSubmit} className="space-y-3">
@@ -470,43 +498,5 @@ export function ContentIngestCard(): React.ReactElement {
         )}
       </AnimatePresence>
     </>
-  );
-}
-
-function DetectedBadge({
-  source,
-  t,
-}: {
-  source: DetectedSource;
-  t: TranslateFn;
-}): React.ReactElement {
-  const map = {
-    YOUTUBE: {
-      label: t('jobs.detect.youtube'),
-      cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10',
-    },
-    INSTAGRAM: {
-      label: t('jobs.detect.instagram'),
-      cls: 'text-fuchsia-300 border-fuchsia-500/40 bg-fuchsia-500/10',
-    },
-    TIKTOK: {
-      label: t('jobs.detect.tiktok'),
-      cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
-    },
-    X: { label: t('jobs.detect.x'), cls: 'text-sky-300 border-sky-500/40 bg-sky-500/10' },
-    WEB: {
-      label: t('jobs.detect.web'),
-      cls: 'text-[var(--color-app-subtle)] border-zinc-500/40 bg-zinc-500/10',
-    },
-  } as const;
-  const { label, cls } = map[source];
-  const Icon = source === 'WEB' ? Globe : PlayCircle;
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-wider font-medium ${cls}`}
-    >
-      <Icon className="h-2.5 w-2.5" />
-      {label}
-    </span>
   );
 }

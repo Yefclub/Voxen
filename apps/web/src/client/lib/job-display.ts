@@ -1,5 +1,6 @@
 import type { JobStatus, JobType } from './types';
 import type { TranslateFn } from './i18n';
+import { displayJobSource } from './source-detect';
 
 type BadgeVariant = 'default' | 'outline' | 'success' | 'warning' | 'danger' | 'muted';
 
@@ -33,6 +34,10 @@ export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): s
     queued: t?.('job.stage.queued') ?? 'Na fila',
     running: t?.('job.stage.running') ?? 'Iniciando',
     downloading: t?.('job.stage.downloading') ?? 'Baixando vídeo',
+    probing_media: t?.('job.stage.probingMedia') ?? 'Lendo dados da mídia',
+    downloading_media: t?.('job.stage.downloadingMedia') ?? 'Baixando mídia',
+    storing_media: t?.('job.stage.storingMedia') ?? 'Salvando mídia',
+    media_ready: t?.('job.stage.mediaReady') ?? 'Mídia pronta',
     preparing_upload: t?.('job.stage.preparingUpload') ?? 'Preparando arquivo',
     analyzing_image: t?.('job.stage.analyzingImage') ?? 'Analisando imagem',
     analyzing_x: t?.('job.stage.analyzingX') ?? 'Analisando X',
@@ -46,6 +51,19 @@ export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): s
     summarizing: t?.('job.stage.summarizing') ?? 'Gerando resumo',
     tagging: t?.('job.stage.tagging') ?? 'Gerando tags',
     indexing_brain: t?.('job.stage.indexingBrain') ?? 'Conectando ao Brain',
+    deleting_content: t?.('job.stage.deletingContent') ?? 'Removendo conteúdo',
+    deleting_storage: t?.('job.stage.deletingStorage') ?? 'Removendo arquivos',
+    updating_graph: t?.('job.stage.updatingGraph') ?? 'Atualizando grafo',
+    research_planning: t?.('job.stage.researchPlanning') ?? 'Avaliando lacunas do conteúdo',
+    research_source_lookup: t?.('job.stage.researchSourceLookup') ?? 'Consultando a fonte original',
+    research_searching: t?.('job.stage.researchSearching') ?? 'Pesquisando contexto adicional',
+    research_synthesizing:
+      t?.('job.stage.researchSynthesizing') ?? 'Organizando evidências encontradas',
+    research_not_needed: t?.('job.stage.researchNotNeeded') ?? 'Pesquisa adicional não necessária',
+    research_ready: t?.('job.stage.researchReady') ?? 'Contexto adicional pronto para revisão',
+    research_retry: t?.('job.stage.researchRetry') ?? 'Pesquisa aguardando nova tentativa',
+    research_failed: t?.('job.stage.researchFailed') ?? 'Pesquisa adicional falhou',
+    research_cancelled: t?.('job.stage.researchCancelled') ?? 'Pesquisa adicional cancelada',
     completed_with_warnings: t?.('job.stage.completedWithWarnings') ?? 'Concluído com pendências',
     done: t?.('job.stage.done') ?? 'Concluído',
     failed: t?.('job.stage.failed') ?? 'Falhou',
@@ -105,12 +123,23 @@ function humanizeStage(stage: string): string {
 
 export function jobTypeLabel(type: JobType | undefined, t?: TranslateFn): string {
   const map: Record<JobType, string> = {
+    DOWNLOAD_MEDIA: t?.('job.type.download') ?? 'Download de mídia',
     DOWNLOAD_AND_TRANSCRIBE: t?.('job.type.video') ?? 'Vídeo',
     SCRAPE_WEB: t?.('job.type.web') ?? 'Página web',
     UPLOAD_AND_TRANSCRIBE: t?.('job.type.upload') ?? 'Arquivo de mídia',
     UPLOAD_AND_ANALYZE_IMAGE: t?.('job.type.image') ?? 'Imagem',
     UPLOAD_AND_ANALYZE_DOCUMENT: t?.('job.type.document') ?? 'Documento',
     ANALYZE_X: t?.('job.type.x') ?? 'Publicação no X',
+    DELETE_KNOWLEDGE: t?.('job.type.deleteKnowledge') ?? 'Exclusão da base',
   };
   return type ? map[type] : (t?.('job.type.content') ?? 'Conteúdo');
+}
+
+export function jobSourceLabel(
+  job: { type?: JobType; sourceUrl: string },
+  t?: TranslateFn,
+): string {
+  return job.type === 'DELETE_KNOWLEDGE'
+    ? jobTypeLabel(job.type, t)
+    : displayJobSource(job.sourceUrl);
 }

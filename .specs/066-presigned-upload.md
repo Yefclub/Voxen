@@ -1,5 +1,9 @@
 # 066 — Upload presigned direto pro S3/MinIO
 
+> **2026-08-07 amendment:** Presigned upload remains an S3-only capability.
+> Local storage and S3 without `S3_PUBLIC_ENDPOINT` shall use the bounded,
+> same-origin streaming transport returned by the upload preparation API.
+
 ## Contexto
 
 O upload de mídia atual (`POST /api/jobs/upload`) faz o browser enviar o arquivo

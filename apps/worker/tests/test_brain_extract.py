@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from src import brain_extract, openrouter, pipeline
+from src import brain_compilation, brain_compilation_db, brain_extract, openrouter
 from src.brain_extract import (
     ExtractionSegment,
     GroundedExtractionResult,
@@ -21,8 +21,8 @@ from src.brain_extract import (
     parse_grounded_payload,
     parse_grounded_relations,
     segment_content,
-    slugify_label,
 )
+from src.entity_resolution import slugify_label
 
 
 def test_is_grounded_requires_substring() -> None:
@@ -113,6 +113,281 @@ def test_parse_grounded_relations_requires_evidence_and_confident_alias() -> Non
     ]
 
 
+def test_parse_grounded_entities_keeps_only_literal_aliases_and_known_types() -> None:
+    source = "A OpenAI, também chamada Open AI, desenvolve o ChatGPT."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "label": "OpenAI",
+                    "entity_type": "organization",
+                    "aliases": ["Open AI", "Invented Labs"],
+                    "excerpt": "A OpenAI, também chamada Open AI, desenvolve o ChatGPT",
+                    "confidence": 0.94,
+                }
+            ]
+        }
+    )
+
+    [entity] = parse_grounded_payload(raw, source)
+
+    assert entity.entity_type == "ORGANIZATION"
+    assert entity.aliases == ("Open AI",)
+
+
+def test_parse_grounded_relation_keeps_valid_iso_interval_and_rejects_reversed_one() -> None:
+    source = (
+        "Ana trabalhou na Acme desde 2022-01-01 até 2024-06-30. "
+        "Depois Ana entrou na Beta em 2024-07-01."
+    )
+    raw = json.dumps(
+        {
+            "entities": [
+                {"label": "Ana", "excerpt": "Ana trabalhou na Acme"},
+                {"label": "Acme", "excerpt": "Ana trabalhou na Acme"},
+                {"label": "Beta", "excerpt": "Ana entrou na Beta"},
+            ],
+            "relations": [
+                {
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana trabalhou na Acme desde 2022-01-01 até 2024-06-30",
+                    "valid_from": "2022-01-01T00:00:00Z",
+                    "valid_to": "2024-07-01T00:00:00Z",
+                },
+                {
+                    "subject": "Ana",
+                    "predicate": "joined",
+                    "object": "Beta",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana entrou na Beta em 2024-07-01",
+                    "valid_from": "2025-01-01T00:00:00Z",
+                    "valid_to": "2024-01-01T00:00:00Z",
+                },
+            ],
+        }
+    )
+    items = parse_grounded_payload(raw, source)
+
+    relations = parse_grounded_relations(raw, source, items)
+
+    assert len(relations) == 1
+    assert relations[0].valid_from == "2022-01-01T00:00:00Z"
+    assert relations[0].valid_to == "2024-07-01T00:00:00Z"
+
+
+@pytest.mark.parametrize("invalid_value", ["2026-08-12", "not-a-date", ""])
+def test_parse_grounded_relation_rejects_a_supplied_invalid_timestamp(
+    invalid_value: str,
+) -> None:
+    source = "Ana começou na Acme durante o projeto Atlas."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"id": "ana", "label": "Ana", "excerpt": "Ana começou na Acme"},
+                {"id": "acme", "label": "Acme", "excerpt": "Ana começou na Acme"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "ana",
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object_id": "acme",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana começou na Acme durante o projeto Atlas",
+                    "valid_from": invalid_value,
+                }
+            ],
+        }
+    )
+
+    assert parse_grounded_relations(raw, source, parse_grounded_payload(raw, source)) == []
+
+
+def test_parse_grounded_relations_keeps_cooccurring_homonyms_distinct_by_local_id() -> None:
+    source = "Alex Silva da Acme apresentou o produto. Alex Silva da Beta revisou a pesquisa."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "id": "alex-acme",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                },
+                {
+                    "id": "alex-beta",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Beta revisou a pesquisa",
+                },
+                {"id": "acme", "label": "Acme", "excerpt": "Alex Silva da Acme"},
+                {"id": "beta", "label": "Beta", "excerpt": "Alex Silva da Beta"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "alex-acme",
+                    "subject": "Alex Silva",
+                    "predicate": "works_at",
+                    "object_id": "acme",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                },
+                {
+                    "subject_id": "alex-beta",
+                    "subject": "Alex Silva",
+                    "predicate": "works_at",
+                    "object_id": "beta",
+                    "object": "Beta",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Alex Silva da Beta revisou a pesquisa",
+                },
+            ],
+        }
+    )
+
+    items = parse_grounded_payload(raw, source)
+    relations = parse_grounded_relations(raw, source, items)
+
+    assert [item.local_ref for item in items if item.label == "Alex Silva"] == [
+        "alex-acme",
+        "alex-beta",
+    ]
+    assert [(item.subject_ref, item.object_ref) for item in relations] == [
+        ("alex-acme", "acme"),
+        ("alex-beta", "beta"),
+    ]
+
+
+def test_parse_grounded_relations_normalizes_local_ids_on_both_sides() -> None:
+    source = "Alex Silva da Acme apresentou o produto. Alex Silva da Beta revisou a pesquisa."
+    raw = json.dumps(
+        {
+            "entities": [
+                {
+                    "id": "alex acme",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                },
+                {
+                    "id": "alex beta",
+                    "label": "Alex Silva",
+                    "excerpt": "Alex Silva da Beta revisou a pesquisa",
+                },
+                {"id": "acme corp", "label": "Acme", "excerpt": "Alex Silva da Acme"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "alex acme",
+                    "subject": "Alex Silva",
+                    "predicate": "works_at",
+                    "object_id": "acme corp",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Alex Silva da Acme apresentou o produto",
+                }
+            ],
+        }
+    )
+
+    relations = parse_grounded_relations(raw, source, parse_grounded_payload(raw, source))
+
+    assert [(relation.subject_ref, relation.object_ref) for relation in relations] == [
+        ("alex-acme", "acme-corp")
+    ]
+
+
+def test_parse_grounded_payload_rejects_local_id_collisions_after_normalization() -> None:
+    source = "Ana lidera a Acme. Bia lidera a Beta."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"id": "leader one", "label": "Ana", "excerpt": "Ana lidera a Acme"},
+                {"id": "leader-one", "label": "Bia", "excerpt": "Bia lidera a Beta"},
+            ]
+        }
+    )
+
+    assert parse_grounded_payload(raw, source) == []
+
+
+def test_parse_grounded_relations_rejects_ids_that_contradict_declared_labels() -> None:
+    source = "Ana trabalha na Acme."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"id": "ana", "label": "Ana", "excerpt": "Ana trabalha na Acme"},
+                {"id": "acme", "label": "Acme", "excerpt": "Ana trabalha na Acme"},
+            ],
+            "relations": [
+                {
+                    "subject_id": "acme",
+                    "subject": "Ana",
+                    "predicate": "works_at",
+                    "object_id": "ana",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana trabalha na Acme",
+                }
+            ],
+        }
+    )
+
+    assert parse_grounded_relations(raw, source, parse_grounded_payload(raw, source)) == []
+
+
+def test_parse_grounded_relations_preserves_distinct_temporal_episodes() -> None:
+    source = (
+        "Ana trabalhou na Acme em 2020 e retornou para a Acme em 2024. "
+        "Ana também assessorou a Acme em 2024."
+    )
+    raw = json.dumps(
+        {
+            "entities": [
+                {"label": "Ana", "excerpt": "Ana trabalhou na Acme em 2020"},
+                {"label": "Acme", "excerpt": "Ana trabalhou na Acme em 2020"},
+            ],
+            "relations": [
+                {
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana trabalhou na Acme em 2020",
+                    "valid_from": "2020-01-01T00:00:00Z",
+                    "valid_to": "2021-01-01T00:00:00Z",
+                },
+                {
+                    "subject": "Ana",
+                    "predicate": "worked_at",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "retornou para a Acme em 2024",
+                    "valid_from": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "subject": "Ana",
+                    "predicate": "advised",
+                    "object": "Acme",
+                    "kind": "RELATED_TO",
+                    "excerpt": "Ana também assessorou a Acme em 2024",
+                    "valid_from": "2024-01-01T00:00:00Z",
+                },
+            ],
+        }
+    )
+
+    relations = parse_grounded_relations(raw, source, parse_grounded_payload(raw, source))
+
+    assert [(relation.predicate, relation.valid_from) for relation in relations] == [
+        ("worked_at", "2020-01-01T00:00:00Z"),
+        ("worked_at", "2024-01-01T00:00:00Z"),
+        ("advised", "2024-01-01T00:00:00Z"),
+    ]
+
+
 def test_segment_content_covers_long_markdown_with_lines_and_timestamps() -> None:
     content = "\n".join(
         [
@@ -159,41 +434,71 @@ class _Lease:
         return True
 
 
+async def test_short_corrected_content_completes_durable_placeholder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        brain_compilation.db,
+        "get_transcript_title_content_md_path",
+        AsyncMock(return_value=("Título", "curto", None, 1, 2, "source-2")),
+    )
+    skipped = AsyncMock()
+    monkeypatch.setattr(brain_compilation_db, "mark_transcript_compilation_skipped", skipped)
+
+    await brain_compilation.extract_grounded_brain(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+    )
+
+    skipped.assert_awaited_once_with(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        correction_revision=1,
+        source_version=2,
+        source_checksum="source-2",
+    )
+
+
 async def test_segment_failure_keeps_following_segment_and_records_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = ExtractionSegment("first", "primeira seção", 1, 1, None, None)
     second = ExtractionSegment("second", "segunda seção grounded", 2, 2, 15, 15)
     monkeypatch.setattr(
-        pipeline.db,
+        brain_compilation.db,
         "get_transcript_title_content_md_path",
-        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None, 1, 2, "source-2")),
     )
     monkeypatch.setattr(brain_extract, "segment_content", lambda _: [first, second])
     prepared = AsyncMock(
         return_value=("compilation-1", [{"segmentKey": "first"}, {"segmentKey": "second"}])
     )
     monkeypatch.setattr(
-        pipeline.db,
+        brain_compilation.db,
         "prepare_grounded_brain_compilation",
         prepared,
     )
+    claim = AsyncMock(return_value=[{"segmentKey": "first"}, {"segmentKey": "second"}])
+    monkeypatch.setattr(brain_compilation_db, "claim_segments", claim)
     monkeypatch.setattr(
-        pipeline.voxen_settings,
+        brain_compilation.voxen_settings,
         "get_openrouter_model_config",
-        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model")),
+        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model", fallback_model=None)),
     )
     monkeypatch.setattr(
-        pipeline.voxen_settings,
+        brain_compilation.voxen_settings,
         "get_app_language",
         AsyncMock(return_value="pt-BR"),
     )
-    monkeypatch.setattr(pipeline, "acquire_graph_index_lease", AsyncMock(return_value=_Lease()))
-    monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock())
+    monkeypatch.setattr(
+        brain_compilation, "acquire_graph_index_lease", AsyncMock(return_value=_Lease())
+    )
+    monkeypatch.setattr(brain_compilation.db, "insert_cost_event", AsyncMock())
     upsert = AsyncMock(return_value=1)
     failed = AsyncMock()
-    monkeypatch.setattr(pipeline.db, "upsert_grounded_brain_items", upsert)
-    monkeypatch.setattr(pipeline.db, "mark_grounded_segment_failed", failed)
+    monkeypatch.setattr(brain_compilation.db, "upsert_grounded_brain_items", upsert)
+    monkeypatch.setattr(brain_compilation_db, "mark_segment_failed", failed)
 
     async def extract(**kwargs: Any) -> GroundedExtractionResult:
         if kwargs["content"] == "primeira seção":
@@ -204,15 +509,18 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
 
-    await pipeline._maybe_grounded_brain_extract(
+    await brain_compilation.extract_grounded_brain(
         user_id="user-1",
         transcript_id="transcript-1",
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
     )
 
-    failed.assert_awaited_once_with(
-        compilation_id="compilation-1", segment_key="first", error="RuntimeError"
-    )
+    failed.assert_awaited_once()
+    assert failed.await_args.kwargs["compilation_id"] == "compilation-1"
+    assert failed.await_args.kwargs["segment_key"] == "first"
+    assert failed.await_args.kwargs["error"] == "RuntimeError"
+    assert failed.await_args.kwargs["worker_id"].startswith("worker-test:")
     upsert.assert_awaited_once()
     assert upsert.await_args.kwargs["segment"]["key"] == "second"
 
@@ -223,13 +531,102 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract_retry)
     prepared.return_value = ("compilation-1", [{"segmentKey": "first"}])
-    await pipeline._maybe_grounded_brain_extract(
+    claim.return_value = [{"segmentKey": "first"}]
+    await brain_compilation.extract_grounded_brain(
         user_id="user-1",
         transcript_id="transcript-1",
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
     )
     assert upsert.await_count == 2
     assert upsert.await_args.kwargs["segment"]["key"] == "first"
+
+
+async def test_grounded_model_runs_before_short_write_lease_and_contention_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segment = ExtractionSegment("only", "conteúdo grounded suficiente", 1, 1, None, None)
+    events: list[str] = []
+    monkeypatch.setattr(
+        brain_compilation.db,
+        "get_transcript_title_content_md_path",
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None, 1, 2, "source-2")),
+    )
+    monkeypatch.setattr(brain_extract, "segment_content", lambda _: [segment])
+    monkeypatch.setattr(
+        brain_compilation.db,
+        "prepare_grounded_brain_compilation",
+        AsyncMock(return_value=("compilation-1", [{"segmentKey": "only"}])),
+    )
+    monkeypatch.setattr(
+        brain_compilation_db,
+        "claim_segments",
+        AsyncMock(return_value=[{"segmentKey": "only"}]),
+    )
+    monkeypatch.setattr(
+        brain_compilation.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model", fallback_model=None)),
+    )
+    monkeypatch.setattr(
+        brain_compilation.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+    monkeypatch.setattr(brain_compilation.db, "insert_cost_event", AsyncMock())
+    retry = AsyncMock()
+    monkeypatch.setattr(brain_compilation_db, "mark_segment_failed", retry)
+    upsert = AsyncMock()
+    monkeypatch.setattr(brain_compilation.db, "upsert_grounded_brain_items", upsert)
+
+    async def extract(**_kwargs: Any) -> GroundedExtractionResult:
+        events.append("model")
+        return GroundedExtractionResult(
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+        )
+
+    async def acquire(_user_id: str) -> None:
+        events.append("lease")
+        return None
+
+    monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
+    monkeypatch.setattr(brain_compilation, "acquire_graph_index_lease", acquire)
+
+    logged: list[tuple[str, str, dict[str, Any]]] = []
+
+    await brain_compilation.extract_grounded_brain(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(
+            info=lambda event, **k: logged.append(("info", event, k)),
+            warning=lambda event, **k: logged.append(("warning", event, k)),
+        ),
+        worker_id="worker-test",
+    )
+
+    assert events == ["model", "lease"]
+    upsert.assert_not_awaited()
+    retry.assert_awaited_once()
+    assert retry.await_args.kwargs["compilation_id"] == "compilation-1"
+    assert retry.await_args.kwargs["segment_key"] == "only"
+    assert retry.await_args.kwargs["error"] == "GRAPH_WRITE_LEASE_UNAVAILABLE"
+    assert retry.await_args.kwargs["worker_id"].startswith("worker-test:")
+
+    # Nada foi escrito no grafo, então a passada não concluiu. Reportar
+    # `brain-extract-done` com zeros aqui é indistinguível, no log, de um
+    # transcript que legitimamente não tinha conceito nenhum — e só um dos dois
+    # volta a acontecer na próxima passada.
+    events_logged = [(level, event) for level, event, _ in logged]
+    assert ("info", "brain-extract-done") not in events_logged
+    assert ("warning", "brain-extract-incomplete") in events_logged
+
+    incomplete = next(k for level, event, k in logged if event == "brain-extract-incomplete")
+    assert incomplete["deferred_segments"] == 1
+    assert incomplete["items"] == 0
+    assert incomplete["edges"] == 0
+
+    deferred = next(k for _, event, k in logged if event == "brain-extract-deferred-lease")
+    assert deferred["segment_key"] == "only"
 
 
 class _ExternalErrorClient:
@@ -256,5 +653,5 @@ async def test_grounded_extraction_does_not_propagate_upstream_body() -> None:
             client=_ExternalErrorClient(),  # type: ignore[arg-type]
         )
 
-    assert str(raised.value) == "OpenRouter 502"
+    assert str(raised.value) == "OpenRouter temporariamente indisponível (HTTP 502)."
     assert "body-secret" not in str(raised.value)

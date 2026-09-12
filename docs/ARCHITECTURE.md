@@ -13,7 +13,7 @@ Navegador
 apps/web (Bun + Hono + React + AI SDK)
   |---- Postgres 17 (Prisma, FTS, grafo, usuários, jobs, configurações)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  |---- MinIO / S3 (transcrições e mídia)
+  |---- volume local compartilhado (padrão) ou S3 compatível
   `---- apps/worker (Python asyncio + leases duráveis no Postgres)
 ```
 
@@ -30,7 +30,7 @@ O serviço Bun entrega a SPA React e a API Hono. Ele concentra:
 - APIs de transcrições, notas, grafo, automações, MCP e custos;
 - chat-agente integrado com AI SDK 7 e OpenRouter;
 - recuperação determinística e isolada por usuário usando FTS, relações do
-  grafo e transcrições no S3;
+  grafo e transcrições no storage selecionado;
 - streaming SSE de texto, raciocínio, ferramentas e progresso;
 - configuração global da plataforma cifrada e integrações pessoais por usuário.
 
@@ -51,7 +51,7 @@ Fluxo principal:
 3. Extrair e segmentar mídia quando houver transcrição.
 4. Enviar entradas suportadas aos modelos configurados pelo administrador.
 5. Gerar Markdown canônico e metadados derivados.
-6. Salvar artefatos no S3.
+6. Salvar artefatos pelo driver local ou S3 selecionado.
 7. Espelhar texto, autoria, origem, tags e relações no Postgres.
 8. Marcar o conteúdo pronto somente após todas as etapas obrigatórias atingirem
    estado terminal.
@@ -87,7 +87,33 @@ automática para identidades confiáveis.
 
 - Postgres: estado relacional, sessões, FTS, grafo, leases e custos.
 - Redis: wakeups, eventos realtime, cache e rate limits.
-- S3: transcrições Markdown e artefatos de mídia.
+- Storage: transcrições Markdown e artefatos de mídia em volume local
+  compartilhado por padrão ou em S3 explicitamente selecionado. As chaves
+  lógicas são iguais nos dois drivers e a troca não migra dados.
 
 Pastas baseadas em tags são relações muitos-para-muitos virtuais. O grafo
 complementa a busca textual e não substitui a recuperação de evidências.
+
+## Anotações autorais e contexto externo derivado
+
+- Uma nota pode preservar âncoras verificadas da transcrição com limites de
+  linha/tempo, trecho selecionado e versão exata da fonte. Atualizações marcam
+  divergências como stale sem reposicionar silenciosamente o trecho.
+- Pesquisa posterior ao resumo é um enriquecimento durável separado. Ela nunca
+  altera Markdown canônico ou `summaryMd`, trata fonte/web como dados não
+  confiáveis e nasce `SUGGESTED` com citações URL estruturadas.
+- A pesquisa separa um planejamento sem ferramentas das buscas limitadas. A
+  aplicação valida os tópicos entre as fases, e a requisição com ferramenta
+  nunca recebe transcrição, resumo, título ou justificativa do planejador.
+- Apenas enriquecimentos atuais `READY + ACCEPTED` entram na recuperação padrão
+  e no Brain, explicitamente tipados como derivados externos de menor
+  autoridade. Dispensa, exclusão, expiração ou mudança de fonte remove somente
+  os derivados.
+- O administrador escolhe `OFF`, `MANUAL` ou `AUTO`; `OFF` é o padrão seguro.
+  Web e MCP compartilham a mesma fila durável e isolada por usuário do modo
+  automático. Mudanças de política e conteúdos-pai inativos cancelam trabalhos
+  incompatíveis ainda não terminados em vez de permitir nova aquisição. Fila e
+  claim leem a política sob o mesmo lock transacional das configurações; a
+  inativação do pai cancela o trabalho na própria transação de lifecycle. Todo
+  enqueue também bloqueia a linha da transcrição até criar o trabalho, fechando
+  a corrida entre criação, arquivamento e restauração imediata.

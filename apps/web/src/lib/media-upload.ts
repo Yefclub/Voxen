@@ -2,8 +2,7 @@
 // Upload de arquivos para processamento assíncrono
 // ============================================================================
 
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { s3Bucket, s3Client } from './s3';
+import { storagePut } from './storage';
 
 export const MAX_MEDIA_UPLOAD_BYTES = 500 * 1024 * 1024;
 export const MAX_MEDIA_UPLOAD_REQUEST_BYTES = MAX_MEDIA_UPLOAD_BYTES + 10 * 1024 * 1024;
@@ -171,13 +170,6 @@ export async function putUploadFile({
   contentType: string;
 }): Promise<string> {
   const key = uploadObjectKey(userId, uploadId, filename);
-  await s3Client().send(
-    new PutObjectCommand({
-      Bucket: s3Bucket(),
-      Key: key,
-      Body: body,
-      ContentType: contentType || 'application/octet-stream',
-    }),
-  );
+  await storagePut({ key, body, contentType: contentType || 'application/octet-stream' });
   return key;
 }

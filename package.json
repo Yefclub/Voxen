@@ -1,6 +1,6 @@
 {
   "name": "voxen",
-  "version": "0.14.4",
+  "version": "0.15.0",
   "private": true,
   "description": "Voxen — a self-hosted multimodal knowledge base with agentic search",
   "engines": {
@@ -19,9 +19,12 @@
       "shell-quote": "1.10.0",
       "js-yaml": "5.2.2",
       "@babel/core": "7.29.6",
-      "fast-uri": "3.1.5",
+      "fast-uri": "3.1.6",
       "ip-address": "10.3.1",
-      "postcss": "8.5.26"
+      "nanoid": "3.3.18",
+      "postcss": "8.5.26",
+      "@xmldom/xmldom": "0.8.15",
+      "deepmerge-ts": "8.0.0"
     },
     "patchedDependencies": {
       "reagraph@4.32.0": "patches/reagraph@4.32.0.patch"
@@ -37,6 +40,7 @@
     "typecheck": "make typecheck",
     "migrate": "make migrate",
     "migration:check": "node scripts/prisma-migration-gate.mjs",
+    "memory:eval": "bun apps/web/src/cli/mem0-shadow-eval.ts",
     "quality:duplicates": "jscpd apps/web/src apps/extension apps/worker/src",
     "quality:check": "node scripts/quality-gate.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",

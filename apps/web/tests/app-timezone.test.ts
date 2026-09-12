@@ -84,7 +84,10 @@ describe('wiring (source contracts)', () => {
     const runtime = readFileSync(join(import.meta.dir, '../src/lib/chat/runtime.ts'), 'utf8');
     expect(runtime).toContain('buildAgentClockInstructions');
     expect(runtime).toContain('getAppTimezone');
-    expect(runtime).toContain('AGENT_INSTRUCTIONS + clock + suggestions');
+    expect(runtime).toContain('AGENT_INSTRUCTIONS +');
+    expect(runtime).toContain('clock +');
+    expect(runtime).toContain('suggestions +');
+    expect(runtime).toContain('personalInstructions +');
   });
 
   test('settings key app_timezone exists', () => {

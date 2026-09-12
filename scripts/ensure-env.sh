@@ -30,22 +30,20 @@ append_if_missing() {
   fi
 }
 
+env_existed=true
 if [ ! -f "$ENV_FILE" ]; then
+  env_existed=false
   cp "$EXAMPLE_FILE" "$ENV_FILE"
   echo "[env] .env criado a partir de .env.example"
 fi
 
 append_if_missing "MASTER_KEY" "$(random_b64_32)"
-append_if_missing "MINIO_ROOT_USER" "voxen"
-append_if_missing "MINIO_ROOT_PASSWORD" "voxen_dev_minio_password"
-append_if_missing "S3_ENDPOINT" "http://minio:9000"
-append_if_missing "S3_ACCESS_KEY" "voxen"
-append_if_missing "S3_SECRET_KEY" "voxen_dev_minio_password"
-append_if_missing "S3_BUCKET" "voxen-transcripts"
-append_if_missing "S3_REGION" "us-east-1"
-append_if_missing "S3_FORCE_PATH_STYLE" "true"
-# S3_PUBLIC_ENDPOINT (opcional): base URL do S3/MinIO alcançável pelo browser
-# (ex.: https://s3.seudominio.com). Habilita upload direto via presigned URL.
-# Sem default — se setado, requer CORS no bucket (ver docs/DEPLOY.md). Ausente =
-# upload via app (fallback). Em dev local, o MinIO não tem TLS/CORS por padrão,
-# então deixamos desabilitado.
+if ! has_key "STORAGE_DRIVER"; then
+  if [ "$env_existed" = true ] && grep -Eq '^(S3_|GARAGE_)[^=]*=.+$' "$ENV_FILE"; then
+    append_if_missing "STORAGE_DRIVER" "s3"
+    echo "[env] instalação existente com configuração S3 preservada"
+  else
+    append_if_missing "STORAGE_DRIVER" "local"
+    append_if_missing "STORAGE_LOCAL_PATH" "/data/storage"
+  fi
+fi

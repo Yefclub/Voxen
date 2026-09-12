@@ -1,4 +1,3 @@
-// ============================================================================
 // retrieval.ts — Harness de recuperação progressiva (FTS + semântica opt-in)
 // ============================================================================
 // Lógica compartilhada entre o agente in-app (lib/chat/runtime.ts) e o servidor
@@ -13,17 +12,17 @@
 // ftsSearchTranscripts, findRelated) escopam TUDO por userId (isolamento de
 // workspace) e são read-only.
 //
-// Fonte de estrutura/timestamps: o `.md` canônico no S3/MinIO (Transcript.mdPath).
+// Structure/timestamps come from canonical Markdown in the selected storage driver.
 // O `Transcript.plainText` do Postgres é só texto corrido pra FTS — NÃO tem
 // timestamps nem headings, então nunca é usado como fonte de estrutura.
 // Formato do `.md`: docs/TRANSCRIPT-FORMAT.md.
 // ============================================================================
 
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { fuseHybridScores } from './hybrid-search';
-import { s3Bucket, s3Client } from './s3';
+import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
+export { loadEffectiveTranscriptMarkdown as loadTranscriptMd } from './transcript-content';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
 export const MAX_READ_LINES = 200;
@@ -321,29 +320,9 @@ export function verifyClaimAgainstMd(md: string, claim: Omit<Claim, 'transcriptI
 
 /**
  * Carrega o `.md` canônico de uma transcrição do usuário (status ACTIVE) a partir
- * do S3/MinIO (Transcript.mdPath), com fallback pro plainText do Postgres em caso
- * de erro de storage. Retorna null se a transcrição não existe/não é do user.
+ * from the selected storage driver (Transcript.mdPath), with a Postgres plainText
+ * fallback on storage errors. Returns null when the transcript is absent or not owned.
  */
-export async function loadTranscriptMd(
-  userId: string,
-  transcriptId: string,
-): Promise<{ id: string; title: string; url: string; md: string } | null> {
-  const t = await db.transcript.findFirst({
-    where: { id: transcriptId, userId, status: 'ACTIVE' },
-    select: { id: true, title: true, url: true, mdPath: true, plainText: true },
-  });
-  if (!t) return null;
-  let md: string;
-  try {
-    const res = await s3Client().send(new GetObjectCommand({ Bucket: s3Bucket(), Key: t.mdPath }));
-    md = (await res.Body?.transformToString('utf-8')) ?? '';
-    if (!md) md = `# ${t.title}\n\n${t.plainText}`;
-  } catch {
-    md = `# ${t.title}\n\n${t.plainText}`;
-  }
-  return { id: t.id, title: t.title, url: t.url, md };
-}
-
 export type FtsResult = {
   id: string;
   title: string;
@@ -358,7 +337,7 @@ export type FtsResult = {
 };
 
 export type KnowledgeSearchResult = FtsResult & {
-  sourceType: 'transcript' | 'note';
+  sourceType: 'transcript' | 'note' | 'external_enrichment';
   href: string;
 };
 
@@ -414,7 +393,7 @@ export async function queryTranscriptFts(
   const take = clampInt(limit, 8, 1, 25);
   return client.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      ts_headline('portuguese', concat_ws(E'\n\n', t.title, t."plainText"), websearch_to_tsquery('portuguese', ${q}),
+      ts_headline('portuguese', concat_ws(E'\n\n', t.title, CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
       ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
       LEFT(t."summaryMd", 800) AS summary,
@@ -528,9 +507,10 @@ export async function searchKnowledgeBase(
   limit = 8,
 ): Promise<KnowledgeSearchResult[]> {
   const take = clampInt(limit, 8, 1, 25);
-  const [transcripts, notes] = await Promise.all([
+  const [transcripts, notes, enrichments] = await Promise.all([
     ftsSearchTranscripts(userId, query, take),
     ftsSearchNotes(userId, query, take),
+    ftsSearchTranscriptEnrichments(userId, query, take),
   ]);
   return mergeKnowledgeResults(
     [
@@ -540,6 +520,7 @@ export async function searchKnowledgeBase(
         href: `/transcricoes/${item.id}`,
       })),
       ...notes,
+      ...enrichments,
     ],
     take,
   );
@@ -579,7 +560,7 @@ async function loadSemanticTranscriptRows(
   if (ids.length === 0) return [];
   const rows = await db.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      LEFT(COALESCE(NULLIF(t."summaryMd", ''), t."plainText"), 800) AS snippet,
+      LEFT(COALESCE(NULLIF(t."summaryMd", ''), CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), 800) AS snippet,
       0::float AS rank,
       LEFT(t."summaryMd", 800) AS summary,
       folder.name AS folder,

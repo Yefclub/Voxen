@@ -16,6 +16,8 @@ from typing import Any
 import asyncpg
 import structlog
 
+from . import brain_compilation_db, brain_temporal_store
+from .entity_resolution import normalize_entity_type
 from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
 from .job_lease import JobLeaseLostError, JobLeaseToken, current_job_lease
 
@@ -26,11 +28,16 @@ class GroundedCompilationLeaseLostError(RuntimeError):
     """Força rollback quando o lease expira durante a escrita de um segmento."""
 
 
+class GroundedCompilationClaimLostError(RuntimeError):
+    """Rejects stale or foreign semantic work before any graph mutation."""
+
+
 _pool: asyncpg.Pool | None = None
 
 TOPIC_LIMIT = 8
 TOPIC_MIN_LEN = 4
 BRAIN_TOPIC_INDEX_VERSION = 1
+BRAIN_INDEX_RETRY_MESSAGE = "A indexação no Brain será repetida automaticamente."
 JOB_LEASE_TTL_SEC = 90
 JOB_MAX_ATTEMPTS = 3
 JOB_CHECKPOINT_EXTRA_ATTEMPTS = 1
@@ -166,12 +173,14 @@ async def claim_job(job_id: str, worker_id: str) -> dict[str, Any] | None:
             row = await conn.fetchrow(
                 """
                 SELECT id, "userId", "sourceUrl", status, type, "refreshTranscriptId",
-                       "transcriptId", attempt, "progressStage"
+                       "savedMediaId", "transcriptId", attempt, "progressStage",
+                       "deletionTargetType", "deletionTargetId", "deletionTargetTitle"
                 FROM "Job"
-                WHERE id = $1 AND status = 'QUEUED'
+                WHERE id = $1 AND status = 'QUEUED' AND "queuedAt" <= $2
                 FOR UPDATE SKIP LOCKED
                 """,
                 job_id,
+                _utcnow_naive(),
             )
             if not row:
                 return None
@@ -268,7 +277,8 @@ async def recover_expired_jobs(
         async with conn.transaction():
             rows = await conn.fetch(
                 """
-                SELECT id, "userId", attempt, "transcriptId", "refreshTranscriptId"
+                SELECT id, "userId", type, attempt, "transcriptId", "refreshTranscriptId",
+                       "savedMediaId", "deletionTargetType", "deletionTargetId"
                 FROM "Job"
                 WHERE status = 'RUNNING'
                   AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" < $1)
@@ -315,6 +325,43 @@ async def recover_expired_jobs(
                         now,
                         WORKER_INTERRUPTED_MESSAGE,
                     )
+                    if row.get("savedMediaId") is not None and row["type"] in {
+                        "DOWNLOAD_MEDIA",
+                        "UPLOAD_AND_TRANSCRIBE",
+                    }:
+                        media_status = "FAILED" if row["type"] == "DOWNLOAD_MEDIA" else "READY"
+                        await conn.execute(
+                            """
+                            UPDATE "SavedMedia"
+                            SET status = $2::"SavedMediaStatus",
+                                "errorMsg" = $3, "updatedAt" = $4
+                            WHERE id = $1 AND "userId" = $5 AND "transcriptId" IS NULL
+                              AND status IN ('QUEUED', 'DOWNLOADING', 'PROCESSING')
+                            """,
+                            row["savedMediaId"],
+                            media_status,
+                            WORKER_INTERRUPTED_MESSAGE,
+                            now,
+                            row["userId"],
+                        )
+                    if (
+                        row.get("type") == "DELETE_KNOWLEDGE"
+                        and row.get("deletionTargetType") == "SAVED_MEDIA"
+                    ):
+                        await conn.execute(
+                            """
+                            UPDATE "SavedMedia"
+                            SET status = 'FAILED'::"SavedMediaStatus",
+                                "errorMsg" = $3, "updatedAt" = $4
+                            WHERE id = $1 AND "userId" = $2
+                              AND "transcriptId" IS NULL
+                              AND status = 'DELETING'::"SavedMediaStatus"
+                            """,
+                            row["deletionTargetId"],
+                            row["userId"],
+                            WORKER_INTERRUPTED_MESSAGE,
+                            now,
+                        )
                     action = "failed"
                 recovered.append({**dict(row), "action": action})
     return recovered
@@ -428,10 +475,11 @@ async def list_queued_job_ids(limit: int = 50) -> list[str]:
         rows = await conn.fetch(
             """
             SELECT id FROM "Job"
-            WHERE status = 'QUEUED'
+            WHERE status = 'QUEUED' AND "queuedAt" <= $1
             ORDER BY "queuedAt" ASC
-            LIMIT $1
+            LIMIT $2
             """,
+            _utcnow_naive(),
             limit,
         )
         return [r["id"] for r in rows]
@@ -573,29 +621,9 @@ async def link_job_transcript_in_connection(
     job_id: str,
     transcript_id: str,
 ) -> None:
-    token = _job_token(job_id)
-    if token:
-        row = await conn.fetchrow(
-            """
-            UPDATE "Job" SET "transcriptId" = $2
-            WHERE id = $1 AND status = 'RUNNING'
-              AND "workerId" = $3 AND attempt = $4
-              AND "leaseExpiresAt" >= NOW()
-            RETURNING id
-            """,
-            job_id,
-            transcript_id,
-            token.worker_id,
-            token.attempt,
-        )
-        if row is None:
-            raise JobLeaseLostError("job transcript link rejected by lease fence")
-    else:
-        await conn.execute(
-            'UPDATE "Job" SET "transcriptId" = $2 WHERE id = $1',
-            job_id,
-            transcript_id,
-        )
+    from . import saved_media_db
+
+    await saved_media_db.link_job_transcript_in_connection(conn, job_id, transcript_id)
 
 
 async def link_job_transcript(job_id: str, transcript_id: str) -> None:
@@ -782,7 +810,8 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
                 row = await conn.fetchrow(
                     """
                     SELECT source, url, title, channel, author, language, "transcriptionMethod",
-                           "thumbnailUrl", "plainText", "summaryMd", status
+                           "thumbnailUrl", "plainText", "correctedPlainText",
+                           "correctionState", "summaryMd", status
                     FROM "Transcript"
                     WHERE id = $1 AND "userId" = $2
                     """,
@@ -819,7 +848,12 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
                     language=row["language"],
                     transcription_method=row["transcriptionMethod"],
                     thumbnail_url=row["thumbnailUrl"],
-                    plain_text=row["summaryMd"] or row["plainText"],
+                    plain_text=row["summaryMd"]
+                    or (
+                        row["correctedPlainText"]
+                        if row["correctionState"] == "ACTIVE" and row["correctedPlainText"]
+                        else row["plainText"]
+                    ),
                     status=row["status"],
                 )
     finally:
@@ -1105,10 +1139,29 @@ async def prepare_grounded_brain_compilation(
     transcript_id: str,
     content_hash: str,
     segments: list[dict[str, Any]],
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Cria/retoma a cobertura segmentada sem mexer em dados manuais."""
     async with connection() as conn:
         async with conn.transaction():
+            transcript = await conn.fetchrow(
+                """
+                SELECT id FROM "Transcript"
+                WHERE "userId" = $1 AND id = $2
+                  AND "correctionRevision" = $3 AND "sourceVersion" = $4
+                  AND "sourceChecksum" IS NOT DISTINCT FROM $5
+                FOR UPDATE
+                """,
+                user_id,
+                transcript_id,
+                correction_revision,
+                source_version,
+                source_checksum,
+            )
+            if transcript is None:
+                raise GroundedCompilationClaimLostError("semantic content identity changed")
             compilation = await conn.fetchrow(
                 """
                 SELECT id, "contentHash" FROM "BrainCompilation"
@@ -1118,31 +1171,11 @@ async def prepare_grounded_brain_compilation(
                 transcript_id,
             )
             if compilation and compilation["contentHash"] != content_hash:
-                # Remove só a evidência desta fonte. Relações automáticas podem
-                # ter suporte em outras fontes e, nesse caso, permanecem.
-                await conn.execute(
-                    """
-                    DELETE FROM "BrainSource" source
-                    USING "BrainEdge" edge
-                    WHERE source."userId" = $1
-                      AND source."sourceId" = $2
-                      AND source."edgeId" = edge.id
-                      AND edge."userId" = $1
-                      AND edge.method LIKE 'llm-grounded%'
-                    """,
-                    user_id,
-                    transcript_id,
+                await brain_temporal_store.withdraw_grounded_evidence(
+                    conn, user_id=user_id, transcript_id=transcript_id
                 )
-                await conn.execute(
-                    """
-                    DELETE FROM "BrainEdge" edge
-                    WHERE edge."userId" = $1
-                      AND edge.method LIKE 'llm-grounded%'
-                      AND NOT EXISTS (
-                          SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
-                      )
-                    """,
-                    user_id,
+                await brain_temporal_store.archive_or_remove_unsupported_grounded_graph(
+                    conn, user_id=user_id
                 )
                 await conn.execute(
                     'DELETE FROM "BrainCompilationSegment" WHERE "compilationId" = $1',
@@ -1196,95 +1229,31 @@ async def prepare_grounded_brain_compilation(
                     segment.get("start_sec"),
                     segment.get("end_sec"),
                 )
-            await _refresh_grounded_compilation(conn, compilation_id)
+            await brain_compilation_db.refresh_compilation(conn, compilation_id, user_id)
             rows = await conn.fetch(
                 """
                 SELECT "segmentKey", status, "startLine", "endLine", "startSec", "endSec"
                 FROM "BrainCompilationSegment"
-                WHERE "compilationId" = $1 AND status IN (
-                    'PENDING'::"BrainCompilationStatus", 'FAILED'::"BrainCompilationStatus"
-                )
+                WHERE "compilationId" = $1
+                  AND attempts < $2
+                  AND (
+                    status = 'PENDING'::"BrainCompilationStatus"
+                    OR status = 'FAILED'::"BrainCompilationStatus"
+                    OR (
+                      status = 'RETRY'::"BrainCompilationStatus"
+                      AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= NOW())
+                    )
+                    OR (
+                      status = 'RUNNING'::"BrainCompilationStatus"
+                      AND "leaseExpiresAt" < NOW()
+                    )
+                  )
                 ORDER BY "startLine", "endLine", "segmentKey"
                 """,
                 compilation_id,
+                brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS,
             )
     return compilation_id, [dict(row) for row in rows]
-
-
-async def mark_grounded_compilation_skipped(compilation_id: str) -> None:
-    async with connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "BrainCompilation"
-            SET status = 'SKIPPED'::"BrainCompilationStatus", "lastError" = NULL,
-                "updatedAt" = NOW()
-            WHERE id = $1
-            """,
-            compilation_id,
-        )
-
-
-async def mark_grounded_segment_failed(
-    *,
-    compilation_id: str,
-    segment_key: str,
-    error: str,
-) -> None:
-    async with connection() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                """
-                UPDATE "BrainCompilationSegment"
-                SET status = 'FAILED'::"BrainCompilationStatus", attempts = attempts + 1,
-                    error = $3, "updatedAt" = NOW()
-                WHERE "compilationId" = $1 AND "segmentKey" = $2
-                """,
-                compilation_id,
-                segment_key,
-                _truncate(error, 500),
-            )
-            await _refresh_grounded_compilation(conn, compilation_id)
-
-
-async def _refresh_grounded_compilation(
-    conn: asyncpg.Connection,
-    compilation_id: str,
-) -> None:
-    await conn.execute(
-        """
-        UPDATE "BrainCompilation" compilation
-        SET "totalSegments" = counts.total,
-            "completedSegments" = counts.completed,
-            status = CASE
-                WHEN counts.total = 0 THEN 'PENDING'::"BrainCompilationStatus"
-                WHEN counts.completed = counts.total THEN 'COMPLETED'::"BrainCompilationStatus"
-                WHEN counts.completed > 0 THEN 'PARTIAL'::"BrainCompilationStatus"
-                WHEN counts.failed = counts.total THEN 'FAILED'::"BrainCompilationStatus"
-                ELSE 'PENDING'::"BrainCompilationStatus"
-            END,
-            "lastError" = CASE
-                WHEN counts.failed > 0 THEN counts.last_error
-                ELSE NULL
-            END,
-            "updatedAt" = NOW()
-        FROM (
-            SELECT COUNT(*)::integer AS total,
-                   COUNT(*) FILTER (
-                       WHERE status = 'COMPLETED'::"BrainCompilationStatus"
-                   )::integer AS completed,
-                   COUNT(*) FILTER (
-                       WHERE status = 'FAILED'::"BrainCompilationStatus"
-                   )::integer AS failed,
-                   MAX(error) FILTER (
-                       WHERE status = 'FAILED'::"BrainCompilationStatus"
-                   ) AS last_error
-            FROM "BrainCompilationSegment"
-            WHERE "compilationId" = $1
-        ) counts
-        WHERE compilation.id = $1
-        """,
-        compilation_id,
-    )
 
 
 def _grounded_evidence_key(
@@ -1292,52 +1261,16 @@ def _grounded_evidence_key(
     segment_key: str,
     slug: str,
     excerpt: str,
+    evidence_version: str,
 ) -> str:
     normalized_excerpt = re.sub(r"\s+", " ", excerpt).strip().casefold()
-    raw = "\0".join((transcript_id, segment_key, slug, normalized_excerpt))
+    raw = "\0".join((transcript_id, segment_key, slug, normalized_excerpt, evidence_version))
     return sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _require_grounded_compilation_lease(lease: GraphIndexLease) -> None:
     if not lease.locally_owned():
         raise GroundedCompilationLeaseLostError("lease de compilação do Brain perdido")
-
-
-async def _upsert_grounded_evidence_source(
-    conn: asyncpg.Connection,
-    *,
-    user_id: str,
-    transcript_id: str,
-    edge_id: str,
-    segment: dict[str, Any],
-    evidence_key: str,
-    excerpt: str,
-) -> None:
-    await conn.execute(
-        """
-        INSERT INTO "BrainSource" (
-            id, "userId", "edgeId", "sourceType", "sourceId", "startLine", "endLine",
-            "startSec", "endSec", "segmentKey", "evidenceKey", excerpt, "createdAt"
-        ) VALUES (
-            $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, $6,
-            $7, $8, $9, $10, $11, NOW()
-        ) ON CONFLICT ("userId", "evidenceKey") DO UPDATE SET
-            "startLine" = EXCLUDED."startLine", "endLine" = EXCLUDED."endLine",
-            "startSec" = EXCLUDED."startSec", "endSec" = EXCLUDED."endSec",
-            excerpt = EXCLUDED.excerpt
-        """,
-        generate_cuid(),
-        user_id,
-        edge_id,
-        transcript_id,
-        segment["start_line"],
-        segment["end_line"],
-        segment.get("start_sec"),
-        segment.get("end_sec"),
-        segment["key"],
-        evidence_key,
-        _truncate(excerpt, 600),
-    )
 
 
 async def upsert_grounded_brain_items(
@@ -1349,11 +1282,54 @@ async def upsert_grounded_brain_items(
     items: list[dict[str, Any]],
     relations: list[dict[str, Any]],
     lease: GraphIndexLease,
+    worker_id: str,
+    content_hash: str,
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
 ) -> int:
     """Materializa um segmento atomicamente e marca sua cobertura concluída."""
     created = 0
     async with connection() as conn:
         async with conn.transaction():
+            claim = await conn.fetchrow(
+                """
+                SELECT segment.id,
+                       COALESCE(transcript."sourceCollectedAt", transcript."createdAt")
+                         AS "observedAt"
+                FROM "BrainCompilation" compilation
+                JOIN "BrainCompilationSegment" segment
+                  ON segment."compilationId" = compilation.id
+                JOIN "Transcript" transcript
+                  ON transcript.id = compilation."transcriptId"
+                 AND transcript."userId" = compilation."userId"
+                WHERE compilation.id = $1
+                  AND compilation."userId" = $2
+                  AND compilation."transcriptId" = $3
+                  AND compilation."contentHash" = $4
+                  AND segment."segmentKey" = $5
+                  AND segment.status = 'RUNNING'::"BrainCompilationStatus"
+                  AND segment."claimedBy" = $6
+                  AND segment."leaseExpiresAt" > NOW()
+                  AND transcript."correctionRevision" = $7
+                  AND transcript."sourceVersion" = $8
+                  AND transcript."sourceChecksum" IS NOT DISTINCT FROM $9
+                  AND transcript.status = 'ACTIVE'::"ContentStatus"
+                FOR UPDATE OF segment, transcript
+                """,
+                compilation_id,
+                user_id,
+                transcript_id,
+                content_hash,
+                segment["key"],
+                worker_id,
+                correction_revision,
+                source_version,
+                source_checksum,
+            )
+            if not claim:
+                raise GroundedCompilationClaimLostError("semantic segment claim is no longer valid")
+            observed_at = claim.get("observedAt") or _utcnow_naive()
             content = await conn.fetchrow(
                 """
                 SELECT id FROM "BrainNode"
@@ -1366,20 +1342,14 @@ async def upsert_grounded_brain_items(
                 return 0
             _require_grounded_compilation_lease(lease)
             content_node_id = str(content["id"])
-            # Uma retomada substitui somente a evidência daquele segmento.
-            await conn.execute(
-                """
-                DELETE FROM "BrainSource" source
-                USING "BrainEdge" edge
-                WHERE source."userId" = $1
-                  AND source."sourceId" = $2
-                  AND source."segmentKey" = $3
-                  AND source."edgeId" = edge.id
-                  AND edge.method LIKE 'llm-grounded%'
-                """,
-                user_id,
-                transcript_id,
-                segment["key"],
+            evidence_version = f"source:{source_version}:correction:{correction_revision}"
+            # A retomada retira a versão corrente daquele segmento, mas mantém
+            # o episódio anterior citável no ledger histórico.
+            await brain_temporal_store.withdraw_grounded_evidence(
+                conn,
+                user_id=user_id,
+                transcript_id=transcript_id,
+                segment_key=segment["key"],
             )
             _require_grounded_compilation_lease(lease)
             concepts: dict[str, tuple[str, str]] = {}
@@ -1390,18 +1360,50 @@ async def upsert_grounded_brain_items(
                 excerpt = str(item.get("excerpt") or "").strip()
                 conf = float(item.get("confidence") or 0.7)
                 slug = str(item.get("slug") or "")
+                local_ref = str(item.get("local_ref") or slug)
+                entity_type = normalize_entity_type(str(item.get("entity_type") or "OTHER"))
+                aliases = tuple(
+                    str(alias).strip()
+                    for alias in (item.get("aliases") or [])
+                    if str(alias).strip()
+                )
                 if not label or not excerpt or not slug:
                     continue
                 node_type = "CLAIM" if kind == "claim" else "ENTITY"
-                key_prefix = "CLAIM" if kind == "claim" else "ENTITY"
-                concept_id = await _upsert_grounded_concept_node(
-                    conn,
-                    user_id=user_id,
-                    key=f"{key_prefix}:{slug}",
-                    node_type=node_type,
-                    label=label,
-                )
-                concepts[slug] = (concept_id, kind)
+                if kind == "claim":
+                    concept_id = await brain_temporal_store.upsert_concept_node(
+                        conn,
+                        user_id=user_id,
+                        key=f"CLAIM:{slug}",
+                        node_type=node_type,
+                        label=label,
+                    )
+                else:
+                    concept_id = await brain_temporal_store.resolve_entity_node(
+                        conn,
+                        user_id=user_id,
+                        transcript_id=transcript_id,
+                        segment_key=segment["key"],
+                        label=label,
+                        entity_type=entity_type,
+                        aliases=aliases,
+                        excerpt=excerpt,
+                        local_ref=local_ref,
+                        excluded_node_ids={node_id for node_id, _kind in concepts.values()},
+                    )
+                    await brain_temporal_store.upsert_entity_aliases(
+                        conn,
+                        user_id=user_id,
+                        transcript_id=transcript_id,
+                        segment_key=segment["key"],
+                        entity_node_id=concept_id,
+                        label=label,
+                        aliases=aliases,
+                        entity_type=entity_type,
+                        confidence=conf,
+                        evidence_version=evidence_version,
+                    )
+                concepts[local_ref] = (concept_id, kind)
                 edge_kind = "SUPPORTS" if kind == "claim" else "MENTIONS"
                 edge_row = await conn.fetchrow(
                     """
@@ -1436,24 +1438,29 @@ async def upsert_grounded_brain_items(
                 if not edge_row:
                     continue
                 _require_grounded_compilation_lease(lease)
-                await _upsert_grounded_evidence_source(
+                await brain_temporal_store.upsert_evidence_source(
                     conn,
                     user_id=user_id,
                     transcript_id=transcript_id,
                     edge_id=edge_row["id"],
+                    fact_id=None,
                     segment=segment,
                     evidence_key=_grounded_evidence_key(
-                        transcript_id, segment["key"], f"item:{slug}", excerpt
+                        transcript_id,
+                        segment["key"],
+                        f"item:{slug}:ref:{local_ref}",
+                        excerpt,
+                        evidence_version,
                     ),
                     excerpt=excerpt,
                 )
                 created += 1
                 _require_grounded_compilation_lease(lease)
             for relation in relations:
-                subject_slug = str(relation.get("subject_slug") or "")
-                object_slug = str(relation.get("object_slug") or "")
-                subject = concepts.get(subject_slug)
-                obj = concepts.get(object_slug)
+                subject_ref = str(relation.get("subject_ref") or relation.get("subject_slug") or "")
+                object_ref = str(relation.get("object_ref") or relation.get("object_slug") or "")
+                subject = concepts.get(subject_ref)
+                obj = concepts.get(object_ref)
                 relation_kind = str(relation.get("kind") or "")
                 excerpt = str(relation.get("excerpt") or "").strip()
                 if (
@@ -1479,8 +1486,10 @@ async def upsert_grounded_brain_items(
                         FROM "BrainSource" source
                         JOIN "BrainEdge" edge ON edge.id = source."edgeId"
                         WHERE source."userId" = $1
+                          AND source."invalidatedAt" IS NULL
                           AND edge."userId" = $1
                           AND edge.method = 'llm-grounded'
+                          AND edge.status = 'ACTIVE'::"ContentStatus"
                           AND edge.kind = 'SUPPORTS'::"BrainEdgeKind"
                           AND edge."toNodeId" IN ($2, $3)
                         """,
@@ -1504,7 +1513,8 @@ async def upsert_grounded_brain_items(
                         $1, $2, $3, $4, $5::"BrainEdgeKind", $6, 'llm-grounded-relation',
                         'ACTIVE'::"ContentStatus", $7::jsonb, NOW(), NOW()
                     ) ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
-                        confidence = EXCLUDED.confidence, metadata = EXCLUDED.metadata,
+                        confidence = EXCLUDED.confidence, status = EXCLUDED.status,
+                        metadata = EXCLUDED.metadata,
                         "updatedAt" = NOW()
                     RETURNING id
                     """,
@@ -1522,86 +1532,66 @@ async def upsert_grounded_brain_items(
                     ),
                 )
                 if edge_row:
+                    predicate = str(relation.get("predicate") or relation_kind).strip()
+                    fact_id = await brain_temporal_store.upsert_fact(
+                        conn,
+                        user_id=user_id,
+                        edge_id=str(edge_row["id"]),
+                        from_node_id=subject[0],
+                        to_node_id=obj[0],
+                        kind=relation_kind,
+                        predicate=predicate,
+                        valid_from=(
+                            str(relation["valid_from"]) if relation.get("valid_from") else None
+                        ),
+                        valid_to=(str(relation["valid_to"]) if relation.get("valid_to") else None),
+                        observed_at=observed_at,
+                        confidence=float(relation.get("confidence") or 0.7),
+                        evidence_version=evidence_version,
+                    )
                     relation_evidence_key = _grounded_evidence_key(
                         transcript_id,
                         segment["key"],
-                        f"relation:{subject_slug}:{relation_kind}:{object_slug}",
+                        f"relation:{subject_ref}:{relation_kind}:{object_ref}:fact:{fact_id}",
                         excerpt,
+                        evidence_version,
                     )
-                    await _upsert_grounded_evidence_source(
+                    await brain_temporal_store.upsert_evidence_source(
                         conn,
                         user_id=user_id,
                         transcript_id=transcript_id,
                         edge_id=edge_row["id"],
+                        fact_id=fact_id,
                         segment=segment,
                         evidence_key=relation_evidence_key,
                         excerpt=excerpt,
                     )
                     created += 1
             _require_grounded_compilation_lease(lease)
-            await conn.execute(
-                """
-                DELETE FROM "BrainEdge" edge
-                WHERE edge."userId" = $1
-                  AND edge.method LIKE 'llm-grounded%'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
-                  )
-                """,
-                user_id,
+            await brain_temporal_store.archive_or_remove_unsupported_grounded_graph(
+                conn, user_id=user_id
             )
             _require_grounded_compilation_lease(lease)
             await conn.execute(
                 """
                 UPDATE "BrainCompilationSegment"
-                SET status = 'COMPLETED'::"BrainCompilationStatus", attempts = attempts + 1,
-                    "itemCount" = $3, error = NULL, "updatedAt" = NOW()
+                SET status = 'COMPLETED'::"BrainCompilationStatus",
+                    "itemCount" = $3, error = NULL,
+                    "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
+                    "nextAttemptAt" = NULL, "updatedAt" = NOW()
                 WHERE "compilationId" = $1 AND "segmentKey" = $2
+                  AND status = 'RUNNING'::"BrainCompilationStatus"
+                  AND "claimedBy" = $4
                 """,
                 compilation_id,
                 segment["key"],
                 created,
+                worker_id,
             )
             _require_grounded_compilation_lease(lease)
-            await _refresh_grounded_compilation(conn, compilation_id)
+            await brain_compilation_db.refresh_compilation(conn, compilation_id, user_id)
             _require_grounded_compilation_lease(lease)
     return created
-
-
-async def _upsert_grounded_concept_node(
-    conn: asyncpg.Connection,
-    *,
-    user_id: str,
-    key: str,
-    node_type: str,
-    label: str,
-) -> str:
-    row = await conn.fetchrow(
-        """
-        INSERT INTO "BrainNode" (
-            id, "userId", key, type, label, description, status, metadata,
-            "sourceType", "sourceId", "createdAt", "updatedAt"
-        ) VALUES (
-            $1, $2, $3, $4::"BrainNodeType", $5, $6, 'ACTIVE'::"ContentStatus",
-            $7::jsonb, NULL, NULL, NOW(), NOW()
-        )
-        ON CONFLICT ("userId", key) DO UPDATE SET
-            type = EXCLUDED.type,
-            label = EXCLUDED.label,
-            description = EXCLUDED.description,
-            metadata = EXCLUDED.metadata,
-            "updatedAt" = NOW()
-        RETURNING id
-        """,
-        generate_cuid(),
-        user_id,
-        key,
-        node_type,
-        label,
-        "Conceito extraído com grounding (trecho literal no conteúdo).",
-        json.dumps({"method": "llm-grounded"}),
-    )
-    return str(row["id"])
 
 
 async def store_content_embedding(
@@ -1610,6 +1600,9 @@ async def store_content_embedding(
     transcript_id: str,
     model: str,
     vector: list[float],
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
 ) -> bool:
     """Persiste embedding no metadata do nó CONTENT (opt-in, sem pgvector)."""
     if not vector:
@@ -1623,6 +1616,9 @@ async def store_content_embedding(
             "dims": len(vector),
             "vector": vector,
             "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "correctionRevision": correction_revision,
+            "sourceVersion": source_version,
+            "sourceChecksum": source_checksum,
         }
     }
     try:
@@ -1639,10 +1635,21 @@ async def store_content_embedding(
                         "updatedAt" = NOW()
                     WHERE "userId" = $1
                       AND key = $2
+                      AND EXISTS (
+                        SELECT 1 FROM "Transcript" transcript
+                        WHERE transcript.id = $4 AND transcript."userId" = $1
+                          AND transcript."correctionRevision" = $5
+                          AND transcript."sourceVersion" = $6
+                          AND transcript."sourceChecksum" IS NOT DISTINCT FROM $7
+                      )
                     """,
                     user_id,
                     f"TRANSCRIPT:{transcript_id}",
                     json.dumps(payload),
+                    transcript_id,
+                    correction_revision,
+                    source_version,
+                    source_checksum,
                 )
             return str(result) == "UPDATE 1"
     finally:
@@ -1748,7 +1755,7 @@ async def list_transcript_tag_names(user_id: str, transcript_id: str) -> list[st
     return [str(row["name"]) for row in rows if row["name"]]
 
 
-async def start_summary_enrichment(user_id: str, transcript_id: str) -> int | None:
+async def start_summary_enrichment(user_id: str, transcript_id: str) -> dict[str, Any] | None:
     async with connection() as conn:
         row = await conn.fetchrow(
             """
@@ -1764,12 +1771,13 @@ async def start_summary_enrichment(user_id: str, transcript_id: str) -> int | No
               AND (
                 "summaryNextAttemptAt" IS NULL OR "summaryNextAttemptAt" <= NOW()
               )
-            RETURNING "summaryAttempts"
+            RETURNING "summaryAttempts" AS "summaryAttempt", "correctionRevision",
+              "sourceVersion", "sourceChecksum"
             """,
             user_id,
             transcript_id,
         )
-    return int(row["summaryAttempts"]) if row is not None else None
+    return dict(row) if row is not None else None
 
 
 async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, Any]]:
@@ -1818,7 +1826,8 @@ async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, A
                 "summaryStartedAt" = NOW(), "summaryError" = NULL
             FROM candidates
             WHERE t.id = candidates.id
-            RETURNING t.id, t."userId", t."summaryAttempts" AS "summaryAttempt", (
+            RETURNING t.id, t."userId", t."summaryAttempts" AS "summaryAttempt",
+              t."correctionRevision", t."sourceVersion", t."sourceChecksum", (
               SELECT j.id FROM "Job" j WHERE j."transcriptId" = t.id LIMIT 1
             ) AS "jobId"
             """,
@@ -1832,6 +1841,9 @@ async def finish_summary_enrichment(
     transcript_id: str,
     *,
     claim_attempt: int,
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
     status: str,
     error: str | None = None,
 ) -> bool:
@@ -1855,6 +1867,9 @@ async def finish_summary_enrichment(
             WHERE "userId" = $1 AND id = $2
               AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
               AND "summaryAttempts" = $5
+              AND "correctionRevision" = $6
+              AND "sourceVersion" = $7
+              AND "sourceChecksum" IS NOT DISTINCT FROM $8
             RETURNING id
             """,
             user_id,
@@ -1862,6 +1877,9 @@ async def finish_summary_enrichment(
             status,
             (error or "")[:500] or None,
             claim_attempt,
+            correction_revision,
+            source_version,
+            source_checksum,
         )
     return row is not None
 
@@ -1871,6 +1889,9 @@ async def complete_summary_enrichment(
     transcript_id: str,
     *,
     claim_attempt: int,
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
     summary_md: str,
 ) -> bool:
     """Persiste o resumo somente se esta geração ainda possui o claim."""
@@ -1885,196 +1906,33 @@ async def complete_summary_enrichment(
             WHERE id = $1 AND "userId" = $2
               AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
               AND "summaryAttempts" = $3
+              AND "correctionRevision" = $5
+              AND "sourceVersion" = $6
+              AND "sourceChecksum" IS NOT DISTINCT FROM $7
             RETURNING id
             """,
             transcript_id,
             user_id,
             claim_attempt,
             summary_md,
+            correction_revision,
+            source_version,
+            source_checksum,
         )
     return row is not None
-
-
-async def start_tag_enrichment(user_id: str, transcript_id: str) -> bool:
-    """Tenta reservar atomicamente o enriquecimento inline deste conteúdo."""
-    async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            UPDATE "Transcript"
-            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
-                "taggingAttempts" = "taggingAttempts" + 1,
-                "taggingStartedAt" = NOW(),
-                "taggingError" = NULL
-            WHERE "userId" = $1
-              AND id = $2
-              AND "taggingAttempts" < 6
-              AND "taggingStatus" IN (
-                'PENDING'::"EnrichmentStatus",
-                'RETRY'::"EnrichmentStatus"
-              )
-              AND (
-                "taggingNextAttemptAt" IS NULL
-                OR "taggingNextAttemptAt" <= NOW()
-              )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM "TranscriptTag" tt
-                WHERE tt."transcriptId" = "Transcript".id
-              )
-            RETURNING id
-            """,
-            user_id,
-            transcript_id,
-        )
-    return row is not None
-
-
-async def claim_pending_tag_enrichments(limit: int = 10) -> list[dict[str, Any]]:
-    """Reserva conteúdos sem tags para retry/backfill sem duplicar processamento."""
-    async with connection() as conn:
-        rows = await conn.fetch(
-            """
-            WITH exhausted AS (
-                UPDATE "Transcript"
-                SET "taggingStatus" = 'SKIPPED'::"EnrichmentStatus",
-                    "taggingStartedAt" = NULL,
-                    "taggingNextAttemptAt" = NULL,
-                    "taggingError" = COALESCE(
-                      "taggingError",
-                      'Limite de 6 tentativas de tags atingido.'
-                    )
-                WHERE "taggingAttempts" >= 6
-                  AND (
-                    "taggingStatus" IN (
-                      'PENDING'::"EnrichmentStatus",
-                      'RETRY'::"EnrichmentStatus"
-                    )
-                    OR (
-                      "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
-                      AND "taggingStartedAt" < NOW() - INTERVAL '15 minutes'
-                    )
-                  )
-                RETURNING id
-            ),
-            candidates AS (
-                SELECT t.id
-                FROM "Transcript" t
-                WHERE t.status = 'ACTIVE'::"ContentStatus"
-                  AND t."taggingAttempts" < 6
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM "TranscriptTag" tt
-                    WHERE tt."transcriptId" = t.id
-                  )
-                  AND (
-                    t."taggingStatus" IN (
-                      'PENDING'::"EnrichmentStatus",
-                      'RETRY'::"EnrichmentStatus"
-                    )
-                    OR (
-                      t."taggingStatus" = 'RUNNING'::"EnrichmentStatus"
-                      AND t."taggingStartedAt" < NOW() - INTERVAL '15 minutes'
-                    )
-                  )
-                  AND (
-                    t."taggingNextAttemptAt" IS NULL
-                    OR t."taggingNextAttemptAt" <= NOW()
-                  )
-                ORDER BY t."createdAt" ASC
-                FOR UPDATE SKIP LOCKED
-                LIMIT $1
-            )
-            UPDATE "Transcript" t
-            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
-                "taggingAttempts" = t."taggingAttempts" + 1,
-                "taggingStartedAt" = NOW(),
-                "taggingError" = NULL
-            FROM candidates
-            WHERE t.id = candidates.id
-            RETURNING
-              t.id,
-              t."userId",
-              (
-                SELECT j.id
-                FROM "Job" j
-                WHERE j."transcriptId" = t.id
-                LIMIT 1
-              ) AS "jobId"
-            """,
-            limit,
-        )
-    return [dict(row) for row in rows]
-
-
-async def finish_tag_enrichment(
-    user_id: str,
-    transcript_id: str,
-    *,
-    status: str,
-    error: str | None = None,
-) -> None:
-    async with connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "Transcript"
-            SET "taggingStatus" = CASE
-                  WHEN $3::text = 'RETRY' AND "taggingAttempts" >= 6
-                  THEN 'SKIPPED'::"EnrichmentStatus"
-                  ELSE $3::"EnrichmentStatus"
-                END,
-                "taggingStartedAt" = NULL,
-                "taggingNextAttemptAt" = CASE
-                  WHEN $3::text = 'RETRY' AND "taggingAttempts" < 6
-                  THEN NOW() + (
-                    LEAST(3600, 60 * POWER(2, LEAST("taggingAttempts", 6))) * INTERVAL '1 second'
-                  )
-                  ELSE NULL
-                END,
-                "taggingError" = $4
-            WHERE "userId" = $1
-              AND id = $2
-            """,
-            user_id,
-            transcript_id,
-            status,
-            (error or "")[:500] or None,
-        )
-
-
-async def get_transcript_title_summary_folder(
-    user_id: str,
-    transcript_id: str,
-) -> tuple[str, str, str | None] | None:
-    """title, content (summaryMd ou plainText), folderId — para enriquecimentos."""
-    async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT title, "plainText", "summaryMd", "folderId"
-            FROM "Transcript"
-            WHERE "userId" = $1 AND id = $2
-            """,
-            user_id,
-            transcript_id,
-        )
-    if not row:
-        return None
-    title = str(row["title"] or "")
-    summary = (row["summaryMd"] or "").strip()
-    plain = (row["plainText"] or "").strip()
-    content = summary or plain
-    folder_id = row["folderId"]
-    return title, content, (str(folder_id) if folder_id else None)
 
 
 async def get_transcript_title_content_md_path(
     user_id: str,
     transcript_id: str,
-) -> tuple[str, str, str | None] | None:
+) -> tuple[str, str, str | None, int, int, str | None] | None:
     """Título, conteúdo textual e caminho do Markdown canônico para o Brain."""
     async with connection() as conn:
         row = await conn.fetchrow(
             """
-            SELECT title, "plainText", "summaryMd", "mdPath"
+            SELECT title, "plainText", "correctedMarkdown", "correctedPlainText",
+                   "correctionState", "summaryMd", "mdPath", "correctionRevision",
+                   "sourceVersion", "sourceChecksum"
             FROM "Transcript"
             WHERE "userId" = $1 AND id = $2
             """,
@@ -2084,9 +1942,16 @@ async def get_transcript_title_content_md_path(
     if not row:
         return None
     title = str(row["title"] or "")
+    identity = (
+        int(row["correctionRevision"]),
+        int(row["sourceVersion"]),
+        str(row["sourceChecksum"]) if row["sourceChecksum"] else None,
+    )
+    if row["correctionState"] == "ACTIVE" and row["correctedMarkdown"]:
+        return title, str(row["correctedMarkdown"]), None, *identity
     content = (row["summaryMd"] or row["plainText"] or "").strip()
     md_path = row["mdPath"]
-    return title, content, (str(md_path) if md_path else None)
+    return title, content, (str(md_path) if md_path else None), *identity
 
 
 async def apply_tags_to_transcript(
@@ -2095,6 +1960,10 @@ async def apply_tags_to_transcript(
     transcript_id: str,
     tag_names: list[str],
     current_folder_id: str | None,
+    claim_attempt: int,
+    correction_revision: int,
+    source_version: int,
+    source_checksum: str | None,
 ) -> list[str]:
     """
     Cria/reutiliza Tag + pasta, liga TranscriptTag, seta folderId só se vazio
@@ -2105,17 +1974,24 @@ async def apply_tags_to_transcript(
     applied: list[str] = []
     first_folder_id: str | None = None
 
-    async with connection() as conn:
-        owns_transcript = await conn.fetchval(
+    async with connection() as conn, conn.transaction():
+        owns_transcript = await conn.fetchrow(
             """
-            SELECT EXISTS (
-              SELECT 1
-              FROM "Transcript"
-              WHERE "userId" = $1 AND id = $2
-            )
+            SELECT id FROM "Transcript"
+            WHERE "userId" = $1 AND id = $2
+              AND "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
+              AND "taggingAttempts" = $3
+              AND "correctionRevision" = $4
+              AND "sourceVersion" = $5
+              AND "sourceChecksum" IS NOT DISTINCT FROM $6
+            FOR UPDATE
             """,
             user_id,
             transcript_id,
+            claim_attempt,
+            correction_revision,
+            source_version,
+            source_checksum,
         )
         if not owns_transcript:
             return []
@@ -2442,6 +2318,54 @@ async def mark_job_failed(job_id: str, error_msg: str) -> None:
             )
 
 
+async def fail_knowledge_deletion(
+    job_id: str,
+    user_id: str,
+    target_type: str | None,
+    target_id: str | None,
+    error_msg: str,
+) -> None:
+    """Fail a deletion under its job lease and release saved media from DELETING."""
+    token = _job_token(job_id)
+    if token is None:
+        raise JobLeaseLostError("knowledge deletion failure has no active lease")
+    now = _utcnow_naive()
+    async with connection() as conn, conn.transaction():
+        row = await conn.fetchrow(
+            """
+            UPDATE "Job"
+            SET status = 'FAILED', "errorMsg" = $2, "finishedAt" = $3,
+                "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
+            WHERE id = $1 AND "userId" = $4 AND type = 'DELETE_KNOWLEDGE'::"JobType"
+              AND status = 'RUNNING' AND "workerId" = $5 AND attempt = $6
+              AND "leaseExpiresAt" >= $3
+            RETURNING id
+            """,
+            job_id,
+            error_msg[:1000],
+            now,
+            user_id,
+            token.worker_id,
+            token.attempt,
+        )
+        if row is None:
+            raise JobLeaseLostError("knowledge deletion failure rejected by lease fence")
+        if target_type == "SAVED_MEDIA" and target_id:
+            await conn.execute(
+                """
+                UPDATE "SavedMedia"
+                SET status = 'FAILED'::"SavedMediaStatus", "errorMsg" = $3,
+                    "updatedAt" = $4
+                WHERE id = $1 AND "userId" = $2 AND "transcriptId" IS NULL
+                  AND status = 'DELETING'::"SavedMediaStatus"
+                """,
+                target_id,
+                user_id,
+                error_msg[:1000],
+                now,
+            )
+
+
 async def mark_source_refresh_failed(user_id: str, transcript_id: str, error_msg: str) -> None:
     """Falha de refresh não pode apagar a versão de fonte que já era utilizável."""
     async with connection() as conn:
@@ -2528,3 +2452,16 @@ def _truncate(value: str | None, limit: int) -> str | None:
     if len(normalized) <= limit:
         return normalized
     return normalized[: limit - 3] + "..."
+
+
+def truncate_text(value: str | None, limit: int) -> str | None:
+    """Bound diagnostic text before persisting it."""
+    return _truncate(value, limit)
+
+
+from . import tag_enrichment_db as _tag_enrichment_db  # noqa: E402
+
+start_tag_enrichment = _tag_enrichment_db.start_tag_enrichment
+claim_pending_tag_enrichments = _tag_enrichment_db.claim_pending_tag_enrichments
+finish_tag_enrichment = _tag_enrichment_db.finish_tag_enrichment
+get_transcript_title_summary_folder = _tag_enrichment_db.get_transcript_title_summary_folder

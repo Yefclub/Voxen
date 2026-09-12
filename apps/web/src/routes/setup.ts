@@ -14,9 +14,13 @@ import { db } from '../lib/db';
 import {
   DEFAULT_OPENROUTER_MODELS,
   getModelCompatibilityFailures,
+  fallbackSettingForPurpose,
+  isFallbackCompatible,
   isModelCompatibleWithPurpose,
   isModelPurpose,
   MODEL_PURPOSES,
+  MODEL_FALLBACK_SETTINGS,
+  suggestFallbackForPurpose,
   type ModelPurpose,
 } from '../lib/model-defaults';
 import { inspectOpenRouterAccount, OpenrouterError } from '../lib/openrouter';
@@ -131,7 +135,7 @@ setupRoutes.post('/', async (c) => {
   // Uma finalidade ganha o canônico no primeiro setup e preserva o valor
   // efetivo nas trocas seguintes. A chave candidata só pode ser persistida se
   // os seis valores (ou substituições explícitas) estiverem no catálogo dela.
-  const existingModels = await getSettings(MODEL_PURPOSES);
+  const existingModels = await getSettings([...MODEL_PURPOSES, ...MODEL_FALLBACK_SETTINGS]);
   const effectiveModels = Object.fromEntries(
     MODEL_PURPOSES.map((purpose) => [
       purpose,
@@ -157,10 +161,23 @@ setupRoutes.post('/', async (c) => {
     );
   }
 
+  const effectiveFallbacks = Object.fromEntries(
+    MODEL_PURPOSES.map((purpose) => {
+      const setting = fallbackSettingForPurpose(purpose);
+      const stored = existingModels[setting];
+      const primary = effectiveModels[purpose];
+      const fallback = isFallbackCompatible(purpose, primary, stored, inspection.models)
+        ? stored
+        : suggestFallbackForPurpose(purpose, primary, inspection.models);
+      return [setting, fallback];
+    }),
+  );
+
   await setSettings(
     {
       openrouter_api_key,
       ...effectiveModels,
+      ...effectiveFallbacks,
       ...preferences,
     },
     metadata,

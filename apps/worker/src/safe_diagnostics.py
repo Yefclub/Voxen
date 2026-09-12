@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 _ALLOWED_ERROR_CODES = frozenset(
     {
         "AUDIO_VALIDATION_FAILED",
@@ -12,7 +14,10 @@ _ALLOWED_ERROR_CODES = frozenset(
         "AUTOMATION_SCHEDULE_FAILED",
         "AUTOMATION_SCHEDULER_FAILED",
         "AUTOMATION_STALE_REAPER_FAILED",
+        "BRAIN_COMPILATION_RECONCILIATION_FAILED",
         "BRAIN_EXTRACTION_FAILED",
+        "BRAIN_EXTRACTION_SEGMENT_FAILED",
+        "BRAIN_MARKDOWN_UNAVAILABLE",
         "BRAIN_RECONCILIATION_FAILED",
         "DOCUMENT_ANALYSIS_EMPTY",
         "DOCUMENT_EXTRACTION_FAILED",
@@ -23,20 +28,67 @@ _ALLOWED_ERROR_CODES = frozenset(
         "IMAGE_ANALYSIS_EMPTY",
         "JOB_RECONCILIATION_FAILED",
         "JOBS_SUBSCRIBER_DISCONNECTED",
+        "KNOWLEDGE_DELETION_TARGET_MISSING",
         "OPENROUTER_AUTH_REJECTED",
+        "OPENROUTER_CREDITS_EXHAUSTED",
         "OPENROUTER_NOT_CONFIGURED",
+        "OPENROUTER_RATE_LIMITED",
+        "OPENROUTER_REQUEST_REJECTED",
         "PERMANENT_FAILURE",
         "PROCESS_JOB_CRASHED",
         "REPAIR_FETCH_FAILED",
+        "RESEARCH_CLAIM_FAILED",
+        "RESEARCH_COST_EVENT_FAILED",
+        "RESEARCH_FAILED",
+        "RESEARCH_QUEUE_FAILED",
+        "RESEARCH_RATE_LIMITED",
+        "RESEARCH_RECONCILIATION_FAILED",
+        "RESEARCH_AUTH_ERROR",
+        "RESEARCH_CITATIONS_MISSING",
+        "RESEARCH_CONTENT_INVALID",
+        "RESEARCH_COST_INVALID",
+        "RESEARCH_COST_LIMIT_EXCEEDED",
+        "RESEARCH_COST_MISSING",
+        "RESEARCH_DECISION_INVALID",
+        "RESEARCH_RESPONSE_INVALID",
+        "RESEARCH_JSON_INVALID",
+        "RESEARCH_JSON_MISSING",
+        "RESEARCH_NO_DECISION_REASON",
+        "RESEARCH_OUTPUT_TOO_LARGE",
+        "RESEARCH_PLAN_TITLE_MISSING",
+        "RESEARCH_QUERIES_INVALID",
+        "RESEARCH_QUERIES_MISSING",
+        "RESEARCH_QUERY_INVALID",
+        "RESEARCH_QUERY_SENSITIVE",
+        "RESEARCH_QUERY_SOURCE_EXCERPT",
+        "RESEARCH_SEARCH_LIMIT_EXCEEDED",
+        "RESEARCH_SEARCH_NOT_EXECUTED",
+        "RESEARCH_SEARCH_USAGE_MISSING",
+        "RESEARCH_SOURCE_LOOKUP_INVALID",
+        "RESEARCH_SOURCE_REFERENCE_INVALID",
+        "RESEARCH_UNEXPECTED_PLANNER_TOOL_USE",
+        "RESEARCH_USAGE_MISSING",
+        "RESEARCH_UPSTREAM_REJECTED",
+        "RESEARCH_UPSTREAM_UNAVAILABLE",
         "ROBOTS_CHECK_FAILED",
+        "SAVED_MEDIA_INVALID",
+        "SAVED_MEDIA_MISSING",
+        "SAVED_MEDIA_OBJECT_CLEANUP_FAILED",
+        "SAVED_MEDIA_STATE_INVALID",
+        "SAVED_MEDIA_TERMINAL_EVENT_FAILED",
+        "SAVED_MEDIA_TOO_LARGE",
+        "SAVED_MEDIA_TOO_LONG",
         "SCRAPE_ACCESS_BLOCKED",
         "SCRAPE_CONTENT_EMPTY",
         "SCRAPE_ROBOTS_BLOCKED",
+        "SOURCE_REFRESH_MISSING",
         "SOURCE_URL_INVALID",
         "SUBTITLE_FALLBACK_API",
         "SUMMARY_COST_EVENT_FAILED",
         "SUMMARY_FAILED",
         "SUMMARY_PERSIST_FAILED",
+        "SUMMARY_RECONCILIATION_FAILED",
+        "SUMMARY_STATE_PERSIST_FAILED",
         "SUMMARY_UPSTREAM_UNAVAILABLE",
         "TAG_GENERATION_FAILED",
         "TAG_RECONCILIATION_FAILED",
@@ -45,8 +97,10 @@ _ALLOWED_ERROR_CODES = frozenset(
         "THUMBNAIL_FETCH_FAILED",
         "THUMBNAIL_UPLOAD_FAILED",
         "TIKTOK_AUDIO_RETRY",
+        "TIKTOK_PLAYER_FALLBACK",
         "TIKTOK_PROBE_RETRY",
         "TITLE_GENERATION_FAILED",
+        "TRANSCRIPT_ENRICHMENT_DEFERRED",
         "TRANSCRIPTION_EMPTY",
         "TRANSCRIPTION_MODEL_NOT_CONFIGURED",
         "UNEXPECTED_JOB_FAILURE",
@@ -62,10 +116,12 @@ _ALLOWED_ERROR_CODES = frozenset(
         "X_ANALYSIS_EMPTY",
         "X_MODEL_NOT_CONFIGURED",
         "X_URL_INVALID",
+        "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE",
     }
 )
 _ALLOWED_ERROR_TYPES = frozenset(
     {
+        "AgeRestricted",
         "AudioValidationError",
         "BotoCoreError",
         "CancelledError",
@@ -79,8 +135,11 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "FetchBlockedError",
         "FileNotFoundError",
         "HTTPStatusError",
+        "IpBlocked",
         "NetworkError",
+        "NoTranscriptFound",
         "OpenrouterAuthError",
+        "OpenrouterRejectedError",
         "OpenrouterTransientError",
         "OSError",
         "PermanentError",
@@ -89,23 +148,38 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "ProxyError",
         "ReadError",
         "ReadTimeout",
+        "RequestBlocked",
+        "ResearchOutputError",
         "RobotsBlockedError",
         "RuntimeError",
         "TimeoutError",
+        "TranscriptsDisabled",
         "TransientError",
         "TypeError",
         "ValueError",
+        "VideoUnavailable",
         "WriteError",
         "WriteTimeout",
+        "YouTubeRequestFailed",
         "YoutubeDLError",
     }
 )
 
 
 def error_diagnostic(exc: BaseException, code: str) -> dict[str, str]:
-    """Retorna somente código interno e tipo normalizado da exceção."""
+    """Return allowlisted error fields without serializing provider payloads."""
     error_type = type(exc).__name__
     if error_type not in _ALLOWED_ERROR_TYPES:
         error_type = "Exception"
     normalized_code = code if code in _ALLOWED_ERROR_CODES else "UNEXPECTED_FAILURE"
-    return {"error_code": normalized_code, "error_type": error_type}
+    diagnostic = {"error_code": normalized_code, "error_type": error_type}
+    operational_error = exc
+    if not hasattr(operational_error, "status_code") and exc.__cause__ is not None:
+        operational_error = exc.__cause__
+    status_code = getattr(operational_error, "status_code", None)
+    if isinstance(status_code, int) and 100 <= status_code <= 599:
+        diagnostic["status_code"] = str(status_code)
+    request_id = getattr(operational_error, "request_id", None)
+    if isinstance(request_id, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", request_id):
+        diagnostic["request_id"] = request_id
+    return diagnostic

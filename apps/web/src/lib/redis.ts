@@ -8,6 +8,7 @@
 // ============================================================================
 
 import { Redis, type RedisOptions } from 'ioredis';
+import { structuredLog } from './structured-log';
 
 let pub: Redis | null = null;
 
@@ -25,8 +26,16 @@ function commonOpts(): RedisOptions {
 
 export function getRedisPublisher(): Redis {
   if (pub) return pub;
-  pub = new Redis(redisUrl(), commonOpts());
+  pub = createRedisClient('publisher');
   return pub;
+}
+
+function createRedisClient(role: 'publisher' | 'subscriber'): Redis {
+  const client = new Redis(redisUrl(), commonOpts());
+  client.on('error', () => {
+    structuredLog('warning', 'redis-client-error', { component: 'ioredis', role });
+  });
+  return client;
 }
 
 /**
@@ -34,7 +43,7 @@ export function getRedisPublisher(): Redis {
  * por chamar `.quit()` quando terminar (ex: ao fechar o stream SSE).
  */
 export function createSubscriber(): Redis {
-  return new Redis(redisUrl(), commonOpts());
+  return createRedisClient('subscriber');
 }
 
 export async function closeRedis(): Promise<void> {

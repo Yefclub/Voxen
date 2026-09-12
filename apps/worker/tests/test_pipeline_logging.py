@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from src import pipeline, safe_diagnostics
+from src import knowledge_deletion, pipeline, safe_diagnostics
+from src.openrouter import OpenrouterRejectedError
 
 
 class _BoundLogger:
@@ -131,6 +133,56 @@ async def test_unexpected_job_failure_never_publishes_filename_or_exception_cont
     assert private_path not in diagnostics
 
 
+async def test_graph_contention_defers_deletion_without_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_logger = _install_job_dependencies(
+        monkeypatch,
+        source_url="voxen://delete/note/note-1",
+    )
+    pipeline.db.claim_job.return_value.update(
+        {
+            "type": "DELETE_KNOWLEDGE",
+            "deletionTargetType": "NOTE",
+            "deletionTargetId": "note-1",
+        }
+    )
+    deferred = pipeline.DeferredJobError("graph busy", retry_after_seconds=30)
+    monkeypatch.setattr(knowledge_deletion, "run", AsyncMock(side_effect=deferred))
+    queued_at = datetime(2026, 8, 11, tzinfo=UTC)
+    monkeypatch.setattr(
+        pipeline.job_defer_db,
+        "defer_job_lease",
+        AsyncMock(return_value=("event-1", queued_at)),
+    )
+    monkeypatch.setattr(
+        pipeline.events,
+        "publish_recorded_job_event",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(pipeline.db, "fail_knowledge_deletion", AsyncMock(return_value=None))
+
+    await pipeline.process_job("job-1")
+
+    pipeline.job_defer_db.defer_job_lease.assert_awaited_once_with(
+        "job-1",
+        "user-1",
+        delay_seconds=30,
+    )
+    pipeline.db.fail_knowledge_deletion.assert_not_awaited()
+    pipeline.db.mark_job_failed.assert_not_awaited()
+    pipeline.events.publish_recorded_job_event.assert_awaited_once_with(
+        "user-1",
+        "job-1",
+        "queued",
+        event_id="event-1",
+        created_at=queued_at,
+        percent=0,
+    )
+    deferred_log = next(entry for entry in root_logger.bound.entries if entry[1] == "job-deferred")
+    assert deferred_log[2] == {"retry_after_seconds": 30}
+
+
 def test_error_diagnostic_is_allowlisted_instead_of_redacting_a_denylist() -> None:
     error = RuntimeError(
         "Cliente-Acme-Fusao-Secreta.pdf "
@@ -165,6 +217,23 @@ def test_error_diagnostic_normalizes_values_outside_the_contract() -> None:
     }
     assert "ClienteAcme" not in repr(diagnostic)
     assert "conteúdo sigiloso" not in repr(diagnostic)
+
+
+def test_error_diagnostic_keeps_safe_openrouter_status_and_request_id_from_cause() -> None:
+    rejected = OpenrouterRejectedError(400, request_id="req_01H-safe")
+    try:
+        raise pipeline.PermanentError.public(
+            "OPENROUTER_REQUEST_REJECTED", "safe public message"
+        ) from rejected
+    except pipeline.PermanentError as error:
+        diagnostic = safe_diagnostics.error_diagnostic(error, "OPENROUTER_REQUEST_REJECTED")
+
+    assert diagnostic == {
+        "error_code": "OPENROUTER_REQUEST_REJECTED",
+        "error_type": "PermanentError",
+        "status_code": "400",
+        "request_id": "req_01H-safe",
+    }
 
 
 async def test_arbitrary_permanent_error_is_not_public_without_explicit_opt_in(
@@ -276,6 +345,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
             return_value=pipeline.voxen_settings.OpenRouterModelConfig(
                 api_key="sk-test",
                 model="x-ai/grok-4.5",
+                fallback_model="x-ai/grok-4.1-fast",
             )
         ),
     )
@@ -286,7 +356,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
             return_value=SimpleNamespace(
                 text="Conteúdo público analisado.",
                 cost_usd=Decimal("0.002"),
-                model="x-ai/grok-4.5",
+                model="x-ai/grok-4.1-fast",
                 tokens_in=20,
                 tokens_out=8,
             )
@@ -314,6 +384,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
 
     cost_meta = pipeline.db.insert_cost_event.await_args.kwargs["meta"]
     assert cost_meta == {"source": "x_analysis"}
+    assert pipeline._persist.await_args.kwargs["model"] == "x-ai/grok-4.1-fast"
     telemetry = repr((cost_meta, logger.entries))
     assert "x.com" not in telemetry
     assert "cliente_acme" not in telemetry

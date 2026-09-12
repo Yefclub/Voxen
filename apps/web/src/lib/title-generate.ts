@@ -143,7 +143,11 @@ export async function generateTitleForContent(input: {
   content: string;
   sourceLabel: string;
 }): Promise<TitleGenerationResult> {
-  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const settings = await getSettings([
+    'openrouter_api_key',
+    'default_chat_model',
+    'fallback_chat_model',
+  ] as const);
   const apiKey = settings.openrouter_api_key;
   const model = settings.default_chat_model;
   if (!apiKey || !model) {
@@ -161,6 +165,9 @@ export async function generateTitleForContent(input: {
     },
     body: JSON.stringify({
       model,
+      ...(settings.fallback_chat_model && settings.fallback_chat_model !== model
+        ? { models: [settings.fallback_chat_model] }
+        : {}),
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },

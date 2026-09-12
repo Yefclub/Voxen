@@ -61,7 +61,18 @@ master key.
 - Worker extraction uses argument arrays, timeouts, isolated temporary
   directories, and no shell interpolation.
 - Supported remote URLs are validated before media tools run.
-- S3 credentials should be limited to the Voxen bucket.
+- Local storage rejects absolute/traversal keys and symlinks, uses restrictive
+  modes, atomic writes, and is never exposed as a public static directory.
+- Optional S3 credentials should be limited to the Voxen bucket.
+- Transcript anchors are verified against the current user-owned canonical
+  source and retain its version/checksum; cross-user identifiers are hidden.
+- External research is untrusted and review-gated. Uncited output fails closed,
+  suggested or stale output is excluded from retrieval, and rendered Markdown
+  cannot enable raw HTML or unsafe URL execution.
+- Raw source content is available only to a tool-free planning request.
+  Deterministic query validation separates it from tool-enabled search turns;
+  provider price ceilings, request/result limits, strict usage proof, and a
+  wall-clock deadline fail closed before any result can enter knowledge.
 - The optional reverse proxy agent uses TLS, a high-entropy encrypted token,
   and a localhost-only SOCKS endpoint.
 
@@ -88,5 +99,5 @@ documented scope, owner, and review date.
 1. Rotate affected host, application, OIDC, and model credentials.
 2. Revoke affected sessions and disable compromised accounts.
 3. Inspect authentication, job, automation, and cost events.
-4. Restore Postgres, object storage, and `MASTER_KEY` backups when required.
+4. Restore PostgreSQL, the selected storage backend, and `MASTER_KEY` backups when required.
 5. Publish a patch release and disclose impact through the security policy.

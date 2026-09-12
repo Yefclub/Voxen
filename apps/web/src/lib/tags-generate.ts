@@ -79,6 +79,20 @@ export function slugifyTag(name: string): string {
     .slice(0, 60);
 }
 
+export function orderUniqueTagNames(tagNames: string[]): Array<{ name: string; slug: string }> {
+  const bySlug = new Map<string, string>();
+  for (const rawName of tagNames) {
+    const name = rawName.trim();
+    const slug = slugifyTag(name);
+    if (!slug) continue;
+    const current = bySlug.get(slug);
+    if (current === undefined || name < current) bySlug.set(slug, name);
+  }
+  return [...bySlug.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, 'en'))
+    .map(([slug, name]) => ({ name, slug }));
+}
+
 // Limpa um candidato bruto para um nome curto e apresentável, ou retorna null.
 function cleanTagName(raw: string): string | null {
   let name = (raw || '')
@@ -285,7 +299,11 @@ export async function generateTagsForContent(input: {
   existingTags: string[];
   abortSignal?: AbortSignal;
 }): Promise<TagsGenerationResult> {
-  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const settings = await getSettings([
+    'openrouter_api_key',
+    'default_chat_model',
+    'fallback_chat_model',
+  ] as const);
   const apiKey = settings.openrouter_api_key;
   const model = settings.default_chat_model;
   if (!apiKey || !model) {
@@ -305,7 +323,12 @@ export async function generateTagsForContent(input: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildTagsRequestBody(model, system, user)),
+    body: JSON.stringify({
+      ...buildTagsRequestBody(model, system, user),
+      ...(settings.fallback_chat_model && settings.fallback_chat_model !== model
+        ? { models: [settings.fallback_chat_model] }
+        : {}),
+    }),
     signal: input.abortSignal
       ? AbortSignal.any([input.abortSignal, AbortSignal.timeout(60_000)])
       : AbortSignal.timeout(60_000),

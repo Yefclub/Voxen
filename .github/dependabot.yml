@@ -29,7 +29,95 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # O teto tem que ser maior que o número de grupos, senão a fome volta um
+    # nível acima: PR agrupada ocupa um slot igual, então N grupos com update na
+    # mesma semana enchem N slots e sobra zero para os avulsos — inclusive o
+    # `ai`, que fica fora de grupo justamente para nunca esperar.
+    #
+    # São 10 grupos cobrindo 43 dos 78 pacotes; 35 seguem avulsos. 15 = os 10
+    # grupos no pior caso + 5 de folga para os avulsos. Grupo trata a causa,
+    # teto trata o resíduo, e o resíduo só cabe se houver folga sobre os grupos.
+    open-pull-requests-limit: 15
+    # Sem grupos, cada patch de Radix ou AWS SDK gastava um slot sozinho, o
+    # limite enchia, e Dependabot parava de abrir qualquer coisa nova — foi
+    # assim que `ai` ficou 40 patches atrás (issue #769). Agrupar por família
+    # colapsa o ruído; `ai` fica DE FORA de propósito, porque é a dependência
+    # mais crítica e não pode esperar um irmão quebrado destravar o grupo.
+    #
+    # `update-types` restrito a minor/patch: major continua vindo em PR
+    # separada, que é o que ele precisa para ser revisado de verdade.
+    groups:
+      radix:
+        patterns:
+          - "@radix-ui/*"
+        update-types:
+          - minor
+          - patch
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+        update-types:
+          - minor
+          - patch
+      prisma:
+        # `prisma` e `@prisma/client` têm que subir na mesma versão. Separados,
+        # viravam duas PRs (#739 e #737) ocupando dois slots para uma decisão só.
+        patterns:
+          - "prisma"
+          - "@prisma/client"
+      types:
+        patterns:
+          - "@types/*"
+        update-types:
+          - minor
+          - patch
+      streamdown:
+        patterns:
+          - "streamdown"
+          - "@streamdown/*"
+        update-types:
+          - minor
+          - patch
+      # Espelham os grupos que o bloco da raiz já tem. Sem eles, 12 pacotes que
+      # a raiz considera ruído de rotina continuavam gastando um slot cada aqui.
+      tooling:
+        patterns:
+          - "eslint*"
+          - "prettier*"
+          - "typescript*"
+          - "vite*"
+          - "vitest*"
+        update-types:
+          - minor
+          - patch
+      react:
+        patterns:
+          - "react*"
+          - "@vitejs/plugin-react*"
+        update-types:
+          - minor
+          - patch
+      codemirror:
+        patterns:
+          - "@codemirror/*"
+          - "codemirror"
+        update-types:
+          - minor
+          - patch
+      better-auth:
+        patterns:
+          - "better-auth"
+          - "@better-auth/*"
+        update-types:
+          - minor
+          - patch
+      hono:
+        patterns:
+          - "hono"
+          - "@hono/*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: pip
     directory: /apps/worker

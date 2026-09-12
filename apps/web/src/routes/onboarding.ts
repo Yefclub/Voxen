@@ -7,10 +7,9 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { s3Bucket, s3Client } from '../lib/s3';
+import { resolveStorageDriver, storagePut } from '../lib/storage';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { setSettings } from '../lib/settings';
 
@@ -81,29 +80,19 @@ onboardingRoutes.post('/avatar', async (c) => {
   const ext = file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : 'webp';
   const key = `workspaces/${userId}/avatar.${ext}`;
   const buf = Buffer.from(await file.arrayBuffer());
-  const bucket = s3Bucket();
   try {
-    await s3Client().send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: buf,
-        ContentType: file.type,
-      }),
-    );
+    await storagePut({ key, body: buf, contentType: file.type });
   } catch (err) {
-    console.error('[onboarding] falha ao salvar avatar no S3:', err);
+    console.error('[onboarding] failed to save avatar:', err);
     return c.json(
       {
-        error:
-          `Falha ao salvar avatar no S3/MinIO (bucket "${bucket}"). ` +
-          'Verifique endpoint, bucket e permissões de escrita.',
+        error: `Falha ao salvar avatar no armazenamento ${resolveStorageDriver()}. Verifique a configuração e as permissões de escrita.`,
       },
       502,
     );
   }
   // Salva path no User.image; o endpoint /api/avatar/:userId serve o arquivo
-  // via proxy (storage S3 não precisa ser público).
+  // via authenticated proxy; the selected storage never needs to be public.
   const imageUrl = `/api/avatar/${userId}?v=${Date.now()}`;
   await db.user.update({ where: { id: userId }, data: { image: imageUrl } });
   return c.json({ image: imageUrl });

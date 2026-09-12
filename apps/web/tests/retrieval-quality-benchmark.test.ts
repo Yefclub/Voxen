@@ -32,14 +32,16 @@ async function productionFts(item: BenchmarkCase) {
 
 async function productionBrain(item: BenchmarkCase) {
   return searchBrainNodes('benchmark-user', item.brainTerms[0] ?? '', 8, {
+    $queryRaw: (async () => []) as never,
     brainNode: {
       findMany: (async (query: { where?: { OR?: Array<{ key?: { contains?: string } }> } }) => {
         const term = query.where?.OR?.[0]?.key?.contains;
         return documents
           .filter((document) => term && document.brainTerms.includes(term))
-          .map((document) => ({ sourceId: document.id })) as never;
+          .map((document) => ({ id: document.id, sourceId: document.id })) as never;
       }) as never,
     },
+    transcriptEnrichment: { findMany: (async () => []) as never },
   } as never);
 }
 

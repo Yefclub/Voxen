@@ -11,6 +11,7 @@
 // `@prisma/client/runtime/library` via apps/web/node_modules/.
 import { PrismaClient } from '../../prisma-generated/client';
 
-export const db = new PrismaClient({
-  log: process.env.NODE_ENV === 'production' ? ['error'] : ['error', 'warn'],
-});
+// Prisma's stdout/stderr logger includes multi-line call sites and provider
+// messages. Errors are handled at request/background boundaries, where Voxen
+// emits bounded structured diagnostics instead.
+export const db = new PrismaClient();

@@ -19,6 +19,7 @@ import {
 } from '../../lib/use-edge-swipe';
 import { useIconCueTrigger } from '../../lib/icon-cue';
 import { SidebarModeBody, SidebarSignOut, SidebarChangelogButton } from './sidebar';
+import { SidebarReleaseUpdateButton } from './sidebar-release-update';
 
 /** Só a abertura pontua os ícones — constante para manter a identidade estável. */
 const isOpen = (open: boolean): boolean => open;
@@ -210,6 +211,7 @@ export function MobileNavDrawer({
         <LayoutGroup id="mobile-nav">
           <SidebarModeBody user={user} hideHome cueSignal={navCueSignal} />
         </LayoutGroup>
+        <SidebarReleaseUpdateButton />
         <SidebarChangelogButton />
         <SidebarSignOut />
       </motion.aside>

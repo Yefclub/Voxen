@@ -13,7 +13,7 @@ import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { useFetch, useSse } from '../../lib/hooks';
 import { formatDuration, formatRelative } from '../../lib/format';
-import { jobStatusBadge, stageLabel } from '../../lib/job-display';
+import { jobSourceLabel, jobStatusBadge, stageLabel } from '../../lib/job-display';
 import type { JobSummary } from '../../lib/types';
 import {
   detectSourceFromUrl,
@@ -391,7 +391,7 @@ const JobRow = memo(function JobRow({
           {displayTitle}
         </p>
         <p className="text-xs text-[var(--color-app-muted)] truncate font-mono">
-          {displayJobSource(job.sourceUrl)}
+          {jobSourceLabel(job, t)}
         </p>
         {isActive ? (
           <div className="flex items-center gap-2.5">

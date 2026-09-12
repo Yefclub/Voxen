@@ -12,6 +12,7 @@ import {
 
 interface JobEvent {
   jobId: string;
+  type: string;
   stage: string;
   percent?: number;
   transcriptId?: string;
@@ -21,6 +22,7 @@ interface JobEvent {
 
 interface JobListItem {
   id: string;
+  type: string;
   status: string;
   transcriptId?: string | null;
   errorMsg?: string | null;
@@ -86,6 +88,7 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
         await notifyTerminalJob(
           {
             jobId: job.id,
+            type: job.type,
             stage,
             transcriptId: job.transcriptId ?? undefined,
             errorMsg: job.errorMsg ?? undefined,
@@ -151,12 +154,18 @@ async function notifyTerminalJob(
       stage: evt.stage,
       jobId: evt.jobId,
       transcriptId: evt.transcriptId,
+      savedMediaReady: evt.type === 'DOWNLOAD_MEDIA',
+      deletionReady: evt.type === 'DELETE_KNOWLEDGE',
       errorMsg: evt.errorMsg,
       labels: {
         readyTitle: t('job.toast.ready'),
         readyBody: t('job.toast.readyDescription'),
         failedTitle: t('job.toast.failed'),
         failedBody: t('job.toast.failedDescription'),
+        mediaReadyTitle: t('savedMedia.toastReady'),
+        mediaReadyBody: t('savedMedia.toastReadyDescription'),
+        deletionReadyTitle: t('job.toast.deletionReady'),
+        deletionReadyBody: t('job.toast.deletionReadyDescription'),
       },
     });
     const shown = await showSystemNotification(content);
@@ -166,15 +175,40 @@ async function notifyTerminalJob(
   }
 
   if (evt.stage === 'done') {
-    toast.success(t('job.toast.ready'), {
-      description: t('job.toast.readyDescription'),
-      action: evt.transcriptId
-        ? {
-            label: t('common.open'),
-            onClick: () => onNavigate(`/transcricoes/${evt.transcriptId}`),
-          }
-        : undefined,
-    });
+    const savedMediaReady = evt.type === 'DOWNLOAD_MEDIA';
+    const deletionReady = evt.type === 'DELETE_KNOWLEDGE';
+    toast.success(
+      t(
+        deletionReady
+          ? 'job.toast.deletionReady'
+          : savedMediaReady
+            ? 'savedMedia.toastReady'
+            : 'job.toast.ready',
+      ),
+      {
+        description: t(
+          deletionReady
+            ? 'job.toast.deletionReadyDescription'
+            : savedMediaReady
+              ? 'savedMedia.toastReadyDescription'
+              : 'job.toast.readyDescription',
+        ),
+        action: evt.transcriptId
+          ? {
+              label: t('common.open'),
+              onClick: () => onNavigate(`/transcricoes/${evt.transcriptId}`),
+            }
+          : savedMediaReady
+            ? {
+                label: t('common.open'),
+                onClick: () => onNavigate('/downloads'),
+              }
+            : {
+                label: t('job.toast.view'),
+                onClick: () => onNavigate(`/jobs/${evt.jobId}`),
+              },
+      },
+    );
     return;
   }
   if (evt.stage === 'failed') {

@@ -1,5 +1,543 @@
 # Changelog
 
+## v0.15.0 — 2026-09-12 · Produção
+
+### Voxen 0.15.0 — a more capable personal knowledge workspace
+
+## A knowledge graph that helps explain personal context
+
+The Brain now keeps temporal facts, safer entity aliases, durable graph
+compilation, community detection, personalized ranking, and interest signals.
+The Guide can turn those signals into explainable personal recommendations, and
+chat and MCP can use the current user's graph context without crossing
+workspace boundaries. An optional Mem0 shadow evaluation is available for
+measurement only and is disabled by default.
+
+## More control over captured knowledge
+
+Voxen can ingest batches of URLs, save private media before ingestion, and
+delete knowledge safely in the background. Notes and transcripts support
+versioned, surgical edits while retaining original evidence and exact passage
+anchors. Mermaid flows are reviewable and interactive, and research enrichment
+can follow bounded gaps back to the original cited source.
+
+## Clearer retrieval and chat evidence
+
+Chat search now combines complementary knowledge-base queries and shows the
+queries, sources, and semantic-retrieval contribution behind a result. Chat
+references can open inside Voxen, including external web and X citations, while
+reasoning collapses when the answer begins so the response stays readable.
+MCP clients can connect through OAuth 2.1, with clearer setup guidance and
+theme-aware configuration.
+
+## More resilient self-hosted operations
+
+Ingestion recovery now distinguishes provider failures, retries temporary
+contention, avoids duplicate source processing, and surfaces actionable YouTube,
+TikTok, and OpenRouter diagnostics. Structured logs and safer operational
+filters make copied Docker or Easypanel logs easier to investigate without
+exposing provider payloads or credentials. New self-hosted installations use a
+local storage volume by default, while existing deployments retain their
+configured storage.
+
+## Operational notes
+
+This release includes database migrations. Back up the instance before
+upgrading and let the normal deployment migration step complete before serving
+traffic. The new graph, enrichment, and shadow-evaluation capabilities remain
+bounded by the current user's workspace; Mem0 remains opt-in and requires a
+separately hosted service.
+
+## v0.14.5-dev.1787243657 — 2026-08-20 · Dev
+
+### ✨ Clearer knowledge-base search in chat
+
+Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped.
+
+## v0.14.5-dev.1787241267 — 2026-08-20 · Dev
+
+### 🐛 External research sources now open from chat citations
+
+When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel.
+
+## v0.14.5-dev.1786800398 — 2026-08-15 · Dev
+
+### 🐛 More reliable reprocessing, duplicate prevention, and diagnostics
+
+Voxen now recognizes TikTok short links and their canonical URLs as the same source before creating or retrying jobs, preventing duplicate processing even under concurrent requests. Complementary research also tolerates provider responses that contain valid citations but omit the search-usage field, while preserving conservative cost accounting.
+
+Application diagnostics are now emitted as safe, structured JSON with request and job correlation fields. A new operational collector can filter copied Docker or Easypanel logs by time, service, severity, event, job, request, or error code without exposing provider payloads or credentials.
+
+## v0.14.5-dev.1786776377 — 2026-08-15 · Dev
+
+### 🐛 More reliable TikTok imports and clearer provider errors
+
+Public TikTok links now have an additional recovery path when the standard media
+extractor is blocked, while still retrying temporary network failures. Voxen also
+identifies exhausted OpenRouter credits explicitly in the queue and research
+context instead of presenting the failure as a model compatibility problem.
+
+## v0.14.5-dev.1786770366 — 2026-08-15 · Dev
+
+### 🐛 Ingestions now recover without stale failures
+
+The processing queue now retries temporary Brain contention and automatically
+clears resolved warnings without repeating the canonical ingestion. Research
+enrichment no longer changes a completed ingestion into a failure, while X,
+TikTok, and OpenRouter errors provide safer and more actionable guidance.
+
+## v0.14.5-dev.1786577267 — 2026-08-12 · Dev
+
+### 🐛 A blocked YouTube download now names every way to unblock it
+
+When YouTube refuses an automated download, the message you get is the only
+guidance available — and it listed two of the three fixes this deployment
+supports. The one it left out is the one that works on a rented server, which is
+where the block almost always happens.
+
+It now names all three, in the order worth trying: a PO token provider, a
+residential proxy, or your YouTube cookies. Manual upload still works
+immediately, and that is said first.
+
+A related silence is gone too. Before downloading, the worker tries to fetch
+existing captions, and a failure there was invisible in the logs. "This video
+has no captions" and "the captions endpoint is blocked too" looked identical,
+even though only the second one is worth acting on.
+
+## v0.14.5-dev.1786563888 — 2026-08-12 · Dev
+
+### 🐛 Worker logs now say which failure happened instead of a generic one
+
+Twenty-three internal failure codes never reached the logs. A safety filter,
+which exists to keep external error messages out of log output, silently
+replaced any code it did not recognise with a generic one — and its list had
+fallen behind the code. Every research enrichment failure, several brain
+extraction and summary failures, provider rate limiting, saved media errors and
+media cleanup errors all surfaced as the same anonymous entry, so an upstream
+outage looked identical to any other unexpected error.
+
+The list is now complete, and a test keeps it that way: adding a failure code
+without registering it fails the build instead of going quiet in production. The
+check reads the source tree rather than matching text, so it covers the codes
+that never appear literally at the point they are logged.
+
+Separately, brain extraction reported success when it had actually postponed
+work. When the graph write lock was busy the run finished with a completion
+entry showing zero concepts, which reads exactly like a document that genuinely
+had none. It now reports incomplete, with the number of postponed segments, so
+the two cases can be told apart.
+
+## v0.14.5-dev.1786563888 — 2026-08-12 · Dev
+
+### 🧹 The AI SDK is back on a current patch release
+
+The `ai` package, which runs the whole agent loop — tool approvals, timeout
+budgets and streaming — had been pinned forty patch releases behind, with that
+many releases of fixes sitting unapplied on the most critical dependency in the
+app.
+
+Catching up changed one behaviour the chat depended on: the newer package
+delivers empty text chunks that the old one filtered out, which would have split
+a single stretch of reasoning into two separate blocks. That is handled, so the
+reasoning panel keeps behaving as before.
+
+It is now current. The dependency automation was also regrouped so this cannot
+happen the same way again: routine updates from the same family now arrive as
+one pull request instead of one each, which stops a handful of parked reviews
+from blocking every other update behind them.
+
+## v0.14.5-dev.1786552219 — 2026-08-12 · Dev
+
+### 🧹 Components from shadcn-format registries can now be installed by CLI
+
+Every component under the web app's `ui` directory had been transcribed by hand,
+because the project had no `components.json` and therefore no supported way to
+pull one from a shadcn-format registry. Each addition meant copying from GitHub,
+rewriting imports and installing dependencies manually.
+
+The file now exists, written by hand rather than generated, so that
+`shadcn init` never touches the stylesheet that defines the four theme packs. It
+buys scaffolding only — file placement, alias resolution and dependency install.
+Registry components still arrive in shadcn's token vocabulary and still need a
+manual pass onto the project's own tokens before they are usable.
+
+## v0.14.5-dev.1786538447 — 2026-08-12 · Dev
+
+### 🎨 The thinking block now closes when the answer starts
+
+The reasoning timeline used to stay open for the whole answer, so the response
+streamed in below a wall of tool rows and reasoning text and only moved up once
+the turn had finished. It now collapses as soon as the first words of the answer
+arrive, and stays closed for the rest of the turn even when the assistant calls
+more tools afterwards.
+
+Opening the block yourself still wins: if you expand it to follow the reasoning,
+nothing closes it under you. A turn that ends without a written answer, having
+only run tools, still closes shortly after it finishes.
+
+## v0.14.5-dev.1786535868 — 2026-08-12 · Dev
+
+### 🧹 CI now blocks a pull request that updates only one of the two agent rule trees
+
+The repository keeps `.agents/` as a mirror of `.claude/`, because that is the
+tree Codex loads. Nothing verified it, and the trees drifted silently once: a
+pull request added skill frontmatter to `.claude/` alone and it went unnoticed
+until a reviewer compared them by hand. Left alone, the two harnesses end up
+following different rules.
+
+A guard now compares both trees, ignoring only the mandated `.claude/` to
+`.agents/` path rewrite and any line-ending difference. It runs as a test inside
+the already-required `Test TS (apps/web)` check, so a pull request touching one
+tree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`
+regenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift
+without changing anything.
+
+## v0.14.5-dev.1786524207 — 2026-08-12 · Dev
+
+### ✨ Optional conversational-memory shadow evaluation
+
+Voxen can now evaluate a separately hosted Mem0 OSS service without changing
+answers or canonical knowledge. The adapter is disabled by default, isolates
+users through opaque server-derived subjects, records provenance only after a
+completed chat turn, and removes remote memories before account deletion. A
+privacy-safe live harness measures retrieval quality, isolation, deletion,
+latency, token volume, and reported cost before any future controlled use.
+
+## v0.14.5-dev.1786514157 — 2026-08-12 · Dev
+
+### ✨ Temporal Brain facts and safer entity resolution
+
+Voxen now distinguishes when a relation was observed from when it was valid,
+keeps historical fact versions with citations, and exposes bounded current or
+point-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed
+aliases improve entity discovery without destructively merging homonyms.
+
+## v0.14.5-dev.1786503242 — 2026-08-11 · Dev
+
+### ✨ Personal graph context for chat and MCP
+
+Voxen now gives its in-app agent and MCP clients the same bounded,
+explainable personal context. Explicit feedback, inferred interests, trends,
+and graph-ranked sources stay distinguishable, user-scoped, and linked to
+authorized evidence.
+
+The context guides discovery without becoming factual evidence: agents must
+still open and verify sources before making claims. Negative preferences never
+become positive ranking seeds, unavailable context degrades safely, and MCP
+read tokens gain the new `voxen_personal_context` tool.
+
+## v0.14.5-dev.1786497875 — 2026-08-11 · Dev
+
+### ✨ An explainable Guide for personal knowledge trends
+
+Voxen now turns the signed-in user's own interest signals and knowledge graph
+into a dedicated personal Guide. It separates emerging, steady, and cooling
+interests across short-, medium-, and long-term horizons, then recommends
+existing sources using weighted Personalized PageRank.
+
+Every trend and recommendation includes inspectable evidence: explicit
+feedback, observed actions, supporting sources, community membership, or
+structural graph relevance. The Guide is deterministic, never asks a language
+model to invent preferences, discloses uniform fallbacks and truncated graph
+snapshots, and remains isolated to active content owned by the current user.
+
+## v0.14.5-dev.1786492801 — 2026-08-11 · Dev
+
+### ✨ Weighted graph importance shaped by durable interests
+
+The knowledge graph now distinguishes raw connection count from weighted
+importance. It calculates weighted degree, structural PageRank, and a separate
+Personalized PageRank based only on the signed-in user's positive durable
+interest projections.
+
+Graph hubs now prioritize stronger, better-supported relationships instead of
+treating every edge equally. When no personal seed is available in the visible
+graph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,
+projection watermark, seed counts, and snapshot truncation remain inspectable
+without exposing another user's interests.
+
+## v0.14.5-dev.1786487522 — 2026-08-11 · Dev
+
+### ✨ Knowledge graph communities now reveal cohesive themes
+
+Voxen now detects weighted Leiden communities in each authorized knowledge-graph view. Confidence, evidence quality, and relationship semantics influence the partition, so a weak bridge no longer collapses two dense themes into one group. The graph API also reports deterministic algorithm metadata and explainable cohesion metrics, while the 2D and 3D views use the same server partition.
+
+Isolated nodes remain visible without being promoted as meaningful themes. If Leiden cannot run, the graph remains available through a deterministic connected-components fallback identified in the response.
+
+## v0.14.5-dev.1786484273 — 2026-08-11 · Dev
+
+### ✨ Explainable personal interest horizons
+
+Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.
+
+Temporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile.
+
+## v0.14.5-dev.1786480831 — 2026-08-11 · Dev
+
+### ✨ Personal interest signals
+
+- Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.
+- Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.
+- Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted.
+
+## v0.14.5-dev.1786478001 — 2026-08-11 · Dev
+
+### ✨ Explore the knowledge graph of each transcript
+
+Transcript pages now show the concepts and grounded relations extracted from that source. Switch between the knowledge inside the transcript and its connections to the wider library, inspect confidence and evidence, jump to supported passages, or continue exploring from the same focus in the global graph.
+
+## v0.14.5-dev.1786430065 — 2026-08-11 · Dev
+
+### 🐛 Reliable deletion during graph activity
+
+Background knowledge deletion now returns to the durable queue with a short
+delay while another operation holds the user's graph lease. Temporary graph
+activity no longer turns a valid deletion into a failed job or blocks unrelated
+worker tasks indefinitely.
+
+## v0.14.5-dev.1786428747 — 2026-08-11 · Dev
+
+### 🎨 Searchable library filters and numbered pages
+
+The Library now keeps its search, page, period, status, inbox, folder, and tag
+filters in the URL. Folder and tag discovery is visible and searchable, active
+filters can be cleared together, and numbered pagination replaces the previous
+load-more flow while preserving filters across browser navigation and shared
+links.
+
+## v0.14.5-dev.1786427252 — 2026-08-11 · Dev
+
+### 🔒 Smaller worker runtime attack surface
+
+The production worker image no longer includes the unused global Python package
+installer and its vendored dependencies. Runtime dependencies remain locked in
+the uv-managed virtual environment, while image vulnerability scans now inspect
+only packages that the worker can execute.
+
+## v0.14.5-dev.1786366281 — 2026-08-10 · Dev
+
+### ✨ Safe background deletion across the knowledge base
+
+Knowledge deletion now runs through Voxen's durable job queue instead of holding
+the browser, internal assistant, or MCP request open while storage and graph data
+are removed. Transcripts, notes and note trees, saved media, library folders, and
+reviewable transcript context share the same observable and retryable workflow.
+
+The internal assistant always presents a destructive confirmation before
+enqueueing a deletion. MCP clients receive a write-scoped deletion tool that
+requires the user-owned target identifier, its exact current title, and an
+explicit confirmation flag. Cross-workspace targets remain indistinguishable
+from missing content. Transcript hard deletion requires the content to remain in
+trash and is serialized against source refresh; folder cascades reject corrupted
+cross-workspace trees.
+
+The queue and job detail views now show deletion-specific progress and terminal
+feedback. Graph cleanup is source-scoped, preserves unrelated manual evidence,
+and invalidates the user's graph snapshot only after the background mutation.
+
+## v0.14.5-dev.1786354871 — 2026-08-10 · Dev
+
+### 🎨 Explore Mermaid diagrams with an interactive canvas
+
+Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive
+canvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the
+diagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are
+supported without weakening Voxen's strict SVG sanitization.
+
+## v0.14.5-dev.1786352459 — 2026-08-10 · Dev
+
+### ✨ Correct transcripts without changing original evidence
+
+Transcript details now include a reviewable correction layer for exact replacements and
+insertions. Every accepted change creates an immutable revision, keeps the captured source
+untouched, detects concurrent edits, and can be inspected, restored, or reset from the web
+interface. Search, summaries, chat retrieval, and grounded graph compilation consume the active
+correction while preserving source provenance.
+
+The integrated assistant can propose a bounded correction preview that always requires explicit
+approval. MCP clients with write scope receive the same revision-aware correction and restore
+operations; read-only tokens can search and inspect correction history without gaining mutation
+access.
+
+## v0.14.5-dev.1786341311 — 2026-08-10 · Dev
+
+### ✨ Safe, versioned note editing
+
+Notes now keep immutable revision history across the web interface, chat, and MCP. Voxen can locate and change an exact passage without replacing the entire document, detects concurrent edits before they overwrite newer work, preserves the local draft during a conflict, and lets users inspect or restore an earlier revision. Graph links and transcript evidence remain connected while only the edited note is refreshed.
+
+Chat confirmations show a server-validated, bounded before/after preview, and paginated history keeps every revision accessible even after long editing sessions.
+
+## v0.14.5-dev.1786329638 — 2026-08-09 · Dev
+
+### ✨ Explore the complete knowledge graph from the server
+
+Graph search now covers every active node owned by the current user instead of only the
+rendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while
+the default view reports complete candidate totals and prioritizes representative content.
+
+## v0.14.5-dev.1786324652 — 2026-08-09 · Dev
+
+### 🐛 Semantic graph indexing now recovers automatically
+
+Semantic graph extraction now resumes after temporary worker, provider, or graph-lock
+interruptions instead of leaving transcript concepts and relationships pending indefinitely.
+Graph status also distinguishes source-node coverage from semantic segment progress, making
+pending, retrying, completed, skipped, and terminal work observable.
+
+## v0.14.5-dev.1786233786 — 2026-08-08 · Dev
+
+### 🐛 Recover interrupted saved-media migrations during startup
+
+Voxen now detects the known interrupted saved-media migration, repairs and validates its
+database objects idempotently, and resumes pending Prisma migrations. Unrecognized migration
+failures continue to stop startup for explicit operator review.
+
+## v0.14.5-dev.1786224946 — 2026-08-08 · Dev
+
+### ✨ Research gaps with the original source and a visible trail
+
+When selective research detects missing or inconsistent context, Voxen can now consult a
+sanitized reference to the original source before performing up to two complementary public
+searches. Planning, source consultation, research, synthesis, retries, failures, cancellation,
+and completion remain visible in the originating queue item without reopening a completed job.
+External evidence stays separate from the canonical summary as reviewable additional context.
+
+## v0.14.5-dev.1786218603 — 2026-08-08 · Dev
+
+### ✨ Reviewable Mermaid flows for transcripts
+
+- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.
+- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.
+- Include the derived flow in full transcript reads from the integrated chat and MCP.
+
+## v0.14.5-dev.1786211865 — 2026-08-08 · Dev
+
+### 🐛 Correct MCP client setup contrast across themes
+
+The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens.
+
+## v0.14.5-dev.1786209842 — 2026-08-08 · Dev
+
+### ✨ Batch URL ingestion across the app, chat, and MCP
+
+Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,
+so invalid, duplicate, existing, and newly queued sources can be handled independently.
+
+## v0.14.5-dev.1786207296 — 2026-08-08 · Dev
+
+### ✨ Save private media before adding it to the knowledge base
+
+The new Downloads page stores supported YouTube, Instagram, TikTok, and X videos in the configured local volume or S3-compatible storage without exposing them to Graph, chat, AI retrieval, or MCP. Each user gets an isolated library, authenticated range downloads, durable queue progress, bounded files, safe retries, and an explicit action to process a saved file through Voxen later without downloading the source again. Permanently deleting the linked transcript keeps the saved media available for future processing.
+
+## v0.14.5-dev.1786200221 — 2026-08-08 · Dev
+
+### ✨ Chat references open inside Voxen
+
+Verified citations now open their source content in the existing side panel, preserving the conversation and offering an explicit action for the full transcript page.
+
+## v0.14.5-dev.1786191801 — 2026-08-08 · Dev
+
+### 🐛 MCP client configuration now follows the active theme
+
+The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background.
+
+## v0.14.5-dev.1786187187 — 2026-08-08 · Dev
+
+### ✨ MCP clients can connect through OAuth 2.1
+
+Voxen now provides standards-based OAuth discovery, Authorization Code with
+PKCE, rotating refresh tokens, revocation, consent, and read/write scopes for
+remote MCP clients. Administrators can enable the capability and pre-register
+public or confidential clients, while each user controls their own grants.
+Existing personal MCP tokens continue to work unchanged.
+
+## v0.14.5-dev.1786179760 — 2026-08-08 · Dev
+
+### 🧹 Complete MCP client setup guidance
+
+The MCP account page now provides copyable connection details for Codex,
+Claude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English
+and Brazilian Portuguese guides document compatibility, token safety, public
+HTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked
+as requiring the upcoming OAuth delivery instead of accepting personal tokens.
+
+## v0.14.5-dev.1786178078 — 2026-08-08 · Dev
+
+### 🐛 Resilient OpenRouter model fallbacks
+
+OpenRouter rate limits are now treated as temporary failures with bounded retry
+delays and a clear, actionable message. Administrators can configure one
+compatible fallback for every AI model purpose, while initial setup suggests
+safe alternatives automatically. Runtime usage and costs identify the model
+that actually answered.
+
+## v0.14.5-dev.1786127306 — 2026-08-07 · Dev
+
+### 🐛 The dev container image now follows versioned code
+
+After each automatic development version pull request passes CI and merges,
+Voxen now publishes the combined image and waits for the registry push to
+succeed. The mutable `dev` tag, its versioned tag, and the immutable SHA tag
+therefore advance together, while `latest` remains reserved for stable
+releases. Intermediate feature commits still do not publish deployable images.
+
+## v0.14.5-dev.1786123967 — 2026-08-07 · Dev
+
+### ✨ Summaries can trigger bounded optional research
+
+Administrators can keep post-summary research off, allow manual requests, or
+enable selective automatic checks. The canonical summary remains
+transcript-only; the durable second stage may perform zero or bounded web
+searches and always creates a cited suggestion for review. Failures, retries,
+and cancellation never block a completed transcript. Tool-free planning is
+isolated from bounded search requests, while policy and content lifecycle
+changes cancel incompatible work across transaction-safe boundaries.
+
+## v0.14.5-dev.1786116413 — 2026-08-07 · Dev
+
+### ✨ External context is cited and reviewable
+
+Transcript pages now have a separate additional-context lifecycle for external
+research. Suggested results retain structured citations, model and cost
+provenance, source freshness, and review status without changing the canonical
+transcript or summary. Only fresh context explicitly accepted by the user can
+enter search and Brain; dismissal or deletion removes only its derivatives.
+
+## v0.14.5-dev.1786111854 — 2026-08-07 · Dev
+
+### ✨ Notes can retain exact transcript passages
+
+Text selected in a transcript can now become a note with verified line and
+timestamp anchors. Anchored notes navigate back to and highlight the original
+passage, remain available through the user-scoped API and MCP server, and keep
+their evidence separate from authored note content. A source refresh marks an
+outdated anchor stale instead of silently moving it.
+
+## v0.14.5-dev.1786107441 — 2026-08-07 · Dev
+
+### ✨ A newer published release is visible in navigation
+
+Voxen now checks the official GitHub stable release from the server and shows
+an update notice directly above What's new only when that release is newer than
+the running build. The notice identifies the installed version and whether the
+instance is running a development or production build. GitHub failures remain
+silent and never interrupt navigation.
+
+## v0.14.5-dev.1786104989 — 2026-08-07 · Dev
+
+### 🛠️ New self-hosted installs use a local volume by default
+
+New single-host installations no longer require MinIO. Web and worker share a
+private persistent volume at `/data/storage` behind the same provider-neutral
+contract, with atomic writes, authenticated reads, media ranges, path
+containment, health checks, persistent-mount validation, consistent backups,
+and non-root runtime access. Legacy Garage variables and mounted credentials
+files remain supported by both runtimes.
+Backup topology follows the active endpoint and container, so an obsolete MinIO
+volume cannot be mistaken for a backup of external S3.
+Existing non-empty S3 or Garage configuration remains on S3, while MinIO is an
+explicit optional profile.
+
 ## v0.14.4 — 2026-08-07 · Produção
 
 ### Voxen 0.14.4 — clearer beta expectations

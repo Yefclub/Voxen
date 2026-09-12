@@ -18,6 +18,7 @@ describe('toolFamily', () => {
     expect(toolFamily('read_lines')).toBe('read');
     expect(toolFamily('outline_transcript')).toBe('read');
     expect(toolFamily('verify_citations')).toBe('read');
+    expect(toolFamily('read_external_enrichment')).toBe('read');
   });
   it('mapeia brain e notas', () => {
     expect(toolFamily('brain_search')).toBe('brain');
@@ -30,6 +31,7 @@ describe('toolFamily', () => {
   });
   it('mapeia ingestão de URL (request_transcription/get_job_status)', () => {
     expect(toolFamily('request_transcription')).toBe('transcript');
+    expect(toolFamily('request_transcriptions')).toBe('transcript');
     expect(toolFamily('get_job_status')).toBe('transcript');
   });
   it('desconhecido cai em other', () => {
@@ -44,10 +46,12 @@ describe('prettifyToolName / hasToolLabel', () => {
   it('hasToolLabel reconhece nomes conhecidos', () => {
     expect(hasToolLabel('search_transcripts')).toBe(true);
     expect(hasToolLabel('search_knowledge')).toBe(true);
+    expect(hasToolLabel('read_external_enrichment')).toBe(true);
     expect(hasToolLabel('mystery_tool')).toBe(false);
   });
   it('hasToolLabel reconhece as tools de ingestão de URL', () => {
     expect(hasToolLabel('request_transcription')).toBe(true);
+    expect(hasToolLabel('request_transcriptions')).toBe(true);
     expect(hasToolLabel('get_job_status')).toBe(true);
   });
 });
@@ -74,6 +78,57 @@ describe('pendingHitlFromTools', () => {
         toolName: 'propose_create_note',
         title: 'Minha nota',
         action: 'create_note',
+        patchPreview: null,
+      },
+    ]);
+  });
+
+  it('preserva somente a prévia estruturada e limitada da edição cirúrgica', () => {
+    expect(
+      pendingHitlFromTools([
+        {
+          name: 'propose_patch_note',
+          state: 'approval-required',
+          output: {
+            approvalRequired: true,
+            approvalId: 'patch-1',
+            action: 'patch_note',
+            title: 'Nota validada',
+            previewProof: 'a'.repeat(64),
+            patchPreview: {
+              operationKind: 'replace',
+              occurrence: 2,
+              changeSummary: 'Corrigir valor',
+              target: 'valor antigo',
+              replacement: 'valor novo',
+              line: 7,
+              context: 'contexto com valor novo',
+              truncatedTarget: false,
+              truncatedReplacement: false,
+              truncatedContext: false,
+              ignored: 'não deve atravessar a fronteira da UI',
+            },
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        approvalId: 'patch-1',
+        toolName: 'propose_patch_note',
+        title: 'Nota validada',
+        action: 'patch_note',
+        patchPreview: {
+          operationKind: 'replace',
+          occurrence: 2,
+          changeSummary: 'Corrigir valor',
+          target: 'valor antigo',
+          replacement: 'valor novo',
+          line: 7,
+          context: 'contexto com valor novo',
+          truncatedTarget: false,
+          truncatedReplacement: false,
+          truncatedContext: false,
+        },
       },
     ]);
   });

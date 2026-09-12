@@ -1,5 +1,1766 @@
 [
   {
+    "version": "0.15.0",
+    "channel": "prod",
+    "date": "2026-09-12T16:10:48.835Z",
+    "promoted": [
+      {
+        "type": "infra",
+        "title": "New self-hosted installs use a local volume by default",
+        "body": "New single-host installations no longer require MinIO. Web and worker share a\nprivate persistent volume at `/data/storage` behind the same provider-neutral\ncontract, with atomic writes, authenticated reads, media ranges, path\ncontainment, health checks, persistent-mount validation, consistent backups,\nand non-root runtime access. Legacy Garage variables and mounted credentials\nfiles remain supported by both runtimes.\nBackup topology follows the active endpoint and container, so an obsolete MinIO\nvolume cannot be mistaken for a backup of external S3.\nExisting non-empty S3 or Garage configuration remains on S3, while MinIO is an\nexplicit optional profile.",
+        "pr": 680,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/680",
+        "translations": {
+          "en": {
+            "title": "New self-hosted installs use a local volume by default",
+            "body": "New single-host installations no longer require MinIO. Web and worker share a\nprivate persistent volume at `/data/storage` behind the same provider-neutral\ncontract, with atomic writes, authenticated reads, media ranges, path\ncontainment, health checks, persistent-mount validation, consistent backups,\nand non-root runtime access. Legacy Garage variables and mounted credentials\nfiles remain supported by both runtimes.\nBackup topology follows the active endpoint and container, so an obsolete MinIO\nvolume cannot be mistaken for a backup of external S3.\nExisting non-empty S3 or Garage configuration remains on S3, while MinIO is an\nexplicit optional profile."
+          },
+          "pt-BR": {
+            "title": "Novas instalações self-hosted usam volume local por padrão",
+            "body": "Novas instalações em um único host não exigem mais MinIO. Web e worker\ncompartilham um volume privado persistente em `/data/storage` pelo mesmo\ncontrato neutro, com escritas atômicas, leituras autenticadas, ranges de mídia,\ncontenção de path, health check, validação do volume persistente, backup\nconsistente e runtimes não-root. Variáveis Garage e arquivos de credenciais\nmontados continuam compatíveis nos dois runtimes.\nO backup segue o endpoint e o container ativos; um volume MinIO obsoleto não\npode ser confundido com backup de um S3 externo.\nConfigurações S3 ou Garage existentes continuam em S3 e o MinIO se torna um\nprofile opcional explícito."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "A newer published release is visible in navigation",
+        "body": "Voxen now checks the official GitHub stable release from the server and shows\nan update notice directly above What's new only when that release is newer than\nthe running build. The notice identifies the installed version and whether the\ninstance is running a development or production build. GitHub failures remain\nsilent and never interrupt navigation.",
+        "pr": 682,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/682",
+        "translations": {
+          "en": {
+            "title": "A newer published release is visible in navigation",
+            "body": "Voxen now checks the official GitHub stable release from the server and shows\nan update notice directly above What's new only when that release is newer than\nthe running build. The notice identifies the installed version and whether the\ninstance is running a development or production build. GitHub failures remain\nsilent and never interrupt navigation."
+          },
+          "pt-BR": {
+            "title": "Uma nova release publicada aparece na navegação",
+            "body": "A Voxen agora consulta no servidor a release estável oficial do GitHub e mostra\num aviso de atualização logo acima de Novidades somente quando ela é posterior\nao build em execução. O aviso identifica a versão instalada e se a instância\nestá em desenvolvimento ou produção. Falhas do GitHub permanecem silenciosas e\nnunca interrompem a navegação."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Notes can retain exact transcript passages",
+        "body": "Text selected in a transcript can now become a note with verified line and\ntimestamp anchors. Anchored notes navigate back to and highlight the original\npassage, remain available through the user-scoped API and MCP server, and keep\ntheir evidence separate from authored note content. A source refresh marks an\noutdated anchor stale instead of silently moving it.",
+        "pr": 684,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/684",
+        "translations": {
+          "en": {
+            "title": "Notes can retain exact transcript passages",
+            "body": "Text selected in a transcript can now become a note with verified line and\ntimestamp anchors. Anchored notes navigate back to and highlight the original\npassage, remain available through the user-scoped API and MCP server, and keep\ntheir evidence separate from authored note content. A source refresh marks an\noutdated anchor stale instead of silently moving it."
+          },
+          "pt-BR": {
+            "title": "Notas podem preservar passagens exatas da transcrição",
+            "body": "Um texto selecionado na transcrição agora pode se tornar uma nota com linhas e\ntimestamps verificados. Notas ancoradas voltam e destacam a passagem original,\nficam disponíveis pela API e MCP isolados por usuário e mantêm a evidência\nseparada do texto autoral. Uma atualização da fonte marca a âncora desatualizada\ncomo stale em vez de movê-la silenciosamente."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "External context is cited and reviewable",
+        "body": "Transcript pages now have a separate additional-context lifecycle for external\nresearch. Suggested results retain structured citations, model and cost\nprovenance, source freshness, and review status without changing the canonical\ntranscript or summary. Only fresh context explicitly accepted by the user can\nenter search and Brain; dismissal or deletion removes only its derivatives.",
+        "pr": 686,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/686",
+        "translations": {
+          "en": {
+            "title": "External context is cited and reviewable",
+            "body": "Transcript pages now have a separate additional-context lifecycle for external\nresearch. Suggested results retain structured citations, model and cost\nprovenance, source freshness, and review status without changing the canonical\ntranscript or summary. Only fresh context explicitly accepted by the user can\nenter search and Brain; dismissal or deletion removes only its derivatives."
+          },
+          "pt-BR": {
+            "title": "Contexto externo passa a ser citado e revisável",
+            "body": "Páginas de transcrição agora possuem um ciclo separado de contexto adicional\npara pesquisa externa. Sugestões preservam citações estruturadas, proveniência\nde modelo e custo, frescor da fonte e revisão sem alterar transcrição ou resumo\ncanônicos. Somente contexto atual aceito explicitamente entra na busca e no\nBrain; dispensar ou excluir remove apenas seus derivados."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Summaries can trigger bounded optional research",
+        "body": "Administrators can keep post-summary research off, allow manual requests, or\nenable selective automatic checks. The canonical summary remains\ntranscript-only; the durable second stage may perform zero or bounded web\nsearches and always creates a cited suggestion for review. Failures, retries,\nand cancellation never block a completed transcript. Tool-free planning is\nisolated from bounded search requests, while policy and content lifecycle\nchanges cancel incompatible work across transaction-safe boundaries.",
+        "pr": 688,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/688",
+        "translations": {
+          "en": {
+            "title": "Summaries can trigger bounded optional research",
+            "body": "Administrators can keep post-summary research off, allow manual requests, or\nenable selective automatic checks. The canonical summary remains\ntranscript-only; the durable second stage may perform zero or bounded web\nsearches and always creates a cited suggestion for review. Failures, retries,\nand cancellation never block a completed transcript. Tool-free planning is\nisolated from bounded search requests, while policy and content lifecycle\nchanges cancel incompatible work across transaction-safe boundaries."
+          },
+          "pt-BR": {
+            "title": "Resumos podem disparar pesquisa opcional limitada",
+            "body": "Administradores podem manter a pesquisa posterior ao resumo desligada,\npermitir pedidos manuais ou habilitar verificações automáticas seletivas. O\nresumo canônico continua baseado apenas na transcrição; a segunda etapa durável\npode fazer zero ou buscas web limitadas e sempre cria uma sugestão citada para\nrevisão. Falhas, retentativas e cancelamento nunca bloqueiam uma transcrição\nconcluída. O planejamento sem ferramentas fica isolado das buscas limitadas, e\nmudanças de política ou ciclo de vida cancelam trabalhos incompatíveis em\nfronteiras transacionais seguras."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "The dev container image now follows versioned code",
+        "body": "After each automatic development version pull request passes CI and merges,\nVoxen now publishes the combined image and waits for the registry push to\nsucceed. The mutable `dev` tag, its versioned tag, and the immutable SHA tag\ntherefore advance together, while `latest` remains reserved for stable\nreleases. Intermediate feature commits still do not publish deployable images.",
+        "pr": null,
+        "translations": {
+          "en": {
+            "title": "The dev container image now follows versioned code",
+            "body": "After each automatic development version pull request passes CI and merges,\nVoxen now publishes the combined image and waits for the registry push to\nsucceed. The mutable `dev` tag, its versioned tag, and the immutable SHA tag\ntherefore advance together, while `latest` remains reserved for stable\nreleases. Intermediate feature commits still do not publish deployable images."
+          },
+          "pt-BR": {
+            "title": "A imagem de desenvolvimento agora acompanha o código versionado",
+            "body": "Depois que cada PR automático de versão de desenvolvimento passa pelo CI e é\nmesclado, a Voxen agora publica a imagem combinada e aguarda o envio ao registry\nterminar com sucesso. Assim, a tag mutável `dev`, sua tag versionada e a tag\nimutável por SHA avançam juntas, enquanto `latest` continua reservada para\nreleases estáveis. Commits intermediários de funcionalidades continuam sem\npublicar imagens implantáveis."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Resilient OpenRouter model fallbacks",
+        "body": "OpenRouter rate limits are now treated as temporary failures with bounded retry\ndelays and a clear, actionable message. Administrators can configure one\ncompatible fallback for every AI model purpose, while initial setup suggests\nsafe alternatives automatically. Runtime usage and costs identify the model\nthat actually answered.",
+        "pr": 695,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/695",
+        "translations": {
+          "en": {
+            "title": "Resilient OpenRouter model fallbacks",
+            "body": "OpenRouter rate limits are now treated as temporary failures with bounded retry\ndelays and a clear, actionable message. Administrators can configure one\ncompatible fallback for every AI model purpose, while initial setup suggests\nsafe alternatives automatically. Runtime usage and costs identify the model\nthat actually answered."
+          },
+          "pt-BR": {
+            "title": "Fallbacks resilientes de modelos OpenRouter",
+            "body": "Os limites temporários da OpenRouter agora recebem novas tentativas com espera\ncontrolada e uma mensagem clara e acionável. Administradores podem configurar\num fallback compatível para cada finalidade de modelo de IA, enquanto a\nconfiguração inicial sugere alternativas seguras automaticamente. O uso e os\ncustos em runtime identificam o modelo que realmente respondeu."
+          }
+        }
+      },
+      {
+        "type": "chore",
+        "title": "Complete MCP client setup guidance",
+        "body": "The MCP account page now provides copyable connection details for Codex,\nClaude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English\nand Brazilian Portuguese guides document compatibility, token safety, public\nHTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked\nas requiring the upcoming OAuth delivery instead of accepting personal tokens.",
+        "pr": 698,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/698",
+        "translations": {
+          "en": {
+            "title": "Complete MCP client setup guidance",
+            "body": "The MCP account page now provides copyable connection details for Codex,\nClaude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English\nand Brazilian Portuguese guides document compatibility, token safety, public\nHTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked\nas requiring the upcoming OAuth delivery instead of accepting personal tokens."
+          },
+          "pt-BR": {
+            "title": "Guia completo para configurar clientes MCP",
+            "body": "A página de conta MCP agora fornece dados copiáveis para Codex, Claude Code,\nOpenAI, Anthropic, Cursor e MCP Inspector. Guias equivalentes em inglês e\nportuguês documentam compatibilidade, segurança do token, HTTPS público e\ndiagnóstico acionável. O Grok Web fica claramente marcado como dependente da\npróxima entrega OAuth, sem induzir o uso incorreto de tokens pessoais."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "MCP clients can connect through OAuth 2.1",
+        "body": "Voxen now provides standards-based OAuth discovery, Authorization Code with\nPKCE, rotating refresh tokens, revocation, consent, and read/write scopes for\nremote MCP clients. Administrators can enable the capability and pre-register\npublic or confidential clients, while each user controls their own grants.\nExisting personal MCP tokens continue to work unchanged.",
+        "pr": 700,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/700",
+        "translations": {
+          "en": {
+            "title": "MCP clients can connect through OAuth 2.1",
+            "body": "Voxen now provides standards-based OAuth discovery, Authorization Code with\nPKCE, rotating refresh tokens, revocation, consent, and read/write scopes for\nremote MCP clients. Administrators can enable the capability and pre-register\npublic or confidential clients, while each user controls their own grants.\nExisting personal MCP tokens continue to work unchanged."
+          },
+          "pt-BR": {
+            "title": "Clientes MCP podem conectar por OAuth 2.1",
+            "body": "O Voxen agora fornece descoberta OAuth padronizada, Authorization Code com\nPKCE, refresh tokens rotativos, revogação, consentimento e escopos de leitura e\nescrita para clientes MCP remotos. Administradores podem habilitar o recurso e\npré-registrar clientes públicos ou confidenciais, enquanto cada usuário\ncontrola seus próprios acessos. Os tokens pessoais MCP continuam funcionando\nsem alterações."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "MCP client configuration now follows the active theme",
+        "body": "The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background.",
+        "pr": 702,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/702",
+        "translations": {
+          "en": {
+            "title": "MCP client configuration now follows the active theme",
+            "body": "The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background."
+          },
+          "pt-BR": {
+            "title": "Configuração de clientes MCP agora acompanha o tema ativo",
+            "body": "O painel de configuração de clientes em **Conta → Acesso MCP** agora usa a paleta de superfícies da aplicação. O painel permanece legível nos temas escuro, claro e nas interfaces alternativas, sem aplicar uma cor clara de texto como fundo."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Chat references open inside Voxen",
+        "body": "Verified citations now open their source content in the existing side panel, preserving the conversation and offering an explicit action for the full transcript page.",
+        "pr": 704,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/704",
+        "translations": {
+          "en": {
+            "title": "Chat references open inside Voxen",
+            "body": "Verified citations now open their source content in the existing side panel, preserving the conversation and offering an explicit action for the full transcript page."
+          },
+          "pt-BR": {
+            "title": "Referências do chat abrem dentro da Voxen",
+            "body": "Citações verificadas agora abrem o conteúdo da fonte no painel lateral existente, preservando a conversa e oferecendo uma ação explícita para a página completa da transcrição."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Save private media before adding it to the knowledge base",
+        "body": "The new Downloads page stores supported YouTube, Instagram, TikTok, and X videos in the configured local volume or S3-compatible storage without exposing them to Graph, chat, AI retrieval, or MCP. Each user gets an isolated library, authenticated range downloads, durable queue progress, bounded files, safe retries, and an explicit action to process a saved file through Voxen later without downloading the source again. Permanently deleting the linked transcript keeps the saved media available for future processing.",
+        "pr": 706,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/706",
+        "translations": {
+          "en": {
+            "title": "Save private media before adding it to the knowledge base",
+            "body": "The new Downloads page stores supported YouTube, Instagram, TikTok, and X videos in the configured local volume or S3-compatible storage without exposing them to Graph, chat, AI retrieval, or MCP. Each user gets an isolated library, authenticated range downloads, durable queue progress, bounded files, safe retries, and an explicit action to process a saved file through Voxen later without downloading the source again. Permanently deleting the linked transcript keeps the saved media available for future processing."
+          },
+          "pt-BR": {
+            "title": "Salve mídias privadas antes de adicioná-las à base de conhecimento",
+            "body": "A nova página Downloads armazena vídeos compatíveis do YouTube, Instagram, TikTok e X no volume local ou armazenamento compatível com S3 configurado, sem expô-los ao Grafo, chat, recuperação da IA ou MCP. Cada usuário recebe uma biblioteca isolada, downloads autenticados com suporte a intervalos, progresso durável na fila, arquivos limitados, novas tentativas seguras e uma ação explícita para processar depois um arquivo salvo na Voxen sem baixar a fonte novamente. A exclusão definitiva da transcrição vinculada mantém a mídia salva disponível para processamento futuro."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Batch URL ingestion across the app, chat, and MCP",
+        "body": "Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,\nso invalid, duplicate, existing, and newly queued sources can be handled independently.",
+        "pr": 708,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/708",
+        "translations": {
+          "en": {
+            "title": "Batch URL ingestion across the app, chat, and MCP",
+            "body": "Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,\nso invalid, duplicate, existing, and newly queued sources can be handled independently."
+          },
+          "pt-BR": {
+            "title": "Ingestão de URLs em lote no app, chat e MCP",
+            "body": "A Voxen agora aceita até 20 links de uma só vez. Cada link recebe seu próprio job na fila e um\nresultado visível, permitindo tratar de forma independente fontes inválidas, duplicadas, já\nexistentes e recém-enfileiradas."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Correct MCP client setup contrast across themes",
+        "body": "The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens.",
+        "pr": 710,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/710",
+        "translations": {
+          "en": {
+            "title": "Correct MCP client setup contrast across themes",
+            "body": "The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens."
+          },
+          "pt-BR": {
+            "title": "Corrige o contraste da configuração de clientes MCP em todos os temas",
+            "body": "A configuração do cliente MCP selecionado agora usa uma superfície interna segura para todos os temas e um seletor de clientes com rolagem horizontal em telas estreitas."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Reviewable Mermaid flows for transcripts",
+        "body": "- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.\n- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.\n- Include the derived flow in full transcript reads from the integrated chat and MCP.",
+        "pr": 712,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/712",
+        "translations": {
+          "en": {
+            "title": "Reviewable Mermaid flows for transcripts",
+            "body": "- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.\n- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.\n- Include the derived flow in full transcript reads from the integrated chat and MCP."
+          },
+          "pt-BR": {
+            "title": "Fluxos Mermaid revisáveis para transcrições",
+            "body": "- Gere ou regenere um fluxo visual de uma transcrição sem alterar seu texto canônico ou resumo.\n- Renderize fluxogramas Mermaid validados na transcrição e em respostas Markdown, com fallback seguro para o código.\n- Inclua o fluxo derivado nas leituras completas de transcrição pelo chat integrado e MCP."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Research gaps with the original source and a visible trail",
+        "body": "When selective research detects missing or inconsistent context, Voxen can now consult a\nsanitized reference to the original source before performing up to two complementary public\nsearches. Planning, source consultation, research, synthesis, retries, failures, cancellation,\nand completion remain visible in the originating queue item without reopening a completed job.\nExternal evidence stays separate from the canonical summary as reviewable additional context.",
+        "pr": 714,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/714",
+        "translations": {
+          "en": {
+            "title": "Research gaps with the original source and a visible trail",
+            "body": "When selective research detects missing or inconsistent context, Voxen can now consult a\nsanitized reference to the original source before performing up to two complementary public\nsearches. Planning, source consultation, research, synthesis, retries, failures, cancellation,\nand completion remain visible in the originating queue item without reopening a completed job.\nExternal evidence stays separate from the canonical summary as reviewable additional context."
+          },
+          "pt-BR": {
+            "title": "Pesquise lacunas com a fonte original e uma trilha visível",
+            "body": "Quando a pesquisa seletiva detectar contexto ausente ou inconsistente, a Voxen agora pode\nconsultar uma referência sanitizada da fonte original antes de realizar até duas pesquisas\npúblicas complementares. Planejamento, consulta da fonte, pesquisa, síntese, novas tentativas,\nfalhas, cancelamento e conclusão permanecem visíveis no item de origem da fila sem reabrir um job\nconcluído. As evidências externas continuam separadas do resumo canônico como contexto adicional\nrevisável."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Recover interrupted saved-media migrations during startup",
+        "body": "Voxen now detects the known interrupted saved-media migration, repairs and validates its\ndatabase objects idempotently, and resumes pending Prisma migrations. Unrecognized migration\nfailures continue to stop startup for explicit operator review.",
+        "pr": 716,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/716",
+        "translations": {
+          "en": {
+            "title": "Recover interrupted saved-media migrations during startup",
+            "body": "Voxen now detects the known interrupted saved-media migration, repairs and validates its\ndatabase objects idempotently, and resumes pending Prisma migrations. Unrecognized migration\nfailures continue to stop startup for explicit operator review."
+          },
+          "pt-BR": {
+            "title": "Recupere migrations interrompidas da biblioteca de mídia na inicialização",
+            "body": "A Voxen agora detecta a migration conhecida e interrompida da biblioteca de mídia, repara e\nvalida seus objetos no banco de forma idempotente e retoma as migrations pendentes do Prisma.\nFalhas de migrations não reconhecidas continuam interrompendo a inicialização para revisão\nexplícita do operador."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Semantic graph indexing now recovers automatically",
+        "body": "Semantic graph extraction now resumes after temporary worker, provider, or graph-lock\ninterruptions instead of leaving transcript concepts and relationships pending indefinitely.\nGraph status also distinguishes source-node coverage from semantic segment progress, making\npending, retrying, completed, skipped, and terminal work observable.",
+        "pr": 718,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/718",
+        "translations": {
+          "en": {
+            "title": "Semantic graph indexing now recovers automatically",
+            "body": "Semantic graph extraction now resumes after temporary worker, provider, or graph-lock\ninterruptions instead of leaving transcript concepts and relationships pending indefinitely.\nGraph status also distinguishes source-node coverage from semantic segment progress, making\npending, retrying, completed, skipped, and terminal work observable."
+          },
+          "pt-BR": {
+            "title": "A indexação semântica do grafo agora se recupera automaticamente",
+            "body": "A extração semântica do grafo agora é retomada após interrupções temporárias do worker, do\nprovedor ou do bloqueio de escrita, evitando que conceitos e relações das transcrições fiquem\npendentes indefinidamente. O status do grafo também separa a cobertura dos conteúdos da\nevolução dos segmentos semânticos, tornando visíveis os trabalhos pendentes, em nova tentativa,\nconcluídos, ignorados e encerrados com falha."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Explore the complete knowledge graph from the server",
+        "body": "Graph search now covers every active node owned by the current user instead of only the\nrendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while\nthe default view reports complete candidate totals and prioritizes representative content.",
+        "pr": 720,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/720",
+        "translations": {
+          "en": {
+            "title": "Explore the complete knowledge graph from the server",
+            "body": "Graph search now covers every active node owned by the current user instead of only the\nrendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while\nthe default view reports complete candidate totals and prioritizes representative content."
+          },
+          "pt-BR": {
+            "title": "Explore todo o grafo de conhecimento pelo servidor",
+            "body": "A pesquisa do grafo agora cobre todos os nós ativos do usuário atual, em vez de somente o\nrecorte renderizado. Selecionar um resultado carrega uma vizinhança limitada de um ou dois\nsaltos, enquanto a visão padrão informa os totais completos e prioriza conteúdos\nrepresentativos."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Safe, versioned note editing",
+        "body": "Notes now keep immutable revision history across the web interface, chat, and MCP. Voxen can locate and change an exact passage without replacing the entire document, detects concurrent edits before they overwrite newer work, preserves the local draft during a conflict, and lets users inspect or restore an earlier revision. Graph links and transcript evidence remain connected while only the edited note is refreshed.\n\nChat confirmations show a server-validated, bounded before/after preview, and paginated history keeps every revision accessible even after long editing sessions.",
+        "pr": 722,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/722",
+        "translations": {
+          "en": {
+            "title": "Safe, versioned note editing",
+            "body": "Notes now keep immutable revision history across the web interface, chat, and MCP. Voxen can locate and change an exact passage without replacing the entire document, detects concurrent edits before they overwrite newer work, preserves the local draft during a conflict, and lets users inspect or restore an earlier revision. Graph links and transcript evidence remain connected while only the edited note is refreshed.\n\nChat confirmations show a server-validated, bounded before/after preview, and paginated history keeps every revision accessible even after long editing sessions."
+          },
+          "pt-BR": {
+            "title": "Edição segura e versionada de notas",
+            "body": "As notas agora mantêm um histórico imutável de revisões na interface web, no chat e no MCP. A Voxen pode localizar e alterar uma passagem exata sem substituir o documento inteiro, detecta edições concorrentes antes que sobrescrevam um trabalho mais recente, preserva o rascunho local em caso de conflito e permite inspecionar ou restaurar uma revisão anterior. Os vínculos do grafo e as evidências das transcrições permanecem conectados enquanto apenas a nota editada é atualizada.\n\nAs confirmações do chat exibem uma prévia limitada e validada pelo servidor, com antes e depois, e o histórico paginado mantém todas as revisões acessíveis mesmo após longas sessões de edição."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Correct transcripts without changing original evidence",
+        "body": "Transcript details now include a reviewable correction layer for exact replacements and\ninsertions. Every accepted change creates an immutable revision, keeps the captured source\nuntouched, detects concurrent edits, and can be inspected, restored, or reset from the web\ninterface. Search, summaries, chat retrieval, and grounded graph compilation consume the active\ncorrection while preserving source provenance.\n\nThe integrated assistant can propose a bounded correction preview that always requires explicit\napproval. MCP clients with write scope receive the same revision-aware correction and restore\noperations; read-only tokens can search and inspect correction history without gaining mutation\naccess.",
+        "pr": 724,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/724",
+        "translations": {
+          "en": {
+            "title": "Correct transcripts without changing original evidence",
+            "body": "Transcript details now include a reviewable correction layer for exact replacements and\ninsertions. Every accepted change creates an immutable revision, keeps the captured source\nuntouched, detects concurrent edits, and can be inspected, restored, or reset from the web\ninterface. Search, summaries, chat retrieval, and grounded graph compilation consume the active\ncorrection while preserving source provenance.\n\nThe integrated assistant can propose a bounded correction preview that always requires explicit\napproval. MCP clients with write scope receive the same revision-aware correction and restore\noperations; read-only tokens can search and inspect correction history without gaining mutation\naccess."
+          },
+          "pt-BR": {
+            "title": "Corrija transcrições sem alterar a evidência original",
+            "body": "Os detalhes da transcrição agora incluem uma camada revisável de correções para substituições e\ninserções exatas. Cada alteração aceita cria uma revisão imutável, mantém intacta a fonte capturada,\ndetecta edições concorrentes e pode ser inspecionada, restaurada ou redefinida pela interface web.\nBusca, resumos, recuperação pelo chat e compilação fundamentada do grafo usam a correção ativa sem\nperder a proveniência da fonte.\n\nA assistente integrada pode propor uma prévia limitada da correção, sempre sujeita à aprovação\nexplícita. Clientes MCP com escopo de escrita recebem as mesmas operações conscientes de revisão;\ntokens somente de leitura podem pesquisar e inspecionar o histórico sem obter permissão de mutação."
+          }
+        }
+      },
+      {
+        "type": "ui",
+        "title": "Explore Mermaid diagrams with an interactive canvas",
+        "body": "Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive\ncanvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the\ndiagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are\nsupported without weakening Voxen's strict SVG sanitization.",
+        "pr": 731,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/731",
+        "translations": {
+          "en": {
+            "title": "Explore Mermaid diagrams with an interactive canvas",
+            "body": "Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive\ncanvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the\ndiagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are\nsupported without weakening Voxen's strict SVG sanitization."
+          },
+          "pt-BR": {
+            "title": "Explore diagramas Mermaid em um canvas interativo",
+            "body": "Diagramas Mermaid em respostas do chat, notas e conteúdos de transcrição agora são exibidos em um\ncanvas interativo. É possível aplicar zoom de 50% a 300%, arrastar para explorar fluxos grandes,\nrestaurar a visualização e expandir o diagrama em uma área focada quase em tela cheia. Há suporte a\nmouse, toque, roda e teclado sem enfraquecer a sanitização estrita de SVG da Voxen."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Safe background deletion across the knowledge base",
+        "body": "Knowledge deletion now runs through Voxen's durable job queue instead of holding\nthe browser, internal assistant, or MCP request open while storage and graph data\nare removed. Transcripts, notes and note trees, saved media, library folders, and\nreviewable transcript context share the same observable and retryable workflow.\n\nThe internal assistant always presents a destructive confirmation before\nenqueueing a deletion. MCP clients receive a write-scoped deletion tool that\nrequires the user-owned target identifier, its exact current title, and an\nexplicit confirmation flag. Cross-workspace targets remain indistinguishable\nfrom missing content. Transcript hard deletion requires the content to remain in\ntrash and is serialized against source refresh; folder cascades reject corrupted\ncross-workspace trees.\n\nThe queue and job detail views now show deletion-specific progress and terminal\nfeedback. Graph cleanup is source-scoped, preserves unrelated manual evidence,\nand invalidates the user's graph snapshot only after the background mutation.",
+        "pr": 733,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/733",
+        "translations": {
+          "en": {
+            "title": "Safe background deletion across the knowledge base",
+            "body": "Knowledge deletion now runs through Voxen's durable job queue instead of holding\nthe browser, internal assistant, or MCP request open while storage and graph data\nare removed. Transcripts, notes and note trees, saved media, library folders, and\nreviewable transcript context share the same observable and retryable workflow.\n\nThe internal assistant always presents a destructive confirmation before\nenqueueing a deletion. MCP clients receive a write-scoped deletion tool that\nrequires the user-owned target identifier, its exact current title, and an\nexplicit confirmation flag. Cross-workspace targets remain indistinguishable\nfrom missing content. Transcript hard deletion requires the content to remain in\ntrash and is serialized against source refresh; folder cascades reject corrupted\ncross-workspace trees.\n\nThe queue and job detail views now show deletion-specific progress and terminal\nfeedback. Graph cleanup is source-scoped, preserves unrelated manual evidence,\nand invalidates the user's graph snapshot only after the background mutation."
+          },
+          "pt-BR": {
+            "title": "Exclusão segura em segundo plano para toda a base de conhecimento",
+            "body": "A exclusão de conhecimento agora utiliza a fila durável de jobs da Voxen, sem\nmanter o navegador, a assistente interna ou uma requisição MCP esperando enquanto\no armazenamento e o grafo são limpos. Transcrições, notas e suas árvores, mídias\nsalvas, pastas da biblioteca e contextos revisáveis de transcrições compartilham\no mesmo fluxo observável e repetível.\n\nA assistente interna sempre apresenta uma confirmação destrutiva antes de\nenfileirar a exclusão. Clientes MCP recebem uma ferramenta com escopo de escrita\nque exige o identificador pertencente ao usuário, o título atual exato e uma\nconfirmação explícita. Alvos de outro workspace continuam indistinguíveis de\nconteúdo inexistente. A exclusão definitiva de transcrições exige que o conteúdo\npermaneça na lixeira e é serializada com a atualização da fonte; cascatas de\npastas recusam árvores corrompidas entre workspaces.\n\nA fila e os detalhes do job agora exibem progresso e resultado específicos da\nexclusão. A limpeza do grafo é limitada à fonte removida, preserva evidências\nmanuais não relacionadas e invalida o snapshot do grafo do usuário somente após\na mutação em segundo plano."
+          }
+        }
+      },
+      {
+        "type": "security",
+        "title": "Smaller worker runtime attack surface",
+        "body": "The production worker image no longer includes the unused global Python package\ninstaller and its vendored dependencies. Runtime dependencies remain locked in\nthe uv-managed virtual environment, while image vulnerability scans now inspect\nonly packages that the worker can execute.",
+        "pr": 741,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/741",
+        "translations": {
+          "en": {
+            "title": "Smaller worker runtime attack surface",
+            "body": "The production worker image no longer includes the unused global Python package\ninstaller and its vendored dependencies. Runtime dependencies remain locked in\nthe uv-managed virtual environment, while image vulnerability scans now inspect\nonly packages that the worker can execute."
+          },
+          "pt-BR": {
+            "title": "Menor superfície de ataque no runtime do worker",
+            "body": "A imagem de produção do worker não inclui mais o instalador global de pacotes\nPython, que não era utilizado, nem suas dependências incorporadas. As\ndependências de runtime continuam travadas no ambiente virtual gerenciado pelo\nuv, enquanto a análise de vulnerabilidades passa a considerar somente os\npacotes que o worker pode executar."
+          }
+        }
+      },
+      {
+        "type": "ui",
+        "title": "Searchable library filters and numbered pages",
+        "body": "The Library now keeps its search, page, period, status, inbox, folder, and tag\nfilters in the URL. Folder and tag discovery is visible and searchable, active\nfilters can be cleared together, and numbered pagination replaces the previous\nload-more flow while preserving filters across browser navigation and shared\nlinks.",
+        "pr": 740,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/740",
+        "translations": {
+          "en": {
+            "title": "Searchable library filters and numbered pages",
+            "body": "The Library now keeps its search, page, period, status, inbox, folder, and tag\nfilters in the URL. Folder and tag discovery is visible and searchable, active\nfilters can be cleared together, and numbered pagination replaces the previous\nload-more flow while preserving filters across browser navigation and shared\nlinks."
+          },
+          "pt-BR": {
+            "title": "Filtros pesquisáveis e páginas numeradas na biblioteca",
+            "body": "A Biblioteca agora mantém busca, página, período, status, inbox, pasta e tag na\nURL. A descoberta de pastas e tags ficou visível e pesquisável, os filtros ativos\npodem ser limpos de uma vez e a paginação numerada substitui o antigo fluxo de\ncarregar mais, preservando os filtros ao navegar pelo navegador ou compartilhar\nlinks."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Reliable deletion during graph activity",
+        "body": "Background knowledge deletion now returns to the durable queue with a short\ndelay while another operation holds the user's graph lease. Temporary graph\nactivity no longer turns a valid deletion into a failed job or blocks unrelated\nworker tasks indefinitely.",
+        "pr": 743,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/743",
+        "translations": {
+          "en": {
+            "title": "Reliable deletion during graph activity",
+            "body": "Background knowledge deletion now returns to the durable queue with a short\ndelay while another operation holds the user's graph lease. Temporary graph\nactivity no longer turns a valid deletion into a failed job or blocks unrelated\nworker tasks indefinitely."
+          },
+          "pt-BR": {
+            "title": "Exclusão confiável durante atividades do grafo",
+            "body": "A exclusão de conhecimento em segundo plano agora retorna para a fila durável\ncom um pequeno atraso enquanto outra operação mantém o lease do grafo do\nusuário. Atividades temporárias do grafo não transformam mais uma exclusão\nválida em falha nem bloqueiam indefinidamente outras tarefas do worker."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Explore the knowledge graph of each transcript",
+        "body": "Transcript pages now show the concepts and grounded relations extracted from that source. Switch between the knowledge inside the transcript and its connections to the wider library, inspect confidence and evidence, jump to supported passages, or continue exploring from the same focus in the global graph.",
+        "pr": 746,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/746",
+        "translations": {
+          "en": {
+            "title": "Explore the knowledge graph of each transcript",
+            "body": "Transcript pages now show the concepts and grounded relations extracted from that source. Switch between the knowledge inside the transcript and its connections to the wider library, inspect confidence and evidence, jump to supported passages, or continue exploring from the same focus in the global graph."
+          },
+          "pt-BR": {
+            "title": "Explore o grafo de conhecimento de cada transcrição",
+            "body": "As páginas de transcrição agora mostram os conceitos e as relações fundamentadas extraídas daquela fonte. Alterne entre o conhecimento presente na transcrição e suas conexões com o restante da biblioteca, inspecione confiança e evidências, navegue até os trechos correspondentes ou continue a exploração com o mesmo foco no grafo global."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Personal interest signals",
+        "body": "- Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.\n- Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.\n- Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted.",
+        "pr": 748,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/748",
+        "translations": {
+          "en": {
+            "title": "Personal interest signals",
+            "body": "- Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.\n- Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.\n- Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted."
+          },
+          "pt-BR": {
+            "title": "Sinais pessoais de interesse",
+            "body": "- Adicionamos um card acessível “Ajuste seu Guia” ao detalhe da transcrição, com escolhas reversíveis de “Mais como isto” e “Menos como isto”.\n- Armazenamos visualizações observadas e preferências explícitas como eventos separados por usuário, evitando transformar a simples abertura de um conteúdo em preferência declarada.\n- Adicionamos histórico append-only, deduplicação diária de visualizações, restrições estritas no banco e limpeza em cascata quando o conteúdo é excluído definitivamente."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Explainable personal interest horizons",
+        "body": "Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.\n\nTemporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile.",
+        "pr": 750,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/750",
+        "translations": {
+          "en": {
+            "title": "Explainable personal interest horizons",
+            "body": "Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.\n\nTemporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile."
+          },
+          "pt-BR": {
+            "title": "Horizontes explicáveis de interesse pessoal",
+            "body": "A Voxen agora constrói projeções separadas de curto, médio e longo prazo a partir da atividade pessoal nas transcrições. Cada tópico, entidade, tag, pasta, autor, canal ou fonte projetada mantém a preferência explícita e o interesse inferido como pontuações distintas, com evidências limitadas.\n\nA intenção temporária da sessão passa a ter um armazenamento próprio, isolado por usuário e com expiração. Assim, um desvio momentâneo de pesquisa pode orientar a sessão atual sem reescrever silenciosamente o perfil pessoal durável."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Knowledge graph communities now reveal cohesive themes",
+        "body": "Voxen now detects weighted Leiden communities in each authorized knowledge-graph view. Confidence, evidence quality, and relationship semantics influence the partition, so a weak bridge no longer collapses two dense themes into one group. The graph API also reports deterministic algorithm metadata and explainable cohesion metrics, while the 2D and 3D views use the same server partition.\n\nIsolated nodes remain visible without being promoted as meaningful themes. If Leiden cannot run, the graph remains available through a deterministic connected-components fallback identified in the response.",
+        "pr": 752,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/752",
+        "translations": {
+          "en": {
+            "title": "Knowledge graph communities now reveal cohesive themes",
+            "body": "Voxen now detects weighted Leiden communities in each authorized knowledge-graph view. Confidence, evidence quality, and relationship semantics influence the partition, so a weak bridge no longer collapses two dense themes into one group. The graph API also reports deterministic algorithm metadata and explainable cohesion metrics, while the 2D and 3D views use the same server partition.\n\nIsolated nodes remain visible without being promoted as meaningful themes. If Leiden cannot run, the graph remains available through a deterministic connected-components fallback identified in the response."
+          },
+          "pt-BR": {
+            "title": "Comunidades do grafo agora revelam temas coesos",
+            "body": "A Voxen agora detecta comunidades Leiden ponderadas em cada visão autorizada do grafo de conhecimento. Confiança, qualidade da evidência e semântica das relações influenciam a partição; assim, uma ponte fraca não transforma mais dois temas densos em um único grupo. A API do grafo também informa metadados determinísticos do algoritmo e métricas explicáveis de coesão, enquanto as visões 2D e 3D usam a mesma partição calculada pelo servidor.\n\nNós isolados continuam visíveis sem serem promovidos a temas relevantes. Se o Leiden não puder ser executado, o grafo permanece disponível por meio de um fallback determinístico por componentes conexos, identificado na resposta."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Weighted graph importance shaped by durable interests",
+        "body": "The knowledge graph now distinguishes raw connection count from weighted\nimportance. It calculates weighted degree, structural PageRank, and a separate\nPersonalized PageRank based only on the signed-in user's positive durable\ninterest projections.\n\nGraph hubs now prioritize stronger, better-supported relationships instead of\ntreating every edge equally. When no personal seed is available in the visible\ngraph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,\nprojection watermark, seed counts, and snapshot truncation remain inspectable\nwithout exposing another user's interests.",
+        "pr": 754,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/754",
+        "translations": {
+          "en": {
+            "title": "Weighted graph importance shaped by durable interests",
+            "body": "The knowledge graph now distinguishes raw connection count from weighted\nimportance. It calculates weighted degree, structural PageRank, and a separate\nPersonalized PageRank based only on the signed-in user's positive durable\ninterest projections.\n\nGraph hubs now prioritize stronger, better-supported relationships instead of\ntreating every edge equally. When no personal seed is available in the visible\ngraph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,\nprojection watermark, seed counts, and snapshot truncation remain inspectable\nwithout exposing another user's interests."
+          },
+          "pt-BR": {
+            "title": "Importância ponderada do grafo guiada por interesses duráveis",
+            "body": "O grafo de conhecimento agora diferencia a quantidade bruta de conexões da\nimportância ponderada. Ele calcula grau ponderado, PageRank estrutural e um\nPersonalized PageRank separado, baseado apenas nas projeções positivas de\ninteresse durável do usuário autenticado.\n\nOs hubs do grafo passam a priorizar relações mais fortes e bem fundamentadas,\nem vez de tratar todas as arestas como equivalentes. Quando não há uma semente\npessoal no recorte visível, a Voxen usa um fallback uniforme explícito. Versão\ndo algoritmo, convergência, watermark da projeção, quantidade de sementes e\ntruncamento do recorte continuam inspecionáveis sem expor interesses de outro\nusuário."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "An explainable Guide for personal knowledge trends",
+        "body": "Voxen now turns the signed-in user's own interest signals and knowledge graph\ninto a dedicated personal Guide. It separates emerging, steady, and cooling\ninterests across short-, medium-, and long-term horizons, then recommends\nexisting sources using weighted Personalized PageRank.\n\nEvery trend and recommendation includes inspectable evidence: explicit\nfeedback, observed actions, supporting sources, community membership, or\nstructural graph relevance. The Guide is deterministic, never asks a language\nmodel to invent preferences, discloses uniform fallbacks and truncated graph\nsnapshots, and remains isolated to active content owned by the current user.",
+        "pr": null,
+        "translations": {
+          "en": {
+            "title": "An explainable Guide for personal knowledge trends",
+            "body": "Voxen now turns the signed-in user's own interest signals and knowledge graph\ninto a dedicated personal Guide. It separates emerging, steady, and cooling\ninterests across short-, medium-, and long-term horizons, then recommends\nexisting sources using weighted Personalized PageRank.\n\nEvery trend and recommendation includes inspectable evidence: explicit\nfeedback, observed actions, supporting sources, community membership, or\nstructural graph relevance. The Guide is deterministic, never asks a language\nmodel to invent preferences, discloses uniform fallbacks and truncated graph\nsnapshots, and remains isolated to active content owned by the current user."
+          },
+          "pt-BR": {
+            "title": "Um Guia explicável para tendências do conhecimento pessoal",
+            "body": "A Voxen agora transforma os sinais de interesse e o grafo de conhecimento do\npróprio usuário autenticado em um Guia pessoal dedicado. Ele separa interesses\nemergentes, constantes e em queda nos horizontes curto, médio e longo, e então\nrecomenda fontes existentes usando Personalized PageRank ponderado.\n\nCada tendência e recomendação inclui evidências inspecionáveis: feedback\nexplícito, ações observadas, fontes de apoio, comunidade ou relevância\nestrutural no grafo. O Guia é determinístico, não pede a um modelo de linguagem\npara inventar preferências, identifica fallbacks uniformes e recortes truncados\ndo grafo e permanece isolado aos conteúdos ativos do usuário atual."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Personal graph context for chat and MCP",
+        "body": "Voxen now gives its in-app agent and MCP clients the same bounded,\nexplainable personal context. Explicit feedback, inferred interests, trends,\nand graph-ranked sources stay distinguishable, user-scoped, and linked to\nauthorized evidence.\n\nThe context guides discovery without becoming factual evidence: agents must\nstill open and verify sources before making claims. Negative preferences never\nbecome positive ranking seeds, unavailable context degrades safely, and MCP\nread tokens gain the new `voxen_personal_context` tool.",
+        "pr": null,
+        "translations": {
+          "en": {
+            "title": "Personal graph context for chat and MCP",
+            "body": "Voxen now gives its in-app agent and MCP clients the same bounded,\nexplainable personal context. Explicit feedback, inferred interests, trends,\nand graph-ranked sources stay distinguishable, user-scoped, and linked to\nauthorized evidence.\n\nThe context guides discovery without becoming factual evidence: agents must\nstill open and verify sources before making claims. Negative preferences never\nbecome positive ranking seeds, unavailable context degrades safely, and MCP\nread tokens gain the new `voxen_personal_context` tool."
+          },
+          "pt-BR": {
+            "title": "Contexto pessoal do grafo no chat e MCP",
+            "body": "A Voxen agora oferece ao agente interno e aos clientes MCP o mesmo contexto\npessoal limitado e explicável. Feedback explícito, interesses inferidos,\ntendências e fontes priorizadas pelo grafo permanecem distinguíveis,\nisolados por usuário e vinculados a evidências autorizadas.\n\nO contexto orienta a descoberta sem se tornar evidência factual: os agentes\nainda precisam abrir e verificar as fontes antes de fazer afirmações.\nPreferências negativas nunca viram sementes positivas de ranking, a\nindisponibilidade degrada com segurança e tokens MCP de leitura ganham a nova\nferramenta `voxen_personal_context`."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Temporal Brain facts and safer entity resolution",
+        "body": "Voxen now distinguishes when a relation was observed from when it was valid,\nkeeps historical fact versions with citations, and exposes bounded current or\npoint-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed\naliases improve entity discovery without destructively merging homonyms.",
+        "pr": 761,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/761",
+        "translations": {
+          "en": {
+            "title": "Temporal Brain facts and safer entity resolution",
+            "body": "Voxen now distinguishes when a relation was observed from when it was valid,\nkeeps historical fact versions with citations, and exposes bounded current or\npoint-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed\naliases improve entity discovery without destructively merging homonyms."
+          },
+          "pt-BR": {
+            "title": "Fatos temporais e resolução segura de entidades no Brain",
+            "body": "O Voxen agora diferencia quando uma relação foi observada de quando ela era\nválida, preserva versões históricas com citações e expõe consultas limitadas do\nestado atual ou de um instante passado para a assistente interna e o MCP.\nAliases apoiados por evidência melhoram a descoberta sem fundir homônimos de\nforma destrutiva."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Optional conversational-memory shadow evaluation",
+        "body": "Voxen can now evaluate a separately hosted Mem0 OSS service without changing\nanswers or canonical knowledge. The adapter is disabled by default, isolates\nusers through opaque server-derived subjects, records provenance only after a\ncompleted chat turn, and removes remote memories before account deletion. A\nprivacy-safe live harness measures retrieval quality, isolation, deletion,\nlatency, token volume, and reported cost before any future controlled use.",
+        "pr": 763,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/763",
+        "translations": {
+          "en": {
+            "title": "Optional conversational-memory shadow evaluation",
+            "body": "Voxen can now evaluate a separately hosted Mem0 OSS service without changing\nanswers or canonical knowledge. The adapter is disabled by default, isolates\nusers through opaque server-derived subjects, records provenance only after a\ncompleted chat turn, and removes remote memories before account deletion. A\nprivacy-safe live harness measures retrieval quality, isolation, deletion,\nlatency, token volume, and reported cost before any future controlled use."
+          },
+          "pt-BR": {
+            "title": "Avaliação opcional de memória conversacional em shadow mode",
+            "body": "A Voxen agora pode avaliar um serviço Mem0 OSS hospedado separadamente sem\nalterar respostas nem o conhecimento canônico. O adaptador é desativado por\npadrão, isola usuários por sujeitos opacos derivados no servidor, registra\nproveniência apenas após concluir um turno do chat e remove memórias remotas\nantes da exclusão da conta. Um avaliador ao vivo sem conteúdo sensível mede\nqualidade, isolamento, exclusão, latência, tokens e custo informado antes de\nqualquer uso controlado futuro."
+          }
+        }
+      },
+      {
+        "type": "chore",
+        "title": "CI now blocks a pull request that updates only one of the two agent rule trees",
+        "body": "The repository keeps `.agents/` as a mirror of `.claude/`, because that is the\ntree Codex loads. Nothing verified it, and the trees drifted silently once: a\npull request added skill frontmatter to `.claude/` alone and it went unnoticed\nuntil a reviewer compared them by hand. Left alone, the two harnesses end up\nfollowing different rules.\n\nA guard now compares both trees, ignoring only the mandated `.claude/` to\n`.agents/` path rewrite and any line-ending difference. It runs as a test inside\nthe already-required `Test TS (apps/web)` check, so a pull request touching one\ntree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`\nregenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift\nwithout changing anything.",
+        "pr": 774,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/774",
+        "translations": {
+          "en": {
+            "title": "CI now blocks a pull request that updates only one of the two agent rule trees",
+            "body": "The repository keeps `.agents/` as a mirror of `.claude/`, because that is the\ntree Codex loads. Nothing verified it, and the trees drifted silently once: a\npull request added skill frontmatter to `.claude/` alone and it went unnoticed\nuntil a reviewer compared them by hand. Left alone, the two harnesses end up\nfollowing different rules.\n\nA guard now compares both trees, ignoring only the mandated `.claude/` to\n`.agents/` path rewrite and any line-ending difference. It runs as a test inside\nthe already-required `Test TS (apps/web)` check, so a pull request touching one\ntree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`\nregenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift\nwithout changing anything."
+          },
+          "pt-BR": {
+            "title": "CI passa a barrar PR que atualiza só uma das duas árvores de regras de agente",
+            "body": "O repositório mantém `.agents/` como espelho de `.claude/`, porque é essa a\nárvore que o Codex carrega. Nada verificava isso, e as duas se desencontraram em\nsilêncio uma vez: um PR adicionou frontmatter de skill só em `.claude/` e\nninguém percebeu até alguém comparar à mão. Sem correção, os dois harnesses\nacabam seguindo regras diferentes.\n\nAgora um guard compara as duas árvores, ignorando apenas a reescrita de path\nobrigatória de `.claude/` para `.agents/` e diferenças de fim de linha. Ele roda\ncomo teste dentro do check `Test TS (apps/web)`, que já era obrigatório, então PR\nque mexe numa árvore só falha antes do merge. `node scripts/agents-mirror.mjs --fix`\nregenera o espelho, e `node scripts/agents-mirror.mjs` aponta a divergência sem\nalterar nada."
+          }
+        }
+      },
+      {
+        "type": "ui",
+        "title": "The thinking block now closes when the answer starts",
+        "body": "The reasoning timeline used to stay open for the whole answer, so the response\nstreamed in below a wall of tool rows and reasoning text and only moved up once\nthe turn had finished. It now collapses as soon as the first words of the answer\narrive, and stays closed for the rest of the turn even when the assistant calls\nmore tools afterwards.\n\nOpening the block yourself still wins: if you expand it to follow the reasoning,\nnothing closes it under you. A turn that ends without a written answer, having\nonly run tools, still closes shortly after it finishes.",
+        "pr": 776,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/776",
+        "translations": {
+          "en": {
+            "title": "The thinking block now closes when the answer starts",
+            "body": "The reasoning timeline used to stay open for the whole answer, so the response\nstreamed in below a wall of tool rows and reasoning text and only moved up once\nthe turn had finished. It now collapses as soon as the first words of the answer\narrive, and stays closed for the rest of the turn even when the assistant calls\nmore tools afterwards.\n\nOpening the block yourself still wins: if you expand it to follow the reasoning,\nnothing closes it under you. A turn that ends without a written answer, having\nonly run tools, still closes shortly after it finishes."
+          },
+          "pt-BR": {
+            "title": "O bloco de raciocínio agora fecha quando a resposta começa",
+            "body": "A linha do tempo de raciocínio ficava aberta durante a resposta inteira, então o\ntexto aparecia embaixo de uma parede de ferramentas e raciocínio e só subia\nquando o turno acabava. Agora ela recolhe assim que as primeiras palavras da\nresposta chegam, e continua recolhida pelo resto do turno mesmo que o assistente\nchame mais ferramentas depois.\n\nAbrir o bloco por conta própria continua valendo mais: se você expandir para\nacompanhar o raciocínio, nada fecha por baixo. Turno que termina sem resposta\nescrita, tendo só rodado ferramentas, continua recolhendo pouco depois de\nencerrar."
+          }
+        }
+      },
+      {
+        "type": "chore",
+        "title": "Components from shadcn-format registries can now be installed by CLI",
+        "body": "Every component under the web app's `ui` directory had been transcribed by hand,\nbecause the project had no `components.json` and therefore no supported way to\npull one from a shadcn-format registry. Each addition meant copying from GitHub,\nrewriting imports and installing dependencies manually.\n\nThe file now exists, written by hand rather than generated, so that\n`shadcn init` never touches the stylesheet that defines the four theme packs. It\nbuys scaffolding only — file placement, alias resolution and dependency install.\nRegistry components still arrive in shadcn's token vocabulary and still need a\nmanual pass onto the project's own tokens before they are usable.",
+        "pr": 780,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/780",
+        "translations": {
+          "en": {
+            "title": "Components from shadcn-format registries can now be installed by CLI",
+            "body": "Every component under the web app's `ui` directory had been transcribed by hand,\nbecause the project had no `components.json` and therefore no supported way to\npull one from a shadcn-format registry. Each addition meant copying from GitHub,\nrewriting imports and installing dependencies manually.\n\nThe file now exists, written by hand rather than generated, so that\n`shadcn init` never touches the stylesheet that defines the four theme packs. It\nbuys scaffolding only — file placement, alias resolution and dependency install.\nRegistry components still arrive in shadcn's token vocabulary and still need a\nmanual pass onto the project's own tokens before they are usable."
+          },
+          "pt-BR": {
+            "title": "Componentes de registries no formato shadcn agora podem ser instalados por CLI",
+            "body": "Todo componente do diretório `ui` do app web tinha sido transcrito à mão, porque\no projeto não tinha `components.json` e portanto nenhum caminho suportado para\npuxar um componente de registry no formato shadcn. Cada adição significava\ncopiar do GitHub, reescrever imports e instalar dependências na mão.\n\nAgora o arquivo existe, escrito à mão em vez de gerado, para que o `shadcn init`\nnunca encoste no stylesheet que define os quatro packs de tema. Ele entrega só\nscaffolding — colocação de arquivo, resolução de alias e instalação de\ndependência. Componente de registry continua chegando no vocabulário de token do\nshadcn e continua precisando de um passe manual para os tokens do projeto antes\nde servir."
+          }
+        }
+      },
+      {
+        "type": "chore",
+        "title": "The AI SDK is back on a current patch release",
+        "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them.",
+        "pr": 783,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/783",
+        "translations": {
+          "en": {
+            "title": "The AI SDK is back on a current patch release",
+            "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them."
+          },
+          "pt-BR": {
+            "title": "O AI SDK volta a uma versão de patch atual",
+            "body": "O pacote `ai`, que roda todo o laço do agente — aprovação de ferramenta, orçamento\nde timeout e streaming —, estava travado quarenta releases de patch atrás, com\nessa quantidade de correções paradas na dependência mais crítica do app.\n\nAtualizar mudou um comportamento do qual o chat dependia: a versão nova entrega\npedaços de texto vazios que a antiga filtrava, o que partiria um raciocínio\ncontínuo em dois blocos separados. Isso foi tratado, então o painel de raciocínio\ncontinua se comportando como antes.\n\nAgora está atualizado. A automação de dependências também foi reagrupada para\nque isso não se repita do mesmo jeito: atualização de rotina da mesma família\npassa a chegar numa PR só em vez de uma cada, o que impede que um punhado de\nrevisões paradas trave todas as outras atualizações atrás delas."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Worker logs now say which failure happened instead of a generic one",
+        "body": "Twenty-three internal failure codes never reached the logs. A safety filter,\nwhich exists to keep external error messages out of log output, silently\nreplaced any code it did not recognise with a generic one — and its list had\nfallen behind the code. Every research enrichment failure, several brain\nextraction and summary failures, provider rate limiting, saved media errors and\nmedia cleanup errors all surfaced as the same anonymous entry, so an upstream\noutage looked identical to any other unexpected error.\n\nThe list is now complete, and a test keeps it that way: adding a failure code\nwithout registering it fails the build instead of going quiet in production. The\ncheck reads the source tree rather than matching text, so it covers the codes\nthat never appear literally at the point they are logged.\n\nSeparately, brain extraction reported success when it had actually postponed\nwork. When the graph write lock was busy the run finished with a completion\nentry showing zero concepts, which reads exactly like a document that genuinely\nhad none. It now reports incomplete, with the number of postponed segments, so\nthe two cases can be told apart.",
+        "pr": 788,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/788",
+        "translations": {
+          "en": {
+            "title": "Worker logs now say which failure happened instead of a generic one",
+            "body": "Twenty-three internal failure codes never reached the logs. A safety filter,\nwhich exists to keep external error messages out of log output, silently\nreplaced any code it did not recognise with a generic one — and its list had\nfallen behind the code. Every research enrichment failure, several brain\nextraction and summary failures, provider rate limiting, saved media errors and\nmedia cleanup errors all surfaced as the same anonymous entry, so an upstream\noutage looked identical to any other unexpected error.\n\nThe list is now complete, and a test keeps it that way: adding a failure code\nwithout registering it fails the build instead of going quiet in production. The\ncheck reads the source tree rather than matching text, so it covers the codes\nthat never appear literally at the point they are logged.\n\nSeparately, brain extraction reported success when it had actually postponed\nwork. When the graph write lock was busy the run finished with a completion\nentry showing zero concepts, which reads exactly like a document that genuinely\nhad none. It now reports incomplete, with the number of postponed segments, so\nthe two cases can be told apart."
+          },
+          "pt-BR": {
+            "title": "Logs do worker passam a dizer qual falha aconteceu, em vez de uma genérica",
+            "body": "Vinte e três códigos internos de falha nunca chegavam aos logs. Um filtro de\nsegurança, que existe para manter mensagens de erro externas fora do log,\ntrocava em silêncio qualquer código que não reconhecesse por um genérico — e a\nlista dele tinha ficado para trás do código. Toda falha de enriquecimento por\npesquisa, várias de extração de conceitos e de resumo, limite de taxa do\nprovedor, erros de mídia salva e de limpeza de mídia apareciam como a mesma\nentrada anônima, então indisponibilidade externa ficava idêntica a qualquer\noutro erro inesperado.\n\nA lista está completa, e um teste mantém assim: adicionar código de falha sem\nregistrá-lo quebra o build em vez de emudecer em produção. A checagem lê a\nárvore de código em vez de casar texto, então alcança também os códigos que\nnunca aparecem literalmente no ponto em que são logados.\n\nEm separado, a extração de conceitos reportava sucesso quando na verdade tinha\nadiado trabalho. Com a trava de escrita do grafo ocupada, a passada terminava com\numa entrada de conclusão mostrando zero conceitos, o que se lê exatamente como um\ndocumento que legitimamente não tinha nenhum. Agora reporta incompleta, com\nquantos segmentos ficaram para depois, então dá para distinguir os dois casos."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "A blocked YouTube download now names every way to unblock it",
+        "body": "When YouTube refuses an automated download, the message you get is the only\nguidance available — and it listed two of the three fixes this deployment\nsupports. The one it left out is the one that works on a rented server, which is\nwhere the block almost always happens.\n\nIt now names all three, in the order worth trying: a PO token provider, a\nresidential proxy, or your YouTube cookies. Manual upload still works\nimmediately, and that is said first.\n\nA related silence is gone too. Before downloading, the worker tries to fetch\nexisting captions, and a failure there was invisible in the logs. \"This video\nhas no captions\" and \"the captions endpoint is blocked too\" looked identical,\neven though only the second one is worth acting on.",
+        "pr": 790,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/790",
+        "translations": {
+          "en": {
+            "title": "A blocked YouTube download now names every way to unblock it",
+            "body": "When YouTube refuses an automated download, the message you get is the only\nguidance available — and it listed two of the three fixes this deployment\nsupports. The one it left out is the one that works on a rented server, which is\nwhere the block almost always happens.\n\nIt now names all three, in the order worth trying: a PO token provider, a\nresidential proxy, or your YouTube cookies. Manual upload still works\nimmediately, and that is said first.\n\nA related silence is gone too. Before downloading, the worker tries to fetch\nexisting captions, and a failure there was invisible in the logs. \"This video\nhas no captions\" and \"the captions endpoint is blocked too\" looked identical,\neven though only the second one is worth acting on."
+          },
+          "pt-BR": {
+            "title": "Download bloqueado do YouTube agora mostra todos os caminhos para destravar",
+            "body": "Quando o YouTube recusa um download automatizado, a mensagem é a única\norientação disponível — e ela listava duas das três soluções que esta instalação\nsuporta. A que ficou de fora é justamente a que funciona em servidor alugado,\nque é onde o bloqueio quase sempre acontece.\n\nAgora ela cita as três, na ordem que vale tentar: provider de PO token, proxy\nresidencial ou seus cookies do YouTube. Upload manual continua resolvendo na\nhora, e isso é dito primeiro.\n\nUm silêncio parecido também acabou. Antes de baixar, o worker tenta pegar\nlegendas já existentes, e uma falha ali era invisível nos logs. \"Este vídeo não\ntem legenda\" e \"o endpoint de legendas também está bloqueado\" pareciam iguais,\nembora só o segundo peça alguma ação."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "Ingestions now recover without stale failures",
+        "body": "The processing queue now retries temporary Brain contention and automatically\nclears resolved warnings without repeating the canonical ingestion. Research\nenrichment no longer changes a completed ingestion into a failure, while X,\nTikTok, and OpenRouter errors provide safer and more actionable guidance.",
+        "pr": 794,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/794",
+        "translations": {
+          "en": {
+            "title": "Ingestions now recover without stale failures",
+            "body": "The processing queue now retries temporary Brain contention and automatically\nclears resolved warnings without repeating the canonical ingestion. Research\nenrichment no longer changes a completed ingestion into a failure, while X,\nTikTok, and OpenRouter errors provide safer and more actionable guidance."
+          },
+          "pt-BR": {
+            "title": "Ingestões agora se recuperam sem falhas obsoletas",
+            "body": "A fila de processamento agora repete contenções temporárias do Brain e remove\nautomaticamente avisos já resolvidos sem refazer a ingestão canônica. A pesquisa\ncomplementar não transforma mais uma ingestão concluída em falha, enquanto erros\ndo X, TikTok e OpenRouter oferecem orientações mais seguras e acionáveis."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "More reliable TikTok imports and clearer provider errors",
+        "body": "Public TikTok links now have an additional recovery path when the standard media\nextractor is blocked, while still retrying temporary network failures. Voxen also\nidentifies exhausted OpenRouter credits explicitly in the queue and research\ncontext instead of presenting the failure as a model compatibility problem.",
+        "pr": 796,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/796",
+        "translations": {
+          "en": {
+            "title": "More reliable TikTok imports and clearer provider errors",
+            "body": "Public TikTok links now have an additional recovery path when the standard media\nextractor is blocked, while still retrying temporary network failures. Voxen also\nidentifies exhausted OpenRouter credits explicitly in the queue and research\ncontext instead of presenting the failure as a model compatibility problem."
+          },
+          "pt-BR": {
+            "title": "Importações do TikTok mais confiáveis e erros de provedor mais claros",
+            "body": "Links públicos do TikTok agora contam com uma recuperação adicional quando o\nextrator padrão de mídia é bloqueado, sem perder as tentativas para falhas\ntemporárias de rede. A Voxen também identifica explicitamente créditos esgotados\ndo OpenRouter na fila e no contexto de pesquisa, em vez de apresentar a falha\ncomo um problema de compatibilidade do modelo."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "More reliable reprocessing, duplicate prevention, and diagnostics",
+        "body": "Voxen now recognizes TikTok short links and their canonical URLs as the same source before creating or retrying jobs, preventing duplicate processing even under concurrent requests. Complementary research also tolerates provider responses that contain valid citations but omit the search-usage field, while preserving conservative cost accounting.\n\nApplication diagnostics are now emitted as safe, structured JSON with request and job correlation fields. A new operational collector can filter copied Docker or Easypanel logs by time, service, severity, event, job, request, or error code without exposing provider payloads or credentials.",
+        "pr": 798,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/798",
+        "translations": {
+          "en": {
+            "title": "More reliable reprocessing, duplicate prevention, and diagnostics",
+            "body": "Voxen now recognizes TikTok short links and their canonical URLs as the same source before creating or retrying jobs, preventing duplicate processing even under concurrent requests. Complementary research also tolerates provider responses that contain valid citations but omit the search-usage field, while preserving conservative cost accounting.\n\nApplication diagnostics are now emitted as safe, structured JSON with request and job correlation fields. A new operational collector can filter copied Docker or Easypanel logs by time, service, severity, event, job, request, or error code without exposing provider payloads or credentials."
+          },
+          "pt-BR": {
+            "title": "Reprocessamento, prevenção de duplicatas e diagnósticos mais confiáveis",
+            "body": "A Voxen agora reconhece links curtos do TikTok e suas URLs canônicas como a mesma fonte antes de criar ou reprocessar jobs, evitando processamento duplicado mesmo em solicitações concorrentes. A pesquisa complementar também tolera respostas do provedor com citações válidas, mas sem o campo de uso da busca, mantendo uma contabilização conservadora de custos.\n\nOs diagnósticos da aplicação agora são emitidos como JSON estruturado e seguro, com campos de correlação por requisição e job. Um novo coletor operacional permite filtrar logs copiados do Docker ou Easypanel por período, serviço, severidade, evento, job, requisição ou código de erro sem expor payloads de provedores ou credenciais."
+          }
+        }
+      },
+      {
+        "type": "fix",
+        "title": "External research sources now open from chat citations",
+        "body": "When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel.",
+        "pr": 802,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/802",
+        "translations": {
+          "en": {
+            "title": "External research sources now open from chat citations",
+            "body": "When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel."
+          },
+          "pt-BR": {
+            "title": "Fontes de pesquisa externas agora abrem pelas citações do chat",
+            "body": "Quando uma resposta usa uma fonte de pesquisa da web ou do X, a citação agora vira um link de fonte clicável em vez de permanecer como marcador bruto. As citações da Biblioteca continuam abrindo o painel de referência interno."
+          }
+        }
+      },
+      {
+        "type": "feat",
+        "title": "Clearer knowledge-base search in chat",
+        "body": "Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped.",
+        "pr": 805,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/805",
+        "translations": {
+          "en": {
+            "title": "Clearer knowledge-base search in chat",
+            "body": "Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped."
+          },
+          "pt-BR": {
+            "title": "Busca na Base de conhecimento mais clara no chat",
+            "body": "O chat agora pesquisa a Base de conhecimento com variações complementares de consulta e combina resultados repetidos. Expanda a etapa de busca para ver as consultas usadas, as fontes encontradas e se a recuperação semântica ajudou."
+          }
+        }
+      }
+    ],
+    "title": "Voxen 0.15.0 — a more capable personal knowledge workspace",
+    "body": "## A knowledge graph that helps explain personal context\n\nThe Brain now keeps temporal facts, safer entity aliases, durable graph\ncompilation, community detection, personalized ranking, and interest signals.\nThe Guide can turn those signals into explainable personal recommendations, and\nchat and MCP can use the current user's graph context without crossing\nworkspace boundaries. An optional Mem0 shadow evaluation is available for\nmeasurement only and is disabled by default.\n\n## More control over captured knowledge\n\nVoxen can ingest batches of URLs, save private media before ingestion, and\ndelete knowledge safely in the background. Notes and transcripts support\nversioned, surgical edits while retaining original evidence and exact passage\nanchors. Mermaid flows are reviewable and interactive, and research enrichment\ncan follow bounded gaps back to the original cited source.\n\n## Clearer retrieval and chat evidence\n\nChat search now combines complementary knowledge-base queries and shows the\nqueries, sources, and semantic-retrieval contribution behind a result. Chat\nreferences can open inside Voxen, including external web and X citations, while\nreasoning collapses when the answer begins so the response stays readable.\nMCP clients can connect through OAuth 2.1, with clearer setup guidance and\ntheme-aware configuration.\n\n## More resilient self-hosted operations\n\nIngestion recovery now distinguishes provider failures, retries temporary\ncontention, avoids duplicate source processing, and surfaces actionable YouTube,\nTikTok, and OpenRouter diagnostics. Structured logs and safer operational\nfilters make copied Docker or Easypanel logs easier to investigate without\nexposing provider payloads or credentials. New self-hosted installations use a\nlocal storage volume by default, while existing deployments retain their\nconfigured storage.\n\n## Operational notes\n\nThis release includes database migrations. Back up the instance before\nupgrading and let the normal deployment migration step complete before serving\ntraffic. The new graph, enrichment, and shadow-evaluation capabilities remain\nbounded by the current user's workspace; Mem0 remains opt-in and requires a\nseparately hosted service.",
+    "translations": {
+      "en": {
+        "title": "Voxen 0.15.0 — a more capable personal knowledge workspace",
+        "body": "## A knowledge graph that helps explain personal context\n\nThe Brain now keeps temporal facts, safer entity aliases, durable graph\ncompilation, community detection, personalized ranking, and interest signals.\nThe Guide can turn those signals into explainable personal recommendations, and\nchat and MCP can use the current user's graph context without crossing\nworkspace boundaries. An optional Mem0 shadow evaluation is available for\nmeasurement only and is disabled by default.\n\n## More control over captured knowledge\n\nVoxen can ingest batches of URLs, save private media before ingestion, and\ndelete knowledge safely in the background. Notes and transcripts support\nversioned, surgical edits while retaining original evidence and exact passage\nanchors. Mermaid flows are reviewable and interactive, and research enrichment\ncan follow bounded gaps back to the original cited source.\n\n## Clearer retrieval and chat evidence\n\nChat search now combines complementary knowledge-base queries and shows the\nqueries, sources, and semantic-retrieval contribution behind a result. Chat\nreferences can open inside Voxen, including external web and X citations, while\nreasoning collapses when the answer begins so the response stays readable.\nMCP clients can connect through OAuth 2.1, with clearer setup guidance and\ntheme-aware configuration.\n\n## More resilient self-hosted operations\n\nIngestion recovery now distinguishes provider failures, retries temporary\ncontention, avoids duplicate source processing, and surfaces actionable YouTube,\nTikTok, and OpenRouter diagnostics. Structured logs and safer operational\nfilters make copied Docker or Easypanel logs easier to investigate without\nexposing provider payloads or credentials. New self-hosted installations use a\nlocal storage volume by default, while existing deployments retain their\nconfigured storage.\n\n## Operational notes\n\nThis release includes database migrations. Back up the instance before\nupgrading and let the normal deployment migration step complete before serving\ntraffic. The new graph, enrichment, and shadow-evaluation capabilities remain\nbounded by the current user's workspace; Mem0 remains opt-in and requires a\nseparately hosted service."
+      },
+      "pt-BR": {
+        "title": "Voxen 0.15.0 — um espaço de conhecimento pessoal mais capaz",
+        "body": "## Um grafo de conhecimento que explica melhor o contexto pessoal\n\nO Brain agora mantém fatos temporais, aliases de entidades mais seguros,\ncompilação durável do grafo, detecção de comunidades, ranking personalizado e\nsinais de interesse. O Guia transforma esses sinais em recomendações pessoais\nexplicáveis, e o chat e o MCP podem usar o contexto do grafo do usuário atual\nsem atravessar limites de workspace. Uma avaliação opcional do Mem0 em shadow\nmode existe apenas para medição e fica desativada por padrão.\n\n## Mais controle sobre o conhecimento capturado\n\nA Voxen pode ingerir lotes de URLs, salvar mídia privada antes da ingestão e\nexcluir conhecimento com segurança em segundo plano. Notas e transcrições\nsuportam edições cirúrgicas versionadas, preservando a evidência original e\nâncoras de trechos exatos. Fluxos Mermaid podem ser revisados e explorados de\nforma interativa, e o enriquecimento de pesquisa pode seguir lacunas limitadas\naté a fonte original citada.\n\n## Recuperação e evidências do chat mais claras\n\nA busca do chat agora combina consultas complementares na Base de conhecimento\ne mostra as consultas, fontes e contribuição da recuperação semântica por trás\nde um resultado. Referências do chat podem abrir dentro da Voxen, incluindo\ncitações externas da web e do X, enquanto o raciocínio recolhe quando a\nresposta começa para manter o texto legível. Clientes MCP podem conectar por\nOAuth 2.1, com orientação de configuração mais clara e configuração sensível\nao tema.\n\n## Operações self-hosted mais resilientes\n\nA recuperação de ingestão agora diferencia falhas de provedores, repete\ncontenções temporárias, evita processamento duplicado da mesma fonte e mostra\ndiagnósticos acionáveis de YouTube, TikTok e OpenRouter. Logs estruturados e\nfiltros operacionais mais seguros facilitam investigar logs copiados do Docker ou\nEasypanel sem expor payloads de provedores ou credenciais. Novas instalações\nself-hosted usam um volume local por padrão, enquanto implantações existentes\nmantêm o armazenamento configurado.\n\n## Notas operacionais\n\nEsta release inclui migrations de banco. Faça backup da instância antes de\natualizar e deixe a etapa normal de migration do deploy terminar antes de\natender tráfego. Os recursos novos de grafo, enriquecimento e avaliação em\nshadow continuam limitados ao workspace do usuário atual; o Mem0 segue opt-in e\nexige um serviço hospedado separadamente."
+      }
+    }
+  },
+  {
+    "version": "0.14.5-dev.1787243657",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Clearer knowledge-base search in chat",
+    "body": "Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped.",
+    "pr": 805,
+    "author": "Kalyel",
+    "date": "2026-08-20T13:34:05-03:00",
+    "translations": {
+      "en": {
+        "title": "Clearer knowledge-base search in chat",
+        "body": "Chat now searches the knowledge base with complementary query variations and combines duplicate matches. Expand the search step to see the queries used, result sources, and whether semantic retrieval helped."
+      },
+      "pt-BR": {
+        "title": "Busca na Base de conhecimento mais clara no chat",
+        "body": "O chat agora pesquisa a Base de conhecimento com variações complementares de consulta e combina resultados repetidos. Expanda a etapa de busca para ver as consultas usadas, as fontes encontradas e se a recuperação semântica ajudou."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/805"
+  },
+  {
+    "version": "0.14.5-dev.1787241267",
+    "channel": "dev",
+    "type": "fix",
+    "title": "External research sources now open from chat citations",
+    "body": "When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel.",
+    "pr": 802,
+    "author": "Kalyel",
+    "date": "2026-08-20T12:54:14-03:00",
+    "translations": {
+      "en": {
+        "title": "External research sources now open from chat citations",
+        "body": "When an answer uses a web or X research source, its citation now becomes a clickable source link instead of remaining as a raw reference marker. Library citations continue to open their in-app reference panel."
+      },
+      "pt-BR": {
+        "title": "Fontes de pesquisa externas agora abrem pelas citações do chat",
+        "body": "Quando uma resposta usa uma fonte de pesquisa da web ou do X, a citação agora vira um link de fonte clicável em vez de permanecer como marcador bruto. As citações da Biblioteca continuam abrindo o painel de referência interno."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/802"
+  },
+  {
+    "version": "0.14.5-dev.1786800398",
+    "channel": "dev",
+    "type": "fix",
+    "title": "More reliable reprocessing, duplicate prevention, and diagnostics",
+    "body": "Voxen now recognizes TikTok short links and their canonical URLs as the same source before creating or retrying jobs, preventing duplicate processing even under concurrent requests. Complementary research also tolerates provider responses that contain valid citations but omit the search-usage field, while preserving conservative cost accounting.\n\nApplication diagnostics are now emitted as safe, structured JSON with request and job correlation fields. A new operational collector can filter copied Docker or Easypanel logs by time, service, severity, event, job, request, or error code without exposing provider payloads or credentials.",
+    "pr": 798,
+    "author": "Kalyel",
+    "date": "2026-08-15T10:26:27-03:00",
+    "translations": {
+      "en": {
+        "title": "More reliable reprocessing, duplicate prevention, and diagnostics",
+        "body": "Voxen now recognizes TikTok short links and their canonical URLs as the same source before creating or retrying jobs, preventing duplicate processing even under concurrent requests. Complementary research also tolerates provider responses that contain valid citations but omit the search-usage field, while preserving conservative cost accounting.\n\nApplication diagnostics are now emitted as safe, structured JSON with request and job correlation fields. A new operational collector can filter copied Docker or Easypanel logs by time, service, severity, event, job, request, or error code without exposing provider payloads or credentials."
+      },
+      "pt-BR": {
+        "title": "Reprocessamento, prevenção de duplicatas e diagnósticos mais confiáveis",
+        "body": "A Voxen agora reconhece links curtos do TikTok e suas URLs canônicas como a mesma fonte antes de criar ou reprocessar jobs, evitando processamento duplicado mesmo em solicitações concorrentes. A pesquisa complementar também tolera respostas do provedor com citações válidas, mas sem o campo de uso da busca, mantendo uma contabilização conservadora de custos.\n\nOs diagnósticos da aplicação agora são emitidos como JSON estruturado e seguro, com campos de correlação por requisição e job. Um novo coletor operacional permite filtrar logs copiados do Docker ou Easypanel por período, serviço, severidade, evento, job, requisição ou código de erro sem expor payloads de provedores ou credenciais."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/798"
+  },
+  {
+    "version": "0.14.5-dev.1786776377",
+    "channel": "dev",
+    "type": "fix",
+    "title": "More reliable TikTok imports and clearer provider errors",
+    "body": "Public TikTok links now have an additional recovery path when the standard media\nextractor is blocked, while still retrying temporary network failures. Voxen also\nidentifies exhausted OpenRouter credits explicitly in the queue and research\ncontext instead of presenting the failure as a model compatibility problem.",
+    "pr": 796,
+    "author": "Kalyel",
+    "date": "2026-08-15T03:46:05-03:00",
+    "translations": {
+      "en": {
+        "title": "More reliable TikTok imports and clearer provider errors",
+        "body": "Public TikTok links now have an additional recovery path when the standard media\nextractor is blocked, while still retrying temporary network failures. Voxen also\nidentifies exhausted OpenRouter credits explicitly in the queue and research\ncontext instead of presenting the failure as a model compatibility problem."
+      },
+      "pt-BR": {
+        "title": "Importações do TikTok mais confiáveis e erros de provedor mais claros",
+        "body": "Links públicos do TikTok agora contam com uma recuperação adicional quando o\nextrator padrão de mídia é bloqueado, sem perder as tentativas para falhas\ntemporárias de rede. A Voxen também identifica explicitamente créditos esgotados\ndo OpenRouter na fila e no contexto de pesquisa, em vez de apresentar a falha\ncomo um problema de compatibilidade do modelo."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/796"
+  },
+  {
+    "version": "0.14.5-dev.1786770366",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Ingestions now recover without stale failures",
+    "body": "The processing queue now retries temporary Brain contention and automatically\nclears resolved warnings without repeating the canonical ingestion. Research\nenrichment no longer changes a completed ingestion into a failure, while X,\nTikTok, and OpenRouter errors provide safer and more actionable guidance.",
+    "pr": 794,
+    "author": "Kalyel",
+    "date": "2026-08-15T02:05:56-03:00",
+    "translations": {
+      "en": {
+        "title": "Ingestions now recover without stale failures",
+        "body": "The processing queue now retries temporary Brain contention and automatically\nclears resolved warnings without repeating the canonical ingestion. Research\nenrichment no longer changes a completed ingestion into a failure, while X,\nTikTok, and OpenRouter errors provide safer and more actionable guidance."
+      },
+      "pt-BR": {
+        "title": "Ingestões agora se recuperam sem falhas obsoletas",
+        "body": "A fila de processamento agora repete contenções temporárias do Brain e remove\nautomaticamente avisos já resolvidos sem refazer a ingestão canônica. A pesquisa\ncomplementar não transforma mais uma ingestão concluída em falha, enquanto erros\ndo X, TikTok e OpenRouter oferecem orientações mais seguras e acionáveis."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/794"
+  },
+  {
+    "version": "0.14.5-dev.1786577267",
+    "channel": "dev",
+    "type": "fix",
+    "title": "A blocked YouTube download now names every way to unblock it",
+    "body": "When YouTube refuses an automated download, the message you get is the only\nguidance available — and it listed two of the three fixes this deployment\nsupports. The one it left out is the one that works on a rented server, which is\nwhere the block almost always happens.\n\nIt now names all three, in the order worth trying: a PO token provider, a\nresidential proxy, or your YouTube cookies. Manual upload still works\nimmediately, and that is said first.\n\nA related silence is gone too. Before downloading, the worker tries to fetch\nexisting captions, and a failure there was invisible in the logs. \"This video\nhas no captions\" and \"the captions endpoint is blocked too\" looked identical,\neven though only the second one is worth acting on.",
+    "pr": 790,
+    "author": "Kalyel",
+    "date": "2026-08-12T20:27:31-03:00",
+    "translations": {
+      "en": {
+        "title": "A blocked YouTube download now names every way to unblock it",
+        "body": "When YouTube refuses an automated download, the message you get is the only\nguidance available — and it listed two of the three fixes this deployment\nsupports. The one it left out is the one that works on a rented server, which is\nwhere the block almost always happens.\n\nIt now names all three, in the order worth trying: a PO token provider, a\nresidential proxy, or your YouTube cookies. Manual upload still works\nimmediately, and that is said first.\n\nA related silence is gone too. Before downloading, the worker tries to fetch\nexisting captions, and a failure there was invisible in the logs. \"This video\nhas no captions\" and \"the captions endpoint is blocked too\" looked identical,\neven though only the second one is worth acting on."
+      },
+      "pt-BR": {
+        "title": "Download bloqueado do YouTube agora mostra todos os caminhos para destravar",
+        "body": "Quando o YouTube recusa um download automatizado, a mensagem é a única\norientação disponível — e ela listava duas das três soluções que esta instalação\nsuporta. A que ficou de fora é justamente a que funciona em servidor alugado,\nque é onde o bloqueio quase sempre acontece.\n\nAgora ela cita as três, na ordem que vale tentar: provider de PO token, proxy\nresidencial ou seus cookies do YouTube. Upload manual continua resolvendo na\nhora, e isso é dito primeiro.\n\nUm silêncio parecido também acabou. Antes de baixar, o worker tenta pegar\nlegendas já existentes, e uma falha ali era invisível nos logs. \"Este vídeo não\ntem legenda\" e \"o endpoint de legendas também está bloqueado\" pareciam iguais,\nembora só o segundo peça alguma ação."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/790"
+  },
+  {
+    "version": "0.14.5-dev.1786563888",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Worker logs now say which failure happened instead of a generic one",
+    "body": "Twenty-three internal failure codes never reached the logs. A safety filter,\nwhich exists to keep external error messages out of log output, silently\nreplaced any code it did not recognise with a generic one — and its list had\nfallen behind the code. Every research enrichment failure, several brain\nextraction and summary failures, provider rate limiting, saved media errors and\nmedia cleanup errors all surfaced as the same anonymous entry, so an upstream\noutage looked identical to any other unexpected error.\n\nThe list is now complete, and a test keeps it that way: adding a failure code\nwithout registering it fails the build instead of going quiet in production. The\ncheck reads the source tree rather than matching text, so it covers the codes\nthat never appear literally at the point they are logged.\n\nSeparately, brain extraction reported success when it had actually postponed\nwork. When the graph write lock was busy the run finished with a completion\nentry showing zero concepts, which reads exactly like a document that genuinely\nhad none. It now reports incomplete, with the number of postponed segments, so\nthe two cases can be told apart.",
+    "pr": 788,
+    "author": "Kalyel",
+    "date": "2026-08-12T16:44:35-03:00",
+    "translations": {
+      "en": {
+        "title": "Worker logs now say which failure happened instead of a generic one",
+        "body": "Twenty-three internal failure codes never reached the logs. A safety filter,\nwhich exists to keep external error messages out of log output, silently\nreplaced any code it did not recognise with a generic one — and its list had\nfallen behind the code. Every research enrichment failure, several brain\nextraction and summary failures, provider rate limiting, saved media errors and\nmedia cleanup errors all surfaced as the same anonymous entry, so an upstream\noutage looked identical to any other unexpected error.\n\nThe list is now complete, and a test keeps it that way: adding a failure code\nwithout registering it fails the build instead of going quiet in production. The\ncheck reads the source tree rather than matching text, so it covers the codes\nthat never appear literally at the point they are logged.\n\nSeparately, brain extraction reported success when it had actually postponed\nwork. When the graph write lock was busy the run finished with a completion\nentry showing zero concepts, which reads exactly like a document that genuinely\nhad none. It now reports incomplete, with the number of postponed segments, so\nthe two cases can be told apart."
+      },
+      "pt-BR": {
+        "title": "Logs do worker passam a dizer qual falha aconteceu, em vez de uma genérica",
+        "body": "Vinte e três códigos internos de falha nunca chegavam aos logs. Um filtro de\nsegurança, que existe para manter mensagens de erro externas fora do log,\ntrocava em silêncio qualquer código que não reconhecesse por um genérico — e a\nlista dele tinha ficado para trás do código. Toda falha de enriquecimento por\npesquisa, várias de extração de conceitos e de resumo, limite de taxa do\nprovedor, erros de mídia salva e de limpeza de mídia apareciam como a mesma\nentrada anônima, então indisponibilidade externa ficava idêntica a qualquer\noutro erro inesperado.\n\nA lista está completa, e um teste mantém assim: adicionar código de falha sem\nregistrá-lo quebra o build em vez de emudecer em produção. A checagem lê a\nárvore de código em vez de casar texto, então alcança também os códigos que\nnunca aparecem literalmente no ponto em que são logados.\n\nEm separado, a extração de conceitos reportava sucesso quando na verdade tinha\nadiado trabalho. Com a trava de escrita do grafo ocupada, a passada terminava com\numa entrada de conclusão mostrando zero conceitos, o que se lê exatamente como um\ndocumento que legitimamente não tinha nenhum. Agora reporta incompleta, com\nquantos segmentos ficaram para depois, então dá para distinguir os dois casos."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/788"
+  },
+  {
+    "version": "0.14.5-dev.1786563888",
+    "channel": "dev",
+    "type": "chore",
+    "title": "The AI SDK is back on a current patch release",
+    "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them.",
+    "pr": 783,
+    "author": "Kalyel",
+    "date": "2026-08-12T14:26:32-03:00",
+    "translations": {
+      "en": {
+        "title": "The AI SDK is back on a current patch release",
+        "body": "The `ai` package, which runs the whole agent loop — tool approvals, timeout\nbudgets and streaming — had been pinned forty patch releases behind, with that\nmany releases of fixes sitting unapplied on the most critical dependency in the\napp.\n\nCatching up changed one behaviour the chat depended on: the newer package\ndelivers empty text chunks that the old one filtered out, which would have split\na single stretch of reasoning into two separate blocks. That is handled, so the\nreasoning panel keeps behaving as before.\n\nIt is now current. The dependency automation was also regrouped so this cannot\nhappen the same way again: routine updates from the same family now arrive as\none pull request instead of one each, which stops a handful of parked reviews\nfrom blocking every other update behind them."
+      },
+      "pt-BR": {
+        "title": "O AI SDK volta a uma versão de patch atual",
+        "body": "O pacote `ai`, que roda todo o laço do agente — aprovação de ferramenta, orçamento\nde timeout e streaming —, estava travado quarenta releases de patch atrás, com\nessa quantidade de correções paradas na dependência mais crítica do app.\n\nAtualizar mudou um comportamento do qual o chat dependia: a versão nova entrega\npedaços de texto vazios que a antiga filtrava, o que partiria um raciocínio\ncontínuo em dois blocos separados. Isso foi tratado, então o painel de raciocínio\ncontinua se comportando como antes.\n\nAgora está atualizado. A automação de dependências também foi reagrupada para\nque isso não se repita do mesmo jeito: atualização de rotina da mesma família\npassa a chegar numa PR só em vez de uma cada, o que impede que um punhado de\nrevisões paradas trave todas as outras atualizações atrás delas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/783"
+  },
+  {
+    "version": "0.14.5-dev.1786552219",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Components from shadcn-format registries can now be installed by CLI",
+    "body": "Every component under the web app's `ui` directory had been transcribed by hand,\nbecause the project had no `components.json` and therefore no supported way to\npull one from a shadcn-format registry. Each addition meant copying from GitHub,\nrewriting imports and installing dependencies manually.\n\nThe file now exists, written by hand rather than generated, so that\n`shadcn init` never touches the stylesheet that defines the four theme packs. It\nbuys scaffolding only — file placement, alias resolution and dependency install.\nRegistry components still arrive in shadcn's token vocabulary and still need a\nmanual pass onto the project's own tokens before they are usable.",
+    "pr": 780,
+    "author": "Kalyel",
+    "date": "2026-08-12T13:30:06-03:00",
+    "translations": {
+      "en": {
+        "title": "Components from shadcn-format registries can now be installed by CLI",
+        "body": "Every component under the web app's `ui` directory had been transcribed by hand,\nbecause the project had no `components.json` and therefore no supported way to\npull one from a shadcn-format registry. Each addition meant copying from GitHub,\nrewriting imports and installing dependencies manually.\n\nThe file now exists, written by hand rather than generated, so that\n`shadcn init` never touches the stylesheet that defines the four theme packs. It\nbuys scaffolding only — file placement, alias resolution and dependency install.\nRegistry components still arrive in shadcn's token vocabulary and still need a\nmanual pass onto the project's own tokens before they are usable."
+      },
+      "pt-BR": {
+        "title": "Componentes de registries no formato shadcn agora podem ser instalados por CLI",
+        "body": "Todo componente do diretório `ui` do app web tinha sido transcrito à mão, porque\no projeto não tinha `components.json` e portanto nenhum caminho suportado para\npuxar um componente de registry no formato shadcn. Cada adição significava\ncopiar do GitHub, reescrever imports e instalar dependências na mão.\n\nAgora o arquivo existe, escrito à mão em vez de gerado, para que o `shadcn init`\nnunca encoste no stylesheet que define os quatro packs de tema. Ele entrega só\nscaffolding — colocação de arquivo, resolução de alias e instalação de\ndependência. Componente de registry continua chegando no vocabulário de token do\nshadcn e continua precisando de um passe manual para os tokens do projeto antes\nde servir."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/780"
+  },
+  {
+    "version": "0.14.5-dev.1786538447",
+    "channel": "dev",
+    "type": "ui",
+    "title": "The thinking block now closes when the answer starts",
+    "body": "The reasoning timeline used to stay open for the whole answer, so the response\nstreamed in below a wall of tool rows and reasoning text and only moved up once\nthe turn had finished. It now collapses as soon as the first words of the answer\narrive, and stays closed for the rest of the turn even when the assistant calls\nmore tools afterwards.\n\nOpening the block yourself still wins: if you expand it to follow the reasoning,\nnothing closes it under you. A turn that ends without a written answer, having\nonly run tools, still closes shortly after it finishes.",
+    "pr": 776,
+    "author": "Kalyel",
+    "date": "2026-08-12T09:40:34-03:00",
+    "translations": {
+      "en": {
+        "title": "The thinking block now closes when the answer starts",
+        "body": "The reasoning timeline used to stay open for the whole answer, so the response\nstreamed in below a wall of tool rows and reasoning text and only moved up once\nthe turn had finished. It now collapses as soon as the first words of the answer\narrive, and stays closed for the rest of the turn even when the assistant calls\nmore tools afterwards.\n\nOpening the block yourself still wins: if you expand it to follow the reasoning,\nnothing closes it under you. A turn that ends without a written answer, having\nonly run tools, still closes shortly after it finishes."
+      },
+      "pt-BR": {
+        "title": "O bloco de raciocínio agora fecha quando a resposta começa",
+        "body": "A linha do tempo de raciocínio ficava aberta durante a resposta inteira, então o\ntexto aparecia embaixo de uma parede de ferramentas e raciocínio e só subia\nquando o turno acabava. Agora ela recolhe assim que as primeiras palavras da\nresposta chegam, e continua recolhida pelo resto do turno mesmo que o assistente\nchame mais ferramentas depois.\n\nAbrir o bloco por conta própria continua valendo mais: se você expandir para\nacompanhar o raciocínio, nada fecha por baixo. Turno que termina sem resposta\nescrita, tendo só rodado ferramentas, continua recolhendo pouco depois de\nencerrar."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/776"
+  },
+  {
+    "version": "0.14.5-dev.1786535868",
+    "channel": "dev",
+    "type": "chore",
+    "title": "CI now blocks a pull request that updates only one of the two agent rule trees",
+    "body": "The repository keeps `.agents/` as a mirror of `.claude/`, because that is the\ntree Codex loads. Nothing verified it, and the trees drifted silently once: a\npull request added skill frontmatter to `.claude/` alone and it went unnoticed\nuntil a reviewer compared them by hand. Left alone, the two harnesses end up\nfollowing different rules.\n\nA guard now compares both trees, ignoring only the mandated `.claude/` to\n`.agents/` path rewrite and any line-ending difference. It runs as a test inside\nthe already-required `Test TS (apps/web)` check, so a pull request touching one\ntree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`\nregenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift\nwithout changing anything.",
+    "pr": 774,
+    "author": "Kalyel",
+    "date": "2026-08-12T08:57:35-03:00",
+    "translations": {
+      "en": {
+        "title": "CI now blocks a pull request that updates only one of the two agent rule trees",
+        "body": "The repository keeps `.agents/` as a mirror of `.claude/`, because that is the\ntree Codex loads. Nothing verified it, and the trees drifted silently once: a\npull request added skill frontmatter to `.claude/` alone and it went unnoticed\nuntil a reviewer compared them by hand. Left alone, the two harnesses end up\nfollowing different rules.\n\nA guard now compares both trees, ignoring only the mandated `.claude/` to\n`.agents/` path rewrite and any line-ending difference. It runs as a test inside\nthe already-required `Test TS (apps/web)` check, so a pull request touching one\ntree without the other fails before merge. `node scripts/agents-mirror.mjs --fix`\nregenerates the mirror, and `node scripts/agents-mirror.mjs` reports drift\nwithout changing anything."
+      },
+      "pt-BR": {
+        "title": "CI passa a barrar PR que atualiza só uma das duas árvores de regras de agente",
+        "body": "O repositório mantém `.agents/` como espelho de `.claude/`, porque é essa a\nárvore que o Codex carrega. Nada verificava isso, e as duas se desencontraram em\nsilêncio uma vez: um PR adicionou frontmatter de skill só em `.claude/` e\nninguém percebeu até alguém comparar à mão. Sem correção, os dois harnesses\nacabam seguindo regras diferentes.\n\nAgora um guard compara as duas árvores, ignorando apenas a reescrita de path\nobrigatória de `.claude/` para `.agents/` e diferenças de fim de linha. Ele roda\ncomo teste dentro do check `Test TS (apps/web)`, que já era obrigatório, então PR\nque mexe numa árvore só falha antes do merge. `node scripts/agents-mirror.mjs --fix`\nregenera o espelho, e `node scripts/agents-mirror.mjs` aponta a divergência sem\nalterar nada."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/774"
+  },
+  {
+    "version": "0.14.5-dev.1786524207",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Optional conversational-memory shadow evaluation",
+    "body": "Voxen can now evaluate a separately hosted Mem0 OSS service without changing\nanswers or canonical knowledge. The adapter is disabled by default, isolates\nusers through opaque server-derived subjects, records provenance only after a\ncompleted chat turn, and removes remote memories before account deletion. A\nprivacy-safe live harness measures retrieval quality, isolation, deletion,\nlatency, token volume, and reported cost before any future controlled use.",
+    "pr": 763,
+    "author": "Kalyel",
+    "date": "2026-08-12T05:43:08-03:00",
+    "translations": {
+      "en": {
+        "title": "Optional conversational-memory shadow evaluation",
+        "body": "Voxen can now evaluate a separately hosted Mem0 OSS service without changing\nanswers or canonical knowledge. The adapter is disabled by default, isolates\nusers through opaque server-derived subjects, records provenance only after a\ncompleted chat turn, and removes remote memories before account deletion. A\nprivacy-safe live harness measures retrieval quality, isolation, deletion,\nlatency, token volume, and reported cost before any future controlled use."
+      },
+      "pt-BR": {
+        "title": "Avaliação opcional de memória conversacional em shadow mode",
+        "body": "A Voxen agora pode avaliar um serviço Mem0 OSS hospedado separadamente sem\nalterar respostas nem o conhecimento canônico. O adaptador é desativado por\npadrão, isola usuários por sujeitos opacos derivados no servidor, registra\nproveniência apenas após concluir um turno do chat e remove memórias remotas\nantes da exclusão da conta. Um avaliador ao vivo sem conteúdo sensível mede\nqualidade, isolamento, exclusão, latência, tokens e custo informado antes de\nqualquer uso controlado futuro."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/763"
+  },
+  {
+    "version": "0.14.5-dev.1786514157",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Temporal Brain facts and safer entity resolution",
+    "body": "Voxen now distinguishes when a relation was observed from when it was valid,\nkeeps historical fact versions with citations, and exposes bounded current or\npoint-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed\naliases improve entity discovery without destructively merging homonyms.",
+    "pr": 761,
+    "author": "Kalyel",
+    "date": "2026-08-12T02:55:29-03:00",
+    "translations": {
+      "en": {
+        "title": "Temporal Brain facts and safer entity resolution",
+        "body": "Voxen now distinguishes when a relation was observed from when it was valid,\nkeeps historical fact versions with citations, and exposes bounded current or\npoint-in-time Brain retrieval to the in-app assistant and MCP. Evidence-backed\naliases improve entity discovery without destructively merging homonyms."
+      },
+      "pt-BR": {
+        "title": "Fatos temporais e resolução segura de entidades no Brain",
+        "body": "O Voxen agora diferencia quando uma relação foi observada de quando ela era\nválida, preserva versões históricas com citações e expõe consultas limitadas do\nestado atual ou de um instante passado para a assistente interna e o MCP.\nAliases apoiados por evidência melhoram a descoberta sem fundir homônimos de\nforma destrutiva."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/761"
+  },
+  {
+    "version": "0.14.5-dev.1786503242",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Personal graph context for chat and MCP",
+    "body": "Voxen now gives its in-app agent and MCP clients the same bounded,\nexplainable personal context. Explicit feedback, inferred interests, trends,\nand graph-ranked sources stay distinguishable, user-scoped, and linked to\nauthorized evidence.\n\nThe context guides discovery without becoming factual evidence: agents must\nstill open and verify sources before making claims. Negative preferences never\nbecome positive ranking seeds, unavailable context degrades safely, and MCP\nread tokens gain the new `voxen_personal_context` tool.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-11T23:53:52-03:00",
+    "translations": {
+      "en": {
+        "title": "Personal graph context for chat and MCP",
+        "body": "Voxen now gives its in-app agent and MCP clients the same bounded,\nexplainable personal context. Explicit feedback, inferred interests, trends,\nand graph-ranked sources stay distinguishable, user-scoped, and linked to\nauthorized evidence.\n\nThe context guides discovery without becoming factual evidence: agents must\nstill open and verify sources before making claims. Negative preferences never\nbecome positive ranking seeds, unavailable context degrades safely, and MCP\nread tokens gain the new `voxen_personal_context` tool."
+      },
+      "pt-BR": {
+        "title": "Contexto pessoal do grafo no chat e MCP",
+        "body": "A Voxen agora oferece ao agente interno e aos clientes MCP o mesmo contexto\npessoal limitado e explicável. Feedback explícito, interesses inferidos,\ntendências e fontes priorizadas pelo grafo permanecem distinguíveis,\nisolados por usuário e vinculados a evidências autorizadas.\n\nO contexto orienta a descoberta sem se tornar evidência factual: os agentes\nainda precisam abrir e verificar as fontes antes de fazer afirmações.\nPreferências negativas nunca viram sementes positivas de ranking, a\nindisponibilidade degrada com segurança e tokens MCP de leitura ganham a nova\nferramenta `voxen_personal_context`."
+      }
+    }
+  },
+  {
+    "version": "0.14.5-dev.1786497875",
+    "channel": "dev",
+    "type": "feat",
+    "title": "An explainable Guide for personal knowledge trends",
+    "body": "Voxen now turns the signed-in user's own interest signals and knowledge graph\ninto a dedicated personal Guide. It separates emerging, steady, and cooling\ninterests across short-, medium-, and long-term horizons, then recommends\nexisting sources using weighted Personalized PageRank.\n\nEvery trend and recommendation includes inspectable evidence: explicit\nfeedback, observed actions, supporting sources, community membership, or\nstructural graph relevance. The Guide is deterministic, never asks a language\nmodel to invent preferences, discloses uniform fallbacks and truncated graph\nsnapshots, and remains isolated to active content owned by the current user.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-11T22:24:23-03:00",
+    "translations": {
+      "en": {
+        "title": "An explainable Guide for personal knowledge trends",
+        "body": "Voxen now turns the signed-in user's own interest signals and knowledge graph\ninto a dedicated personal Guide. It separates emerging, steady, and cooling\ninterests across short-, medium-, and long-term horizons, then recommends\nexisting sources using weighted Personalized PageRank.\n\nEvery trend and recommendation includes inspectable evidence: explicit\nfeedback, observed actions, supporting sources, community membership, or\nstructural graph relevance. The Guide is deterministic, never asks a language\nmodel to invent preferences, discloses uniform fallbacks and truncated graph\nsnapshots, and remains isolated to active content owned by the current user."
+      },
+      "pt-BR": {
+        "title": "Um Guia explicável para tendências do conhecimento pessoal",
+        "body": "A Voxen agora transforma os sinais de interesse e o grafo de conhecimento do\npróprio usuário autenticado em um Guia pessoal dedicado. Ele separa interesses\nemergentes, constantes e em queda nos horizontes curto, médio e longo, e então\nrecomenda fontes existentes usando Personalized PageRank ponderado.\n\nCada tendência e recomendação inclui evidências inspecionáveis: feedback\nexplícito, ações observadas, fontes de apoio, comunidade ou relevância\nestrutural no grafo. O Guia é determinístico, não pede a um modelo de linguagem\npara inventar preferências, identifica fallbacks uniformes e recortes truncados\ndo grafo e permanece isolado aos conteúdos ativos do usuário atual."
+      }
+    }
+  },
+  {
+    "version": "0.14.5-dev.1786492801",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Weighted graph importance shaped by durable interests",
+    "body": "The knowledge graph now distinguishes raw connection count from weighted\nimportance. It calculates weighted degree, structural PageRank, and a separate\nPersonalized PageRank based only on the signed-in user's positive durable\ninterest projections.\n\nGraph hubs now prioritize stronger, better-supported relationships instead of\ntreating every edge equally. When no personal seed is available in the visible\ngraph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,\nprojection watermark, seed counts, and snapshot truncation remain inspectable\nwithout exposing another user's interests.",
+    "pr": 754,
+    "author": "Kalyel",
+    "date": "2026-08-11T20:59:48-03:00",
+    "translations": {
+      "en": {
+        "title": "Weighted graph importance shaped by durable interests",
+        "body": "The knowledge graph now distinguishes raw connection count from weighted\nimportance. It calculates weighted degree, structural PageRank, and a separate\nPersonalized PageRank based only on the signed-in user's positive durable\ninterest projections.\n\nGraph hubs now prioritize stronger, better-supported relationships instead of\ntreating every edge equally. When no personal seed is available in the visible\ngraph, Voxen uses an explicit uniform fallback. Algorithm version, convergence,\nprojection watermark, seed counts, and snapshot truncation remain inspectable\nwithout exposing another user's interests."
+      },
+      "pt-BR": {
+        "title": "Importância ponderada do grafo guiada por interesses duráveis",
+        "body": "O grafo de conhecimento agora diferencia a quantidade bruta de conexões da\nimportância ponderada. Ele calcula grau ponderado, PageRank estrutural e um\nPersonalized PageRank separado, baseado apenas nas projeções positivas de\ninteresse durável do usuário autenticado.\n\nOs hubs do grafo passam a priorizar relações mais fortes e bem fundamentadas,\nem vez de tratar todas as arestas como equivalentes. Quando não há uma semente\npessoal no recorte visível, a Voxen usa um fallback uniforme explícito. Versão\ndo algoritmo, convergência, watermark da projeção, quantidade de sementes e\ntruncamento do recorte continuam inspecionáveis sem expor interesses de outro\nusuário."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/754"
+  },
+  {
+    "version": "0.14.5-dev.1786487522",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Knowledge graph communities now reveal cohesive themes",
+    "body": "Voxen now detects weighted Leiden communities in each authorized knowledge-graph view. Confidence, evidence quality, and relationship semantics influence the partition, so a weak bridge no longer collapses two dense themes into one group. The graph API also reports deterministic algorithm metadata and explainable cohesion metrics, while the 2D and 3D views use the same server partition.\n\nIsolated nodes remain visible without being promoted as meaningful themes. If Leiden cannot run, the graph remains available through a deterministic connected-components fallback identified in the response.",
+    "pr": 752,
+    "author": "Kalyel",
+    "date": "2026-08-11T19:31:43-03:00",
+    "translations": {
+      "en": {
+        "title": "Knowledge graph communities now reveal cohesive themes",
+        "body": "Voxen now detects weighted Leiden communities in each authorized knowledge-graph view. Confidence, evidence quality, and relationship semantics influence the partition, so a weak bridge no longer collapses two dense themes into one group. The graph API also reports deterministic algorithm metadata and explainable cohesion metrics, while the 2D and 3D views use the same server partition.\n\nIsolated nodes remain visible without being promoted as meaningful themes. If Leiden cannot run, the graph remains available through a deterministic connected-components fallback identified in the response."
+      },
+      "pt-BR": {
+        "title": "Comunidades do grafo agora revelam temas coesos",
+        "body": "A Voxen agora detecta comunidades Leiden ponderadas em cada visão autorizada do grafo de conhecimento. Confiança, qualidade da evidência e semântica das relações influenciam a partição; assim, uma ponte fraca não transforma mais dois temas densos em um único grupo. A API do grafo também informa metadados determinísticos do algoritmo e métricas explicáveis de coesão, enquanto as visões 2D e 3D usam a mesma partição calculada pelo servidor.\n\nNós isolados continuam visíveis sem serem promovidos a temas relevantes. Se o Leiden não puder ser executado, o grafo permanece disponível por meio de um fallback determinístico por componentes conexos, identificado na resposta."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/752"
+  },
+  {
+    "version": "0.14.5-dev.1786484273",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explainable personal interest horizons",
+    "body": "Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.\n\nTemporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile.",
+    "pr": 750,
+    "author": "Kalyel",
+    "date": "2026-08-11T18:37:41-03:00",
+    "translations": {
+      "en": {
+        "title": "Explainable personal interest horizons",
+        "body": "Voxen now builds separate short-, medium-, and long-term interest projections from personal transcript activity. Each projected topic, entity, tag, folder, author, channel, or source keeps explicit preference and inferred interest as distinct scores with bounded evidence.\n\nTemporary session intent now has its own user-scoped, expiring store. A research detour can guide the current session without silently rewriting the durable personal profile."
+      },
+      "pt-BR": {
+        "title": "Horizontes explicáveis de interesse pessoal",
+        "body": "A Voxen agora constrói projeções separadas de curto, médio e longo prazo a partir da atividade pessoal nas transcrições. Cada tópico, entidade, tag, pasta, autor, canal ou fonte projetada mantém a preferência explícita e o interesse inferido como pontuações distintas, com evidências limitadas.\n\nA intenção temporária da sessão passa a ter um armazenamento próprio, isolado por usuário e com expiração. Assim, um desvio momentâneo de pesquisa pode orientar a sessão atual sem reescrever silenciosamente o perfil pessoal durável."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/750"
+  },
+  {
+    "version": "0.14.5-dev.1786480831",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Personal interest signals",
+    "body": "- Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.\n- Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.\n- Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted.",
+    "pr": 748,
+    "author": "Kalyel",
+    "date": "2026-08-11T17:40:18-03:00",
+    "translations": {
+      "en": {
+        "title": "Personal interest signals",
+        "body": "- Added an accessible “Tune your Guide” card to transcript details with reversible “More like this” and “Less like this” choices.\n- Stored observed views and explicit preferences as separate, user-scoped event types so merely opening content never becomes a declared preference.\n- Added an append-only audit trail, daily view deduplication, strict database constraints, and cascade cleanup when content is permanently deleted."
+      },
+      "pt-BR": {
+        "title": "Sinais pessoais de interesse",
+        "body": "- Adicionamos um card acessível “Ajuste seu Guia” ao detalhe da transcrição, com escolhas reversíveis de “Mais como isto” e “Menos como isto”.\n- Armazenamos visualizações observadas e preferências explícitas como eventos separados por usuário, evitando transformar a simples abertura de um conteúdo em preferência declarada.\n- Adicionamos histórico append-only, deduplicação diária de visualizações, restrições estritas no banco e limpeza em cascata quando o conteúdo é excluído definitivamente."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/748"
+  },
+  {
+    "version": "0.14.5-dev.1786478001",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explore the knowledge graph of each transcript",
+    "body": "Transcript pages now show the concepts and grounded relations extracted from that source. Switch between the knowledge inside the transcript and its connections to the wider library, inspect confidence and evidence, jump to supported passages, or continue exploring from the same focus in the global graph.",
+    "pr": 746,
+    "author": "Kalyel",
+    "date": "2026-08-11T16:53:05-03:00",
+    "translations": {
+      "en": {
+        "title": "Explore the knowledge graph of each transcript",
+        "body": "Transcript pages now show the concepts and grounded relations extracted from that source. Switch between the knowledge inside the transcript and its connections to the wider library, inspect confidence and evidence, jump to supported passages, or continue exploring from the same focus in the global graph."
+      },
+      "pt-BR": {
+        "title": "Explore o grafo de conhecimento de cada transcrição",
+        "body": "As páginas de transcrição agora mostram os conceitos e as relações fundamentadas extraídas daquela fonte. Alterne entre o conhecimento presente na transcrição e suas conexões com o restante da biblioteca, inspecione confiança e evidências, navegue até os trechos correspondentes ou continue a exploração com o mesmo foco no grafo global."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/746"
+  },
+  {
+    "version": "0.14.5-dev.1786430065",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Reliable deletion during graph activity",
+    "body": "Background knowledge deletion now returns to the durable queue with a short\ndelay while another operation holds the user's graph lease. Temporary graph\nactivity no longer turns a valid deletion into a failed job or blocks unrelated\nworker tasks indefinitely.",
+    "pr": 743,
+    "author": "Kalyel",
+    "date": "2026-08-11T03:34:10-03:00",
+    "translations": {
+      "en": {
+        "title": "Reliable deletion during graph activity",
+        "body": "Background knowledge deletion now returns to the durable queue with a short\ndelay while another operation holds the user's graph lease. Temporary graph\nactivity no longer turns a valid deletion into a failed job or blocks unrelated\nworker tasks indefinitely."
+      },
+      "pt-BR": {
+        "title": "Exclusão confiável durante atividades do grafo",
+        "body": "A exclusão de conhecimento em segundo plano agora retorna para a fila durável\ncom um pequeno atraso enquanto outra operação mantém o lease do grafo do\nusuário. Atividades temporárias do grafo não transformam mais uma exclusão\nválida em falha nem bloqueiam indefinidamente outras tarefas do worker."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/743"
+  },
+  {
+    "version": "0.14.5-dev.1786428747",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Searchable library filters and numbered pages",
+    "body": "The Library now keeps its search, page, period, status, inbox, folder, and tag\nfilters in the URL. Folder and tag discovery is visible and searchable, active\nfilters can be cleared together, and numbered pagination replaces the previous\nload-more flow while preserving filters across browser navigation and shared\nlinks.",
+    "pr": 740,
+    "author": "Kalyel",
+    "date": "2026-08-11T03:12:06-03:00",
+    "translations": {
+      "en": {
+        "title": "Searchable library filters and numbered pages",
+        "body": "The Library now keeps its search, page, period, status, inbox, folder, and tag\nfilters in the URL. Folder and tag discovery is visible and searchable, active\nfilters can be cleared together, and numbered pagination replaces the previous\nload-more flow while preserving filters across browser navigation and shared\nlinks."
+      },
+      "pt-BR": {
+        "title": "Filtros pesquisáveis e páginas numeradas na biblioteca",
+        "body": "A Biblioteca agora mantém busca, página, período, status, inbox, pasta e tag na\nURL. A descoberta de pastas e tags ficou visível e pesquisável, os filtros ativos\npodem ser limpos de uma vez e a paginação numerada substitui o antigo fluxo de\ncarregar mais, preservando os filtros ao navegar pelo navegador ou compartilhar\nlinks."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/740"
+  },
+  {
+    "version": "0.14.5-dev.1786427252",
+    "channel": "dev",
+    "type": "security",
+    "title": "Smaller worker runtime attack surface",
+    "body": "The production worker image no longer includes the unused global Python package\ninstaller and its vendored dependencies. Runtime dependencies remain locked in\nthe uv-managed virtual environment, while image vulnerability scans now inspect\nonly packages that the worker can execute.",
+    "pr": 741,
+    "author": "Kalyel",
+    "date": "2026-08-11T02:47:17-03:00",
+    "translations": {
+      "en": {
+        "title": "Smaller worker runtime attack surface",
+        "body": "The production worker image no longer includes the unused global Python package\ninstaller and its vendored dependencies. Runtime dependencies remain locked in\nthe uv-managed virtual environment, while image vulnerability scans now inspect\nonly packages that the worker can execute."
+      },
+      "pt-BR": {
+        "title": "Menor superfície de ataque no runtime do worker",
+        "body": "A imagem de produção do worker não inclui mais o instalador global de pacotes\nPython, que não era utilizado, nem suas dependências incorporadas. As\ndependências de runtime continuam travadas no ambiente virtual gerenciado pelo\nuv, enquanto a análise de vulnerabilidades passa a considerar somente os\npacotes que o worker pode executar."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/741"
+  },
+  {
+    "version": "0.14.5-dev.1786366281",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Safe background deletion across the knowledge base",
+    "body": "Knowledge deletion now runs through Voxen's durable job queue instead of holding\nthe browser, internal assistant, or MCP request open while storage and graph data\nare removed. Transcripts, notes and note trees, saved media, library folders, and\nreviewable transcript context share the same observable and retryable workflow.\n\nThe internal assistant always presents a destructive confirmation before\nenqueueing a deletion. MCP clients receive a write-scoped deletion tool that\nrequires the user-owned target identifier, its exact current title, and an\nexplicit confirmation flag. Cross-workspace targets remain indistinguishable\nfrom missing content. Transcript hard deletion requires the content to remain in\ntrash and is serialized against source refresh; folder cascades reject corrupted\ncross-workspace trees.\n\nThe queue and job detail views now show deletion-specific progress and terminal\nfeedback. Graph cleanup is source-scoped, preserves unrelated manual evidence,\nand invalidates the user's graph snapshot only after the background mutation.",
+    "pr": 733,
+    "author": "Kalyel",
+    "date": "2026-08-10T09:51:07-03:00",
+    "translations": {
+      "en": {
+        "title": "Safe background deletion across the knowledge base",
+        "body": "Knowledge deletion now runs through Voxen's durable job queue instead of holding\nthe browser, internal assistant, or MCP request open while storage and graph data\nare removed. Transcripts, notes and note trees, saved media, library folders, and\nreviewable transcript context share the same observable and retryable workflow.\n\nThe internal assistant always presents a destructive confirmation before\nenqueueing a deletion. MCP clients receive a write-scoped deletion tool that\nrequires the user-owned target identifier, its exact current title, and an\nexplicit confirmation flag. Cross-workspace targets remain indistinguishable\nfrom missing content. Transcript hard deletion requires the content to remain in\ntrash and is serialized against source refresh; folder cascades reject corrupted\ncross-workspace trees.\n\nThe queue and job detail views now show deletion-specific progress and terminal\nfeedback. Graph cleanup is source-scoped, preserves unrelated manual evidence,\nand invalidates the user's graph snapshot only after the background mutation."
+      },
+      "pt-BR": {
+        "title": "Exclusão segura em segundo plano para toda a base de conhecimento",
+        "body": "A exclusão de conhecimento agora utiliza a fila durável de jobs da Voxen, sem\nmanter o navegador, a assistente interna ou uma requisição MCP esperando enquanto\no armazenamento e o grafo são limpos. Transcrições, notas e suas árvores, mídias\nsalvas, pastas da biblioteca e contextos revisáveis de transcrições compartilham\no mesmo fluxo observável e repetível.\n\nA assistente interna sempre apresenta uma confirmação destrutiva antes de\nenfileirar a exclusão. Clientes MCP recebem uma ferramenta com escopo de escrita\nque exige o identificador pertencente ao usuário, o título atual exato e uma\nconfirmação explícita. Alvos de outro workspace continuam indistinguíveis de\nconteúdo inexistente. A exclusão definitiva de transcrições exige que o conteúdo\npermaneça na lixeira e é serializada com a atualização da fonte; cascatas de\npastas recusam árvores corrompidas entre workspaces.\n\nA fila e os detalhes do job agora exibem progresso e resultado específicos da\nexclusão. A limpeza do grafo é limitada à fonte removida, preserva evidências\nmanuais não relacionadas e invalida o snapshot do grafo do usuário somente após\na mutação em segundo plano."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/733"
+  },
+  {
+    "version": "0.14.5-dev.1786354871",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Explore Mermaid diagrams with an interactive canvas",
+    "body": "Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive\ncanvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the\ndiagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are\nsupported without weakening Voxen's strict SVG sanitization.",
+    "pr": 731,
+    "author": "Kalyel",
+    "date": "2026-08-10T06:40:57-03:00",
+    "translations": {
+      "en": {
+        "title": "Explore Mermaid diagrams with an interactive canvas",
+        "body": "Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive\ncanvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the\ndiagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are\nsupported without weakening Voxen's strict SVG sanitization."
+      },
+      "pt-BR": {
+        "title": "Explore diagramas Mermaid em um canvas interativo",
+        "body": "Diagramas Mermaid em respostas do chat, notas e conteúdos de transcrição agora são exibidos em um\ncanvas interativo. É possível aplicar zoom de 50% a 300%, arrastar para explorar fluxos grandes,\nrestaurar a visualização e expandir o diagrama em uma área focada quase em tela cheia. Há suporte a\nmouse, toque, roda e teclado sem enfraquecer a sanitização estrita de SVG da Voxen."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/731"
+  },
+  {
+    "version": "0.14.5-dev.1786352459",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Correct transcripts without changing original evidence",
+    "body": "Transcript details now include a reviewable correction layer for exact replacements and\ninsertions. Every accepted change creates an immutable revision, keeps the captured source\nuntouched, detects concurrent edits, and can be inspected, restored, or reset from the web\ninterface. Search, summaries, chat retrieval, and grounded graph compilation consume the active\ncorrection while preserving source provenance.\n\nThe integrated assistant can propose a bounded correction preview that always requires explicit\napproval. MCP clients with write scope receive the same revision-aware correction and restore\noperations; read-only tokens can search and inspect correction history without gaining mutation\naccess.",
+    "pr": 724,
+    "author": "Kalyel",
+    "date": "2026-08-10T06:00:40-03:00",
+    "translations": {
+      "en": {
+        "title": "Correct transcripts without changing original evidence",
+        "body": "Transcript details now include a reviewable correction layer for exact replacements and\ninsertions. Every accepted change creates an immutable revision, keeps the captured source\nuntouched, detects concurrent edits, and can be inspected, restored, or reset from the web\ninterface. Search, summaries, chat retrieval, and grounded graph compilation consume the active\ncorrection while preserving source provenance.\n\nThe integrated assistant can propose a bounded correction preview that always requires explicit\napproval. MCP clients with write scope receive the same revision-aware correction and restore\noperations; read-only tokens can search and inspect correction history without gaining mutation\naccess."
+      },
+      "pt-BR": {
+        "title": "Corrija transcrições sem alterar a evidência original",
+        "body": "Os detalhes da transcrição agora incluem uma camada revisável de correções para substituições e\ninserções exatas. Cada alteração aceita cria uma revisão imutável, mantém intacta a fonte capturada,\ndetecta edições concorrentes e pode ser inspecionada, restaurada ou redefinida pela interface web.\nBusca, resumos, recuperação pelo chat e compilação fundamentada do grafo usam a correção ativa sem\nperder a proveniência da fonte.\n\nA assistente integrada pode propor uma prévia limitada da correção, sempre sujeita à aprovação\nexplícita. Clientes MCP com escopo de escrita recebem as mesmas operações conscientes de revisão;\ntokens somente de leitura podem pesquisar e inspecionar o histórico sem obter permissão de mutação."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/724"
+  },
+  {
+    "version": "0.14.5-dev.1786341311",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Safe, versioned note editing",
+    "body": "Notes now keep immutable revision history across the web interface, chat, and MCP. Voxen can locate and change an exact passage without replacing the entire document, detects concurrent edits before they overwrite newer work, preserves the local draft during a conflict, and lets users inspect or restore an earlier revision. Graph links and transcript evidence remain connected while only the edited note is refreshed.\n\nChat confirmations show a server-validated, bounded before/after preview, and paginated history keeps every revision accessible even after long editing sessions.",
+    "pr": 722,
+    "author": "Kalyel",
+    "date": "2026-08-10T02:54:58-03:00",
+    "translations": {
+      "en": {
+        "title": "Safe, versioned note editing",
+        "body": "Notes now keep immutable revision history across the web interface, chat, and MCP. Voxen can locate and change an exact passage without replacing the entire document, detects concurrent edits before they overwrite newer work, preserves the local draft during a conflict, and lets users inspect or restore an earlier revision. Graph links and transcript evidence remain connected while only the edited note is refreshed.\n\nChat confirmations show a server-validated, bounded before/after preview, and paginated history keeps every revision accessible even after long editing sessions."
+      },
+      "pt-BR": {
+        "title": "Edição segura e versionada de notas",
+        "body": "As notas agora mantêm um histórico imutável de revisões na interface web, no chat e no MCP. A Voxen pode localizar e alterar uma passagem exata sem substituir o documento inteiro, detecta edições concorrentes antes que sobrescrevam um trabalho mais recente, preserva o rascunho local em caso de conflito e permite inspecionar ou restaurar uma revisão anterior. Os vínculos do grafo e as evidências das transcrições permanecem conectados enquanto apenas a nota editada é atualizada.\n\nAs confirmações do chat exibem uma prévia limitada e validada pelo servidor, com antes e depois, e o histórico paginado mantém todas as revisões acessíveis mesmo após longas sessões de edição."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/722"
+  },
+  {
+    "version": "0.14.5-dev.1786329638",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explore the complete knowledge graph from the server",
+    "body": "Graph search now covers every active node owned by the current user instead of only the\nrendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while\nthe default view reports complete candidate totals and prioritizes representative content.",
+    "pr": 720,
+    "author": "Kalyel",
+    "date": "2026-08-09T23:40:25-03:00",
+    "translations": {
+      "en": {
+        "title": "Explore the complete knowledge graph from the server",
+        "body": "Graph search now covers every active node owned by the current user instead of only the\nrendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while\nthe default view reports complete candidate totals and prioritizes representative content."
+      },
+      "pt-BR": {
+        "title": "Explore todo o grafo de conhecimento pelo servidor",
+        "body": "A pesquisa do grafo agora cobre todos os nós ativos do usuário atual, em vez de somente o\nrecorte renderizado. Selecionar um resultado carrega uma vizinhança limitada de um ou dois\nsaltos, enquanto a visão padrão informa os totais completos e prioriza conteúdos\nrepresentativos."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/720"
+  },
+  {
+    "version": "0.14.5-dev.1786324652",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Semantic graph indexing now recovers automatically",
+    "body": "Semantic graph extraction now resumes after temporary worker, provider, or graph-lock\ninterruptions instead of leaving transcript concepts and relationships pending indefinitely.\nGraph status also distinguishes source-node coverage from semantic segment progress, making\npending, retrying, completed, skipped, and terminal work observable.",
+    "pr": 718,
+    "author": "Kalyel",
+    "date": "2026-08-09T22:17:18-03:00",
+    "translations": {
+      "en": {
+        "title": "Semantic graph indexing now recovers automatically",
+        "body": "Semantic graph extraction now resumes after temporary worker, provider, or graph-lock\ninterruptions instead of leaving transcript concepts and relationships pending indefinitely.\nGraph status also distinguishes source-node coverage from semantic segment progress, making\npending, retrying, completed, skipped, and terminal work observable."
+      },
+      "pt-BR": {
+        "title": "A indexação semântica do grafo agora se recupera automaticamente",
+        "body": "A extração semântica do grafo agora é retomada após interrupções temporárias do worker, do\nprovedor ou do bloqueio de escrita, evitando que conceitos e relações das transcrições fiquem\npendentes indefinidamente. O status do grafo também separa a cobertura dos conteúdos da\nevolução dos segmentos semânticos, tornando visíveis os trabalhos pendentes, em nova tentativa,\nconcluídos, ignorados e encerrados com falha."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/718"
+  },
+  {
+    "version": "0.14.5-dev.1786233786",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Recover interrupted saved-media migrations during startup",
+    "body": "Voxen now detects the known interrupted saved-media migration, repairs and validates its\ndatabase objects idempotently, and resumes pending Prisma migrations. Unrecognized migration\nfailures continue to stop startup for explicit operator review.",
+    "pr": 716,
+    "author": "Kalyel",
+    "date": "2026-08-08T21:02:56-03:00",
+    "translations": {
+      "en": {
+        "title": "Recover interrupted saved-media migrations during startup",
+        "body": "Voxen now detects the known interrupted saved-media migration, repairs and validates its\ndatabase objects idempotently, and resumes pending Prisma migrations. Unrecognized migration\nfailures continue to stop startup for explicit operator review."
+      },
+      "pt-BR": {
+        "title": "Recupere migrations interrompidas da biblioteca de mídia na inicialização",
+        "body": "A Voxen agora detecta a migration conhecida e interrompida da biblioteca de mídia, repara e\nvalida seus objetos no banco de forma idempotente e retoma as migrations pendentes do Prisma.\nFalhas de migrations não reconhecidas continuam interrompendo a inicialização para revisão\nexplícita do operador."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/716"
+  },
+  {
+    "version": "0.14.5-dev.1786224946",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Research gaps with the original source and a visible trail",
+    "body": "When selective research detects missing or inconsistent context, Voxen can now consult a\nsanitized reference to the original source before performing up to two complementary public\nsearches. Planning, source consultation, research, synthesis, retries, failures, cancellation,\nand completion remain visible in the originating queue item without reopening a completed job.\nExternal evidence stays separate from the canonical summary as reviewable additional context.",
+    "pr": 714,
+    "author": "Kalyel",
+    "date": "2026-08-08T18:35:27-03:00",
+    "translations": {
+      "en": {
+        "title": "Research gaps with the original source and a visible trail",
+        "body": "When selective research detects missing or inconsistent context, Voxen can now consult a\nsanitized reference to the original source before performing up to two complementary public\nsearches. Planning, source consultation, research, synthesis, retries, failures, cancellation,\nand completion remain visible in the originating queue item without reopening a completed job.\nExternal evidence stays separate from the canonical summary as reviewable additional context."
+      },
+      "pt-BR": {
+        "title": "Pesquise lacunas com a fonte original e uma trilha visível",
+        "body": "Quando a pesquisa seletiva detectar contexto ausente ou inconsistente, a Voxen agora pode\nconsultar uma referência sanitizada da fonte original antes de realizar até duas pesquisas\npúblicas complementares. Planejamento, consulta da fonte, pesquisa, síntese, novas tentativas,\nfalhas, cancelamento e conclusão permanecem visíveis no item de origem da fila sem reabrir um job\nconcluído. As evidências externas continuam separadas do resumo canônico como contexto adicional\nrevisável."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/714"
+  },
+  {
+    "version": "0.14.5-dev.1786218603",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Reviewable Mermaid flows for transcripts",
+    "body": "- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.\n- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.\n- Include the derived flow in full transcript reads from the integrated chat and MCP.",
+    "pr": 712,
+    "author": "Kalyel",
+    "date": "2026-08-08T16:49:53-03:00",
+    "translations": {
+      "en": {
+        "title": "Reviewable Mermaid flows for transcripts",
+        "body": "- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.\n- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.\n- Include the derived flow in full transcript reads from the integrated chat and MCP."
+      },
+      "pt-BR": {
+        "title": "Fluxos Mermaid revisáveis para transcrições",
+        "body": "- Gere ou regenere um fluxo visual de uma transcrição sem alterar seu texto canônico ou resumo.\n- Renderize fluxogramas Mermaid validados na transcrição e em respostas Markdown, com fallback seguro para o código.\n- Inclua o fluxo derivado nas leituras completas de transcrição pelo chat integrado e MCP."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/712"
+  },
+  {
+    "version": "0.14.5-dev.1786211865",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Correct MCP client setup contrast across themes",
+    "body": "The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens.",
+    "pr": 710,
+    "author": "Kalyel",
+    "date": "2026-08-08T14:57:32-03:00",
+    "translations": {
+      "en": {
+        "title": "Correct MCP client setup contrast across themes",
+        "body": "The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens."
+      },
+      "pt-BR": {
+        "title": "Corrige o contraste da configuração de clientes MCP em todos os temas",
+        "body": "A configuração do cliente MCP selecionado agora usa uma superfície interna segura para todos os temas e um seletor de clientes com rolagem horizontal em telas estreitas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/710"
+  },
+  {
+    "version": "0.14.5-dev.1786209842",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Batch URL ingestion across the app, chat, and MCP",
+    "body": "Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,\nso invalid, duplicate, existing, and newly queued sources can be handled independently.",
+    "pr": 708,
+    "author": "Kalyel",
+    "date": "2026-08-08T14:23:47-03:00",
+    "translations": {
+      "en": {
+        "title": "Batch URL ingestion across the app, chat, and MCP",
+        "body": "Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,\nso invalid, duplicate, existing, and newly queued sources can be handled independently."
+      },
+      "pt-BR": {
+        "title": "Ingestão de URLs em lote no app, chat e MCP",
+        "body": "A Voxen agora aceita até 20 links de uma só vez. Cada link recebe seu próprio job na fila e um\nresultado visível, permitindo tratar de forma independente fontes inválidas, duplicadas, já\nexistentes e recém-enfileiradas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/708"
+  },
+  {
+    "version": "0.14.5-dev.1786207296",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Save private media before adding it to the knowledge base",
+    "body": "The new Downloads page stores supported YouTube, Instagram, TikTok, and X videos in the configured local volume or S3-compatible storage without exposing them to Graph, chat, AI retrieval, or MCP. Each user gets an isolated library, authenticated range downloads, durable queue progress, bounded files, safe retries, and an explicit action to process a saved file through Voxen later without downloading the source again. Permanently deleting the linked transcript keeps the saved media available for future processing.",
+    "pr": 706,
+    "author": "Kalyel",
+    "date": "2026-08-08T13:41:21-03:00",
+    "translations": {
+      "en": {
+        "title": "Save private media before adding it to the knowledge base",
+        "body": "The new Downloads page stores supported YouTube, Instagram, TikTok, and X videos in the configured local volume or S3-compatible storage without exposing them to Graph, chat, AI retrieval, or MCP. Each user gets an isolated library, authenticated range downloads, durable queue progress, bounded files, safe retries, and an explicit action to process a saved file through Voxen later without downloading the source again. Permanently deleting the linked transcript keeps the saved media available for future processing."
+      },
+      "pt-BR": {
+        "title": "Salve mídias privadas antes de adicioná-las à base de conhecimento",
+        "body": "A nova página Downloads armazena vídeos compatíveis do YouTube, Instagram, TikTok e X no volume local ou armazenamento compatível com S3 configurado, sem expô-los ao Grafo, chat, recuperação da IA ou MCP. Cada usuário recebe uma biblioteca isolada, downloads autenticados com suporte a intervalos, progresso durável na fila, arquivos limitados, novas tentativas seguras e uma ação explícita para processar depois um arquivo salvo na Voxen sem baixar a fonte novamente. A exclusão definitiva da transcrição vinculada mantém a mídia salva disponível para processamento futuro."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/706"
+  },
+  {
+    "version": "0.14.5-dev.1786200221",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Chat references open inside Voxen",
+    "body": "Verified citations now open their source content in the existing side panel, preserving the conversation and offering an explicit action for the full transcript page.",
+    "pr": 704,
+    "author": "Kalyel",
+    "date": "2026-08-08T11:43:25-03:00",
+    "translations": {
+      "en": {
+        "title": "Chat references open inside Voxen",
+        "body": "Verified citations now open their source content in the existing side panel, preserving the conversation and offering an explicit action for the full transcript page."
+      },
+      "pt-BR": {
+        "title": "Referências do chat abrem dentro da Voxen",
+        "body": "Citações verificadas agora abrem o conteúdo da fonte no painel lateral existente, preservando a conversa e oferecendo uma ação explícita para a página completa da transcrição."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/704"
+  },
+  {
+    "version": "0.14.5-dev.1786191801",
+    "channel": "dev",
+    "type": "fix",
+    "title": "MCP client configuration now follows the active theme",
+    "body": "The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background.",
+    "pr": 702,
+    "author": "Kalyel",
+    "date": "2026-08-08T09:22:57-03:00",
+    "translations": {
+      "en": {
+        "title": "MCP client configuration now follows the active theme",
+        "body": "The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background."
+      },
+      "pt-BR": {
+        "title": "Configuração de clientes MCP agora acompanha o tema ativo",
+        "body": "O painel de configuração de clientes em **Conta → Acesso MCP** agora usa a paleta de superfícies da aplicação. O painel permanece legível nos temas escuro, claro e nas interfaces alternativas, sem aplicar uma cor clara de texto como fundo."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/702"
+  },
+  {
+    "version": "0.14.5-dev.1786187187",
+    "channel": "dev",
+    "type": "feat",
+    "title": "MCP clients can connect through OAuth 2.1",
+    "body": "Voxen now provides standards-based OAuth discovery, Authorization Code with\nPKCE, rotating refresh tokens, revocation, consent, and read/write scopes for\nremote MCP clients. Administrators can enable the capability and pre-register\npublic or confidential clients, while each user controls their own grants.\nExisting personal MCP tokens continue to work unchanged.",
+    "pr": 700,
+    "author": "Kalyel",
+    "date": "2026-08-08T08:06:14-03:00",
+    "translations": {
+      "en": {
+        "title": "MCP clients can connect through OAuth 2.1",
+        "body": "Voxen now provides standards-based OAuth discovery, Authorization Code with\nPKCE, rotating refresh tokens, revocation, consent, and read/write scopes for\nremote MCP clients. Administrators can enable the capability and pre-register\npublic or confidential clients, while each user controls their own grants.\nExisting personal MCP tokens continue to work unchanged."
+      },
+      "pt-BR": {
+        "title": "Clientes MCP podem conectar por OAuth 2.1",
+        "body": "O Voxen agora fornece descoberta OAuth padronizada, Authorization Code com\nPKCE, refresh tokens rotativos, revogação, consentimento e escopos de leitura e\nescrita para clientes MCP remotos. Administradores podem habilitar o recurso e\npré-registrar clientes públicos ou confidenciais, enquanto cada usuário\ncontrola seus próprios acessos. Os tokens pessoais MCP continuam funcionando\nsem alterações."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/700"
+  },
+  {
+    "version": "0.14.5-dev.1786179760",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Complete MCP client setup guidance",
+    "body": "The MCP account page now provides copyable connection details for Codex,\nClaude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English\nand Brazilian Portuguese guides document compatibility, token safety, public\nHTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked\nas requiring the upcoming OAuth delivery instead of accepting personal tokens.",
+    "pr": 698,
+    "author": "Kalyel",
+    "date": "2026-08-08T06:02:21-03:00",
+    "translations": {
+      "en": {
+        "title": "Complete MCP client setup guidance",
+        "body": "The MCP account page now provides copyable connection details for Codex,\nClaude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English\nand Brazilian Portuguese guides document compatibility, token safety, public\nHTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked\nas requiring the upcoming OAuth delivery instead of accepting personal tokens."
+      },
+      "pt-BR": {
+        "title": "Guia completo para configurar clientes MCP",
+        "body": "A página de conta MCP agora fornece dados copiáveis para Codex, Claude Code,\nOpenAI, Anthropic, Cursor e MCP Inspector. Guias equivalentes em inglês e\nportuguês documentam compatibilidade, segurança do token, HTTPS público e\ndiagnóstico acionável. O Grok Web fica claramente marcado como dependente da\npróxima entrega OAuth, sem induzir o uso incorreto de tokens pessoais."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/698"
+  },
+  {
+    "version": "0.14.5-dev.1786178078",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Resilient OpenRouter model fallbacks",
+    "body": "OpenRouter rate limits are now treated as temporary failures with bounded retry\ndelays and a clear, actionable message. Administrators can configure one\ncompatible fallback for every AI model purpose, while initial setup suggests\nsafe alternatives automatically. Runtime usage and costs identify the model\nthat actually answered.",
+    "pr": 695,
+    "author": "Kalyel",
+    "date": "2026-08-08T05:34:27-03:00",
+    "translations": {
+      "en": {
+        "title": "Resilient OpenRouter model fallbacks",
+        "body": "OpenRouter rate limits are now treated as temporary failures with bounded retry\ndelays and a clear, actionable message. Administrators can configure one\ncompatible fallback for every AI model purpose, while initial setup suggests\nsafe alternatives automatically. Runtime usage and costs identify the model\nthat actually answered."
+      },
+      "pt-BR": {
+        "title": "Fallbacks resilientes de modelos OpenRouter",
+        "body": "Os limites temporários da OpenRouter agora recebem novas tentativas com espera\ncontrolada e uma mensagem clara e acionável. Administradores podem configurar\num fallback compatível para cada finalidade de modelo de IA, enquanto a\nconfiguração inicial sugere alternativas seguras automaticamente. O uso e os\ncustos em runtime identificam o modelo que realmente respondeu."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/695"
+  },
+  {
+    "version": "0.14.5-dev.1786127306",
+    "channel": "dev",
+    "type": "fix",
+    "title": "The dev container image now follows versioned code",
+    "body": "After each automatic development version pull request passes CI and merges,\nVoxen now publishes the combined image and waits for the registry push to\nsucceed. The mutable `dev` tag, its versioned tag, and the immutable SHA tag\ntherefore advance together, while `latest` remains reserved for stable\nreleases. Intermediate feature commits still do not publish deployable images.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-07T15:28:07-03:00",
+    "translations": {
+      "en": {
+        "title": "The dev container image now follows versioned code",
+        "body": "After each automatic development version pull request passes CI and merges,\nVoxen now publishes the combined image and waits for the registry push to\nsucceed. The mutable `dev` tag, its versioned tag, and the immutable SHA tag\ntherefore advance together, while `latest` remains reserved for stable\nreleases. Intermediate feature commits still do not publish deployable images."
+      },
+      "pt-BR": {
+        "title": "A imagem de desenvolvimento agora acompanha o código versionado",
+        "body": "Depois que cada PR automático de versão de desenvolvimento passa pelo CI e é\nmesclado, a Voxen agora publica a imagem combinada e aguarda o envio ao registry\nterminar com sucesso. Assim, a tag mutável `dev`, sua tag versionada e a tag\nimutável por SHA avançam juntas, enquanto `latest` continua reservada para\nreleases estáveis. Commits intermediários de funcionalidades continuam sem\npublicar imagens implantáveis."
+      }
+    }
+  },
+  {
+    "version": "0.14.5-dev.1786123967",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Summaries can trigger bounded optional research",
+    "body": "Administrators can keep post-summary research off, allow manual requests, or\nenable selective automatic checks. The canonical summary remains\ntranscript-only; the durable second stage may perform zero or bounded web\nsearches and always creates a cited suggestion for review. Failures, retries,\nand cancellation never block a completed transcript. Tool-free planning is\nisolated from bounded search requests, while policy and content lifecycle\nchanges cancel incompatible work across transaction-safe boundaries.",
+    "pr": 688,
+    "author": "Kalyel",
+    "date": "2026-08-07T14:32:32-03:00",
+    "translations": {
+      "en": {
+        "title": "Summaries can trigger bounded optional research",
+        "body": "Administrators can keep post-summary research off, allow manual requests, or\nenable selective automatic checks. The canonical summary remains\ntranscript-only; the durable second stage may perform zero or bounded web\nsearches and always creates a cited suggestion for review. Failures, retries,\nand cancellation never block a completed transcript. Tool-free planning is\nisolated from bounded search requests, while policy and content lifecycle\nchanges cancel incompatible work across transaction-safe boundaries."
+      },
+      "pt-BR": {
+        "title": "Resumos podem disparar pesquisa opcional limitada",
+        "body": "Administradores podem manter a pesquisa posterior ao resumo desligada,\npermitir pedidos manuais ou habilitar verificações automáticas seletivas. O\nresumo canônico continua baseado apenas na transcrição; a segunda etapa durável\npode fazer zero ou buscas web limitadas e sempre cria uma sugestão citada para\nrevisão. Falhas, retentativas e cancelamento nunca bloqueiam uma transcrição\nconcluída. O planejamento sem ferramentas fica isolado das buscas limitadas, e\nmudanças de política ou ciclo de vida cancelam trabalhos incompatíveis em\nfronteiras transacionais seguras."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/688"
+  },
+  {
+    "version": "0.14.5-dev.1786116413",
+    "channel": "dev",
+    "type": "feat",
+    "title": "External context is cited and reviewable",
+    "body": "Transcript pages now have a separate additional-context lifecycle for external\nresearch. Suggested results retain structured citations, model and cost\nprovenance, source freshness, and review status without changing the canonical\ntranscript or summary. Only fresh context explicitly accepted by the user can\nenter search and Brain; dismissal or deletion removes only its derivatives.",
+    "pr": 686,
+    "author": "Kalyel",
+    "date": "2026-08-07T12:26:35-03:00",
+    "translations": {
+      "en": {
+        "title": "External context is cited and reviewable",
+        "body": "Transcript pages now have a separate additional-context lifecycle for external\nresearch. Suggested results retain structured citations, model and cost\nprovenance, source freshness, and review status without changing the canonical\ntranscript or summary. Only fresh context explicitly accepted by the user can\nenter search and Brain; dismissal or deletion removes only its derivatives."
+      },
+      "pt-BR": {
+        "title": "Contexto externo passa a ser citado e revisável",
+        "body": "Páginas de transcrição agora possuem um ciclo separado de contexto adicional\npara pesquisa externa. Sugestões preservam citações estruturadas, proveniência\nde modelo e custo, frescor da fonte e revisão sem alterar transcrição ou resumo\ncanônicos. Somente contexto atual aceito explicitamente entra na busca e no\nBrain; dispensar ou excluir remove apenas seus derivados."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/686"
+  },
+  {
+    "version": "0.14.5-dev.1786111854",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Notes can retain exact transcript passages",
+    "body": "Text selected in a transcript can now become a note with verified line and\ntimestamp anchors. Anchored notes navigate back to and highlight the original\npassage, remain available through the user-scoped API and MCP server, and keep\ntheir evidence separate from authored note content. A source refresh marks an\noutdated anchor stale instead of silently moving it.",
+    "pr": 684,
+    "author": "Kalyel",
+    "date": "2026-08-07T11:10:42-03:00",
+    "translations": {
+      "en": {
+        "title": "Notes can retain exact transcript passages",
+        "body": "Text selected in a transcript can now become a note with verified line and\ntimestamp anchors. Anchored notes navigate back to and highlight the original\npassage, remain available through the user-scoped API and MCP server, and keep\ntheir evidence separate from authored note content. A source refresh marks an\noutdated anchor stale instead of silently moving it."
+      },
+      "pt-BR": {
+        "title": "Notas podem preservar passagens exatas da transcrição",
+        "body": "Um texto selecionado na transcrição agora pode se tornar uma nota com linhas e\ntimestamps verificados. Notas ancoradas voltam e destacam a passagem original,\nficam disponíveis pela API e MCP isolados por usuário e mantêm a evidência\nseparada do texto autoral. Uma atualização da fonte marca a âncora desatualizada\ncomo stale em vez de movê-la silenciosamente."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/684"
+  },
+  {
+    "version": "0.14.5-dev.1786107441",
+    "channel": "dev",
+    "type": "feat",
+    "title": "A newer published release is visible in navigation",
+    "body": "Voxen now checks the official GitHub stable release from the server and shows\nan update notice directly above What's new only when that release is newer than\nthe running build. The notice identifies the installed version and whether the\ninstance is running a development or production build. GitHub failures remain\nsilent and never interrupt navigation.",
+    "pr": 682,
+    "author": "Kalyel",
+    "date": "2026-08-07T09:57:10-03:00",
+    "translations": {
+      "en": {
+        "title": "A newer published release is visible in navigation",
+        "body": "Voxen now checks the official GitHub stable release from the server and shows\nan update notice directly above What's new only when that release is newer than\nthe running build. The notice identifies the installed version and whether the\ninstance is running a development or production build. GitHub failures remain\nsilent and never interrupt navigation."
+      },
+      "pt-BR": {
+        "title": "Uma nova release publicada aparece na navegação",
+        "body": "A Voxen agora consulta no servidor a release estável oficial do GitHub e mostra\num aviso de atualização logo acima de Novidades somente quando ela é posterior\nao build em execução. O aviso identifica a versão instalada e se a instância\nestá em desenvolvimento ou produção. Falhas do GitHub permanecem silenciosas e\nnunca interrompem a navegação."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/682"
+  },
+  {
+    "version": "0.14.5-dev.1786104989",
+    "channel": "dev",
+    "type": "infra",
+    "title": "New self-hosted installs use a local volume by default",
+    "body": "New single-host installations no longer require MinIO. Web and worker share a\nprivate persistent volume at `/data/storage` behind the same provider-neutral\ncontract, with atomic writes, authenticated reads, media ranges, path\ncontainment, health checks, persistent-mount validation, consistent backups,\nand non-root runtime access. Legacy Garage variables and mounted credentials\nfiles remain supported by both runtimes.\nBackup topology follows the active endpoint and container, so an obsolete MinIO\nvolume cannot be mistaken for a backup of external S3.\nExisting non-empty S3 or Garage configuration remains on S3, while MinIO is an\nexplicit optional profile.",
+    "pr": 680,
+    "author": "Kalyel",
+    "date": "2026-08-07T09:16:16-03:00",
+    "translations": {
+      "en": {
+        "title": "New self-hosted installs use a local volume by default",
+        "body": "New single-host installations no longer require MinIO. Web and worker share a\nprivate persistent volume at `/data/storage` behind the same provider-neutral\ncontract, with atomic writes, authenticated reads, media ranges, path\ncontainment, health checks, persistent-mount validation, consistent backups,\nand non-root runtime access. Legacy Garage variables and mounted credentials\nfiles remain supported by both runtimes.\nBackup topology follows the active endpoint and container, so an obsolete MinIO\nvolume cannot be mistaken for a backup of external S3.\nExisting non-empty S3 or Garage configuration remains on S3, while MinIO is an\nexplicit optional profile."
+      },
+      "pt-BR": {
+        "title": "Novas instalações self-hosted usam volume local por padrão",
+        "body": "Novas instalações em um único host não exigem mais MinIO. Web e worker\ncompartilham um volume privado persistente em `/data/storage` pelo mesmo\ncontrato neutro, com escritas atômicas, leituras autenticadas, ranges de mídia,\ncontenção de path, health check, validação do volume persistente, backup\nconsistente e runtimes não-root. Variáveis Garage e arquivos de credenciais\nmontados continuam compatíveis nos dois runtimes.\nO backup segue o endpoint e o container ativos; um volume MinIO obsoleto não\npode ser confundido com backup de um S3 externo.\nConfigurações S3 ou Garage existentes continuam em S3 e o MinIO se torna um\nprofile opcional explícito."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/680"
+  },
+  {
     "version": "0.14.4",
     "channel": "prod",
     "date": "2026-08-07T06:10:45.106Z",

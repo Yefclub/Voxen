@@ -105,9 +105,9 @@ describe('graph insights and deterministic layout', () => {
       'source-alpha',
       'topic-alpha',
     ]);
-    expect(communities.at(-1)?.nodeIds).toEqual(['isolated']);
+    expect(communities.flatMap((community) => community.nodeIds)).not.toContain('isolated');
     expect(insights.hubs[0]).toMatchObject({ id: 'topic-alpha', degree: 3 });
-    expect(insights.communities).toHaveLength(2);
+    expect(insights.communities).toHaveLength(1);
   });
 
   test('produces stable finite coordinates without a continuous simulation', () => {
@@ -122,10 +122,10 @@ describe('graph insights and deterministic layout', () => {
     );
   });
 
-  test('anchors the primary 3D community at the origin and orbits satellites', () => {
+  test('anchors the representative at the origin and keeps isolates outside thematic groups', () => {
     const communities = buildGraphCommunities(DATA);
     const positions = buildGraphPositions3D(DATA);
-    const primaryHub = communities[0]?.nodeIds[0];
+    const primaryHub = communities[0]?.representativeNodeId;
 
     expect(primaryHub).toBe('topic-alpha');
     expect(positions.get(primaryHub ?? '')).toEqual({ x: 0, y: 0, z: 0 });

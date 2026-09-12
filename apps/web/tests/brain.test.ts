@@ -58,6 +58,9 @@ function extractCookie(res: Response): string {
 
 interface GraphTestResponse {
   indexing: boolean;
+  candidateNodes?: number;
+  candidateEdges?: number;
+  truncated?: boolean;
   nodes: Array<{
     id: string;
     key: string;
@@ -66,6 +69,19 @@ interface GraphTestResponse {
     source?: string;
   }>;
   edges: Array<{ from: string; to: string; kind: string; method: string }>;
+  insights?: {
+    nodeCentrality: Array<{
+      id: string;
+      pageRank: number;
+      personalizedPageRank: number;
+      weightedDegreeCentrality: number;
+    }>;
+    centrality: {
+      personalizationMode: 'durable-interest' | 'uniform';
+      projectionAvailable: boolean;
+      snapshotTruncated: boolean;
+    };
+  };
 }
 
 async function waitForGraphReindex(cookie: string, force = true): Promise<GraphTestResponse> {
@@ -534,6 +550,74 @@ describeIfDb('brain indexer', () => {
     );
   });
 
+  it('persists exact anchored-note provenance in Brain sources', async () => {
+    await signUp('brain-anchor@voxen.local', 'senha-super-segura-123', 'Brain Anchor');
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'brain-anchor@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-anchor',
+        title: 'Fonte ancorada',
+        durationSec: 120,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-anchor.md`,
+        plainText: 'A proveniência permanece verificável.',
+        frontmatter: {},
+        sourceVersion: 3,
+        sourceChecksum: 'checksum-3',
+      },
+    });
+    const anchorId = `anchor-${crypto.randomUUID()}`;
+    const note = await db.note.create({
+      data: {
+        userId: user.id,
+        kind: 'NOTE',
+        title: 'Nota com evidência exata',
+        content: 'Conclusão curada pelo usuário.',
+        transcriptSources: {
+          create: {
+            userId: user.id,
+            transcriptId: transcript.id,
+            anchors: {
+              create: {
+                id: anchorId,
+                userId: user.id,
+                startLine: 3,
+                endLine: 3,
+                startSec: 10,
+                endSec: 15,
+                selectedQuote: 'A proveniência permanece verificável.',
+                quoteHash: 'quote-hash',
+                sourceVersion: 3,
+                sourceChecksum: 'checksum-3',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await reindexNoteBrain(user.id, note.id);
+
+    const evidence = await db.brainSource.findUniqueOrThrow({
+      where: { userId_evidenceKey: { userId: user.id, evidenceKey: `note-anchor:${anchorId}` } },
+    });
+    expect(evidence).toMatchObject({
+      userId: user.id,
+      sourceType: 'NOTE',
+      sourceId: note.id,
+      startLine: 3,
+      endLine: 3,
+      startSec: 10,
+      endSec: 15,
+      segmentKey: `transcript:${transcript.id}`,
+      evidenceKey: `note-anchor:${anchorId}`,
+      excerpt: 'A proveniência permanece verificável.',
+    });
+  });
+
   it('GET /api/graph backfills Brain nodes for legacy content', async () => {
     await signUp('graph-brain@voxen.local', 'senha-super-segura-123', 'Graph Brain');
     const signin = await signIn('graph-brain@voxen.local', 'senha-super-segura-123');
@@ -589,6 +673,205 @@ describeIfDb('brain indexer', () => {
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
     });
     expect(persisted).not.toBeNull();
+  });
+
+  it('searches and focuses owned nodes beyond the representative snapshot cap', async () => {
+    await signUp('graph-scale@voxen.local', 'senha-super-segura-123', 'Graph Scale');
+    const signin = await signIn('graph-scale@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const owner = await db.user.findUniqueOrThrow({ where: { email: 'graph-scale@voxen.local' } });
+    const foreign = await db.user.create({
+      data: {
+        email: 'graph-scale-foreign@voxen.local',
+        name: 'Foreign Graph Scale',
+        status: 'APPROVED',
+      },
+    });
+    const oldDate = new Date('2025-01-01T00:00:00.000Z');
+    const newDate = new Date('2026-01-01T00:00:00.000Z');
+    const targetId = `graph-target-${owner.id}`;
+    const neighborId = `graph-neighbor-${owner.id}`;
+    await db.brainNode.createMany({
+      data: [
+        {
+          id: targetId,
+          userId: owner.id,
+          key: 'ENTITY:surgical-old-target',
+          type: 'ENTITY',
+          label: 'Surgical old target',
+          updatedAt: oldDate,
+          createdAt: oldDate,
+        },
+        {
+          id: neighborId,
+          userId: owner.id,
+          key: 'ENTITY:surgical-neighbor',
+          type: 'ENTITY',
+          label: 'Surgical neighbor',
+          updatedAt: oldDate,
+          createdAt: oldDate,
+        },
+        ...Array.from({ length: 500 }, (_, index) => ({
+          id: `graph-recent-${owner.id}-${index}`,
+          userId: owner.id,
+          key: `ENTITY:recent-${index}`,
+          type: 'ENTITY' as const,
+          label: `Recent concept ${index}`,
+          updatedAt: newDate,
+          createdAt: newDate,
+        })),
+        {
+          id: `graph-foreign-${foreign.id}`,
+          userId: foreign.id,
+          key: 'ENTITY:surgical-foreign-secret',
+          type: 'ENTITY',
+          label: 'Surgical foreign secret',
+          updatedAt: newDate,
+          createdAt: newDate,
+        },
+      ],
+    });
+    await db.brainEdge.create({
+      data: {
+        userId: owner.id,
+        fromNodeId: targetId,
+        toNodeId: neighborId,
+        kind: 'RELATED_TO',
+        method: 'manual',
+      },
+    });
+
+    const snapshotResponse = await app.fetch(
+      new Request('http://localhost/api/graph?view=full&refresh=1', { headers: { cookie } }),
+    );
+    const snapshot = (await snapshotResponse.json()) as GraphTestResponse;
+    expect(snapshot.candidateNodes).toBe(502);
+    expect(snapshot.candidateEdges).toBe(1);
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.insights?.centrality.snapshotTruncated).toBe(true);
+    expect(snapshot.nodes.some((node) => node.id === targetId)).toBe(false);
+
+    const searchResponse = await app.fetch(
+      new Request('http://localhost/api/graph/search?q=surgical-old-target', {
+        headers: { cookie },
+      }),
+    );
+    const search = (await searchResponse.json()) as { results: Array<{ id: string }> };
+    expect(search.results).toContainEqual(expect.objectContaining({ id: targetId }));
+    const foreignSearch = await app.fetch(
+      new Request('http://localhost/api/graph/search?q=surgical-foreign-secret', {
+        headers: { cookie },
+      }),
+    );
+    expect((await foreignSearch.json()) as { query: string; results: unknown[] }).toEqual({
+      query: 'surgical-foreign-secret',
+      results: [],
+    });
+
+    const focusResponse = await app.fetch(
+      new Request(`http://localhost/api/graph?view=full&focus=${targetId}&hops=1&refresh=1`, {
+        headers: { cookie },
+      }),
+    );
+    const focused = (await focusResponse.json()) as GraphTestResponse;
+    expect(focused.nodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining([targetId, neighborId]),
+    );
+    expect(focused.insights?.nodeCentrality.map((node) => node.id)).toEqual(
+      expect.arrayContaining([targetId, neighborId]),
+    );
+    expect(focused.insights?.nodeCentrality.every((node) => Number.isFinite(node.pageRank))).toBe(
+      true,
+    );
+    expect(focused.insights?.centrality).toMatchObject({
+      personalizationMode: 'uniform',
+      projectionAvailable: true,
+      snapshotTruncated: false,
+    });
+    const foreignFocus = await app.fetch(
+      new Request(`http://localhost/api/graph?view=full&focus=graph-foreign-${foreign.id}`, {
+        headers: { cookie },
+      }),
+    );
+    const foreignFocused = (await foreignFocus.json()) as GraphTestResponse;
+    expect(foreignFocused.nodes).toEqual([]);
+    expect(foreignFocused.insights?.nodeCentrality).toEqual([]);
+  });
+
+  it('preserves a real second hop after a dense first-hop relation set', async () => {
+    await signUp('graph-two-hop@voxen.local', 'senha-super-segura-123', 'Graph Two Hop');
+    const signin = await signIn('graph-two-hop@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const owner = await db.user.findUniqueOrThrow({
+      where: { email: 'graph-two-hop@voxen.local' },
+    });
+    const focusId = `graph-two-hop-focus-${owner.id}`;
+    const neighborId = `graph-two-hop-neighbor-${owner.id}`;
+    const targetId = `graph-two-hop-target-${owner.id}`;
+    const newer = new Date('2026-01-02T00:00:00.000Z');
+    const older = new Date('2026-01-01T00:00:00.000Z');
+    await db.brainNode.createMany({
+      data: [
+        {
+          id: focusId,
+          userId: owner.id,
+          key: 'ENTITY:two-hop-focus',
+          type: 'ENTITY',
+          label: 'Focus',
+        },
+        {
+          id: neighborId,
+          userId: owner.id,
+          key: 'ENTITY:two-hop-neighbor',
+          type: 'ENTITY',
+          label: 'Neighbor',
+        },
+        {
+          id: targetId,
+          userId: owner.id,
+          key: 'ENTITY:two-hop-target',
+          type: 'ENTITY',
+          label: 'Target',
+        },
+      ],
+    });
+    await db.brainEdge.createMany({
+      data: Array.from({ length: 1_499 }, (_, index) => ({
+        userId: owner.id,
+        fromNodeId: focusId,
+        toNodeId: neighborId,
+        kind: 'RELATED_TO' as const,
+        method: `dense-first-hop-${index}`,
+        createdAt: newer,
+        updatedAt: newer,
+      })),
+    });
+    await db.brainEdge.create({
+      data: {
+        userId: owner.id,
+        fromNodeId: neighborId,
+        toNodeId: targetId,
+        kind: 'RELATED_TO',
+        method: 'real-second-hop',
+        createdAt: older,
+        updatedAt: older,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request(`http://localhost/api/graph?view=full&focus=${focusId}&hops=2&refresh=1`, {
+        headers: { cookie },
+      }),
+    );
+    const focused = (await response.json()) as GraphTestResponse;
+    expect(focused.nodes).toContainEqual(expect.objectContaining({ id: targetId }));
+    expect(focused.edges).toContainEqual(
+      expect.objectContaining({
+        from: neighborId,
+        to: targetId,
+        method: 'real-second-hop',
+      }),
+    );
   });
 
   it('connects active contents through shared concepts', async () => {
@@ -880,5 +1163,81 @@ describeIfDb('brain indexer', () => {
       }),
     ).toBeNull();
     expect(await db.brainEdge.count({ where: { userId: user.id, method: 'keyword' } })).toBe(0);
+  });
+
+  it('removes grounded-only knowledge from default navigation while its source is archived', async () => {
+    await signUp('grounded-lifecycle@voxen.local', 'senha-super-segura-123', 'Grounded Lifecycle');
+    const signin = await signIn('grounded-lifecycle@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'grounded-lifecycle@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/grounded-lifecycle',
+        title: 'Grounded lifecycle',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/grounded-lifecycle.md`,
+        plainText: 'Alex trabalha na Acme.',
+        frontmatter: {},
+      },
+    });
+    const groundedNodes = await Promise.all(
+      ['alex', 'acme'].map((key) =>
+        db.brainNode.create({
+          data: {
+            userId: user.id,
+            key: `ENTITY:person:${key}`,
+            type: 'ENTITY',
+            label: key,
+            metadata: { method: 'llm-grounded' },
+          },
+        }),
+      ),
+    );
+    const alex = groundedNodes[0]!;
+    const acme = groundedNodes[1]!;
+    const edge = await db.brainEdge.create({
+      data: {
+        userId: user.id,
+        fromNodeId: alex.id,
+        toNodeId: acme.id,
+        kind: 'RELATED_TO',
+        method: 'llm-grounded-relation',
+      },
+    });
+    await db.brainSource.create({
+      data: {
+        userId: user.id,
+        edgeId: edge.id,
+        sourceType: 'TRANSCRIPT',
+        sourceId: transcript.id,
+        evidenceKey: `grounded-lifecycle:${transcript.id}`,
+        excerpt: 'Alex trabalha na Acme.',
+      },
+    });
+
+    for (const status of ['ARCHIVED', 'ACTIVE'] as const) {
+      const response = await app.fetch(
+        new Request(`http://localhost/api/transcripts/${transcript.id}/lifecycle`, {
+          method: 'PATCH',
+          headers: { cookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ status }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect((await db.brainEdge.findUniqueOrThrow({ where: { id: edge.id } })).status).toBe(
+        status,
+      );
+      expect(
+        (await db.brainNode.findMany({ where: { id: { in: [alex.id, acme.id] } } })).map(
+          (node) => node.status,
+        ),
+      ).toEqual([status, status]);
+    }
   });
 });

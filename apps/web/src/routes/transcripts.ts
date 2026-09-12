@@ -1,41 +1,59 @@
-// ============================================================================
-// Voxen — Transcripts routes
-// ============================================================================
-// Endpoints (sempre escopados por userId):
-//   GET  /api/transcripts          — lista (paginada)
-//   GET  /api/transcripts/:id      — metadata + plainText + markdown content
-//
-// .md content é lido do storage S3. Em prod, considerar cache; MVP busca direto.
-// ============================================================================
-
 import { Hono } from 'hono';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
-import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
+import { reindexTranscriptBrain } from '../lib/brain';
+import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
+import { applyTranscriptLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
-import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
+import {
+  NoteAnchorInputSchema,
+  NoteAnchorValidationError,
+  noteSourceCreateData,
+  validateNoteAnchors,
+} from '../lib/note-anchors';
+import { recordInitialNoteRevision, syncNoteGraph } from '../lib/note-versioning';
+import { storageGet, storageHead, storagePut } from '../lib/storage';
 import { isSetupComplete } from '../lib/settings';
+import {
+  buildOriginalResponseInit,
+  inlineSafeMime,
+  parseSingleByteRange,
+} from '../lib/transcript-media-range';
 import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
 import { applyTagsToTranscript, type AppliedTag } from '../lib/tags';
 import {
   generateAndPersistTranscriptSummary,
   TranscriptSummaryError,
 } from '../lib/transcript-summary';
+import { generateTranscriptFlowRoute } from './transcript-flow-route';
 import {
   transcriptGraphMatchSql,
   TRANSCRIPT_GRAPH_RANK_BOOST,
 } from '../lib/transcript-graph-search';
 import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
+import {
+  parseTranscriptGraphHops,
+  parseTranscriptGraphScope,
+  readTranscriptLocalGraph,
+} from '../lib/transcript-local-graph';
+import { TRANSCRIPT_LIST_SELECT } from '../lib/transcript-list-select';
+import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
+import { registerTranscriptInterestRoutes } from './transcript-interest';
+import {
+  effectiveTranscriptPlainText,
+  loadTranscriptSourceVersions,
+  resolveTranscriptMarkdownViews,
+  TRANSCRIPT_CORRECTION_DETAIL_SELECT,
+} from '../lib/transcript-content';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
-
 type Vars = { userId: string };
 
 export const transcriptsRoutes = new Hono<{ Variables: Vars }>();
@@ -118,9 +136,12 @@ transcriptsRoutes.use('*', async (c, next) => {
   return next();
 });
 
+registerTranscriptCorrectionRoutes(transcriptsRoutes);
+registerTranscriptInterestRoutes(transcriptsRoutes);
+
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const query = (c.req.query('q') ?? '').trim();
+  const query = (c.req.query('q') ?? '').trim().slice(0, 240);
   const status = normalizeStatus(c.req.query('status'));
   const inbox = c.req.query('view') === 'inbox';
   const folderId = inbox ? null : normalizeFolderId(c.req.query('folderId'));
@@ -190,7 +211,7 @@ transcriptsRoutes.get('/', async (c) => {
       t."createdAt",
       ts_headline(
         'portuguese',
-        t."plainText",
+        CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END,
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
@@ -257,7 +278,7 @@ transcriptsRoutes.get('/', async (c) => {
       t."createdAt",
       ts_headline(
         'portuguese',
-        t."plainText",
+        CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END,
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
@@ -380,32 +401,6 @@ transcriptsRoutes.get('/', async (c) => {
   });
 });
 
-const TRANSCRIPT_LIST_SELECT = {
-  id: true,
-  source: true,
-  url: true,
-  title: true,
-  channel: true,
-  durationSec: true,
-  language: true,
-  transcriptionMethod: true,
-  thumbnailUrl: true,
-  originalObjectKey: true,
-  originalFilename: true,
-  originalMimeType: true,
-  previewObjectKey: true,
-  previewMimeType: true,
-  costUsd: true,
-  folderId: true,
-  folder: { select: { id: true, name: true, parentId: true } },
-  status: true,
-  archivedAt: true,
-  trashedAt: true,
-  createdAt: true,
-} as const;
-
-// Carrega as tags (id/name/slug) de um conjunto de transcripts, escopadas por
-// userId, e devolve um mapa transcriptId -> tags (ordenadas por nome).
 async function loadTagsForTranscripts(
   userId: string,
   transcriptIds: string[],
@@ -430,7 +425,6 @@ async function loadTagsForTranscripts(
   return map;
 }
 
-// Anexa `tags` a cada item de uma lista de transcripts (in-place funcional).
 async function withTags<T extends { id: string }>(
   userId: string,
   items: T[],
@@ -441,6 +435,17 @@ async function withTags<T extends { id: string }>(
   );
   return items.map((i) => ({ ...i, tags: map.get(i.id) ?? [] }));
 }
+
+transcriptsRoutes.get('/:id/graph', async (c) => {
+  const graph = await readTranscriptLocalGraph({
+    userId: c.get('userId'),
+    transcriptId: c.req.param('id'),
+    scope: parseTranscriptGraphScope(c.req.query('scope')),
+    hops: parseTranscriptGraphHops(c.req.query('hops')),
+  });
+  if (!graph) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  return c.json(graph);
+});
 
 transcriptsRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');
@@ -473,6 +478,7 @@ transcriptsRoutes.get('/:id', async (c) => {
       mdPath: true,
       plainText: true,
       summaryMd: true,
+      flowchartMd: true,
       taggingStatus: true,
       taggingAttempts: true,
       taggingNextAttemptAt: true,
@@ -484,6 +490,7 @@ transcriptsRoutes.get('/:id', async (c) => {
       sourceMetadata: true,
       sourceRefreshStatus: true,
       sourceRefreshError: true,
+      ...TRANSCRIPT_CORRECTION_DETAIL_SELECT,
       archivedAt: true,
       trashedAt: true,
       createdAt: true,
@@ -506,40 +513,16 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
-  // Busca o .md no S3 com fallback pro plainText em caso de erro
-  const markdown = await (async (): Promise<string> => {
-    try {
-      const res = await s3Client().send(
-        new GetObjectCommand({
-          Bucket: s3Bucket(),
-          Key: transcript.mdPath,
-        }),
-      );
-      return (await res.Body?.transformToString('utf-8')) ?? '';
-    } catch (err) {
-      console.error(
-        '[transcripts] erro ao baixar .md',
-        safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', err),
-      );
-      return `# ${transcript.title}\n\n${transcript.plainText}`;
-    }
-  })();
-
+  const { markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript);
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
-  const sourceVersions =
-    transcript.source === 'WEB'
-      ? await db.sourceContentVersion.findMany({
-          where: { userId, transcriptId: transcript.id },
-          orderBy: { version: 'desc' },
-          take: 12,
-          select: { version: true, checksum: true, collectedAt: true, metadata: true },
-        })
-      : [];
-  return c.json({ transcript: { ...transcript, totalCostUsd, tags, sourceVersions }, markdown });
+  const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);
+  return c.json({
+    transcript: { ...transcript, totalCostUsd, tags, sourceVersions },
+    markdown,
+    canonicalMarkdown,
+  });
 });
 
-// POST /api/transcripts/:id/refresh — consulta novamente uma fonte WEB sem
-// duplicar sua identidade. O worker compara checksum e só reprocessa se mudou.
 transcriptsRoutes.post('/:id/refresh', async (c) => {
   const userId = c.get('userId');
   const transcriptId = c.req.param('id');
@@ -630,35 +613,40 @@ transcriptsRoutes.get('/:id/original', async (c) => {
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (!transcript.originalObjectKey)
     return c.json({ error: 'Arquivo original não disponível.' }, 404);
-  // Range: o player de vídeo/áudio (e o Safari/iOS obrigatoriamente) precisa de
-  // 206 + Accept-Ranges pra fazer seek. Repassamos o header pro S3/MinIO, que
-  // fatia os bytes, e relayamos Content-Range/Content-Length da resposta dele.
+  // Range: media players (especially Safari/iOS) require 206 + Accept-Ranges.
+  // Both drivers stream only the requested byte range.
   // Só single-range: multi-range (vírgula) viraria multipart/byteranges, que não
   // sabemos relayar — nesse caso servimos o arquivo inteiro (200).
   const rawRange = c.req.header('range');
   const rangeHeader = rawRange && !rawRange.includes(',') ? rawRange : undefined;
   try {
-    const res = await s3Client().send(
-      new GetObjectCommand({
-        Bucket: s3Bucket(),
-        Key: transcript.originalObjectKey,
-        ...(rangeHeader ? { Range: rangeHeader } : {}),
-      }),
-    );
+    const head = await storageHead(transcript.originalObjectKey);
+    const range = rangeHeader ? parseSingleByteRange(rangeHeader, head.contentLength) : null;
+    if (rangeHeader && !range) {
+      return new Response(JSON.stringify({ error: 'Range solicitado inválido.' }), {
+        status: 416,
+        headers: {
+          'content-type': 'application/json; charset=UTF-8',
+          'accept-ranges': 'bytes',
+          'content-range': `bytes */${head.contentLength}`,
+        },
+      });
+    }
+    const object = await storageGet(transcript.originalObjectKey, range ?? undefined);
     const filename = safeDownloadFilename(transcript.originalFilename || `${id}.bin`);
     const init = buildOriginalResponseInit({
       rangeHeader,
-      s3ContentType: res.ContentType,
-      s3ContentLength: res.ContentLength,
-      s3ContentRange: res.ContentRange,
+      storageContentType: object.contentType ?? undefined,
+      storageContentLength: object.contentLength,
+      storageContentRange: object.contentRange ?? undefined,
       fallbackMime: transcript.originalMimeType,
       filename,
     });
-    return new Response(await s3BodyToResponseBody(res.Body), init);
+    return new Response(object.body, init);
   } catch (err) {
     const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
       ?.httpStatusCode;
-    if (httpStatus === 416) {
+    if (httpStatus === 416 || (err as { code?: string }).code === 'ERANGE') {
       return c.json({ error: 'Range solicitado inválido.' }, 416);
     }
     console.error(
@@ -725,13 +713,8 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
         : null;
   if (objectKey && mimeType) {
     try {
-      const res = await s3Client().send(
-        new GetObjectCommand({
-          Bucket: s3Bucket(),
-          Key: objectKey,
-        }),
-      );
-      return new Response(await s3BodyToResponseBody(res.Body), {
+      const object = await storageGet(objectKey);
+      return new Response(object.body, {
         headers: {
           'content-type': mimeType,
           'cache-control': 'private, max-age=300',
@@ -820,7 +803,21 @@ transcriptsRoutes.post('/:id/refresh-thumbnail', async (c) => {
 const LinkedNoteBody = z.object({
   title: z.string().min(1).max(200),
   content: z.string().max(200_000).default(''),
+  anchors: z.array(NoteAnchorInputSchema).max(20).default([]),
 });
+
+const LINKED_NOTE_ANCHOR_SELECT = {
+  id: true,
+  startLine: true,
+  endLine: true,
+  startSec: true,
+  endSec: true,
+  selectedQuote: true,
+  sourceVersion: true,
+  sourceChecksum: true,
+  status: true,
+  staleReason: true,
+} as const;
 
 transcriptsRoutes.get('/:id/notes', async (c) => {
   const userId = c.get('userId');
@@ -847,6 +844,15 @@ transcriptsRoutes.get('/:id/notes', async (c) => {
       content: true,
       updatedAt: true,
       createdAt: true,
+      transcriptSources: {
+        where: { transcriptId: id, userId },
+        select: {
+          anchors: {
+            orderBy: { createdAt: 'asc' },
+            select: LINKED_NOTE_ANCHOR_SELECT,
+          },
+        },
+      },
     },
     take: 20,
   });
@@ -865,27 +871,51 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const note = await db.note.create({
-    data: {
-      userId,
-      kind: 'NOTE',
-      title: parsed.data.title.trim(),
-      content: parsed.data.content,
-      sourceType: 'TRANSCRIPT',
-      sourceId: id,
-      transcriptSources: { create: { transcriptId: id, userId } },
-    },
-    select: {
-      id: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-      createdAt: true,
-    },
+  if (parsed.data.anchors.some((anchor) => anchor.transcriptId !== id)) {
+    return c.json({ error: 'A âncora precisa pertencer a esta transcrição.' }, 400);
+  }
+  let anchors;
+  try {
+    anchors = await validateNoteAnchors(userId, parsed.data.anchors);
+  } catch (error) {
+    if (error instanceof NoteAnchorValidationError) return c.json({ error: error.message }, 400);
+    throw error;
+  }
+
+  const note = await db.$transaction(async (tx) => {
+    const created = await tx.note.create({
+      data: {
+        userId,
+        kind: 'NOTE',
+        title: parsed.data.title.trim(),
+        content: parsed.data.content,
+        sourceType: 'TRANSCRIPT',
+        sourceId: id,
+        transcriptSources: { create: noteSourceCreateData(userId, [id], anchors) },
+      },
+    });
+    await recordInitialNoteRevision(tx, created, 'USER', 'Created from transcript annotation');
+    return tx.note.findUniqueOrThrow({
+      where: { id: created.id },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        revision: true,
+        updatedAt: true,
+        createdAt: true,
+        transcriptSources: {
+          select: {
+            anchors: {
+              select: LINKED_NOTE_ANCHOR_SELECT,
+            },
+          },
+        },
+      },
+    });
   });
-  await reindexNoteBrain(userId, note.id);
-  await invalidateGraphCache(userId);
-  return c.json({ note }, 201);
+  const graphSync = await syncNoteGraph(userId, note.id);
+  return c.json({ note, graphSync }, 201);
 });
 
 const OrganizationBody = z.object({
@@ -923,9 +953,6 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
   return c.json({ transcript });
 });
 
-// POST /api/transcripts/:id/generate-tags — gera tags via IA para UM conteúdo
-// (spec 075). Re-gera e faz merge (dedup por slug); nunca duplica. Throttle
-// 1/min por transcript pra não queimar tokens em cliques repetidos.
 transcriptsRoutes.post('/:id/generate-tags', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -943,11 +970,23 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
 
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
-    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      summaryMd: true,
+      folderId: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const content = ((transcript.summaryMd ?? '') || (transcript.plainText ?? '')).trim();
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
+  const content = ((transcript.summaryMd ?? '') || effectivePlainText).trim();
   if (content.length < 40 && transcript.title.trim().length < 3) {
     return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
   }
@@ -993,10 +1032,15 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
 
   const applied = await applyTagsToTranscript(
     userId,
-    { id: transcript.id, folderId: transcript.folderId },
+    {
+      id: transcript.id,
+      folderId: transcript.folderId,
+      correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
+    },
     result.tags,
   );
-  // Devolve TODAS as tags do conteúdo (merge acumulado), não só as novas.
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   return c.json({ tags, generated: applied.length });
 });
@@ -1018,60 +1062,38 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
   });
   if (!existing) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const now = new Date();
-  const transcript = await db.transcript.update({
-    where: { id },
-    data: {
-      status,
-      archivedAt: status === 'ARCHIVED' ? now : null,
-      trashedAt: status === 'TRASH' ? now : null,
-    },
-    select: TRANSCRIPT_LIST_SELECT,
-  });
-  await reindexTranscriptBrain(userId, id);
+  const transcript = await applyTranscriptLifecycle(userId, id, status);
+  if (!transcript) {
+    return c.json({ error: 'O grafo está sendo atualizado. Tente novamente em instantes.' }, 409);
+  }
+  await syncTranscriptEnrichmentBrainLifecycle(userId, id, status);
   await invalidateGraphCache(userId);
   return c.json({ transcript });
 });
 
-// DELETE /api/transcripts/:id — purge definitivo.
 // Por segurança, exige que a transcrição esteja na lixeira antes do hard delete.
 transcriptsRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const transcript = await db.transcript.findFirst({
-    where: { id, userId },
-    select: {
-      id: true,
-      status: true,
-      mdPath: true,
-      title: true,
-      originalObjectKey: true,
-      previewObjectKey: true,
-    },
-  });
-  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (transcript.status !== 'TRASH') {
-    return c.json({ error: 'Mova para a lixeira antes de apagar definitivamente.' }, 409);
-  }
-
   try {
-    await Promise.all(
-      [transcript.mdPath, transcript.previewObjectKey, transcript.originalObjectKey]
-        .filter((key): key is string => Boolean(key))
-        .map((key) => deleteS3Object(key)),
+    const result = await enqueueKnowledgeDeletion({
+      userId,
+      type: 'TRANSCRIPT',
+      id,
+    });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
     );
-  } catch (err) {
-    console.error(
-      '[transcripts] erro ao apagar objetos no S3',
-      safeErrorDiagnostic('TRANSCRIPT_OBJECT_DELETE_FAILED', err),
-    );
-    return c.json({ error: 'Falha ao apagar arquivos no armazenamento S3.' }, 502);
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
   }
-
-  await db.transcript.delete({ where: { id } });
-  await deleteBrainForSource(userId, 'TRANSCRIPT', id);
-  await invalidateGraphCache(userId);
-  return c.json({ ok: true, deletedId: id });
 });
 
 // POST /api/transcripts/:id/summary — gerar / regenerar resumo via OpenRouter.
@@ -1083,8 +1105,6 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
   const force = body.force === true;
 
-  // Throttle ANTES do DB — clique repetido (loop UI) bloqueia em Redis sem
-  // tocar Postgres. SELECT é cheap mas em volume isso multiplica.
   const rl = await rateLimit(`voxen:rl:summary:${id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
   if (!rl.allowed) {
     return c.json(
@@ -1098,14 +1118,24 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
 
   const transcript = await db.transcript.findFirst({
     where: { id, userId, status: { not: 'TRASH' } },
-    select: { id: true, title: true, plainText: true, summaryMd: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      summaryMd: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (!transcript.plainText?.trim()) {
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
+  if (!effectivePlainText.trim()) {
     return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
   }
 
-  // Já tem resumo → exige force=true (confirmação explícita do user)
   if (transcript.summaryMd && !force) {
     return c.json(
       {
@@ -1121,7 +1151,10 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       userId,
       transcriptId: transcript.id,
       title: transcript.title,
-      plainText: transcript.plainText,
+      plainText: effectivePlainText,
+      correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
     });
     return c.json({ summaryMd });
   } catch (err) {
@@ -1135,6 +1168,8 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     return c.json({ error: 'Falha ao gerar resumo.' }, 502);
   }
 });
+
+transcriptsRoutes.post('/:id/flow', generateTranscriptFlowRoute);
 
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
   if (value === 'archived') return 'ARCHIVED';
@@ -1162,6 +1197,7 @@ function parseCreatedAtBound(value: string | undefined): Date | undefined {
 
 const DEFAULT_LIST_LIMIT = 24;
 const MAX_LIST_LIMIT = 50;
+const MAX_LIST_OFFSET = 239_976; // 10,000 numbered pages at the default page size.
 
 function parseListLimit(value: string | undefined): number {
   const n = Number.parseInt(value ?? '', 10);
@@ -1172,7 +1208,7 @@ function parseListLimit(value: string | undefined): number {
 function parseListOffset(value: string | undefined): number {
   const n = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(n, 10_000);
+  return Math.min(n, MAX_LIST_OFFSET);
 }
 
 function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name: string } | null } {
@@ -1180,61 +1216,6 @@ function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name:
     ...row,
     folder: row.folderId && row.folderName ? { id: row.folderId, name: row.folderName } : null,
   };
-}
-
-async function s3BodyToResponseBody(body: unknown): Promise<BodyInit> {
-  const maybeBody = body as {
-    transformToWebStream?: () => ReadableStream<Uint8Array>;
-    transformToByteArray?: () => Promise<Uint8Array>;
-  } | null;
-  if (maybeBody?.transformToWebStream) return maybeBody.transformToWebStream();
-  if (maybeBody?.transformToByteArray) {
-    const bytes = await maybeBody.transformToByteArray();
-    const copy = new Uint8Array(bytes.byteLength);
-    copy.set(bytes);
-    return copy.buffer;
-  }
-  return new ArrayBuffer(0);
-}
-
-// Monta status + headers da resposta de `/:id/original`. Puro (sem I/O) para ser
-// testável: decide 206 (Range satisfeito pelo S3) vs 200, e relaya os headers de
-// range. `accept-ranges: bytes` sempre presente para o player saber que dá seek.
-export function buildOriginalResponseInit(opts: {
-  rangeHeader?: string;
-  s3ContentType?: string;
-  s3ContentLength?: number;
-  s3ContentRange?: string;
-  fallbackMime: string | null;
-  filename: string;
-}): { status: number; headers: Record<string, string> } {
-  const contentType = opts.fallbackMime || opts.s3ContentType || 'application/octet-stream';
-  // Conteúdo é upload do usuário (NÃO confiável): só mídia segura vai `inline` no
-  // contexto same-origin da app; o resto (text/html, image/svg+xml, pdf...) vira
-  // `attachment` (download), evitando XSS armazenado. `nosniff` impede o browser
-  // de reinterpretar o MIME e executar como HTML.
-  const headers: Record<string, string> = {
-    'content-type': contentType,
-    'cache-control': 'private, max-age=300',
-    'content-disposition': `${inlineSafeMime(contentType) ? 'inline' : 'attachment'}; filename="${opts.filename}"`,
-    'accept-ranges': 'bytes',
-    'x-content-type-options': 'nosniff',
-  };
-  if (opts.s3ContentLength != null) headers['content-length'] = String(opts.s3ContentLength);
-  if (opts.rangeHeader && opts.s3ContentRange) {
-    headers['content-range'] = opts.s3ContentRange;
-    return { status: 206, headers };
-  }
-  return { status: 200, headers };
-}
-
-// Tipos servidos `inline` (renderizados no browser same-origin). Restrito a mídia
-// que o player usa; text/html, image/svg+xml e pdf ficam de fora (vão como
-// attachment) porque podem executar script no contexto da aplicação.
-function inlineSafeMime(contentType: string): boolean {
-  const ct = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
-  if (ct.startsWith('video/') || ct.startsWith('audio/')) return true;
-  return ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/webp' || ct === 'image/gif';
 }
 
 function safeDownloadFilename(value: string): string {
@@ -1352,14 +1333,7 @@ async function tryMirrorRemoteThumbnail(opts: {
 
     const { ext, mime } = mimeFromContentType(res.headers.get('content-type'), opts.remoteUrl);
     const key = `workspaces/${opts.userId}/transcripts/${opts.transcriptId}/thumbnail.${ext}`;
-    await s3Client().send(
-      new PutObjectCommand({
-        Bucket: s3Bucket(),
-        Key: key,
-        Body: buf,
-        ContentType: mime,
-      }),
-    );
+    await storagePut({ key, body: buf, contentType: mime });
     await db.transcript.update({
       where: { id: opts.transcriptId },
       data: {

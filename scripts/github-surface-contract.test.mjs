@@ -39,6 +39,27 @@ test("version bot creates an English pull request and workflow output", () => {
   assert.doesNotMatch(workflow, /Bump automático|Sete required checks/);
 });
 
+test("version bot publishes the dev image only after its pull request merges", () => {
+  const versionWorkflow = read(".github/workflows/version-dev.yml");
+  const imageWorkflow = read(".github/workflows/easypanel-image.yml");
+  const merge = versionWorkflow.indexOf("gh pr merge --squash --delete-branch");
+  const dispatch = versionWorkflow.indexOf(
+    'gh workflow run easypanel-image.yml --ref "$TARGET_BRANCH"',
+  );
+  const wait = versionWorkflow.indexOf(
+    'gh run watch "$IMAGE_RUN_ID" --exit-status',
+  );
+
+  assert.ok(merge >= 0, "the version pull request must be merged");
+  assert.ok(dispatch > merge, "the image dispatch must happen after the merge");
+  assert.ok(wait > dispatch, "the version workflow must wait for publication");
+  assert.match(versionWorkflow, /headSha == \$sha/);
+  assert.match(versionWorkflow, /BEFORE_IMAGE_RUN_IDS/);
+  assert.match(versionWorkflow, /\$before \| index\(\$id\) \| not/);
+  assert.match(versionWorkflow, /Image workflow:/);
+  assert.doesNotMatch(imageWorkflow, /branches:\s*\[dev(?:,|\])/);
+});
+
 test("quality evidence survives producer and collector failures", () => {
   const workflow = read(".github/workflows/ci.yml");
   const start = workflow.indexOf("  quality-gate:");

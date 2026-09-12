@@ -204,6 +204,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src/client'),
     },
   },
+  optimizeDeps: {
+    // Keep dependency pre-bundling aligned with the production build target.
+    // esbuild 0.28 no longer lowers destructuring for Vite's legacy browser
+    // target set, which otherwise prevents the development server from booting.
+    esbuildOptions: {
+      target: 'es2022',
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: true,

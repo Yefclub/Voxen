@@ -19,12 +19,9 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { db } from '../lib/db';
+import { noteContentChecksum } from '../lib/note-revisions';
 import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
-import { createAutoJobForUser } from './jobs';
-import { getTranscriptBrief } from '../lib/agent-content';
-import { reindexNotesBrain } from '../lib/brain';
 import { searchBrainNodes } from '../lib/brain-search';
-import { invalidateGraphCache } from '../lib/graph-cache';
 import {
   expandContextFromMd,
   findRelated,
@@ -37,6 +34,23 @@ import {
   searchKnowledgeBase,
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
+import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
+import { registerBrainTimelineTool } from './mcp-brain-timeline-tool';
+import { keepCurrentOwnedSources } from './mcp-brain-source-lifecycle';
+import {
+  registerTranscriptEnrichmentTools,
+  registerTranscriptEnrichmentWriteTools,
+} from './mcp-transcript-enrichment-tools';
+import { registerWriteTools } from './mcp-write-tools';
+import { registerMcpNoteRevisionReadTools } from './mcp-note-revision-read-tools';
+import { registerMcpTranscriptCorrectionReadTools } from './mcp-transcript-correction-tools';
+import { loadTranscriptCorrectionHead } from '../lib/transcript-correction-versioning';
+import {
+  authenticateMcpOAuthToken,
+  mcpBearerChallenge,
+  writeMcpOAuthAudit,
+} from '../lib/mcp-oauth';
+import { registerMcpPersonalContextTool } from './mcp-personal-context-tool';
 
 export const mcpRoutes = new Hono();
 
@@ -66,15 +80,32 @@ const VOXEN_INSTRUCTIONS = [
   '6. Use tags e resumo para decidir relevância; relacione com docs/tópicos próximos:',
   '   voxen_related e voxen_brain_*',
   '   (neighbors, sources, path até 3 hops, hubs).',
-  '7. Monte um contexto mínimo; cite doc + linhas/seção + timestamp do que usar.',
-  '8. Valide afirmações factuais fortes com voxen_verify_citations antes de afirmá-las;',
+  '   Para estado atual, histórico ou mudança no tempo, use voxen_brain_timeline e abra',
+  '   as evidências retornadas antes de afirmar o fato.',
+  '7. Para perguntas personalizadas, use voxen_personal_context. Ele separa feedback explícito',
+  '   de interesse inferido e recomenda fontes via grafo, mas é apenas um guia de navegação:',
+  '   abra e verifique cada fonte antes de usá-la como evidência factual.',
+  '8. Monte um contexto mínimo; cite doc + linhas/seção + timestamp do que usar.',
+  '9. Valide afirmações factuais fortes com voxen_verify_citations antes de afirmá-las;',
   '   se não houver evidência suficiente, diga isso — não invente.',
   '',
   'Fluxo de escrita:',
-  '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
-  '- voxen_request_transcription(url) enfileira um job; acompanhe com',
+  '- voxen_create_note salva informação; voxen_read_note devolve revision/checksum.',
+  '  Para editar, localize a passagem com voxen_search_note_content, pré-visualize com',
+  '  voxen_patch_note e aplique somente com a mesma expected_revision. voxen_update_note',
+  '  continua disponível para substituição completa, também com controle de revisão.',
+  '  Use source_anchors para preservar a passagem exata por linha e/ou timestamp.',
+  '- voxen_request_transcription(url) enfileira um job; voxen_request_transcriptions(urls)',
+  '  aceita até 20 links e devolve um resultado independente para cada entrada. Acompanhe com',
   '  voxen_get_job_status(job_id) até DONE. Use o brief retornado (resumo, tags e relacionados)',
   '  e só então outline/trechos específicos; documento completo continua sendo último recurso.',
+  '- Contexto adicional de pesquisa é externo e revisável: liste/leia com',
+  '  voxen_list_transcript_enrichments / voxen_read_transcript_enrichment. Com WRITE,',
+  '  solicite pesquisa e aceite somente sugestões citadas e atuais; nunca trate SUGGESTED',
+  '  como evidência canônica nem misture esse conteúdo ao resumo da transcrição.',
+  '- Para excluir conteúdo, leia o alvo novamente e use voxen_delete_knowledge somente com',
+  '  target_id, expected_title exato e confirm=true. A exclusão é irreversível e assíncrona;',
+  '  acompanhe o job retornado até DONE.',
   '',
   'Regras de resposta: sintetize, compare fontes, explicite contradições e diferencie evidência',
   'de inferência. Use href para tornar a citação da nota navegável quando o cliente suportar links.',
@@ -87,19 +118,6 @@ const VOXEN_INSTRUCTIONS = [
 // próprio usuário). Os defaults do MCP assumem o pior caso, então declaramos
 // explicitamente pra o cliente não tratar como perigoso. As write tools
 // (voxen_create_note/update_note/request_transcription) têm annotations próprias.
-const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
-const TRANSCRIPT_BRIEF_SCHEMA = z.object({
-  transcriptId: z.string(),
-  title: z.string(),
-  url: z.string(),
-  summary: z.string().nullable(),
-  tags: z.array(z.string()),
-  related: z.array(
-    z.object({ id: z.string(), title: z.string(), kind: z.string(), reason: z.string() }),
-  ),
-  nextStep: z.string(),
-});
-
 // ----------------------------------------------------------------------------
 // HTTP entrypoint
 // ----------------------------------------------------------------------------
@@ -110,10 +128,38 @@ mcpRoutes.all('/', async (c) => {
   }
   const identity = await authenticateMcp(c);
   if (!identity) {
+    const supplied = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+    if (supplied.split('.').length === 3) {
+      await writeMcpOAuthAudit({
+        event: 'resource_rejection',
+        outcome: 'denied',
+        metadata: { reason: 'invalid_token', path: '/mcp' },
+      });
+    }
+    c.header('WWW-Authenticate', mcpBearerChallenge({ error: 'invalid_token' }));
     return c.json(
       { error: 'Auth obrigatória ou inválida. Envie Authorization: Bearer <token>.' },
       401,
     );
+  }
+  if (
+    identity.credentialClass === 'oauth' &&
+    !identity.scopes.includes('WRITE') &&
+    (await requestsWriteTool(c))
+  ) {
+    c.header(
+      'WWW-Authenticate',
+      mcpBearerChallenge({ error: 'insufficient_scope', scope: 'mcp:write' }),
+    );
+    await writeMcpOAuthAudit({
+      event: 'resource_rejection',
+      outcome: 'denied',
+      actorUserId: identity.userId,
+      targetUserId: identity.userId,
+      clientId: identity.clientId,
+      metadata: { reason: 'insufficient_scope', path: '/mcp' },
+    });
+    return c.json({ error: 'Escopo mcp:write obrigatório para esta operação.' }, 403);
   }
   const server = buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c));
   // enableJsonResponse: responde application/json em vez de abrir um stream SSE
@@ -159,14 +205,55 @@ function resolveMcpPublicOrigin(c: Context): string {
   return new URL(c.req.url).origin;
 }
 
-function toMcpContentUrl(publicOrigin: string, href: string): string {
-  return new URL(href, publicOrigin).toString();
-}
-
 // Bearer token -> identidade imutável do dono. O token legado global não é
 // aceito: o admin o revoga explicitamente pela tela de integrações.
-async function authenticateMcp(c: Context): Promise<{ userId: string; scopes: McpScope[] } | null> {
-  const token = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+type McpIdentity = {
+  userId: string;
+  scopes: McpScope[];
+  credentialClass: 'personal' | 'oauth';
+  clientId?: string;
+};
+
+const WRITE_TOOL_NAMES = new Set([
+  'voxen_create_note',
+  'voxen_update_note',
+  'voxen_patch_note',
+  'voxen_restore_note_revision',
+  'voxen_patch_transcript',
+  'voxen_restore_transcript_correction',
+  'voxen_request_transcription',
+  'voxen_request_transcriptions',
+  'voxen_get_job_status',
+  'voxen_request_transcript_research',
+  'voxen_review_transcript_enrichment',
+  'voxen_edit_transcript_enrichment',
+  'voxen_delete_transcript_enrichment',
+  'voxen_delete_knowledge',
+]);
+
+async function requestsWriteTool(c: Context): Promise<boolean> {
+  if (c.req.method !== 'POST') return false;
+  try {
+    const payload: unknown = await c.req.raw.clone().json();
+    const requests = Array.isArray(payload) ? payload : [payload];
+    return requests.some((request) => {
+      if (!request || typeof request !== 'object') return false;
+      const value = request as { method?: unknown; params?: { name?: unknown } };
+      return (
+        value.method === 'tools/call' &&
+        typeof value.params?.name === 'string' &&
+        WRITE_TOOL_NAMES.has(value.params.name)
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function authenticateMcp(c: Context): Promise<McpIdentity | null> {
+  const authorization = c.req.header('Authorization') ?? '';
+  const match = /^Bearer\s+([^\s]+)\s*$/i.exec(authorization);
+  const token = match?.[1] ?? '';
   if (!token) return null;
   const now = new Date();
   const row = await db.mcpToken
@@ -183,21 +270,31 @@ async function authenticateMcp(c: Context): Promise<{ userId: string; scopes: Mc
     })
     .catch(() => null);
   if (
-    !row ||
-    row.revokedAt ||
-    (row.expiresAt && row.expiresAt <= now) ||
-    row.user.status !== 'APPROVED'
+    row &&
+    !row.revokedAt &&
+    (!row.expiresAt || row.expiresAt > now) &&
+    row.user.status === 'APPROVED'
   ) {
-    return null;
+    const scopes = deserializeMcpScopes(row.scopes);
+    if (scopes.length > 0) {
+      // Não há informação sensível no timestamp; falha de telemetria não bloqueia
+      // uma conexão MCP válida.
+      await db.mcpToken
+        .update({ where: { id: row.id }, data: { lastUsedAt: now } })
+        .catch(() => undefined);
+      return { userId: row.userId, scopes, credentialClass: 'personal' };
+    }
   }
-  const scopes = deserializeMcpScopes(row.scopes);
-  if (scopes.length === 0) return null;
-  // Não há informação sensível no timestamp; falha de telemetria não bloqueia
-  // uma conexão MCP válida.
-  await db.mcpToken
-    .update({ where: { id: row.id }, data: { lastUsedAt: now } })
-    .catch(() => undefined);
-  return { userId: row.userId, scopes };
+
+  const oauth = await authenticateMcpOAuthToken(token);
+  return oauth
+    ? {
+        userId: oauth.userId,
+        scopes: oauth.scopes,
+        credentialClass: 'oauth',
+        clientId: oauth.clientId,
+      }
+    : null;
 }
 
 // ----------------------------------------------------------------------------
@@ -210,248 +307,21 @@ function buildVoxenMcpServer(
   publicOrigin: string,
 ): McpServer {
   const server = new McpServer(
-    { name: 'voxen-mcp', version: '0.3.0' },
+    { name: 'voxen-mcp', version: '0.6.0' },
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
     registerTranscriptTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
+    registerTranscriptEnrichmentTools(server, userId, publicOrigin);
+    registerMcpPersonalContextTool(server, userId, publicOrigin);
     registerBrainTools(server, userId);
   }
-  if (scopes.includes('WRITE')) registerWriteTools(server, userId);
+  if (scopes.includes('WRITE')) {
+    registerWriteTools(server, userId);
+    registerTranscriptEnrichmentWriteTools(server, userId);
+  }
   return server;
-}
-
-function registerWriteTools(server: McpServer, userId: string): void {
-  server.registerTool(
-    'voxen_create_note',
-    {
-      title: 'Criar nota',
-      description:
-        'Cria uma nota (markdown) na KB do usuário. Use para salvar/ingerir informação que ' +
-        'o usuário pediu para guardar. Retorna o id da nota criada.',
-      inputSchema: {
-        title: z.string().min(1).max(200).describe('Título da nota.'),
-        content: z.string().max(200_000).optional().describe('Conteúdo markdown.'),
-        source_transcript_ids: z
-          .array(z.string().min(1))
-          .max(50)
-          .optional()
-          .describe('IDs de transcrições da própria Base de conhecimento que sustentam a nota.'),
-      },
-      outputSchema: { id: z.string(), title: z.string() },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: false,
-        title: 'Criar nota',
-      },
-    },
-    async (args) => {
-      const title = args.title.trim();
-      if (!title) return fail('Título obrigatório.');
-      const transcriptIds = await resolveMcpTranscriptSourceIds(
-        userId,
-        args.source_transcript_ids ?? [],
-      );
-      if (transcriptIds === null)
-        return fail('Uma ou mais transcrições de origem não existem na sua Base de conhecimento.');
-      const note = await db.note.create({
-        data: {
-          userId,
-          kind: 'NOTE',
-          title,
-          content: args.content ?? '',
-          sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-          sourceId: transcriptIds[0] ?? null,
-          ...(transcriptIds.length > 0
-            ? {
-                transcriptSources: {
-                  create: transcriptIds.map((transcriptId) => ({ transcriptId, userId })),
-                },
-              }
-            : {}),
-        },
-        select: { id: true, title: true },
-      });
-      await reindexNotesBrain(userId).catch(() => {});
-      await invalidateGraphCache(userId).catch(() => {});
-      return ok({ id: note.id, title: note.title });
-    },
-  );
-
-  server.registerTool(
-    'voxen_update_note',
-    {
-      title: 'Editar nota',
-      description:
-        'Atualiza título e/ou conteúdo de uma nota existente (pelo note_id). Sobrescreve o ' +
-        'conteúdo informado. Só edita notas (kind=NOTE) do próprio usuário.',
-      inputSchema: {
-        note_id: z.string().min(1).describe('ID da nota a editar.'),
-        title: z.string().min(1).max(200).optional().describe('Novo título.'),
-        content: z.string().max(200_000).optional().describe('Novo conteúdo markdown.'),
-        source_transcript_ids: z
-          .array(z.string().min(1))
-          .max(50)
-          .optional()
-          .describe('Substitui as transcrições de origem da nota; array vazio remove os vínculos.'),
-      },
-      outputSchema: { id: z.string(), title: z.string() },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false,
-        title: 'Editar nota',
-      },
-    },
-    async (args) => {
-      if (
-        args.title === undefined &&
-        args.content === undefined &&
-        args.source_transcript_ids === undefined
-      ) {
-        return fail('Nada para atualizar: informe title, content e/ou source_transcript_ids.');
-      }
-      if (args.title !== undefined && !args.title.trim()) {
-        return fail('Título não pode ser vazio.');
-      }
-      const existing = await db.note.findFirst({
-        where: { id: args.note_id, userId, kind: 'NOTE' },
-        select: { id: true },
-      });
-      if (!existing) return fail('Nota não encontrada (ou não é editável).');
-      const transcriptIds =
-        args.source_transcript_ids === undefined
-          ? undefined
-          : await resolveMcpTranscriptSourceIds(userId, args.source_transcript_ids);
-      if (transcriptIds === null)
-        return fail('Uma ou mais transcrições de origem não existem na sua Base de conhecimento.');
-      const note = await db.note.update({
-        where: { id: existing.id },
-        data: {
-          ...(args.title !== undefined ? { title: args.title.trim() } : {}),
-          ...(args.content !== undefined ? { content: args.content } : {}),
-          ...(transcriptIds !== undefined
-            ? {
-                sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-                sourceId: transcriptIds[0] ?? null,
-                transcriptSources: {
-                  deleteMany: {},
-                  ...(transcriptIds.length > 0
-                    ? { create: transcriptIds.map((transcriptId) => ({ transcriptId, userId })) }
-                    : {}),
-                },
-              }
-            : {}),
-        },
-        select: { id: true, title: true },
-      });
-      await reindexNotesBrain(userId).catch(() => {});
-      await invalidateGraphCache(userId).catch(() => {});
-      return ok({ id: note.id, title: note.title });
-    },
-  );
-
-  server.registerTool(
-    'voxen_request_transcription',
-    {
-      title: 'Solicitar transcrição',
-      description:
-        'Enfileira a transcrição/indexação de uma URL (vídeo YouTube/Instagram/TikTok/X ou ' +
-        'página web). Retorna um job_id; acompanhe com voxen_get_job_status(job_id) até ' +
-        'status=DONE para receber um brief com resumo, tags e relacionados. Se a URL já foi ' +
-        'transcrita, devolve o brief imediatamente. Leia o documento completo só como último recurso.',
-      inputSchema: {
-        url: z.string().min(1).max(2048).describe('URL do vídeo ou página a transcrever/indexar.'),
-      },
-      outputSchema: {
-        outcome: z.string(),
-        jobId: z.string().nullable(),
-        transcriptId: z.string().nullable(),
-        message: z.string(),
-        brief: TRANSCRIPT_BRIEF_SCHEMA.nullable(),
-      },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: true,
-        title: 'Solicitar transcrição',
-      },
-    },
-    async (args) => {
-      const result = await createAutoJobForUser(userId, args.url);
-      switch (result.outcome) {
-        case 'created':
-          return ok({
-            outcome: 'created',
-            jobId: result.jobId,
-            transcriptId: null,
-            message: 'Job enfileirado. Use voxen_get_job_status(job_id) até status=DONE.',
-            brief: null,
-          });
-        case 'existing_transcript':
-          return ok({
-            outcome: 'existing_transcript',
-            jobId: null,
-            transcriptId: result.transcriptId,
-            message: 'URL já transcrita. Use o brief e leia trechos só se necessário.',
-            brief: await getTranscriptBrief(userId, result.transcriptId),
-          });
-        case 'inflight':
-          return ok({
-            outcome: 'inflight',
-            jobId: result.jobId ?? null,
-            transcriptId: null,
-            message: 'URL já está sendo processada. Acompanhe com voxen_get_job_status.',
-            brief: null,
-          });
-        default:
-          return fail(result.error);
-      }
-    },
-  );
-
-  server.registerTool(
-    'voxen_get_job_status',
-    {
-      title: 'Status de um job',
-      description:
-        'Consulta o status de um job de transcrição/indexação: QUEUED, RUNNING, DONE, FAILED ' +
-        'ou CANCELLED. Quando DONE, retorna transcript_id e um brief read-only com resumo, tags e ' +
-        'relacionados já armazenados; quando FAILED, retorna o erro.',
-      inputSchema: {
-        job_id: z.string().min(1).describe('ID do job retornado por request_transcription.'),
-      },
-      outputSchema: {
-        id: z.string(),
-        status: z.string(),
-        transcriptId: z.string().nullable(),
-        error: z.string().nullable(),
-        brief: TRANSCRIPT_BRIEF_SCHEMA.nullable(),
-      },
-      annotations: { ...READ_ONLY, title: 'Status de um job' },
-    },
-    async (args) => {
-      const job = await db.job.findFirst({
-        where: { id: args.job_id.trim(), userId },
-        select: { id: true, status: true, transcriptId: true, errorMsg: true },
-      });
-      if (!job) return fail('Job não encontrado.');
-      const brief =
-        (job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') && job.transcriptId
-          ? await getTranscriptBrief(userId, job.transcriptId, { enrichMissing: false })
-          : null;
-      return ok({
-        id: job.id,
-        status: job.status,
-        transcriptId: job.transcriptId ?? null,
-        error: job.errorMsg ?? null,
-        brief,
-      });
-    },
-  );
 }
 
 function registerTranscriptTools(server: McpServer, userId: string, publicOrigin: string): void {
@@ -460,10 +330,10 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
     {
       title: 'Buscar na Base de conhecimento',
       description:
-        'Busca full-text na Base de conhecimento inteira do usuário: notas curadas e ' +
-        'transcrições. Use como primeiro passo para perguntas temáticas ou factuais. Retorna ' +
-        'trechos, tipo da fonte e link de citação; uma nota só recebe preferência quando sua ' +
-        'relevância é comparável à de uma transcrição.',
+        'Busca full-text na Base de conhecimento inteira do usuário: notas curadas, ' +
+        'transcrições e contexto externo revisado e aceito. Use como primeiro passo para ' +
+        'perguntas temáticas ou factuais. Retorna trechos, tipo da fonte e link de citação; ' +
+        'uma nota só recebe preferência quando sua relevância é comparável à de uma transcrição.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
@@ -472,7 +342,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         results: z.array(
           z.object({
             id: z.string(),
-            sourceType: z.enum(['transcript', 'note']),
+            sourceType: z.enum(['transcript', 'note', 'external_enrichment']),
             title: z.string(),
             snippet: z.string(),
             rank: z.number(),
@@ -634,6 +504,13 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         title: z.string(),
         text: z.string(),
         summary: z.string().nullable(),
+        flowchart: z.string().nullable(),
+        correctionRevision: z.number(),
+        correctionChecksum: z.string(),
+        correctionState: z.string(),
+        correctionStaleReason: z.string().nullable(),
+        sourceVersion: z.number(),
+        sourceChecksum: z.string().nullable(),
         tags: z.array(z.string()),
       },
       annotations: { ...READ_ONLY, title: 'Ler transcrição (completa)' },
@@ -646,21 +523,33 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
           title: true,
           plainText: true,
           summaryMd: true,
+          flowchartMd: true,
+          sourceVersion: true,
+          sourceChecksum: true,
           tags: { select: { tag: { select: { name: true } } } },
         },
       });
       if (!t) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      const head = await loadTranscriptCorrectionHead(userId, t.id);
       return ok({
         id: t.id,
         title: t.title,
-        text: t.plainText,
+        text: head.plainText,
         summary: t.summaryMd ?? null,
+        flowchart: t.flowchartMd ?? null,
+        correctionRevision: head.correctionRevision,
+        correctionChecksum: head.checksum,
+        correctionState: head.correctionState,
+        correctionStaleReason: head.correctionStaleReason,
+        sourceVersion: t.sourceVersion,
+        sourceChecksum: t.sourceChecksum,
         tags: t.tags.map((item) => item.tag.name),
       });
     },
   );
 
   registerProgressiveTools(server, userId);
+  registerMcpTranscriptCorrectionReadTools(server, userId);
 }
 
 // Ferramentas de recuperação PROGRESSIVA sobre o `.md` canônico (S3): estrutura,
@@ -900,7 +789,13 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       },
       outputSchema: {
         results: z.array(
-          z.object({ id: z.string(), title: z.string(), snippet: z.string(), rank: z.number() }),
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            snippet: z.string(),
+            rank: z.number(),
+            revision: z.number(),
+          }),
         ),
       },
       annotations: { ...READ_ONLY, title: 'Buscar nas notas' },
@@ -909,9 +804,9 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
       const limit = bounded(args.limit, 8, 1, 25);
-      type Row = { id: string; title: string; snippet: string; rank: number };
+      type Row = { id: string; title: string; snippet: string; rank: number; revision: number };
       const rows = await db.$queryRaw<Row[]>`
-        SELECT id, title,
+        SELECT id, title, revision,
           ts_headline('portuguese', coalesce(content, ''), plainto_tsquery('portuguese', ${query}),
             'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
           ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
@@ -942,6 +837,11 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           .optional()
           .describe('Itens por página (padrão 30).'),
         cursor: z.string().optional().describe('Cursor opaco da página seguinte (next_cursor).'),
+        transcript_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Retorna somente notas vinculadas a esta transcrição do usuário.'),
       },
       outputSchema: {
         notes: z.array(
@@ -951,6 +851,20 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
             kind: z.string(),
             title: z.string(),
             updatedAt: z.string(),
+            href: z.string(),
+            anchors: z.array(
+              z.object({
+                id: z.string(),
+                transcriptId: z.string(),
+                startLine: z.number().nullable(),
+                endLine: z.number().nullable(),
+                startSec: z.number().nullable(),
+                endSec: z.number().nullable(),
+                selectedQuote: z.string(),
+                status: z.string(),
+                href: z.string(),
+              }),
+            ),
           }),
         ),
         nextCursor: z.string().nullable(),
@@ -960,13 +874,59 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       const limit = bounded(args.limit, 30, 1, 100);
       const offset = decodeCursor(args.cursor);
       const rows = await db.note.findMany({
-        where: { userId },
+        where: {
+          userId,
+          ...(args.transcript_id
+            ? { transcriptSources: { some: { transcriptId: args.transcript_id, userId } } }
+            : {}),
+        },
         orderBy: { updatedAt: 'desc' },
         skip: offset,
         take: limit,
-        select: { id: true, parentId: true, kind: true, title: true, updatedAt: true },
+        select: {
+          id: true,
+          parentId: true,
+          kind: true,
+          title: true,
+          updatedAt: true,
+          transcriptSources: {
+            where: args.transcript_id ? { transcriptId: args.transcript_id, userId } : { userId },
+            select: {
+              transcriptId: true,
+              anchors: {
+                orderBy: { createdAt: 'asc' },
+                select: {
+                  id: true,
+                  startLine: true,
+                  endLine: true,
+                  startSec: true,
+                  endSec: true,
+                  selectedQuote: true,
+                  status: true,
+                },
+              },
+            },
+          },
+        },
       });
-      const notes = rows.map((n) => ({ ...n, updatedAt: n.updatedAt.toISOString() }));
+      const notes = rows.map((note) => ({
+        id: note.id,
+        parentId: note.parentId,
+        kind: note.kind,
+        title: note.title,
+        updatedAt: note.updatedAt.toISOString(),
+        href: toMcpContentUrl(publicOrigin, `/notas/${note.id}`),
+        anchors: note.transcriptSources.flatMap((source) =>
+          source.anchors.map((anchor) => ({
+            ...anchor,
+            transcriptId: source.transcriptId,
+            href: toMcpContentUrl(
+              publicOrigin,
+              `/transcricoes/${source.transcriptId}${anchor.startLine ? `#l=${anchor.startLine}-${anchor.endLine ?? anchor.startLine}` : anchor.startSec !== null ? `#t=${anchor.startSec}-${anchor.endSec ?? anchor.startSec}` : ''}`,
+            ),
+          })),
+        ),
+      }));
       return ok({
         notes,
         nextCursor: rows.length === limit ? encodeCursor(offset + limit) : null,
@@ -985,9 +945,31 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
         title: z.string(),
         content: z.string().nullable(),
         kind: z.string(),
+        revision: z.number(),
+        checksum: z.string(),
         href: z.string(),
         sources: z.array(
-          z.object({ id: z.string(), title: z.string(), href: z.string(), url: z.string() }),
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            href: z.string(),
+            url: z.string(),
+            anchors: z.array(
+              z.object({
+                id: z.string(),
+                startLine: z.number().nullable(),
+                endLine: z.number().nullable(),
+                startSec: z.number().nullable(),
+                endSec: z.number().nullable(),
+                selectedQuote: z.string(),
+                sourceVersion: z.number(),
+                sourceChecksum: z.string().nullable(),
+                status: z.string(),
+                staleReason: z.string().nullable(),
+                href: z.string(),
+              }),
+            ),
+          }),
         ),
       },
       annotations: { ...READ_ONLY, title: 'Ler nota' },
@@ -1000,11 +982,27 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           title: true,
           content: true,
           kind: true,
+          revision: true,
           transcriptSources: {
             orderBy: { createdAt: 'asc' },
             select: {
               transcriptId: true,
               transcript: { select: { title: true, url: true } },
+              anchors: {
+                orderBy: { createdAt: 'asc' },
+                select: {
+                  id: true,
+                  startLine: true,
+                  endLine: true,
+                  startSec: true,
+                  endSec: true,
+                  selectedQuote: true,
+                  sourceVersion: true,
+                  sourceChecksum: true,
+                  status: true,
+                  staleReason: true,
+                },
+              },
             },
           },
         },
@@ -1015,19 +1013,32 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
         title: note.title,
         content: note.content,
         kind: note.kind,
+        revision: note.revision,
+        checksum: noteContentChecksum(note.title, note.content),
         href: toMcpContentUrl(publicOrigin, `/notas/${note.id}`),
         sources: note.transcriptSources.map((source) => ({
           id: source.transcriptId,
           title: source.transcript.title,
           href: toMcpContentUrl(publicOrigin, `/transcricoes/${source.transcriptId}`),
           url: source.transcript.url,
+          anchors: source.anchors.map((anchor) => ({
+            ...anchor,
+            href: toMcpContentUrl(
+              publicOrigin,
+              `/transcricoes/${source.transcriptId}${anchor.startLine ? `#l=${anchor.startLine}-${anchor.endLine ?? anchor.startLine}` : anchor.startSec !== null ? `#t=${anchor.startSec}-${anchor.endSec ?? anchor.startSec}` : ''}`,
+            ),
+          })),
         })),
       });
     },
   );
+
+  registerMcpNoteRevisionReadTools(server, userId);
 }
 
 function registerBrainTools(server: McpServer, userId: string): void {
+  registerBrainTimelineTool(server, userId);
+
   server.registerTool(
     'voxen_brain_search',
     {
@@ -1143,6 +1154,8 @@ function registerBrainTools(server: McpServer, userId: string): void {
       const sources = await db.brainSource.findMany({
         where: {
           userId,
+          invalidatedAt: null,
+          AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
           OR: [{ nodeId: ref }, { edgeId: ref }, { sourceId: ref }, { node: { key: ref } }],
         },
         orderBy: { createdAt: 'desc' },
@@ -1151,6 +1164,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
           id: true,
           nodeId: true,
           edgeId: true,
+          factId: true,
           sourceType: true,
           sourceId: true,
           chunkId: true,
@@ -1159,10 +1173,22 @@ function registerBrainTools(server: McpServer, userId: string): void {
           startSec: true,
           endSec: true,
           excerpt: true,
+          fact: {
+            select: {
+              factKey: true,
+              predicate: true,
+              validFrom: true,
+              validTo: true,
+              observedAt: true,
+              invalidatedAt: true,
+              confidence: true,
+              method: true,
+            },
+          },
         },
       });
       const contradiction = await db.brainEdge.findFirst({
-        where: { userId, id: ref, kind: 'CONTRADICTS' },
+        where: { userId, id: ref, kind: 'CONTRADICTS', status: 'ACTIVE' },
         select: { fromNodeId: true, toNodeId: true },
       });
       const conflictingSources = contradiction
@@ -1172,6 +1198,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                 db.brainSource.findMany({
                   where: {
                     userId,
+                    invalidatedAt: null,
                     edge: {
                       method: 'llm-grounded',
                       kind: 'SUPPORTS',
@@ -1182,6 +1209,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                   take: 10,
                   select: {
                     edgeId: true,
+                    sourceType: true,
                     sourceId: true,
                     startLine: true,
                     endLine: true,
@@ -1194,7 +1222,14 @@ function registerBrainTools(server: McpServer, userId: string): void {
             )
           ).flat()
         : [];
-      return ok({ sources, conflicting_sources: conflictingSources });
+      const [currentSources, currentConflicts] = await Promise.all([
+        keepCurrentOwnedSources(userId, sources),
+        keepCurrentOwnedSources(userId, conflictingSources),
+      ]);
+      return ok({
+        sources: currentSources,
+        conflicting_sources: currentConflicts,
+      });
     },
   );
 
@@ -1427,43 +1462,6 @@ const BRAIN_NODE_SELECT = {
   metadata: true,
   updatedAt: true,
 } as const;
-
-// Resultado de sucesso: bloco de texto (JSON serializado, compat) + structuredContent.
-function ok(data: Record<string, unknown>): {
-  content: { type: 'text'; text: string }[];
-  structuredContent: Record<string, unknown>;
-} {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(data) }],
-    structuredContent: data,
-  };
-}
-
-// Erro de tool (não de protocolo): isError=true para o modelo ver e se auto-corrigir.
-function fail(message: string): { content: { type: 'text'; text: string }[]; isError: true } {
-  return { content: [{ type: 'text', text: message }], isError: true };
-}
-
-function bounded(value: number | undefined, fallback: number, min: number, max: number): number {
-  const parsed = Number(value ?? fallback);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(min, Math.min(Math.trunc(parsed), max));
-}
-
-async function resolveMcpTranscriptSourceIds(
-  userId: string,
-  sourceIds: readonly string[],
-): Promise<string[] | null> {
-  const normalized = sourceIds.map((id) => id.trim());
-  if (normalized.some((id) => !id)) return null;
-  const ids = [...new Set(normalized)];
-  if (ids.length === 0) return [];
-  const transcripts = await db.transcript.findMany({
-    where: { id: { in: ids }, userId, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  return transcripts.length === ids.length ? ids : null;
-}
 
 function decodeCursor(cursor: string | undefined): number {
   if (!cursor) return 0;

@@ -5,12 +5,8 @@ from __future__ import annotations
 import pytest
 
 from src import ytdl
-from src.ytdl import (
-    _is_supported_proxy,
-    _proxy_log_category,
-    _requests_proxy_dict,
-    _transcript_proxy_config,
-)
+from src.youtube_captions import _requests_proxy_dict, _transcript_proxy_config
+from src.ytdl import _is_supported_proxy, _proxy_log_category
 
 
 class _Logger:

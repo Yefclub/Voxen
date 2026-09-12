@@ -279,6 +279,25 @@ describeIfDb('library organization API', () => {
         },
       });
     }
+    const archivedTag = await db.tag.create({
+      data: { userId: owner.id, name: 'Pesquisa Arquivada', slug: 'pesquisa-arquivada' },
+    });
+    await db.transcript.create({
+      data: {
+        userId: owner.id,
+        source: 'WEB',
+        url: 'https://example.com/tag-search-archived',
+        title: 'Conteúdo arquivado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${owner.id}/transcripts/tag-search-archived.md`,
+        plainText: 'conteúdo arquivado',
+        frontmatter: {},
+        status: 'ARCHIVED',
+        tags: { create: { tagId: archivedTag.id } },
+      },
+    });
 
     const foreign = await db.user.create({
       data: { email: 'tags-foreign@voxen.local', name: 'Tags Foreign', status: 'APPROVED' },
@@ -328,6 +347,28 @@ describeIfDb('library organization API', () => {
     expect(bodies[0]).toMatchObject({ total: 2, hasMore: true, limit: 1, offset: 0 });
     expect(bodies[1]).toMatchObject({ total: 2, hasMore: false, limit: 1, offset: 1 });
     expect(bodies.flatMap((body) => body.tags).every((tag) => tag.count === 1)).toBe(true);
+
+    const archived = await app.fetch(
+      new Request(
+        `http://localhost/api/library/tags?status=archived&selectedId=${archivedTag.id}`,
+        { headers: { cookie } },
+      ),
+    );
+    expect(archived.status).toBe(200);
+    expect(await archived.json()).toMatchObject({
+      status: 'ARCHIVED',
+      total: 1,
+      tags: [{ id: archivedTag.id, name: 'Pesquisa Arquivada', count: 1 }],
+      selectedTag: { id: archivedTag.id, name: 'Pesquisa Arquivada' },
+    });
+
+    const foreignSelection = await app.fetch(
+      new Request(`http://localhost/api/library/tags?selectedId=${foreignTag.id}`, {
+        headers: { cookie },
+      }),
+    );
+    expect(foreignSelection.status).toBe(200);
+    expect(await foreignSelection.json()).toMatchObject({ selectedTag: null });
   });
 
   it('expõe Inbox, tags e período sem cruzar workspaces', async () => {
@@ -571,7 +612,7 @@ describeIfDb('library organization API', () => {
     expect(foreignPreview.status).toBe(404);
   });
 
-  it('requires trash before hard delete and purges transcript records', async () => {
+  it('requires trash before hard delete and queues the purge without blocking', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -624,10 +665,25 @@ describeIfDb('library organization API', () => {
         headers: { cookie },
       }),
     );
-    expect(hardDelete.status).toBe(200);
-    expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toBeNull();
+    expect(hardDelete.status).toBe(202);
+    const hardDeleteBody = (await hardDelete.json()) as { jobId: string; queued: boolean };
+    expect(hardDeleteBody.queued).toBe(true);
+    const queuedDeletion = await db.job.findUniqueOrThrow({
+      where: { id: hardDeleteBody.jobId },
+    });
+    expect(queuedDeletion).toMatchObject({
+      userId: user.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'TRANSCRIPT',
+      deletionTargetId: transcript.id,
+      deletionTargetTitle: transcript.title,
+    });
+    expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toMatchObject({
+      status: 'TRASH',
+    });
     const retainedJob = await db.job.findUniqueOrThrow({ where: { id: job.id } });
-    expect(retainedJob.transcriptId).toBeNull();
+    expect(retainedJob.transcriptId).toBe(transcript.id);
   });
 
   it('creates and lists notes linked to a transcript', async () => {
@@ -721,7 +777,7 @@ describeIfDb('library organization API', () => {
     expect(stored).toBe(0);
   });
 
-  it('clears all folders and unfolders transcripts', async () => {
+  it('queues clearing all folders without mutating the request path', async () => {
     await signUp('clear-folders@voxen.local', 'senha-super-segura-123', 'Clear Folders');
     const signin = await signIn('clear-folders@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -751,13 +807,26 @@ describeIfDb('library organization API', () => {
         headers: { cookie },
       }),
     );
-    expect(clear.status).toBe(200);
-    const clearBody = (await clear.json()) as { deleted: number; affectedTranscripts: number };
+    expect(clear.status).toBe(202);
+    const clearBody = (await clear.json()) as {
+      jobId: string;
+      queued: boolean;
+      deleted: number;
+      affectedTranscripts: number;
+    };
+    expect(clearBody.queued).toBe(true);
     expect(clearBody.deleted).toBe(1);
     expect(clearBody.affectedTranscripts).toBe(1);
-    expect(await db.libraryFolder.count({ where: { userId: user.id } })).toBe(0);
+    expect(await db.libraryFolder.count({ where: { userId: user.id } })).toBe(1);
     const refreshed = await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } });
-    expect(refreshed.folderId).toBeNull();
+    expect(refreshed.folderId).toBe(folder.id);
+    expect(await db.job.findUniqueOrThrow({ where: { id: clearBody.jobId } })).toMatchObject({
+      userId: user.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'LIBRARY_FOLDER',
+      deletionTargetId: '*',
+    });
   });
 
   it('paginates transcript list with limit/offset', async () => {
@@ -802,6 +871,21 @@ describeIfDb('library organization API', () => {
     expect(body2.transcripts).toHaveLength(2);
     expect(body2.hasMore).toBe(true);
     expect(body2.transcripts[0]?.id).not.toBe(body1.transcripts[0]?.id);
+
+    const highPage = await app.fetch(
+      new Request('http://localhost/api/transcripts?limit=24&offset=23976', {
+        headers: { cookie },
+      }),
+    );
+    expect(highPage.status).toBe(200);
+    const highPageBody = (await highPage.json()) as {
+      transcripts: { id: string }[];
+      total: number;
+      offset: number;
+      hasMore: boolean;
+    };
+    expect(highPageBody).toMatchObject({ total: 5, offset: 23976, hasMore: false });
+    expect(highPageBody.transcripts).toEqual([]);
   });
 
   it('rejects POST /api/notes linked to a foreign or nonexistent transcript', async () => {

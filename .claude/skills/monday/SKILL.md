@@ -1,3 +1,8 @@
+---
+name: monday
+description: Use quando a tarefa envolver Monday.com ("atualiza o board", "cria item no Monday", "documenta isso no Monday", "status da task lá") — opera boards, itens, docs e status via MCP do Monday.
+---
+
 # Monday — Integração com Monday.com
 
 Skill para interagir com o Monday.com via MCP para documentação, atualização de status, e gestão de informações.

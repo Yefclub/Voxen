@@ -1,31 +1,17 @@
-// ============================================================================
-// /api/library — organização da biblioteca (pastas compartilhadas)
-// ============================================================================
-// Endpoints sempre escopados por userId:
-//   GET    /api/library/folders
-//   POST   /api/library/folders
-//   POST   /api/library/folders/clear — apaga todas as pastas (conteúdos ficam)
-//   PATCH  /api/library/folders/:id
-//   DELETE /api/library/folders/:id
-//   POST   /api/library/reorganize — classifica com IA só o que não tem pasta
-// ============================================================================
-
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
-import {
-  deleteBrainForSources,
-  reindexLibraryFolderBrain,
-  reindexTranscriptsBrain,
-} from '../lib/brain';
+import { reindexLibraryFolderBrain, reindexTranscriptsBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import { classifyFolderForContent } from '../lib/folder-classify';
 import { generateTitleForContent } from '../lib/title-generate';
 import { generateTagsForContent } from '../lib/tags-generate';
 import { applyTagsToTranscript } from '../lib/tags';
+import { effectiveTranscriptPlainText } from '../lib/transcript-content';
 import { isSetupComplete } from '../lib/settings';
+import { libraryTagRoutes } from './library-tags';
 
 type Vars = { userId: string };
 
@@ -55,25 +41,7 @@ const PatchFolderBody = z.object({
   name: z.string().min(1).max(120).optional(),
 });
 
-const DEFAULT_TAG_LIST_LIMIT = 6;
-const MAX_TAG_LIST_LIMIT = 50;
-
-function parseTagListLimit(value: string | undefined): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TAG_LIST_LIMIT;
-  return Math.min(parsed, MAX_TAG_LIST_LIMIT);
-}
-
-function parseTagListOffset(value: string | undefined): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.min(parsed, 10_000);
-}
-
-function normalizeTagQuery(value: string | undefined): string | undefined {
-  const query = value?.trim().slice(0, 120);
-  return query || undefined;
-}
+libraryRoutes.route('/', libraryTagRoutes);
 
 libraryRoutes.get('/folders', async (c) => {
   const userId = c.get('userId');
@@ -113,50 +81,6 @@ libraryRoutes.get('/folders', async (c) => {
       ...folder,
       _count: { children: folder._count.children, transcripts: counts.get(folder.id) ?? 0 },
     })),
-  });
-});
-
-// Tags com conteúdo ativo para os filtros da Biblioteca. O catálogo é paginado
-// no servidor para não transferir/renderizar todas as tags em bases de conhecimento grandes.
-libraryRoutes.get('/tags', async (c) => {
-  const userId = c.get('userId');
-  const limit = parseTagListLimit(c.req.query('limit'));
-  const offset = parseTagListOffset(c.req.query('offset'));
-  const query = normalizeTagQuery(c.req.query('q'));
-  const searchClause = query ? Prisma.sql`AND tag.name ILIKE ${`%${query}%`}` : Prisma.empty;
-  const [tags, totals] = await Promise.all([
-    db.$queryRaw<Array<{ id: string; name: string; slug: string; count: bigint }>>`
-    SELECT tag.id, tag.name, tag.slug, COUNT(tt."transcriptId")::bigint AS count
-    FROM "Tag" tag
-    JOIN "TranscriptTag" tt ON tt."tagId" = tag.id
-    JOIN "Transcript" t ON t.id = tt."transcriptId"
-    WHERE tag."userId" = ${userId}
-      AND t."userId" = ${userId}
-      AND t.status = 'ACTIVE'::"ContentStatus"
-      ${searchClause}
-    GROUP BY tag.id, tag.name, tag.slug
-    ORDER BY count DESC, tag.name ASC, tag.id ASC
-    LIMIT ${limit} OFFSET ${offset}
-  `,
-    db.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(DISTINCT tag.id)::bigint AS count
-      FROM "Tag" tag
-      JOIN "TranscriptTag" tt ON tt."tagId" = tag.id
-      JOIN "Transcript" t ON t.id = tt."transcriptId"
-      WHERE tag."userId" = ${userId}
-        AND t."userId" = ${userId}
-        AND t.status = 'ACTIVE'::"ContentStatus"
-        ${searchClause}
-    `,
-  ]);
-  const total = Number(totals[0]?.count ?? 0);
-  return c.json({
-    tags: tags.map((tag) => ({ ...tag, count: Number(tag.count) })),
-    total,
-    limit,
-    offset,
-    query: query ?? '',
-    hasMore: offset + tags.length < total,
   });
 });
 
@@ -471,10 +395,6 @@ libraryRoutes.post('/regenerate-titles', async (c) => {
   });
 });
 
-// POST /api/library/generate-tags — gera tags via IA só para conteúdo ACTIVE que
-// ainda não tem NENHUMA tag (spec 075). Processa em lote por request; a UI
-// chama em loop até drenar. Cada tag garante uma pasta e, se o conteúdo não tem
-// pasta, herda a da primeira tag. Best-effort: falha de item não derruba o lote.
 libraryRoutes.post('/generate-tags', async (c) => {
   const userId = c.get('userId');
   if (!(await isSetupComplete())) {
@@ -504,7 +424,18 @@ libraryRoutes.post('/generate-tags', async (c) => {
     where: { userId, status: 'ACTIVE', tags: { none: {} } },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
+      summaryMd: true,
+      folderId: true,
+    },
   });
 
   const existingTagNames = new Set(
@@ -519,7 +450,7 @@ libraryRoutes.post('/generate-tags', async (c) => {
 
   for (const item of batch) {
     try {
-      const content = ((item.summaryMd ?? '') || (item.plainText ?? '')).trim();
+      const content = ((item.summaryMd ?? '') || effectiveTranscriptPlainText(item)).trim();
       if (content.length < 40 && item.title.trim().length < 3) {
         skipped += 1;
         continue;
@@ -550,7 +481,13 @@ libraryRoutes.post('/generate-tags', async (c) => {
       }
       const applied = await applyTagsToTranscript(
         userId,
-        { id: item.id, folderId: item.folderId },
+        {
+          id: item.id,
+          folderId: item.folderId,
+          correctionRevision: item.correctionRevision,
+          sourceVersion: item.sourceVersion,
+          sourceChecksum: item.sourceChecksum,
+        },
         result.tags,
       );
       for (const t of applied) existingTagNames.add(t.name);
@@ -567,10 +504,6 @@ libraryRoutes.post('/generate-tags', async (c) => {
   return c.json({ processed: batch.length, tagged, skipped, failed, remaining, pendingTotal });
 });
 
-// Limpa TODAS as pastas do usuário: conteúdos ficam (folderId → null via onDelete SetNull).
-// Libera de novo o "Organizar com IA" (só classifica folderId null).
-// Brain cleanup é best-effort e NÃO bloqueia a resposta (evita 502 por timeout
-// quando há dezenas de pastas/conteúdos e reindex síncrono estoura o proxy).
 libraryRoutes.post('/folders/clear', async (c) => {
   const userId = c.get('userId');
   const folders = await db.libraryFolder.findMany({
@@ -584,43 +517,47 @@ libraryRoutes.post('/folders/clear', async (c) => {
   const affectedCount = await db.transcript.count({
     where: { userId, folderId: { in: folderIds } },
   });
-  await db.libraryFolder.deleteMany({ where: { userId } });
-  // folderId já vai null (onDelete SetNull). Nós FOLDER do brain + arestas
-  // em cascata; não reindexa todos os transcripts síncrono.
-  void deleteBrainForSources(userId, 'FOLDER', folderIds)
-    .then(() => invalidateGraphCache(userId))
-    .catch((err) => {
-      console.warn('[library] clear folders brain cleanup failed', { userId, err });
+  try {
+    const result = await enqueueKnowledgeDeletion({
+      userId,
+      type: 'LIBRARY_FOLDER',
+      id: '*',
+      allowAllLibraryFolders: true,
     });
-  return c.json({
-    ok: true,
-    deleted: folderIds.length,
-    affectedTranscripts: affectedCount,
-  });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        reused: !result.created,
+        deleted: folderIds.length,
+        affectedTranscripts: affectedCount,
+      },
+      202,
+    );
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
+  }
 });
 
 libraryRoutes.delete('/folders/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const existing = await db.libraryFolder.findFirst({
-    where: { id, userId },
-    select: { id: true },
-  });
-  if (!existing) return c.json({ error: 'Pasta não encontrada.' }, 404);
-
-  const folderIds = [id, ...(await getDescendantIds(userId, id))];
-  const affectedTranscripts = await db.transcript.findMany({
-    where: { userId, folderId: { in: folderIds } },
-    select: { id: true },
-  });
-  await db.libraryFolder.delete({ where: { id } });
-  await deleteBrainForSources(userId, 'FOLDER', folderIds);
-  await reindexTranscriptsBrain(
-    userId,
-    affectedTranscripts.map((item) => item.id),
-  );
-  await invalidateGraphCache(userId);
-  return c.json({ ok: true });
+  try {
+    const result = await enqueueKnowledgeDeletion({ userId, type: 'LIBRARY_FOLDER', id });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
+    );
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
+  }
 });
 
 async function getDescendantIds(userId: string, rootId: string): Promise<Set<string>> {

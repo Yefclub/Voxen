@@ -1,0 +1,2 @@
+ALTER TABLE "Transcript"
+ADD COLUMN IF NOT EXISTS "flowchartMd" TEXT;

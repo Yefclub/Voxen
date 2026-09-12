@@ -110,6 +110,57 @@ describe('buildJobSystemNotification', () => {
       url: '/jobs/job-2',
     });
   });
+
+  test('download concluído aponta para a biblioteca de mídia', () => {
+    expect(
+      buildJobSystemNotification({
+        stage: 'done',
+        jobId: 'job-media',
+        savedMediaReady: true,
+        labels: {
+          ...labels,
+          mediaReadyTitle: 'Mídia salva.',
+          mediaReadyBody: 'Disponível em Downloads.',
+        },
+      }),
+    ).toMatchObject({
+      title: 'Mídia salva.',
+      body: 'Disponível em Downloads.',
+      url: '/downloads',
+    });
+  });
+
+  test('outro job sem transcrição continua apontando para seus detalhes', () => {
+    expect(
+      buildJobSystemNotification({
+        stage: 'done',
+        jobId: 'job-maintenance',
+        labels,
+      }),
+    ).toMatchObject({
+      title: 'Transcrição pronta.',
+      url: '/jobs/job-maintenance',
+    });
+  });
+
+  test('exclusão concluída usa mensagem própria e aponta para a auditoria do job', () => {
+    expect(
+      buildJobSystemNotification({
+        stage: 'done',
+        jobId: 'job-delete',
+        deletionReady: true,
+        labels: {
+          ...labels,
+          deletionReadyTitle: 'Conteúdo removido.',
+          deletionReadyBody: 'A base e o grafo foram atualizados.',
+        },
+      }),
+    ).toMatchObject({
+      title: 'Conteúdo removido.',
+      body: 'A base e o grafo foram atualizados.',
+      url: '/jobs/job-delete',
+    });
+  });
 });
 
 describe('shouldAutoOpenTranscript', () => {

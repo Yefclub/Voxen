@@ -1,5 +1,11 @@
 # Spec 000 — Setup Inicial
 
+> **2026-08-07 amendment (supersedes mandatory S3 requirements below):** New
+> single-host installs shall use `STORAGE_DRIVER=local` and the shared
+> `/data/storage` volume. When any non-empty legacy `S3_*`/`GARAGE_*` value is
+> present without a driver, the system shall preserve S3 and fail closed on
+> partial configuration. Bucket creation applies only to the opt-in S3 profile.
+
 ## Contexto
 
 Voxen é uma plataforma web multi-user com adoção restrita. O **primeiro user** que se cadastrar precisa virar admin automaticamente e configurar o sistema (cola OpenRouter API key + escolhe modelos default) antes que qualquer outro user possa entrar. Cadastros subsequentes ficam pendentes até o admin aprovar.

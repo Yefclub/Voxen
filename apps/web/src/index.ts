@@ -17,6 +17,7 @@ import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
 import { transcriptsRoutes } from './routes/transcripts';
+import { savedMediaRoutes } from './routes/saved-media';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
@@ -25,18 +26,35 @@ import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
+import { guideRoutes } from './routes/guide';
 import { createReleasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { chatRoutes } from './routes/chat';
 import { extensionMetaRoutes } from './routes/extension-meta';
 import { researchArtifactsRoutes } from './routes/research-artifacts';
+import { transcriptEnrichmentRoutes } from './routes/transcript-enrichments';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
-import { s3Bucket, s3Client } from './lib/s3';
+import { resolveStorageDriver, storageGet } from './lib/storage';
 import { publicAuthenticationRoutes } from './routes/public-authentication';
+import { mcpOAuthDiscoveryRoutes } from './routes/mcp-oauth';
+import { mcpOAuthAccountRoutes } from './routes/mcp-oauth-account';
+import { requestLogging } from './lib/request-logging';
+import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
+
+app.use('*', requestLogging);
+
+app.onError((error, c) => {
+  structuredDiagnostic('error', 'unhandled-request-error', 'UNHANDLED_REQUEST_ERROR', error, {
+    request_id: validCorrelationId(c.res.headers.get('x-request-id')) ?? undefined,
+    method: c.req.method,
+    path: new URL(c.req.url).pathname,
+  });
+  return c.json({ error: 'Erro interno ao processar a solicitação.' }, 500);
+});
 
 // Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
@@ -134,7 +152,7 @@ app.get('/health/deep', async (c) => {
     }
   };
 
-  const [postgres, redis, s3] = await Promise.all([
+  const [postgres, redis, storage] = await Promise.all([
     timed(async () => {
       await db.$queryRaw`SELECT 1`;
     }),
@@ -143,16 +161,17 @@ app.get('/health/deep', async (c) => {
       if (pong !== 'PONG') throw new Error(`Resposta inesperada: ${pong}`);
     }),
     timed(async () => {
-      const { headBucket } = await import('./lib/s3-health');
-      await headBucket();
+      const { checkStorage } = await import('./lib/storage-health');
+      await checkStorage();
     }),
   ]);
 
-  const checks = { postgres, redis, s3 };
+  const checks = { postgres, redis, storage: { ...storage, driver: resolveStorageDriver() } };
   const allOk = Object.values(checks).every((c) => c.ok);
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
 
+app.route('/', mcpOAuthDiscoveryRoutes);
 app.route('/', publicAuthenticationRoutes);
 
 // Capabilities: features opcionais que o admin pode habilitar/desabilitar.
@@ -222,8 +241,10 @@ app.route('/api/integrations/cookies', integrationCookieRoutes);
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
 
-// Transcripts endpoints (lista + viewer .md do storage S3)
+// Transcripts endpoints (list + canonical Markdown from selected storage)
 app.route('/api/transcripts', transcriptsRoutes);
+app.route('/api/saved-media', savedMediaRoutes);
+app.route('/api/transcripts', transcriptEnrichmentRoutes);
 
 // Onboarding (admin first-run) + avatar upload
 app.route('/api/onboarding', onboardingRoutes);
@@ -244,8 +265,11 @@ app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
+app.route('/api/mcp/oauth', mcpOAuthAccountRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
+// Explainable, deterministic personal Guide built from user-owned signals and graph data.
+app.route('/api/guide', guideRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
 // Conversa canônica por usuário, streaming e ferramentas da Base de conhecimento.
@@ -255,7 +279,7 @@ app.route('/share-target', shareTargetRoutes);
 // Extensão browser — version.json (update check)
 app.route('/extension', extensionMetaRoutes);
 
-// Avatar proxy: serve imagem do storage S3 de qualquer user autenticado
+// Authenticated avatar proxy for the selected storage driver.
 app.get('/api/avatar/:userId', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.text('', 401);
@@ -266,18 +290,11 @@ app.get('/api/avatar/:userId', async (c) => {
   });
   if (!user?.image) return c.text('', 404);
   // Tenta as 3 extensões possíveis
-  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
   for (const ext of ['png', 'jpg', 'webp']) {
     try {
-      const res = await s3Client().send(
-        new GetObjectCommand({
-          Bucket: s3Bucket(),
-          Key: `workspaces/${userId}/avatar.${ext}`,
-        }),
-      );
-      const buf = Buffer.from(await res.Body!.transformToByteArray());
+      const object = await storageGet(`workspaces/${userId}/avatar.${ext}`);
       const ctype = ext === 'png' ? 'image/png' : ext === 'jpg' ? 'image/jpeg' : 'image/webp';
-      return new Response(buf, {
+      return new Response(object.body, {
         headers: { 'content-type': ctype, 'cache-control': 'private, max-age=300' },
       });
     } catch {
@@ -391,8 +408,7 @@ if (process.env.NODE_ENV === 'production') {
   void import('./lib/proxy-agent-tunnel')
     .then(({ syncChiselAuthfile }) => syncChiselAuthfile())
     .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[proxy-agent] sync no boot falhou: ${message}`);
+      structuredDiagnostic('warning', 'proxy-agent-sync-failed', 'PROXY_AGENT_SYNC_FAILED', err);
     });
 
   // Turnos do chat são duráveis: Redis impede execução duplicada e esta
@@ -400,35 +416,50 @@ if (process.env.NODE_ENV === 'production') {
   void import('./lib/chat/turn-runtime')
     .then(({ reconcilePendingChatTurns }) => {
       void reconcilePendingChatTurns().catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(`[chat] reconciliação inicial falhou: ${message}`);
+        structuredDiagnostic(
+          'warning',
+          'chat-reconciliation-failed',
+          'CHAT_RECONCILIATION_FAILED',
+          err,
+        );
       });
       setInterval(() => {
         void reconcilePendingChatTurns().catch((err) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.warn(`[chat] reconciliação periódica falhou: ${message}`);
+          structuredDiagnostic(
+            'warning',
+            'chat-reconciliation-failed',
+            'CHAT_RECONCILIATION_FAILED',
+            err,
+          );
         });
       }, 30_000);
     })
     .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[chat] runtime de continuidade indisponível: ${message}`);
+      structuredDiagnostic('warning', 'chat-runtime-unavailable', 'CHAT_RUNTIME_UNAVAILABLE', err);
     });
 
   void import('./routes/graph')
     .then(({ reconcileGraphUsers }) => {
       const reconcile = (): void => {
         void reconcileGraphUsers().catch((err) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.warn(`[graph] reconciliação automática falhou: ${message}`);
+          structuredDiagnostic(
+            'warning',
+            'graph-reconciliation-failed',
+            'GRAPH_RECONCILIATION_FAILED',
+            err,
+          );
         });
       };
       reconcile();
       setInterval(reconcile, 60_000);
     })
     .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[graph] rotina automática indisponível: ${message}`);
+      structuredDiagnostic(
+        'warning',
+        'graph-runtime-unavailable',
+        'GRAPH_RUNTIME_UNAVAILABLE',
+        err,
+      );
     });
 }
 

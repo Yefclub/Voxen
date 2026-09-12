@@ -44,50 +44,93 @@ enum UserRole {
 }
 
 model User {
-  id                    String                 @id @default(cuid())
-  email                 String                 @unique
-  emailVerified         Boolean                @default(false)
-  name                  String
-  image                 String?
+  id                            String                         @id @default(cuid())
+  email                         String                         @unique
+  emailVerified                 Boolean                        @default(false)
+  name                          String
+  image                         String?
   // Voxen-specific
-  status                UserStatus             @default(PENDING)
-  role                  UserRole               @default(USER)
+  status                        UserStatus                     @default(PENDING)
+  role                          UserRole                       @default(USER)
   // UI theme: linear (default) | zinc | emerald | light
-  theme                 String                 @default("linear")
+  theme                         String                         @default("linear")
   // Desktop shell preference: classic (default) | focus
-  interfaceMode         String                 @default("classic")
-  monthlyBudgetUsd      Decimal?               @db.Decimal(10, 4) // null = sem limite
-  approvedAt            DateTime?
-  approvedBy            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  interfaceMode                 String                         @default("classic")
+  monthlyBudgetUsd              Decimal?                       @db.Decimal(10, 4) // null = sem limite
+  approvedAt                    DateTime?
+  approvedBy                    String?
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
   // Relations
-  sessions              Session[]
-  accounts              Account[]
-  transcripts           Transcript[]
-  jobs                  Job[]
-  sourceContentVersions SourceContentVersion[]
-  researchArtifacts     ResearchArtifact[]
-  costEvents            CostEvent[]
-  conversations         Conversation[]
-  chatApprovals         ChatApproval[]
-  chatTurns             ChatTurn[]
-  chatStreamLease       ChatStreamLease?
-  notes                 Note[]
-  libraryFolders        LibraryFolder[]
-  brainNodes            BrainNode[]
-  brainEdges            BrainEdge[]
-  brainSources          BrainSource[]
-  brainCompilations     BrainCompilation[]
-  telegramLink          TelegramLink?
-  automations           Automation[]
-  automationRuns        AutomationRun[]
-  tags                  Tag[]
-  mcpTokens             McpToken[]
-  configRevisions       ConfigRevision[]       @relation("ConfigRevisionActor")
+  sessions                      Session[]
+  accounts                      Account[]
+  transcripts                   Transcript[]
+  savedMedia                    SavedMedia[]
+  jobs                          Job[]
+  sourceContentVersions         SourceContentVersion[]
+  researchArtifacts             ResearchArtifact[]
+  transcriptEnrichments         TranscriptEnrichment[]
+  transcriptCorrectionRevisions TranscriptCorrectionRevision[]
+  interestEvents                InterestEvent[]
+  interestProjections           InterestProjection[]
+  costEvents                    CostEvent[]
+  conversations                 Conversation[]
+  chatApprovals                 ChatApproval[]
+  chatTurns                     ChatTurn[]
+  chatStreamLease               ChatStreamLease?
+  notes                         Note[]
+  noteRevisions                 NoteRevision[]
+  libraryFolders                LibraryFolder[]
+  brainNodes                    BrainNode[]
+  brainEdges                    BrainEdge[]
+  brainSources                  BrainSource[]
+  brainFacts                    BrainFact[]
+  brainEntityAliases            BrainEntityAlias[]
+  brainCompilations             BrainCompilation[]
+  telegramLink                  TelegramLink?
+  automations                   Automation[]
+  automationRuns                AutomationRun[]
+  tags                          Tag[]
+  mcpTokens                     McpToken[]
+  oauthClients                  OauthClient[]
+  oauthRefreshTokens            OauthRefreshToken[]
+  oauthAccessTokens             OauthAccessToken[]
+  oauthConsents                 OauthConsent[]
+  configRevisions               ConfigRevision[]               @relation("ConfigRevisionActor")
 
   @@index([status])
   @@index([role])
+}
+
+// Persistent fencing token for optional external conversational memory.
+// A row blocks every replica from writing while account deletion is in flight.
+model MemoryShadowFence {
+  userId    String   @id
+  owner     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MemoryShadowWriter {
+  id        String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model MemoryShadowSubject {
+  userId    String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MemoryShadowConfig {
+  id               String   @id
+  scopeFingerprint String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // Vínculo Telegram chat_id ↔ Voxen userId.
@@ -105,15 +148,17 @@ model TelegramLink {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(cuid())
+  token              String              @unique
+  userId             String
+  expiresAt          DateTime
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthRefreshTokens OauthRefreshToken[]
+  oauthAccessTokens  OauthAccessToken[]
 
   @@index([userId])
   @@index([token])
@@ -215,23 +260,167 @@ model McpToken {
   @@index([expiresAt])
 }
 
+// OAuth 2.1 provider state for remote MCP clients. Better Auth addresses these
+// Prisma delegates as oauthClient/oauthRefreshToken/oauthAccessToken/oauthConsent.
+model Jwks {
+  id         String    @id @default(cuid())
+  publicKey  String    @db.Text
+  privateKey String    @db.Text
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+}
+
+model OauthClient {
+  id                      String              @id @default(cuid())
+  clientId                String              @unique
+  clientSecret            String?
+  disabled                Boolean?            @default(false)
+  skipConsent             Boolean?
+  enableEndSession        Boolean?
+  subjectType             String?
+  scopes                  String[]            @default([])
+  userId                  String?
+  createdAt               DateTime?           @default(now())
+  updatedAt               DateTime?           @updatedAt
+  name                    String?
+  uri                     String?
+  icon                    String?
+  contacts                String[]            @default([])
+  tos                     String?
+  policy                  String?
+  softwareId              String?
+  softwareVersion         String?
+  softwareStatement       String?
+  redirectUris            String[]            @default([])
+  postLogoutRedirectUris  String[]            @default([])
+  tokenEndpointAuthMethod String?
+  grantTypes              String[]            @default([])
+  responseTypes           String[]            @default([])
+  public                  Boolean?
+  type                    String?
+  requirePKCE             Boolean?            @default(true)
+  referenceId             String?
+  metadata                Json?
+  user                    User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthRefreshTokens      OauthRefreshToken[]
+  oauthAccessTokens       OauthAccessToken[]
+  oauthConsents           OauthConsent[]
+
+  @@index([userId])
+  @@index([disabled])
+}
+
+model OauthRefreshToken {
+  id                String             @id @default(cuid())
+  token             String             @unique
+  clientId          String
+  sessionId         String?
+  userId            String
+  referenceId       String?
+  expiresAt         DateTime?
+  createdAt         DateTime?          @default(now())
+  revoked           DateTime?
+  authTime          DateTime?
+  scopes            String[]           @default([])
+  oauthClient       OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  session           Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthAccessTokens OauthAccessToken[]
+
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+}
+
+model OauthAccessToken {
+  id                String             @id @default(cuid())
+  token             String?            @unique
+  clientId          String
+  sessionId         String?
+  userId            String?
+  referenceId       String?
+  refreshId         String?
+  expiresAt         DateTime?
+  createdAt         DateTime?          @default(now())
+  scopes            String[]           @default([])
+  oauthClient       OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  session           Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthRefreshToken OauthRefreshToken? @relation(fields: [refreshId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([refreshId])
+}
+
+model OauthConsent {
+  id          String      @id @default(cuid())
+  clientId    String
+  userId      String?
+  referenceId String?
+  scopes      String[]    @default([])
+  createdAt   DateTime?   @default(now())
+  updatedAt   DateTime?   @updatedAt
+  oauthClient OauthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user        User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([clientId])
+  @@index([userId])
+}
+
+// Eventos sanitizados de autorização. Não há FKs de propósito: exclusão de
+// usuário ou cliente não apaga o histórico operacional da instância.
+model McpOauthAuditEvent {
+  id           String   @id @default(cuid())
+  event        String
+  outcome      String
+  actorUserId  String?
+  targetUserId String?
+  clientId     String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([clientId, createdAt])
+  @@index([targetUserId, createdAt])
+}
+
+// Short-lived denylist for revoked OAuth JWTs. Only the random signed `jti` is
+// persisted, and rows stop affecting access when the JWT expires. There are
+// intentionally no FKs: deleting a user/client must never restore a token.
+model McpOauthRevokedAccessToken {
+  id        String   @id @default(cuid())
+  tokenId   String   @unique
+  clientId  String
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([clientId, revokedAt])
+  @@index([userId, revokedAt])
+}
+
 // Histórico imutável das mudanças atômicas da configuração global. Segredos
 // nunca são copiados para ConfigRevisionChange; o flag isSecret permite
 // auditar a mudança sem reexpor credenciais.
 model ConfigRevision {
-  id                String                 @id @default(cuid())
-  number            Int                    @unique
+  id                    String                 @id @default(cuid())
+  number                Int                    @unique
   // A baseline criada na migração descreve um estado já existente, não um
   // estado restaurável. Ela fica no histórico, mas nunca pode ser rollback.
-  isBaseline        Boolean                @default(false)
-  actorUserId       String?
-  reason            String?                @db.VarChar(500)
-  createdAt         DateTime               @default(now())
-  actor             User?                  @relation("ConfigRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  changes           ConfigRevisionChange[]
-  jobs              Job[]
-  chatTurns         ChatTurn[]
-  researchArtifacts ResearchArtifact[]
+  isBaseline            Boolean                @default(false)
+  actorUserId           String?
+  reason                String?                @db.VarChar(500)
+  createdAt             DateTime               @default(now())
+  actor                 User?                  @relation("ConfigRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  changes               ConfigRevisionChange[]
+  jobs                  Job[]
+  chatTurns             ChatTurn[]
+  researchArtifacts     ResearchArtifact[]
+  transcriptEnrichments TranscriptEnrichment[]
 
   @@index([createdAt(sort: Desc)])
   @@index([actorUserId, createdAt(sort: Desc)])
@@ -306,6 +495,24 @@ enum ContentStatus {
   TRASH
 }
 
+enum InterestEventOrigin {
+  OBSERVED
+  EXPLICIT
+}
+
+enum InterestEventKind {
+  TRANSCRIPT_VIEWED
+  PREFERENCE_MORE
+  PREFERENCE_LESS
+  PREFERENCE_CLEARED
+}
+
+enum InterestProjectionHorizon {
+  SHORT
+  MEDIUM
+  LONG
+}
+
 enum EnrichmentStatus {
   PENDING
   RUNNING
@@ -322,75 +529,104 @@ enum SourceRefreshStatus {
   FAILED
 }
 
+enum TranscriptCorrectionState {
+  ACTIVE
+  STALE
+}
+
+enum TranscriptCorrectionActor {
+  USER
+  MCP
+  CHAT
+  RESTORE
+  SYSTEM
+}
+
 model Transcript {
-  id                   String                   @id @default(cuid())
-  userId               String // == workspace_id
-  folderId             String?
-  status               ContentStatus            @default(ACTIVE)
-  source               TranscriptSource
-  url                  String
-  title                String
-  channel              String?
-  author               String?
-  durationSec          Int
-  publishedAt          DateTime?
-  thumbnailUrl         String?
-  originalObjectKey    String?
-  originalFilename     String?
-  originalMimeType     String?
-  previewObjectKey     String?
-  previewMimeType      String?
-  language             String // ISO 639-1
-  transcriptionMethod  TranscriptionMethod
-  model                String? // null se SUBTITLES
-  costUsd              Decimal?                 @db.Decimal(10, 4)
+  id                       String                         @id @default(cuid())
+  userId                   String // == workspace_id
+  folderId                 String?
+  status                   ContentStatus                  @default(ACTIVE)
+  source                   TranscriptSource
+  url                      String
+  title                    String
+  channel                  String?
+  author                   String?
+  durationSec              Int
+  publishedAt              DateTime?
+  thumbnailUrl             String?
+  originalObjectKey        String?
+  originalFilename         String?
+  originalMimeType         String?
+  previewObjectKey         String?
+  previewMimeType          String?
+  language                 String // ISO 639-1
+  transcriptionMethod      TranscriptionMethod
+  model                    String? // null se SUBTITLES
+  costUsd                  Decimal?                       @db.Decimal(10, 4)
   // .md no Garage (key relative ao bucket)
-  mdPath               String
+  mdPath                   String
   // Texto puro pra FTS (sem timestamps, sem frontmatter)
-  plainText            String                   @db.Text
+  plainText                String                         @db.Text
   // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
-  summaryMd            String?                  @db.Text
-  summaryStatus        EnrichmentStatus         @default(PENDING)
-  summaryAttempts      Int                      @default(0)
-  summaryStartedAt     DateTime?
-  summaryNextAttemptAt DateTime?
-  summaryError         String?
-  taggingStatus        EnrichmentStatus         @default(PENDING)
-  taggingAttempts      Int                      @default(0)
-  taggingStartedAt     DateTime?
-  taggingNextAttemptAt DateTime?
-  taggingError         String?
+  summaryMd                String?                        @db.Text
+  // Validated derived Mermaid flow; it never replaces the canonical source.
+  flowchartMd              String?                        @db.Text
+  summaryStatus            EnrichmentStatus               @default(PENDING)
+  summaryAttempts          Int                            @default(0)
+  summaryStartedAt         DateTime?
+  summaryNextAttemptAt     DateTime?
+  summaryError             String?
+  taggingStatus            EnrichmentStatus               @default(PENDING)
+  taggingAttempts          Int                            @default(0)
+  taggingStartedAt         DateTime?
+  taggingNextAttemptAt     DateTime?
+  taggingError             String?
   // Frontmatter como JSONB pra filtros estruturados
-  frontmatter          Json
+  frontmatter              Json
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
-  searchVector         Unsupported("tsvector")?
-  checksum             String? // sha256 do áudio original
+  searchVector             Unsupported("tsvector")?
+  checksum                 String? // sha256 do áudio original
   // Proveniência versionada para fontes WEB. sourceVersion=0 identifica
   // conteúdo legado ainda sem snapshot; a primeira atualização o preserva.
-  sourceChecksum       String?
-  sourceVersion        Int                      @default(0)
-  sourceCollectedAt    DateTime?
-  sourceMetadata       Json                     @default("{}")
-  sourceRefreshStatus  SourceRefreshStatus      @default(CURRENT)
-  sourceRefreshError   String?                  @db.Text
-  formatVersion        Int                      @default(1)
-  archivedAt           DateTime?
-  trashedAt            DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
+  sourceChecksum           String?
+  sourceVersion            Int                            @default(0)
+  sourceCollectedAt        DateTime?
+  sourceMetadata           Json                           @default("{}")
+  sourceRefreshStatus      SourceRefreshStatus            @default(CURRENT)
+  sourceRefreshError       String?                        @db.Text
+  // Materialized correction overlay. Canonical mdPath/plainText stay untouched.
+  correctionRevision       Int                            @default(0)
+  correctedMarkdown        String?                        @db.Text
+  correctedPlainText       String?                        @db.Text
+  correctedChecksum        String?
+  correctionSourceVersion  Int?
+  correctionSourceChecksum String?
+  correctionState          TranscriptCorrectionState      @default(ACTIVE)
+  correctionStaleReason    String?                        @db.Text
+  formatVersion            Int                            @default(1)
+  archivedAt               DateTime?
+  trashedAt                DateTime?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
   // Relations
-  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder               LibraryFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  chunks               Chunk[]
-  job                  Job?
-  sourceRefreshJobs    Job[]                    @relation("SourceRefreshJobs")
-  sourceVersions       SourceContentVersion[]
-  conversations        Conversation[]
-  tags                 TranscriptTag[]
-  noteSources          NoteTranscriptSource[]
-  brainCompilation     BrainCompilation?
+  user                     User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder                   LibraryFolder?                 @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  chunks                   Chunk[]
+  job                      Job?
+  sourceRefreshJobs        Job[]                          @relation("SourceRefreshJobs")
+  sourceVersions           SourceContentVersion[]
+  conversations            Conversation[]
+  tags                     TranscriptTag[]
+  noteSources              NoteTranscriptSource[]
+  transcriptEnrichments    TranscriptEnrichment[]
+  correctionRevisions      TranscriptCorrectionRevision[]
+  interestEvents           InterestEvent[]
+  brainCompilation         BrainCompilation?
+  savedMedia               SavedMedia?
   // Índice GIN no tsvector criado via SQL na migration
 
+  @@unique([id, userId])
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
   @@index([userId, folderId])
@@ -399,6 +635,63 @@ model Transcript {
   @@index([summaryStatus, summaryNextAttemptAt])
   @@index([taggingStatus, taggingNextAttemptAt])
   @@index([userId, sourceRefreshStatus])
+}
+
+model InterestEvent {
+  id           String              @id @default(cuid())
+  userId       String
+  transcriptId String
+  origin       InterestEventOrigin
+  kind         InterestEventKind
+  signal       Int
+  dedupeKey    String?
+  metadata     Json                @default("{}")
+  occurredAt   DateTime            @default(now())
+  createdAt    DateTime            @default(now())
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript   Transcript          @relation(fields: [transcriptId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, transcriptId, occurredAt(sort: Desc)])
+  @@index([userId, origin, occurredAt(sort: Desc)])
+}
+
+model InterestProjection {
+  id               String                    @id @default(cuid())
+  userId           String
+  horizon          InterestProjectionHorizon
+  algorithmVersion String
+  windowDays       Int
+  halfLifeDays     Int
+  items            Json                      @default("[]")
+  eventCount       Int                       @default(0)
+  eventWatermark   DateTime?
+  computedAt       DateTime                  @default(now())
+  user             User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, horizon])
+  @@index([userId, computedAt(sort: Desc)])
+}
+
+model TranscriptCorrectionRevision {
+  id             String                    @id @default(cuid())
+  userId         String
+  transcriptId   String
+  revision       Int
+  sourceVersion  Int
+  sourceChecksum String?
+  markdown       String                    @db.Text
+  plainText      String                    @db.Text
+  checksum       String
+  actor          TranscriptCorrectionActor
+  operation      Json?
+  changeSummary  String?                   @db.Text
+  createdAt      DateTime                  @default(now())
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript     Transcript                @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@unique([transcriptId, revision])
+  @@index([userId, transcriptId, createdAt(sort: Desc)])
 }
 
 // Snapshot imutável de cada versão aceita de uma fonte externa. mdPath aponta
@@ -497,6 +790,7 @@ enum BrainSourceType {
   JOB
   CHAT
   MANUAL
+  EXTERNAL_ENRICHMENT
 }
 
 enum BrainNodeType {
@@ -523,6 +817,8 @@ enum BrainEdgeKind {
 
 enum BrainCompilationStatus {
   PENDING
+  RUNNING
+  RETRY
   PARTIAL
   COMPLETED
   FAILED
@@ -530,22 +826,23 @@ enum BrainCompilationStatus {
 }
 
 model BrainNode {
-  id          String           @id @default(cuid())
-  userId      String
-  key         String
-  type        BrainNodeType
-  label       String
-  description String?          @db.Text
-  status      ContentStatus    @default(ACTIVE)
-  metadata    Json             @default("{}")
-  sourceType  BrainSourceType?
-  sourceId    String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @default(now()) @updatedAt
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  outgoing    BrainEdge[]      @relation("BrainEdgeFrom")
-  incoming    BrainEdge[]      @relation("BrainEdgeTo")
-  sources     BrainSource[]
+  id            String             @id @default(cuid())
+  userId        String
+  key           String
+  type          BrainNodeType
+  label         String
+  description   String?            @db.Text
+  status        ContentStatus      @default(ACTIVE)
+  metadata      Json               @default("{}")
+  sourceType    BrainSourceType?
+  sourceId      String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @default(now()) @updatedAt
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoing      BrainEdge[]        @relation("BrainEdgeFrom")
+  incoming      BrainEdge[]        @relation("BrainEdgeTo")
+  sources       BrainSource[]
+  entityAliases BrainEntityAlias[]
 
   @@unique([userId, key])
   @@index([userId, type, updatedAt(sort: Desc)])
@@ -570,6 +867,7 @@ model BrainEdge {
   from       BrainNode     @relation("BrainEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
   to         BrainNode     @relation("BrainEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
   sources    BrainSource[]
+  facts      BrainFact[]
 
   @@unique([userId, fromNodeId, toNodeId, kind, method])
   @@index([userId, kind, updatedAt(sort: Desc)])
@@ -579,29 +877,91 @@ model BrainEdge {
 }
 
 model BrainSource {
-  id          String          @id @default(cuid())
-  userId      String
-  nodeId      String?
-  edgeId      String?
-  sourceType  BrainSourceType
-  sourceId    String
-  chunkId     String?
-  startLine   Int?
-  endLine     Int?
-  startSec    Int?
-  endSec      Int?
-  segmentKey  String?
-  evidenceKey String?
-  excerpt     String?         @db.Text
-  createdAt   DateTime        @default(now())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  node        BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  edge        BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  id            String          @id @default(cuid())
+  userId        String
+  nodeId        String?
+  edgeId        String?
+  factId        String?
+  sourceType    BrainSourceType
+  sourceId      String
+  chunkId       String?
+  startLine     Int?
+  endLine       Int?
+  startSec      Int?
+  endSec        Int?
+  segmentKey    String?
+  evidenceKey   String?
+  excerpt       String?         @db.Text
+  invalidatedAt DateTime?       @db.Timestamptz(3)
+  createdAt     DateTime        @default(now())
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node          BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  edge          BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  fact          BrainFact?      @relation(fields: [factId], references: [id], onDelete: Cascade)
 
   @@unique([userId, evidenceKey])
   @@index([userId, sourceType, sourceId])
   @@index([nodeId])
   @@index([edgeId])
+  @@index([factId])
+  @@index([userId, invalidatedAt])
+}
+
+// Versioned semantic meaning attached to a navigable BrainEdge. validFrom/
+// validTo are domain time; observedAt/createdAt are knowledge/transaction time.
+model BrainFact {
+  id            String        @id @default(cuid())
+  userId        String
+  edgeId        String
+  factKey       String
+  predicate     String
+  validFrom     DateTime?     @db.Timestamptz(3)
+  validTo       DateTime?     @db.Timestamptz(3)
+  observedAt    DateTime      @default(now()) @db.Timestamptz(3)
+  invalidatedAt DateTime?     @db.Timestamptz(3)
+  confidence    Decimal       @default(1) @db.Decimal(5, 4)
+  method        String        @default("manual")
+  metadata      Json          @default("{}")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @default(now()) @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  edge          BrainEdge     @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  sources       BrainSource[]
+
+  @@unique([userId, factKey])
+  @@index([userId, validFrom, validTo])
+  @@index([userId, invalidatedAt])
+  @@index([userId, observedAt(sort: Desc)])
+  @@index([edgeId])
+}
+
+// Alias observations are candidates, not destructive redirects. Several
+// entities may legitimately share the same normalizedAlias inside one workspace.
+model BrainEntityAlias {
+  id              String          @id @default(cuid())
+  userId          String
+  entityNodeId    String
+  alias           String
+  normalizedAlias String
+  entityType      String          @default("OTHER")
+  confidence      Decimal         @default(1) @db.Decimal(5, 4)
+  method          String          @default("manual")
+  sourceType      BrainSourceType
+  sourceId        String
+  segmentKey      String?
+  evidenceKey     String
+  invalidatedAt   DateTime?       @db.Timestamptz(3)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @default(now()) @updatedAt
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entity          BrainNode       @relation(fields: [entityNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, evidenceKey])
+  @@index([userId, normalizedAlias])
+  @@index([userId, entityType, normalizedAlias])
+  @@index([entityNodeId])
+  @@index([userId, sourceType, sourceId])
+  @@index([userId, invalidatedAt])
 }
 
 model BrainCompilation {
@@ -623,23 +983,29 @@ model BrainCompilation {
 }
 
 model BrainCompilationSegment {
-  id            String                 @id @default(cuid())
-  compilationId String
-  segmentKey    String
-  status        BrainCompilationStatus @default(PENDING)
-  startLine     Int
-  endLine       Int
-  startSec      Int?
-  endSec        Int?
-  itemCount     Int                    @default(0)
-  attempts      Int                    @default(0)
-  error         String?                @db.Text
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @default(now()) @updatedAt
-  compilation   BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
+  id             String                 @id @default(cuid())
+  compilationId  String
+  segmentKey     String
+  status         BrainCompilationStatus @default(PENDING)
+  startLine      Int
+  endLine        Int
+  startSec       Int?
+  endSec         Int?
+  itemCount      Int                    @default(0)
+  attempts       Int                    @default(0)
+  error          String?                @db.Text
+  claimedBy      String?
+  claimedAt      DateTime?
+  leaseExpiresAt DateTime?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @default(now()) @updatedAt
+  compilation    BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
 
   @@unique([compilationId, segmentKey])
   @@index([compilationId, status])
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
 }
 
 // ============================================================================
@@ -647,12 +1013,62 @@ model BrainCompilationSegment {
 // ============================================================================
 
 enum JobType {
+  DOWNLOAD_MEDIA
   DOWNLOAD_AND_TRANSCRIBE
   SCRAPE_WEB
   UPLOAD_AND_TRANSCRIBE
   UPLOAD_AND_ANALYZE_IMAGE
   UPLOAD_AND_ANALYZE_DOCUMENT
   ANALYZE_X
+  DELETE_KNOWLEDGE
+}
+
+enum KnowledgeDeletionTargetType {
+  TRANSCRIPT
+  NOTE
+  SAVED_MEDIA
+  LIBRARY_FOLDER
+  TRANSCRIPT_ENRICHMENT
+}
+
+enum SavedMediaStatus {
+  QUEUED
+  DOWNLOADING
+  READY
+  PROCESSING
+  PROCESSED
+  DELETING
+  FAILED
+}
+
+model SavedMedia {
+  id           String           @id @default(uuid())
+  userId       String
+  sourceUrl    String
+  canonicalUrl String
+  title        String?
+  channel      String?
+  author       String?
+  durationSec  Int?
+  thumbnailUrl String?
+  objectKey    String?
+  filename     String?
+  mimeType     String?
+  byteSize     BigInt?
+  status       SavedMediaStatus @default(QUEUED)
+  errorMsg     String?
+  transcriptId String?          @unique
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @default(now()) @updatedAt
+  readyAt      DateTime?
+  processedAt  DateTime?
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript   Transcript?      @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  jobs         Job[]
+
+  @@unique([userId, canonicalUrl])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, status, createdAt(sort: Desc)])
 }
 
 enum JobStatus {
@@ -665,31 +1081,36 @@ enum JobStatus {
 }
 
 model Job {
-  id                  String             @id @default(cuid())
+  id                  String                       @id @default(cuid())
   userId              String
   type                JobType
-  status              JobStatus          @default(QUEUED)
+  status              JobStatus                    @default(QUEUED)
   sourceUrl           String
-  transcriptId        String?            @unique
+  transcriptId        String?                      @unique
   // Quando preenchido, SCRAPE_WEB atualiza este conteúdo existente em vez de
   // criar um novo Transcript. O resultado continua em transcriptId.
   refreshTranscriptId String?
+  savedMediaId        String?
+  deletionTargetType  KnowledgeDeletionTargetType?
+  deletionTargetId    String?
+  deletionTargetTitle String?
   configRevisionId    String?
   errorMsg            String?
   progressStage       String?
   progressPercent     Int?
   progressedAt        DateTime?
   workerId            String?
-  attempt             Int                @default(0)
+  attempt             Int                          @default(0)
   heartbeatAt         DateTime?
   leaseExpiresAt      DateTime?
-  queuedAt            DateTime           @default(now())
+  queuedAt            DateTime                     @default(now())
   startedAt           DateTime?
   finishedAt          DateTime?
-  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript          Transcript?        @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
-  refreshTranscript   Transcript?        @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
-  configRevision      ConfigRevision?    @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript          Transcript?                  @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  refreshTranscript   Transcript?                  @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
+  savedMedia          SavedMedia?                  @relation(fields: [savedMediaId], references: [id], onDelete: SetNull)
+  configRevision      ConfigRevision?              @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
   progressEvents      JobProgressEvent[]
 
   @@index([userId, queuedAt(sort: Desc)])
@@ -698,6 +1119,8 @@ model Job {
   @@index([status, leaseExpiresAt])
   @@index([configRevisionId])
   @@index([userId, refreshTranscriptId, status])
+  @@index([userId, savedMediaId, status])
+  @@index([userId, deletionTargetType, deletionTargetId, status])
 }
 
 model JobProgressEvent {
@@ -956,6 +1379,14 @@ enum NoteKind {
   FOLDER
 }
 
+enum NoteRevisionActor {
+  USER
+  MCP
+  CHAT
+  RESTORE
+  SYSTEM
+}
+
 model Note {
   id                String                   @id @default(cuid())
   userId            String
@@ -966,6 +1397,7 @@ model Note {
   title             String
   // Conteúdo markdown. FOLDER ignora este campo.
   content           String                   @default("") @db.Text
+  revision          Int                      @default(1)
   // tsvector mantido por trigger SQL (sync com title+content).
   searchVector      Unsupported("tsvector")?
   createdAt         DateTime                 @default(now())
@@ -974,10 +1406,29 @@ model Note {
   parent            Note?                    @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
   children          Note[]                   @relation("NoteTree")
   transcriptSources NoteTranscriptSource[]
+  revisions         NoteRevision[]
 
   @@index([userId, parentId])
   @@index([userId, sourceType, sourceId])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+model NoteRevision {
+  id            String            @id @default(cuid())
+  userId        String
+  noteId        String
+  revision      Int
+  title         String
+  content       String            @db.Text
+  checksum      String
+  actor         NoteRevisionActor
+  changeSummary String?           @db.Text
+  createdAt     DateTime          @default(now())
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note          Note              @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, revision])
+  @@index([userId, noteId, createdAt(sort: Desc)])
 }
 
 // Fontes explícitas de uma nota. A coluna Note.sourceType/sourceId permanece
@@ -987,12 +1438,117 @@ model NoteTranscriptSource {
   noteId       String
   transcriptId String
   userId       String
-  createdAt    DateTime   @default(now())
-  note         Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  createdAt    DateTime               @default(now())
+  note         Note                   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  transcript   Transcript             @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  anchors      NoteTranscriptAnchor[]
 
   @@id([noteId, transcriptId])
   @@index([userId, transcriptId])
+}
+
+enum NoteAnchorStatus {
+  VALID
+  STALE
+  UNAVAILABLE
+}
+
+model NoteTranscriptAnchor {
+  id             String               @id @default(cuid())
+  noteId         String
+  transcriptId   String
+  userId         String
+  startLine      Int?
+  endLine        Int?
+  startSec       Int?
+  endSec         Int?
+  selectedQuote  String               @db.Text
+  quoteHash      String
+  sourceVersion  Int                  @default(0)
+  sourceChecksum String?
+  status         NoteAnchorStatus     @default(VALID)
+  staleReason    String?              @db.Text
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @default(now()) @updatedAt
+  source         NoteTranscriptSource @relation(fields: [noteId, transcriptId], references: [noteId, transcriptId], onDelete: Cascade)
+
+  @@index([userId, transcriptId, status])
+  @@index([noteId, transcriptId])
+}
+
+enum TranscriptEnrichmentType {
+  WEB_RESEARCH
+}
+
+enum TranscriptEnrichmentStatus {
+  PENDING
+  RUNNING
+  NO_RESEARCH_NEEDED
+  READY
+  RETRY
+  FAILED
+  CANCELLED
+}
+
+enum TranscriptEnrichmentReviewState {
+  SUGGESTED
+  ACCEPTED
+  DISMISSED
+}
+
+enum TranscriptEnrichmentTrigger {
+  AUTO
+  MANUAL
+  MCP
+}
+
+model TranscriptEnrichment {
+  id                String                          @id @default(cuid())
+  userId            String
+  transcriptId      String
+  configRevisionId  String?
+  runKey            String
+  type              TranscriptEnrichmentType        @default(WEB_RESEARCH)
+  status            TranscriptEnrichmentStatus      @default(PENDING)
+  reviewState       TranscriptEnrichmentReviewState @default(SUGGESTED)
+  trigger           TranscriptEnrichmentTrigger
+  title             String                          @default("")
+  content           String                          @default("") @db.Text
+  citations         Json                            @default("[]")
+  queries           Json                            @default("[]")
+  rationale         String?                         @db.Text
+  noResearchReason  String?                         @db.Text
+  sourceVersion     Int                             @default(0)
+  sourceChecksum    String?
+  model             String?
+  costUsd           Decimal?                        @db.Decimal(10, 6)
+  tokensIn          Int                             @default(0)
+  tokensOut         Int                             @default(0)
+  searchCallCount   Int                             @default(0)
+  searchResultCount Int                             @default(0)
+  attempt           Int                             @default(0)
+  nextAttemptAt     DateTime?
+  startedAt         DateTime?
+  generatedAt       DateTime?
+  checkedAt         DateTime?
+  expiresAt         DateTime?
+  acceptedAt        DateTime?
+  dismissedAt       DateTime?
+  editedAt          DateTime?
+  cancelRequestedAt DateTime?
+  staleReason       String?                         @db.Text
+  lastError         String?                         @db.Text
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @default(now()) @updatedAt
+  user              User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript        Transcript                      @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  configRevision    ConfigRevision?                 @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, transcriptId, runKey])
+  @@index([userId, transcriptId, createdAt(sort: Desc)])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([userId, reviewState, updatedAt(sort: Desc)])
+  @@index([configRevisionId])
 }
 
 // ============================================================================

@@ -1,3 +1,8 @@
+---
+name: changelog
+description: Use quando pedirem resumo de atividade para gestão ou stakeholders ("o que fizemos essa semana?", "resumo pra diretoria", "changelog do período") — entrega resumo executivo em linguagem de negócio, não técnica.
+---
+
 # Changelog — Resumo de Atividade para Gestão
 
 Gera um resumo executivo de atividade do projeto para stakeholders/gestão.

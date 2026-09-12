@@ -6,11 +6,18 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
 
-from src import db
+from src import (
+    brain_compilation_db,
+    brain_reconciliation,
+    brain_temporal_store,
+    db,
+    pipeline,
+)
 
 
 class _FakeLease:
@@ -284,7 +291,7 @@ class _SegmentConnection:
         return {"id": "content-node"}
 
     async def execute(self, query: str, *_args: object) -> str:
-        if 'DELETE FROM "BrainSource" source' in query:
+        if 'UPDATE "BrainSource" source' in query and 'source."segmentKey" = $3' in query:
             self.lease.owned = False
         return "OK"
 
@@ -307,7 +314,7 @@ class _CompilationResetConnection:
         return "OK"
 
 
-async def test_recompilation_removes_relation_evidence_without_touching_manual_edges(
+async def test_recompilation_invalidates_relation_evidence_without_erasing_history(
     monkeypatch: Any,
 ) -> None:
     conn = _CompilationResetConnection()
@@ -323,10 +330,16 @@ async def test_recompilation_removes_relation_evidence_without_touching_manual_e
         transcript_id="transcript-1",
         content_hash="after",
         segments=[],
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
 
     queries = "\n".join(query for query, _args in conn.execute_calls)
-    assert 'DELETE FROM "BrainSource" source' in queries
+    assert 'UPDATE "BrainSource" source' in queries
+    assert 'SET "invalidatedAt" = NOW()' in queries
+    assert 'UPDATE "BrainEntityAlias"' in queries
+    assert 'UPDATE "BrainFact" fact' in queries
     assert "edge.method LIKE 'llm-grounded%'" in queries
     assert 'source."sourceId" = $2' in queries
     assert "NOT EXISTS" in queries
@@ -338,12 +351,15 @@ class _RelationConnection:
         self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
         self._edge_number = 0
+        self._fact_number = 0
 
     def transaction(self) -> _SegmentTransaction:
         return _SegmentTransaction()
 
     async def fetchrow(self, query: str, *args: object) -> dict[str, object]:
         self.fetchrow_calls.append((query, args))
+        if "SELECT segment.id" in query:
+            return {"id": "segment-claim"}
         if 'SELECT id FROM "BrainNode"' in query:
             return {"id": "content-node"}
         if 'COUNT(DISTINCT source."sourceId")' in query:
@@ -351,11 +367,67 @@ class _RelationConnection:
         if 'INSERT INTO "BrainEdge"' in query:
             self._edge_number += 1
             return {"id": f"edge-{self._edge_number}"}
+        if 'INSERT INTO "BrainFact"' in query:
+            self._fact_number += 1
+            return {"id": f"fact-{self._fact_number}"}
         raise AssertionError(f"Unexpected fetchrow query: {query}")
 
     async def execute(self, query: str, *args: object) -> str:
         self.execute_calls.append((query, args))
         return "OK"
+
+
+class _RejectedClaimConnection:
+    def __init__(self) -> None:
+        self.transaction_state = _SegmentTransaction()
+        self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def transaction(self) -> _SegmentTransaction:
+        return self.transaction_state
+
+    async def fetchrow(self, query: str, *args: object) -> None:
+        self.fetchrow_calls.append((query, args))
+        return None
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return "OK"
+
+
+async def test_stale_compilation_hash_cannot_persist_grounded_evidence(
+    monkeypatch: Any,
+) -> None:
+    conn = _RejectedClaimConnection()
+
+    @asynccontextmanager
+    async def rejected_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", rejected_connection)
+
+    with pytest.raises(db.GroundedCompilationClaimLostError):
+        await db.upsert_grounded_brain_items(
+            user_id="user-1",
+            transcript_id="transcript-1",
+            compilation_id="compilation-1",
+            segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+            items=[{"slug": "claim-a", "label": "A", "kind": "claim", "excerpt": "A"}],
+            relations=[],
+            lease=_FakeLease(),
+            worker_id="worker-1",
+            content_hash="stale-hash",
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
+        )
+
+    claim_query, claim_args = conn.fetchrow_calls[0]
+    assert 'compilation."contentHash" = $4' in claim_query
+    assert "transcript.status = 'ACTIVE'" in claim_query
+    assert "FOR UPDATE OF segment, transcript" in claim_query
+    assert claim_args[3] == "stale-hash"
+    assert conn.execute_calls == []
 
 
 async def test_contradiction_requires_two_independent_grounded_sources(
@@ -371,7 +443,7 @@ async def test_contradiction_requires_two_independent_grounded_sources(
         return f"node-{kwargs['key']}"
 
     monkeypatch.setattr(db, "connection", relation_connection)
-    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
 
     await db.upsert_grounded_brain_items(
         user_id="user-1",
@@ -391,6 +463,11 @@ async def test_contradiction_requires_two_independent_grounded_sources(
             }
         ],
         lease=_FakeLease(),
+        worker_id="worker-1",
+        content_hash="content-hash",
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
 
     support_query, support_args = next(
@@ -419,7 +496,7 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
         return f"node-{kwargs['key']}"
 
     monkeypatch.setattr(db, "connection", relation_connection)
-    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
 
     await db.upsert_grounded_brain_items(
         user_id="user-1",
@@ -439,6 +516,11 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
             }
         ],
         lease=_FakeLease(),
+        worker_id="worker-1",
+        content_hash="content-hash",
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
 
     assert any(
@@ -447,6 +529,80 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
         and args[4] == "CONTRADICTS"
         for query, args in conn.fetchrow_calls
     )
+    assert any('INSERT INTO "BrainFact"' in query for query, _args in conn.fetchrow_calls)
+    assert any('"factId"' in query for query, _args in conn.execute_calls)
+
+
+async def test_distinct_temporal_episodes_keep_independent_evidence_rows(
+    monkeypatch: Any,
+) -> None:
+    conn = _RelationConnection({"subject_sources": 0, "object_sources": 0, "total_sources": 0})
+
+    @asynccontextmanager
+    async def relation_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    async def concept_node(_conn: object, **kwargs: object) -> str:
+        return f"node-{kwargs['key']}"
+
+    monkeypatch.setattr(db, "connection", relation_connection)
+    monkeypatch.setattr(brain_temporal_store, "upsert_concept_node", concept_node)
+
+    await db.upsert_grounded_brain_items(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        compilation_id="compilation-1",
+        segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+        items=[
+            {
+                "slug": "ana",
+                "local_ref": "ana",
+                "label": "Ana",
+                "kind": "claim",
+                "excerpt": "Ana voltou à Acme.",
+            },
+            {
+                "slug": "acme",
+                "local_ref": "acme",
+                "label": "Acme",
+                "kind": "claim",
+                "excerpt": "Ana voltou à Acme.",
+            },
+        ],
+        relations=[
+            {
+                "subject_ref": "ana",
+                "object_ref": "acme",
+                "predicate": "worked_at",
+                "kind": "RELATED_TO",
+                "excerpt": "Ana voltou à Acme.",
+                "valid_from": "2020-01-01T00:00:00Z",
+                "valid_to": "2021-01-01T00:00:00Z",
+            },
+            {
+                "subject_ref": "ana",
+                "object_ref": "acme",
+                "predicate": "worked_at",
+                "kind": "RELATED_TO",
+                "excerpt": "Ana voltou à Acme.",
+                "valid_from": "2024-01-01T00:00:00Z",
+            },
+        ],
+        lease=_FakeLease(),
+        worker_id="worker-1",
+        content_hash="content-hash",
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
+    )
+
+    temporal_sources = [
+        args
+        for query, args in conn.execute_calls
+        if 'INSERT INTO "BrainSource"' in query and args[3] is not None
+    ]
+    assert [args[3] for args in temporal_sources] == ["fact-1", "fact-2"]
+    assert len({args[10] for args in temporal_sources}) == 2
 
 
 async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) -> None:
@@ -468,6 +624,11 @@ async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) 
             items=[],
             relations=[],
             lease=lease,
+            worker_id="worker-1",
+            content_hash="content-hash",
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
 
     assert conn.transaction_state.rolled_back is True
@@ -534,6 +695,146 @@ async def test_reconciliation_detects_transcript_updates_after_index(
     assert conn.args == (str(db.BRAIN_TOPIC_INDEX_VERSION), 7)
 
 
+class _ResolvedWarningConnection:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args: tuple[object, ...] = ()
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        yield
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        self.query = query
+        self.args = args
+        return [
+            {
+                "id": "job-1",
+                "userId": "user-1",
+                "transcriptId": "transcript-1",
+            }
+        ]
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return "INSERT 0 1"
+
+
+async def test_resolved_brain_warning_reconciliation_is_narrow_and_records_done_event(
+    monkeypatch: Any,
+) -> None:
+    conn = _ResolvedWarningConnection()
+
+    @asynccontextmanager
+    async def warning_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", warning_connection)
+
+    repaired = await brain_reconciliation.reconcile_resolved_warning_jobs(limit=7)
+
+    assert repaired[0]["id"] == "job-1"
+    assert "COMPLETED_WITH_WARNINGS" in conn.query
+    assert 'COALESCE(j."transcriptId", j."refreshTranscriptId")' in conn.query
+    assert "topicIndexVersion" in conn.query
+    assert 'n."updatedAt" >= t."updatedAt"' in conn.query
+    assert "summaryStatus" in conn.query and "taggingStatus" in conn.query
+    assert conn.args[0] == str(db.BRAIN_TOPIC_INDEX_VERSION)
+    assert conn.args[1] == 7
+    event_query, event_args = conn.execute_calls[0]
+    assert 'INSERT INTO "JobProgressEvent"' in event_query
+    assert event_args[3:] == ("done", 100, "transcript-1", event_args[-1])
+
+
+async def test_pipeline_waits_for_busy_brain_index_lease(monkeypatch: Any) -> None:
+    reindex = AsyncMock(side_effect=[False, False, True])
+    sleep = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "reindex_transcript_brain_node", reindex)
+    monkeypatch.setattr(pipeline.asyncio, "sleep", sleep)
+
+    assert await pipeline._reindex_brain_with_retry("user-1", "transcript-1") is True
+    assert reindex.await_count == 3
+    assert [call.args[0] for call in sleep.await_args_list] == [0.25, 0.5]
+
+
+async def test_pipeline_exposes_brain_warning_only_after_retry_budget(monkeypatch: Any) -> None:
+    reindex = AsyncMock(return_value=False)
+    sleep = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "reindex_transcript_brain_node", reindex)
+    monkeypatch.setattr(pipeline.asyncio, "sleep", sleep)
+
+    assert await pipeline._reindex_brain_with_retry("user-1", "transcript-1") is False
+    assert reindex.await_count == 5
+    assert [call.args[0] for call in sleep.await_args_list] == [0.25, 0.5, 1.0, 2.0]
+
+
+class _GroundedClaimConnection:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args: tuple[object, ...] = ()
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        self.query = query
+        self.args = args
+        return [{"segmentKey": "segment-1", "attempts": 1}]
+
+    async def execute(self, _query: str, *_args: object) -> str:
+        return "UPDATE 1"
+
+
+async def test_grounded_segment_claim_is_atomic_due_and_bounded(monkeypatch: Any) -> None:
+    conn = _GroundedClaimConnection()
+
+    @asynccontextmanager
+    async def claim_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", claim_connection)
+
+    rows = await brain_compilation_db.claim_segments(
+        user_id="user-1",
+        compilation_id="compilation-1",
+        segment_keys=["segment-1", "segment-2"],
+        worker_id="worker-1",
+        limit=2,
+    )
+
+    assert rows == [{"segmentKey": "segment-1", "attempts": 1}]
+    assert "FOR UPDATE SKIP LOCKED" in conn.query
+    assert "attempts <" in conn.query
+    assert "'RUNNING'" in conn.query
+    assert '"leaseExpiresAt"' in conn.query
+    assert conn.args[:4] == (
+        "compilation-1",
+        "user-1",
+        ["segment-1", "segment-2"],
+        "worker-1",
+    )
+
+
+async def test_due_grounded_reconciliation_includes_legacy_and_expired_work(
+    monkeypatch: Any,
+) -> None:
+    conn = _GroundedClaimConnection()
+
+    @asynccontextmanager
+    async def due_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", due_connection)
+
+    await brain_compilation_db.list_due_compilations(limit=9)
+
+    assert "'PENDING'" in conn.query
+    assert "'RETRY'" in conn.query
+    assert "'FAILED'" in conn.query
+    assert "'RUNNING'" in conn.query
+    assert '"leaseExpiresAt" < NOW()' in conn.query
+    assert "attempts <" in conn.query
+    assert conn.args == (9, brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS)
+
+
 class _EmbeddingConnection:
     def __init__(self, result: str = "UPDATE 1") -> None:
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
@@ -565,6 +866,9 @@ async def test_worker_embedding_skips_db_when_lease_is_occupied_or_redis_unavail
             transcript_id="transcript-1",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
         is False
     )
@@ -590,6 +894,9 @@ async def test_worker_embedding_writes_only_while_it_owns_the_lease(
             transcript_id="transcript-1",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=2,
+            source_version=3,
+            source_checksum="source-3",
         )
         is True
     )
@@ -600,6 +907,7 @@ async def test_worker_embedding_writes_only_while_it_owns_the_lease(
     assert 'UPDATE "BrainNode"' in query
     assert args[0] == "user-1"
     assert args[1] == "TRANSCRIPT:transcript-1"
+    assert args[4] == 2
 
 
 async def test_worker_embedding_stops_before_write_when_local_lease_is_lost(
@@ -622,6 +930,9 @@ async def test_worker_embedding_stops_before_write_when_local_lease_is_lost(
             transcript_id="transcript-1",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
         is False
     )
@@ -648,6 +959,9 @@ async def test_worker_embedding_releases_lease_when_content_node_is_missing(
             transcript_id="missing-transcript",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
         is False
     )

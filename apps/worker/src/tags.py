@@ -181,6 +181,7 @@ async def generate_content_tags(
     existing_tags: list[str],
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> TagsGenerationResult:
@@ -252,7 +253,11 @@ async def generate_content_tags(
         "usage": {"include": True},
     }
     result = await _chat_completion_document(
-        payload=payload, api_key=api_key, model=model, client=client
+        payload=payload,
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+        client=client,
     )
     tags = resolve_tags_decision(result.text, existing_tags)
     return TagsGenerationResult(

@@ -15,11 +15,26 @@ class _FakeConnection:
         self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
         self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
-        self.fetchrow_result: dict[str, Any] | None = {"id": "transcript-1"}
+        self.fetchrow_result: dict[str, Any] | None = {
+            "taggingAttempt": 1,
+            "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
+        }
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, Any]]:
         self.fetch_calls.append((query, args))
-        return [{"id": "transcript-1", "userId": "user-2", "jobId": None}]
+        return [
+            {
+                "id": "transcript-1",
+                "userId": "user-2",
+                "jobId": None,
+                "taggingAttempt": 1,
+                "correctionRevision": 0,
+                "sourceVersion": 0,
+                "sourceChecksum": None,
+            }
+        ]
 
     async def execute(self, query: str, *args: object) -> str:
         self.execute_calls.append((query, args))
@@ -46,7 +61,17 @@ async def test_claim_query_covers_due_retry_stale_running_and_skip_locked(
 
     claimed = await db.claim_pending_tag_enrichments(limit=3)
 
-    assert claimed == [{"id": "transcript-1", "userId": "user-2", "jobId": None}]
+    assert claimed == [
+        {
+            "id": "transcript-1",
+            "userId": "user-2",
+            "jobId": None,
+            "taggingAttempt": 1,
+            "correctionRevision": 0,
+            "sourceVersion": 0,
+            "sourceChecksum": None,
+        }
+    ]
     query, args = conn.fetch_calls[0]
     assert "NOT EXISTS" in query
     assert 'FROM "TranscriptTag"' in query
@@ -67,7 +92,12 @@ async def test_start_increments_attempt_and_clears_previous_error(
     conn = _FakeConnection()
     _install_connection(monkeypatch, conn)
 
-    assert await db.start_tag_enrichment("user-1", "transcript-1") is True
+    assert await db.start_tag_enrichment("user-1", "transcript-1") == {
+        "taggingAttempt": 1,
+        "correctionRevision": 0,
+        "sourceVersion": 0,
+        "sourceChecksum": None,
+    }
 
     query, args = conn.fetchrow_calls[0]
     assert '"taggingAttempts" = "taggingAttempts" + 1' in query
@@ -77,7 +107,8 @@ async def test_start_increments_attempt_and_clears_previous_error(
     assert "'RETRY'::\"EnrichmentStatus\"" in query
     assert '"taggingNextAttemptAt" <= NOW()' in query
     assert 'FROM "TranscriptTag"' in query
-    assert "RETURNING id" in query
+    assert '"taggingAttempt"' in query
+    assert '"correctionRevision"' in query
     assert args == ("user-1", "transcript-1")
 
 
@@ -88,7 +119,7 @@ async def test_start_returns_false_when_another_worker_owns_the_row(
     conn.fetchrow_result = None
     _install_connection(monkeypatch, conn)
 
-    assert await db.start_tag_enrichment("user-1", "transcript-1") is False
+    assert await db.start_tag_enrichment("user-1", "transcript-1") is None
 
 
 async def test_retry_query_schedules_backoff_and_skips_after_six_attempts(
@@ -102,6 +133,10 @@ async def test_retry_query_schedules_backoff_and_skips_after_six_attempts(
         "transcript-1",
         status="RETRY",
         error="modelo não retornou tags",
+        claim_attempt=1,
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
 
     query, args = conn.execute_calls[0]
@@ -109,4 +144,13 @@ async def test_retry_query_schedules_backoff_and_skips_after_six_attempts(
     assert "THEN 'SKIPPED'::\"EnrichmentStatus\"" in query
     assert '"taggingAttempts" < 6' in query
     assert "LEAST(3600, 60 * POWER(2" in query
-    assert args == ("user-1", "transcript-1", "RETRY", "modelo não retornou tags")
+    assert args == (
+        "user-1",
+        "transcript-1",
+        "RETRY",
+        "modelo não retornou tags",
+        1,
+        0,
+        0,
+        None,
+    )

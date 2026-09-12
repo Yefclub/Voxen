@@ -18,7 +18,19 @@ documentation currently has two tracks:
 | [`en/STACK.md`](en/STACK.md)                         | Runtimes, libraries, images, and upgrade policy       |
 | [`en/DECISIONS.md`](en/DECISIONS.md)                 | Architecture Decision Records                         |
 | [`en/SECURITY.md`](en/SECURITY.md)                   | Threat model, guards, secrets, and incident response  |
+| [`en/MCP.md`](en/MCP.md)                             | MCP clients, compatibility, security, troubleshooting |
+| [`en/MEM0-SHADOW.md`](en/MEM0-SHADOW.md)             | Optional Mem0 shadow evaluation and safety boundary   |
 | [`en/TRANSCRIPT-FORMAT.md`](en/TRANSCRIPT-FORMAT.md) | Markdown transcript schema                            |
+
+## Research
+
+Spike write-ups: a question, the evidence gathered, and the recommendation.
+They record why an option was taken or rejected at a point in time, and are not
+updated as the codebase moves on.
+
+| Document                                                             | Question                                     |
+| -------------------------------------------------------------------- | -------------------------------------------- |
+| [`research/768-ai-elements-spike.md`](research/768-ai-elements-spike.md) | Should the chat adopt Vercel AI Elements? |
 
 ## Português (Brasil)
 
@@ -30,4 +42,6 @@ documentation currently has two tracks:
 | [`STACK.md`](STACK.md)                         | Runtimes, bibliotecas, imagens e política de upgrade     |
 | [`DECISIONS.md`](DECISIONS.md)                 | Registro histórico de decisões arquiteturais             |
 | [`SECURITY.md`](SECURITY.md)                   | Threat model, guards, secrets e resposta a incidentes    |
+| [`MCP.md`](MCP.md)                             | Clientes MCP, compatibilidade, segurança e diagnóstico   |
+| [`MEM0-SHADOW.md`](MEM0-SHADOW.md)             | Avaliação opcional do Mem0 e limites de segurança        |
 | [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Schema Markdown de transcrições                          |

@@ -62,6 +62,9 @@ const ContaPlataformasPage = lazy(() =>
 const ContaMcpPage = lazy(() =>
   import('./pages/conta-mcp').then(({ ContaMcpPage }) => ({ default: ContaMcpPage })),
 );
+const OAuthConsentPage = lazy(() =>
+  import('./pages/oauth-consent').then(({ OAuthConsentPage }) => ({ default: OAuthConsentPage })),
+);
 const FilaPage = lazy(() => import('./pages/fila').then(({ FilaPage }) => ({ default: FilaPage })));
 const JobDetalhePage = lazy(() =>
   import('./pages/jobs-detalhe').then(({ JobDetalhePage }) => ({ default: JobDetalhePage })),
@@ -74,6 +77,9 @@ const TranscricaoDetalhePage = lazy(() =>
     default: TranscricaoDetalhePage,
   })),
 );
+const SavedMediaPage = lazy(() =>
+  import('./pages/saved-media').then(({ SavedMediaPage }) => ({ default: SavedMediaPage })),
+);
 const NotasPage = lazy(() =>
   import('./pages/notas').then(({ NotasPage }) => ({ default: NotasPage })),
 );
@@ -83,6 +89,7 @@ const AutomacoesPage = lazy(() =>
 const GrafoPage = lazy(() =>
   import('./pages/grafo').then(({ GrafoPage }) => ({ default: GrafoPage })),
 );
+const GuiaPage = lazy(() => import('./pages/guia').then(({ GuiaPage }) => ({ default: GuiaPage })));
 const NovidadesPage = lazy(() =>
   import('./pages/novidades').then(({ NovidadesPage }) => ({ default: NovidadesPage })),
 );
@@ -203,15 +210,18 @@ function AppRoutes(): React.ReactElement {
         <Route path="/conta" element={<ContaPage />} />
         <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />
         <Route path="/conta/mcp" element={<ContaMcpPage />} />
+        <Route path="/oauth/consent" element={<OAuthConsentPage />} />
         <Route path="/fila" element={<FilaPage />} />
         <Route path="/jobs" element={<JobsIndexRedirect />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />
         <Route path="/transcricoes" element={<TranscricoesPage />} />
         <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
+        <Route path="/downloads" element={<SavedMediaPage />} />
         <Route path="/notas" element={<NotasPage />} />
         <Route path="/notas/:id" element={<NotasPage />} />
         <Route path="/automacoes" element={<AutomacoesPage />} />
         <Route path="/artefatos" element={<Navigate to="/" replace />} />
+        <Route path="/guia" element={<GuiaPage />} />
         <Route path="/grafo" element={<GrafoPage />} />
         <Route path="/novidades" element={<NovidadesPage />} />
         <Route path="/extensao" element={<ExtensaoPage />} />

@@ -25,4 +25,16 @@ describe('rótulos contextuais de jobs', () => {
     expect(stageLabel('validating_source_metadata')).toBe('Validating source metadata');
     expect(stageLabel('')).toBe('Processando conteúdo');
   });
+
+  test('nomeia toda a trilha de pesquisa seletiva', () => {
+    expect(stageLabel('research_planning')).toBe('Avaliando lacunas do conteúdo');
+    expect(stageLabel('research_source_lookup')).toBe('Consultando a fonte original');
+    expect(stageLabel('research_searching')).toBe('Pesquisando contexto adicional');
+    expect(stageLabel('research_synthesizing')).toBe('Organizando evidências encontradas');
+    expect(stageLabel('research_not_needed')).toBe('Pesquisa adicional não necessária');
+    expect(stageLabel('research_ready')).toBe('Contexto adicional pronto para revisão');
+    expect(stageLabel('research_retry')).toBe('Pesquisa aguardando nova tentativa');
+    expect(stageLabel('research_failed')).toBe('Pesquisa adicional falhou');
+    expect(stageLabel('research_cancelled')).toBe('Pesquisa adicional cancelada');
+  });
 });
