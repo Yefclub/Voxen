@@ -44,7 +44,7 @@
 | Postgres   | `postgres:17-alpine` | DB, FTS, grafo e fila durável         |
 | Redis      | `redis:7-alpine`     | wakeup, realtime, cache e rate limits |
 | Volume local | volume nomeado Docker | storage padrão em um único host    |
-| MinIO      | `minio/minio`        | profile opcional S3-compatible        |
+| MinIO      | `quay.io/minio/minio` | profile opcional S3-compatible        |
 
 O CI executa formatação, lint, tipos, testes, validação de migrations, CodeQL,
 Trivy, revisão/auditoria de dependências e gitleaks. Releases publicam a imagem
