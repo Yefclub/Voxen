@@ -37,7 +37,7 @@ def _capture() -> XPost:
     )
 
 
-def _analysis(text: str, accessible: bool | None) -> SimpleNamespace:
+def _analysis(text: str, accessible: bool, *, verdict_missing: bool = False) -> SimpleNamespace:
     return SimpleNamespace(
         text=text,
         cost_usd=Decimal("0.002"),
@@ -45,6 +45,7 @@ def _analysis(text: str, accessible: bool | None) -> SimpleNamespace:
         tokens_in=20,
         tokens_out=8,
         accessible=accessible,
+        verdict_missing=verdict_missing,
     )
 
 
@@ -131,13 +132,23 @@ async def test_pipeline_persists_capture_when_model_fails(monkeypatch: pytest.Mo
 async def test_pipeline_uses_capture_metadata_for_transcript(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _run_pipeline(monkeypatch, capture=_capture(), analysis=_analysis("## Análise", None))
+    await _run_pipeline(monkeypatch, capture=_capture(), analysis=_analysis("## Análise", True))
 
     probe = _persisted(monkeypatch)["probe_info"]
     assert probe.channel == "@_heyrico"
     assert probe.published_at == datetime(2026, 9, 21, 14, 59, 3, tzinfo=UTC)
     assert probe.title == "Product design cheat sheet; bookmark this."
     assert _persisted(monkeypatch)["segments"][0].text == "## Análise"
+    post_context = pipeline.analyze_x_url.await_args.kwargs["post_context"]
+    assert "Product design cheat sheet" in post_context
+
+
+async def test_pipeline_does_not_ground_on_capture_when_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _run_pipeline(monkeypatch, capture=None, analysis=_analysis("## Análise", True))
+
+    assert pipeline.analyze_x_url.await_args.kwargs["post_context"] is None
 
 
 async def test_pipeline_ignores_model_denial_when_capture_exists(

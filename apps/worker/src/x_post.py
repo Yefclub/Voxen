@@ -9,6 +9,7 @@ do widget oficial.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -99,10 +100,13 @@ def _safe_media_url(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
     url = raw.strip()
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname:
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
+    except ValueError:
         return None
-    host = parsed.hostname.lower().rstrip(".")
+    if parsed.scheme != "https" or not host:
+        return None
     if not any(
         host == suffix or host.endswith(f".{suffix}") for suffix in _ALLOWED_MEDIA_HOST_SUFFIXES
     ):
@@ -112,6 +116,8 @@ def _safe_media_url(raw: Any) -> str | None:
 
 def _parse_count(raw: Any) -> int | None:
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    if not math.isfinite(raw):
         return None
     value = int(raw)
     return value if value >= 0 else None
@@ -203,6 +209,7 @@ def parse_x_post_payload(status_id: str, payload: Any) -> XPost | None:
     raw_name = user.get("name")
     raw_handle = user.get("screen_name")
     raw_lang = payload.get("lang")
+    normalized_lang = raw_lang.strip() if isinstance(raw_lang, str) else ""
     return XPost(
         status_id=status_id,
         text=text,
@@ -211,7 +218,7 @@ def parse_x_post_payload(status_id: str, payload: Any) -> XPost | None:
         if isinstance(raw_handle, str) and raw_handle.strip()
         else None,
         created_at=_parse_created_at(payload.get("created_at")),
-        lang=raw_lang.strip() if isinstance(raw_lang, str) and raw_lang.strip() else None,
+        lang=normalized_lang if normalized_lang and normalized_lang.lower() != "und" else None,
         like_count=_parse_count(payload.get("favorite_count")),
         reply_count=_parse_count(payload.get("conversation_count")),
         possibly_sensitive=payload.get("possibly_sensitive") is True,
@@ -241,7 +248,7 @@ async def fetch_x_post(
                 params={"id": status_id, "lang": "en", "token": syndication_token(status_id)},
                 headers={"User-Agent": _USER_AGENT, "Accept": "application/json"},
             )
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except httpx.HTTPError as exc:
             raise XCaptureError("X syndication request failed") from exc
         if response.status_code != 200:
             raise XCaptureError(f"X syndication rejected the request (HTTP {response.status_code})")
@@ -251,7 +258,10 @@ async def fetch_x_post(
             payload = response.json()
         except ValueError as exc:
             raise XCaptureError("X syndication returned a non-JSON payload") from exc
-        return parse_x_post_payload(status_id, payload)
+        try:
+            return parse_x_post_payload(status_id, payload)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise XCaptureError("X syndication payload could not be parsed") from exc
     finally:
         if owns_client:
             await client.aclose()

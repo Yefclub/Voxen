@@ -112,6 +112,7 @@ def test_parse_media_only_accepts_https_twimg_hosts() -> None:
         "mediaDetails": [
             {"type": "photo", "media_url_https": "http://pbs.twimg.com/a.jpg"},
             {"type": "photo", "media_url_https": "https://evil.example.com/a.jpg"},
+            {"type": "photo", "media_url_https": "https://[broken/a.jpg"},
             {"type": "photo", "media_url_https": "https://pbs.twimg.com/a.jpg#ok"},
         ],
     }
@@ -256,6 +257,16 @@ async def test_fetch_returns_none_for_removed_or_restricted_post() -> None:
     assert capture is None
 
 
+def test_parse_count_rejects_non_finite_numbers() -> None:
+    payload = {**SAMPLE_PAYLOAD, "favorite_count": float("nan"), "conversation_count": float("inf")}
+
+    post = parse_x_post_payload(SAMPLE_ID, payload)
+
+    assert post is not None
+    assert post.like_count is None
+    assert post.reply_count is None
+
+
 @pytest.mark.parametrize(
     "response",
     [
@@ -263,6 +274,8 @@ async def test_fetch_returns_none_for_removed_or_restricted_post() -> None:
         httpx.Response(503, json={"erro": "indisponível"}),
         httpx.ConnectTimeout("timeout"),
         httpx.ConnectError("network down"),
+        httpx.RemoteProtocolError("protocol error"),
+        httpx.TooManyRedirects("redirect loop"),
     ],
 )
 async def test_fetch_raises_sanitized_capture_error(

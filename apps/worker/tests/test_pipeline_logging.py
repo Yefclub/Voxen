@@ -360,6 +360,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
                 tokens_in=20,
                 tokens_out=8,
                 accessible=True,
+                verdict_missing=False,
             )
         ),
     )

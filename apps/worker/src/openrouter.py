@@ -63,8 +63,10 @@ class XAnalysisResult:
     model: str
     tokens_in: int
     tokens_out: int
-    # None quando o caminho de análise não exige veredito (conteúdo capturado).
-    accessible: bool | None = None
+    # Se o conteúdo foi recuperado (veredito explícito ou heurística de falha).
+    accessible: bool = True
+    # True quando o caminho de busca nativa respondeu sem a linha de veredito.
+    verdict_missing: bool = False
 
 
 @dataclass(frozen=True)
@@ -262,14 +264,16 @@ _UNAVAILABLE_PHRASES = (
     "nao consegui recuperar",
     "nao tenho acesso",
     "sem acesso ao post",
-    "inaccessible",
-    "not accessible",
-    "unable to access",
-    "unable to retrieve",
-    "could not access",
-    "couldn't access",
-    "could not retrieve",
-    "couldn't retrieve",
+    "post is inaccessible",
+    "post is not accessible",
+    "post nao esta acessivel",
+    "unable to access the post",
+    "unable to retrieve the post",
+    "could not access the post",
+    "couldn't access the post",
+    "could not retrieve the post",
+    "couldn't retrieve the post",
+    "post could not be retrieved",
 )
 _X_ANALYSIS_INSTRUCTIONS = (
     "Entregue em português do Brasil, em Markdown pesquisável:\n"
@@ -386,22 +390,15 @@ async def analyze_x_url(
         client=client,
     )
 
-    accessible: bool | None = None
+    verdict, body = split_access_verdict(result.text)
+    verdict_missing = False
     text = result.text
-    if post_context:
-        # O conteúdo capturado já é a evidência de acesso; um veredito eventual
-        # do modelo não deve descartar a captura (ver select_x_content).
-        verdict, body = split_access_verdict(result.text)
+    if verdict is not None:
         accessible = verdict
-        if body:
-            text = body
+        text = body
     else:
-        verdict, body = split_access_verdict(result.text)
-        if verdict is None:
-            accessible = not looks_unavailable(result.text)
-        else:
-            accessible = verdict
-            text = body
+        accessible = not looks_unavailable(result.text)
+        verdict_missing = post_context is None
 
     return XAnalysisResult(
         text=text,
@@ -410,6 +407,7 @@ async def analyze_x_url(
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
         accessible=accessible,
+        verdict_missing=verdict_missing,
     )
 
 

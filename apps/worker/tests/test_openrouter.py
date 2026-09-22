@@ -147,9 +147,24 @@ async def test_analyze_x_url_grounds_analysis_on_captured_content() -> None:
     messages = str(client.payload["messages"])
     assert "Product design cheat sheet" in messages
     assert "Conteúdo capturado" in messages
-    # Captura já é a evidência de acesso; sem veredito obrigatório.
-    assert result.accessible is None
+    # Sem veredito e sem frase de falha: acesso assumido; a captura é a evidência.
+    assert result.accessible is True
+    assert result.verdict_missing is False
     assert result.text == "## Em poucas linhas\nAnálise ancorada na captura."
+
+
+async def test_analyze_x_url_rejects_failure_wording_even_with_capture() -> None:
+    client = ContentClient("Não consegui acessar o post pelas ferramentas disponíveis.")
+
+    result = await analyze_x_url(
+        url="https://x.com/i/status/1234567890",
+        api_key="sk-test",
+        model="x-ai/grok-4-fast",
+        post_context="Autor: rico (@_heyrico)\nTexto do post:\nProduct design cheat sheet",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.accessible is False
 
 
 async def test_analyze_x_url_strips_ok_verdict_from_content() -> None:
@@ -164,6 +179,20 @@ async def test_analyze_x_url_strips_ok_verdict_from_content() -> None:
 
     assert result.accessible is True
     assert result.text == "## Em poucas linhas\nPost recuperado na busca."
+
+
+async def test_analyze_x_url_ok_verdict_without_body_is_empty_content() -> None:
+    client = ContentClient("ACESSO: OK")
+
+    result = await analyze_x_url(
+        url="https://x.com/i/status/1234567890",
+        api_key="sk-test",
+        model="x-ai/grok-4-fast",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.accessible is True
+    assert result.text == ""
 
 
 async def test_analyze_x_url_flags_unavailable_verdict() -> None:
@@ -193,6 +222,7 @@ async def test_analyze_x_url_detects_missing_verdict_failure_wording() -> None:
     )
 
     assert result.accessible is False
+    assert result.verdict_missing is True
 
 
 def test_split_access_verdict_handles_case_and_missing_line() -> None:
@@ -203,7 +233,8 @@ def test_split_access_verdict_handles_case_and_missing_line() -> None:
 
 def test_looks_unavailable_ignores_generic_caveats() -> None:
     assert looks_unavailable("Resumo do post. Não foi possível verificar a data exata.") is False
-    assert looks_unavailable("The page is not accessible without login.") is True
+    assert looks_unavailable("The page is not accessible without login.") is False
+    assert looks_unavailable("The post is not accessible without login.") is True
 
 
 async def test_analyze_pdf_uses_mistral_ocr_parser(tmp_path: Path) -> None:

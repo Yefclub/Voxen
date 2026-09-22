@@ -1018,7 +1018,7 @@ async def _run_x_analysis_pipeline(
     capture: x_post.XPost | None = None
     try:
         capture = await x_post.fetch_x_post(status_id)
-    except x_post.XCaptureError as exc:
+    except Exception as exc:  # noqa: BLE001 — captura é best-effort e nunca derruba o job
         log.warning("x-capture-failed", **_error_diagnostic(exc, "X_CAPTURE_FAILED"))
     if capture is None:
         log.info("x-capture-unavailable", status_id=status_id)
@@ -1043,7 +1043,13 @@ async def _run_x_analysis_pipeline(
             raise
         log.warning(
             "x-analysis-failed-using-capture",
-            **_error_diagnostic(exc, "X_ANALYSIS_FAILED"),
+            **_error_diagnostic(exc, getattr(exc, "code", "X_ANALYSIS_FAILED")),
+        )
+    if analysis is not None and analysis.verdict_missing:
+        log.warning(
+            "x-analysis-verdict-missing",
+            status_id=status_id,
+            accessible=analysis.accessible,
         )
 
     if analysis is not None:
