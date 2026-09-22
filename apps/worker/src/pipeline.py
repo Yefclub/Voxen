@@ -213,7 +213,11 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
             )
         elif job_type == "ANALYZE_X":
             await _run_x_analysis_pipeline(
-                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+                job_id=job_id,
+                user_id=user_id,
+                source_url=source_url,
+                refresh_transcript_id=refresh_transcript_id,
+                log=log,
             )
         else:
             await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
@@ -979,11 +983,18 @@ async def _run_x_analysis_pipeline(
     job_id: str,
     user_id: str,
     source_url: str,
+    refresh_transcript_id: str | None = None,
     log: Any,  # noqa: ANN401
 ) -> None:
     from . import x_pipeline
 
-    await x_pipeline.run(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
+    await x_pipeline.run(
+        job_id=job_id,
+        user_id=user_id,
+        source_url=source_url,
+        refresh_transcript_id=refresh_transcript_id,
+        log=log,
+    )
 
 
 async def _reindex_brain_with_retry(user_id: str, transcript_id: str) -> bool:

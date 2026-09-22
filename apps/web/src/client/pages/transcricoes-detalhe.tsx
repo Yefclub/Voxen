@@ -233,13 +233,20 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   async function refreshSource(): Promise<void> {
     if (!id || refreshingSource) return;
+    const reprocess = data?.transcript.source === 'X';
     setRefreshingSource(true);
     try {
       await apiPost(`/api/transcripts/${id}/refresh`, {});
-      toast.success(translate('library.sourceRefreshQueued'));
+      toast.success(
+        translate(reprocess ? 'library.reprocessQueued' : 'library.sourceRefreshQueued'),
+      );
       await refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : translate('library.sourceRefreshError'));
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : translate(reprocess ? 'library.reprocessError' : 'library.sourceRefreshError'),
+      );
     } finally {
       setRefreshingSource(false);
     }
@@ -790,13 +797,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                     value={formatDateTime(published, locale)}
                   />
                 )}
-                {t.source === 'WEB' && (
+                {(t.source === 'WEB' || t.source === 'X') && (
                   <SourceFreshness
                     transcript={t}
                     locale={locale}
                     translate={translate}
                     refreshing={refreshingSource}
                     onRefresh={() => void refreshSource()}
+                    variant={t.source === 'X' ? 'x' : 'web'}
                   />
                 )}
                 {t.model && (
@@ -1102,6 +1110,7 @@ function SourceFreshness({
   translate,
   refreshing,
   onRefresh,
+  variant = 'web',
 }: {
   transcript: Pick<
     TranscriptDetail,
@@ -1115,13 +1124,15 @@ function SourceFreshness({
   translate: TranslateFn;
   refreshing: boolean;
   onRefresh: () => void;
+  variant?: 'web' | 'x';
 }): React.ReactElement {
   const checking = transcript.sourceRefreshStatus === 'CHECKING';
   const failed = transcript.sourceRefreshStatus === 'FAILED';
+  const reprocess = variant === 'x';
   const status = checking
     ? translate('library.sourceChecking')
     : failed
-      ? translate('library.sourceRefreshFailed')
+      ? translate(reprocess ? 'library.reprocessFailed' : 'library.sourceRefreshFailed')
       : translate('library.sourceCurrent');
   const statusClass = checking ? 'text-amber-300' : failed ? 'text-red-300' : 'text-emerald-400';
   return (
@@ -1156,7 +1167,7 @@ function SourceFreshness({
         onClick={onRefresh}
       >
         <RefreshCw className={cn('h-3 w-3', (checking || refreshing) && 'animate-spin')} />
-        {translate('library.sourceRefresh')}
+        {translate(reprocess ? 'library.reprocessContent' : 'library.sourceRefresh')}
       </Button>
     </div>
   );

@@ -91,7 +91,7 @@ export async function loadTranscriptSourceVersions(
   userId: string,
   transcript: { id: string; source: string },
 ) {
-  if (transcript.source !== 'WEB') return [];
+  if (transcript.source !== 'WEB' && transcript.source !== 'X') return [];
   return db.sourceContentVersion.findMany({
     where: { userId, transcriptId: transcript.id },
     orderBy: { version: 'desc' },
