@@ -1,0 +1,62 @@
+# ============================================================================
+# Dev version guard — fails when dev falls behind the stable release
+# ============================================================================
+# main publishes stable vX.Y.Z releases. dev must not stay numerically behind
+# them: a stale dev version makes dev-channel instances offer the stable
+# release as an "update" and places release history in the wrong feed.
+# version-dev self-heals on the next push to dev; this guard catches the case
+# where dev receives no push after a release.
+#
+# A failure right after a release is expected until main is synced back into
+# dev and version-dev bumps the development version.
+# ============================================================================
+
+name: Dev version guard
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-version-guard-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Verify dev is ahead of the stable release
+        run: |
+          set -euo pipefail
+          git fetch origin main dev --quiet
+          DEV_VER=$(node -pe 'require("./package.json").version')
+          MAIN_VER=$(git show origin/main:package.json | node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')
+          DEV_AHEAD=$(node -e '
+            const core = (value) => value.split("-")[0].split(".").map(Number);
+            const dev = core(process.argv[1]);
+            const main = core(process.argv[2]);
+            const diff = dev.findIndex((part, index) => part !== main[index]);
+            process.stdout.write(diff >= 0 && dev[diff] > main[diff] ? "yes" : "no");
+          ' "$DEV_VER" "$MAIN_VER")
+          echo "main=$MAIN_VER dev=$DEV_VER devAhead=$DEV_AHEAD"
+          if [ "$DEV_AHEAD" = "yes" ]; then
+            echo "dev is ahead of the stable release."
+            exit 0
+          fi
+          echo "::error::dev ($DEV_VER) is not ahead of main ($MAIN_VER). Sync main back into dev (see the release skill) and let the version-dev workflow bump the dev version."
+          exit 1

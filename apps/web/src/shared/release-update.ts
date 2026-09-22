@@ -13,6 +13,7 @@ export interface ReleaseUpdateStatus {
   environment: VersionEnvironment;
   latestVersion: string | null;
   latestTag: string | null;
+  latestEnvironment: VersionEnvironment | null;
   releaseUrl: string | null;
   checkedAt: string;
 }
@@ -85,6 +86,7 @@ export function buildReleaseUpdateStatus(input: {
     environment: resolveVersionEnvironment(input.currentVersion),
     latestVersion,
     latestTag,
+    latestEnvironment: latestTag ? resolveVersionEnvironment(latestTag) : null,
     releaseUrl: latestTag
       ? `https://github.com/Yefclub/Voxen/releases/tag/${encodeURIComponent(latestTag)}`
       : null,
