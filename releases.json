@@ -1,5 +1,89 @@
 [
   {
+    "version": "0.15.1-dev.1790090320",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Update notices name the release channel, and dev drift is caught early",
+    "body": "The sidebar update button now states which channel the available release\nbelongs to (\"PRODUÇÃO vX.Y.Z disponível\") and keeps the installed channel\nexplicit in the details line, instead of showing only the version. A scheduled\nguard fails when the development version is not ahead of the latest stable\nversion, and the automatic development version bump no longer stalls on\nadvisory security findings once the protected checks are green.",
+    "pr": 841,
+    "author": "Kalyel",
+    "date": "2026-09-22T12:03:04-03:00",
+    "translations": {
+      "en": {
+        "title": "Update notices name the release channel, and dev drift is caught early",
+        "body": "The sidebar update button now states which channel the available release\nbelongs to (\"PRODUÇÃO vX.Y.Z disponível\") and keeps the installed channel\nexplicit in the details line, instead of showing only the version. A scheduled\nguard fails when the development version is not ahead of the latest stable\nversion, and the automatic development version bump no longer stalls on\nadvisory security findings once the protected checks are green."
+      },
+      "pt-BR": {
+        "title": "Avisos de atualização nomeiam o canal da release, e o atraso do dev é detectado cedo",
+        "body": "O botão de atualização da sidebar agora informa a qual canal a release\ndisponível pertence (\"PRODUÇÃO vX.Y.Z disponível\") e mantém o canal instalado\nexplícito na linha de detalhes, em vez de mostrar só a versão. Um guard\nagendado falha quando a versão de desenvolvimento não está à frente da última\nversão estável, e o bump automático da versão de desenvolvimento não trava mais\nem achados de segurança consultivos quando os checks protegidos estão verdes."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/841"
+  },
+  {
+    "version": "0.15.1-dev.1790090320",
+    "channel": "dev",
+    "type": "feat",
+    "title": "X transcripts can be reprocessed in place",
+    "body": "Submitting an X URL that already has a transcript returns the existing one, so\na failed or outdated analysis had no retry. The transcript page now offers a\nreprocess action for X posts that re-runs retrieval and analysis against the\nsame transcript: changed content is versioned, summary and tags are rebuilt\nfrom the new text, and dependent artifacts are invalidated. When retrieval\nfails, the job fails and the transcript shows the error while keeping the\nstored content. Web pages keep their existing refresh flow.",
+    "pr": 839,
+    "author": "Kalyel",
+    "date": "2026-09-22T11:42:43-03:00",
+    "translations": {
+      "en": {
+        "title": "X transcripts can be reprocessed in place",
+        "body": "Submitting an X URL that already has a transcript returns the existing one, so\na failed or outdated analysis had no retry. The transcript page now offers a\nreprocess action for X posts that re-runs retrieval and analysis against the\nsame transcript: changed content is versioned, summary and tags are rebuilt\nfrom the new text, and dependent artifacts are invalidated. When retrieval\nfails, the job fails and the transcript shows the error while keeping the\nstored content. Web pages keep their existing refresh flow."
+      },
+      "pt-BR": {
+        "title": "Transcrições do X podem ser reprocessadas no lugar",
+        "body": "Enviar de novo uma URL do X que já tem transcrição retorna a existente, então\numa análise falha ou desatualizada não tinha como ser refeita. A página da\ntranscrição agora oferece reprocessar conteúdo para posts do X, repetindo\ncaptura e análise na mesma transcrição: conteúdo alterado ganha versão, resumo\ne tags são refeitos a partir do texto novo e artefatos dependentes são\ninvalidados. Se a captura falhar, o job falha e a transcrição mostra o erro\nmantendo o conteúdo armazenado. Páginas web seguem com o fluxo de atualização\natual."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/839"
+  },
+  {
+    "version": "0.15.1-dev.1790090320",
+    "channel": "dev",
+    "type": "fix",
+    "title": "X posts are captured from the public source before the model analyzes them",
+    "body": "X ingestion now retrieves the public post text, author, date, metrics, and\nmedia directly from the source before asking the model to analyze it. When the\nmodel cannot retrieve the post, the captured content is preserved instead of\nstoring an answer that only describes the failure. If neither path can reach\nthe post, the ingestion fails with an actionable message instead of leaving a\nsummary built on a failure narrative.",
+    "pr": 835,
+    "author": "Kalyel",
+    "date": "2026-09-22T01:31:28-03:00",
+    "translations": {
+      "en": {
+        "title": "X posts are captured from the public source before the model analyzes them",
+        "body": "X ingestion now retrieves the public post text, author, date, metrics, and\nmedia directly from the source before asking the model to analyze it. When the\nmodel cannot retrieve the post, the captured content is preserved instead of\nstoring an answer that only describes the failure. If neither path can reach\nthe post, the ingestion fails with an actionable message instead of leaving a\nsummary built on a failure narrative."
+      },
+      "pt-BR": {
+        "title": "Posts do X são capturados da fonte pública antes da análise do modelo",
+        "body": "A ingestão do X agora recupera texto, autor, data, métricas e mídia do post\npúblico direto da fonte antes de pedir a análise ao modelo. Quando o modelo não\nconsegue recuperar o post, o conteúdo capturado é preservado em vez de guardar\numa resposta que só descreve a falha. Se nenhum dos caminhos alcançar o post, a\ningestão falha com uma mensagem acionável em vez de deixar um resumo construído\nsobre uma narrativa de falha."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/835"
+  },
+  {
+    "version": "0.15.1-dev.1790090320",
+    "channel": "dev",
+    "type": "fix",
+    "title": "MinIO profile uses images published on Quay",
+    "body": "The `minio/minio` and `minio/mc` repositories are no longer available on Docker\nHub, which broke the optional S3 profile, the CORS helper script, and the\nEasypanel smoke test in CI. All references now pull the official images from\n`quay.io/minio`.",
+    "pr": 836,
+    "author": "Kalyel",
+    "date": "2026-09-22T01:20:22-03:00",
+    "translations": {
+      "en": {
+        "title": "MinIO profile uses images published on Quay",
+        "body": "The `minio/minio` and `minio/mc` repositories are no longer available on Docker\nHub, which broke the optional S3 profile, the CORS helper script, and the\nEasypanel smoke test in CI. All references now pull the official images from\n`quay.io/minio`."
+      },
+      "pt-BR": {
+        "title": "Perfil MinIO usa as imagens publicadas no Quay",
+        "body": "Os repositórios `minio/minio` e `minio/mc` deixaram de existir no Docker Hub, o\nque quebrava o profile opcional de S3, o script auxiliar de CORS e o smoke test\ndo Easypanel no CI. Todas as referências agora puxam as imagens oficiais do\n`quay.io/minio`."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/836"
+  },
+  {
     "version": "0.15.0",
     "channel": "prod",
     "date": "2026-09-12T16:10:48.835Z",
