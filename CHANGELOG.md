@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.15.1-dev.1790051499 — 2026-09-22 · Dev
+
+### 🐛 X posts are captured from the public source before the model analyzes them
+
+X ingestion now retrieves the public post text, author, date, metrics, and
+media directly from the source before asking the model to analyze it. When the
+model cannot retrieve the post, the captured content is preserved instead of
+storing an answer that only describes the failure. If neither path can reach
+the post, the ingestion fails with an actionable message instead of leaving a
+summary built on a failure narrative.
+
+## v0.15.1-dev.1790051499 — 2026-09-22 · Dev
+
+### 🐛 MinIO profile uses images published on Quay
+
+The `minio/minio` and `minio/mc` repositories are no longer available on Docker
+Hub, which broke the optional S3 profile, the CORS helper script, and the
+Easypanel smoke test in CI. All references now pull the official images from
+`quay.io/minio`.
+
 ## v0.14.5-dev.1787243657 — 2026-08-20 · Dev
 
 ### ✨ Clearer knowledge-base search in chat
