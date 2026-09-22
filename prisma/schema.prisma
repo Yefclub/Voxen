@@ -1087,8 +1087,8 @@ model Job {
   status              JobStatus                    @default(QUEUED)
   sourceUrl           String
   transcriptId        String?                      @unique
-  // Quando preenchido, SCRAPE_WEB ou ANALYZE_X atualiza este conteúdo existente
-  // em vez de criar um novo Transcript. O resultado continua em transcriptId.
+  // Quando preenchido, SCRAPE_WEB atualiza este conteúdo existente em vez de
+  // criar um novo Transcript. O resultado continua em transcriptId.
   refreshTranscriptId String?
   savedMediaId        String?
   deletionTargetType  KnowledgeDeletionTargetType?

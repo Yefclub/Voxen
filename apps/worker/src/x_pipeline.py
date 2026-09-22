@@ -284,6 +284,7 @@ async def _persist_refresh(
                         """
                         UPDATE "Transcript"
                         SET "sourceChecksum" = $3,
+                            "sourceVersion" = $4,
                             "sourceCollectedAt" = NOW(),
                             "sourceRefreshStatus" = 'CURRENT'::"SourceRefreshStatus",
                             "sourceRefreshError" = NULL,
@@ -293,6 +294,7 @@ async def _persist_refresh(
                         transcript_id,
                         user_id,
                         checksum,
+                        baseline_version,
                     )
                     await conn.execute(
                         """
@@ -448,7 +450,7 @@ async def _persist_refresh(
                       id, "userId", "transcriptId", version, checksum,
                       "mdPath", "plainText", metadata
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-                    ON CONFLICT DO NOTHING
+                    ON CONFLICT ("transcriptId", checksum) DO NOTHING
                     """,
                     db.generate_cuid(),
                     user_id,

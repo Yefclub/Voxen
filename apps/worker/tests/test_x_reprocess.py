@@ -137,6 +137,7 @@ async def test_unchanged_reprocess_skips_storage_and_versions(
     statements = "\n".join(str(call.args[0]) for call in conn.execute.await_args_list)
     assert 'INSERT INTO "SourceContentVersion"' in statements
     assert 'UPDATE "Transcript"' in statements
+    assert '"sourceVersion" = $4' in statements
     assert '"summaryMd" = NULL' not in statements
     assert "pg_advisory_lock" in statements
     assert "pg_advisory_unlock" in statements

@@ -68,16 +68,16 @@ same transcript.
 
 ## Acceptance criteria
 
-- [ ] Reprocessing an X transcript updates the same transcript with the new
+- [x] Reprocessing an X transcript updates the same transcript with the new
       content and source version 2.
-- [ ] The previous content remains available in the source version history.
-- [ ] Summary, flow, and tags are reset and re-generated from the new content.
-- [ ] Identical content completes without a version bump or enrichment.
-- [ ] A failed retrieval keeps the stored content and marks the refresh state
+- [x] The previous content remains available in the source version history.
+- [x] Summary, flow, and tags are reset and re-generated from the new content.
+- [x] Identical content completes without a version bump or enrichment.
+- [x] A failed retrieval keeps the stored content and marks the refresh state
       as failed with the public message.
-- [ ] A second reprocess while one is active is refused with 409.
-- [ ] The web refresh behaviour and its tests are unchanged.
-- [ ] Tests cover the unchanged path, the replace path, and the refusal paths.
+- [x] A second reprocess while one is active is refused with 409.
+- [x] The web refresh behaviour and its tests are unchanged.
+- [x] Tests cover the unchanged path, the replace path, and the refusal paths.
 
 ## Out of scope
 
