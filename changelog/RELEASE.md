@@ -1,53 +1,97 @@
 ---
 tipo: feat
-titulo_en: Voxen 0.14.4 — clearer beta expectations
-titulo_pt_br: Voxen 0.14.4 — expectativas mais claras para o beta
+titulo_en: Voxen 0.15.0 — a more capable personal knowledge workspace
+titulo_pt_br: Voxen 0.15.0 — um espaço de conhecimento pessoal mais capaz
 ---
 
-## Beta status made explicit
+## A knowledge graph that helps explain personal context
 
-The public README now identifies Voxen as a beta under active validation. It
-sets clear expectations that bugs, integration regressions, rough edges, and
-breaking changes can still occur, and recommends backing up instance data and
-reviewing release notes before upgrades.
+The Brain now keeps temporal facts, safer entity aliases, durable graph
+compilation, community detection, personalized ranking, and interest signals.
+The Guide can turn those signals into explainable personal recommendations, and
+chat and MCP can use the current user's graph context without crossing
+workspace boundaries. An optional Mem0 shadow evaluation is available for
+measurement only and is disabled by default.
 
-## Validated workflows and community feedback
+## More control over captured knowledge
 
-The project now documents the workflows already used by the maintainer for
-supported YouTube and TikTok links, selected public web pages, and especially
-posts from X. It also explains the practical goal of consolidating useful links
-from social feeds, bookmarks, and personal notes into one searchable knowledge
-library. Community members are invited to share experience and product ideas
-through GitHub Discussions or reproducible issues without exposing private
-data, credentials, or unredacted logs.
+Voxen can ingest batches of URLs, save private media before ingestion, and
+delete knowledge safely in the background. Notes and transcripts support
+versioned, surgical edits while retaining original evidence and exact passage
+anchors. Mermaid flows are reviewable and interactive, and research enrichment
+can follow bounded gaps back to the original cited source.
 
-## Operational impact
+## Clearer retrieval and chat evidence
 
-This release changes public documentation and version metadata only. It does
-not alter application runtime behavior, database schemas, deployment topology,
-or configuration requirements.
+Chat search now combines complementary knowledge-base queries and shows the
+queries, sources, and semantic-retrieval contribution behind a result. Chat
+references can open inside Voxen, including external web and X citations, while
+reasoning collapses when the answer begins so the response stays readable.
+MCP clients can connect through OAuth 2.1, with clearer setup guidance and
+theme-aware configuration.
+
+## More resilient self-hosted operations
+
+Ingestion recovery now distinguishes provider failures, retries temporary
+contention, avoids duplicate source processing, and surfaces actionable YouTube,
+TikTok, and OpenRouter diagnostics. Structured logs and safer operational
+filters make copied Docker or Easypanel logs easier to investigate without
+exposing provider payloads or credentials. New self-hosted installations use a
+local storage volume by default, while existing deployments retain their
+configured storage.
+
+## Operational notes
+
+This release includes database migrations. Back up the instance before
+upgrading and let the normal deployment migration step complete before serving
+traffic. The new graph, enrichment, and shadow-evaluation capabilities remain
+bounded by the current user's workspace; Mem0 remains opt-in and requires a
+separately hosted service.
 
 <!-- pt-BR -->
 
-## Status beta explícito
+## Um grafo de conhecimento que explica melhor o contexto pessoal
 
-O README público agora identifica a Voxen como um beta em validação ativa. Ele
-deixa claro que ainda podem ocorrer bugs, regressões de integração, pontos de
-experiência a amadurecer e mudanças incompatíveis, além de recomendar backup
-dos dados da instância e leitura das notas antes de atualizar.
+O Brain agora mantém fatos temporais, aliases de entidades mais seguros,
+compilação durável do grafo, detecção de comunidades, ranking personalizado e
+sinais de interesse. O Guia transforma esses sinais em recomendações pessoais
+explicáveis, e o chat e o MCP podem usar o contexto do grafo do usuário atual
+sem atravessar limites de workspace. Uma avaliação opcional do Mem0 em shadow
+mode existe apenas para medição e fica desativada por padrão.
 
-## Fluxos validados e participação da comunidade
+## Mais controle sobre o conhecimento capturado
 
-O projeto agora documenta os fluxos já utilizados pelo mantenedor com links
-suportados do YouTube e TikTok, algumas páginas públicas e principalmente posts
-do X. Também explica o objetivo prático de reunir em uma biblioteca pesquisável
-os links úteis que antes ficavam espalhados entre redes sociais, favoritos e
-anotações pessoais. A comunidade é convidada a compartilhar experiências e
-ideias de produto pelas Discussões do GitHub ou por issues reproduzíveis, sem
-expor dados privados, credenciais ou logs sem redação.
+A Voxen pode ingerir lotes de URLs, salvar mídia privada antes da ingestão e
+excluir conhecimento com segurança em segundo plano. Notas e transcrições
+suportam edições cirúrgicas versionadas, preservando a evidência original e
+âncoras de trechos exatos. Fluxos Mermaid podem ser revisados e explorados de
+forma interativa, e o enriquecimento de pesquisa pode seguir lacunas limitadas
+até a fonte original citada.
 
-## Impacto operacional
+## Recuperação e evidências do chat mais claras
 
-Esta release altera somente a documentação pública e os metadados de versão.
-Não há mudanças no comportamento da aplicação, schema do banco de dados,
-topologia de implantação ou requisitos de configuração.
+A busca do chat agora combina consultas complementares na Base de conhecimento
+e mostra as consultas, fontes e contribuição da recuperação semântica por trás
+de um resultado. Referências do chat podem abrir dentro da Voxen, incluindo
+citações externas da web e do X, enquanto o raciocínio recolhe quando a
+resposta começa para manter o texto legível. Clientes MCP podem conectar por
+OAuth 2.1, com orientação de configuração mais clara e configuração sensível
+ao tema.
+
+## Operações self-hosted mais resilientes
+
+A recuperação de ingestão agora diferencia falhas de provedores, repete
+contenções temporárias, evita processamento duplicado da mesma fonte e mostra
+diagnósticos acionáveis de YouTube, TikTok e OpenRouter. Logs estruturados e
+filtros operacionais mais seguros facilitam investigar logs copiados do Docker ou
+Easypanel sem expor payloads de provedores ou credenciais. Novas instalações
+self-hosted usam um volume local por padrão, enquanto implantações existentes
+mantêm o armazenamento configurado.
+
+## Notas operacionais
+
+Esta release inclui migrations de banco. Faça backup da instância antes de
+atualizar e deixe a etapa normal de migration do deploy terminar antes de
+atender tráfego. Os recursos novos de grafo, enriquecimento e avaliação em
+shadow continuam limitados ao workspace do usuário atual; o Mem0 segue opt-in e
+exige um serviço hospedado separadamente.
