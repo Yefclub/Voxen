@@ -18,9 +18,11 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
   exatamente `dev`, inclusive em disparos manuais.
 - The system shall exigir os nove required checks registrados no SHA atual antes
   de mergear um bump de versão.
-- The system shall exigir conclusão `success` dos workflows CI, Security e PR
-  Changelog Guard, além dos nove required checks identificados por nome exato,
-  antes de considerar a PR `CLEAN`.
+- The system shall exigir conclusão `success` dos workflows CI e PR Changelog
+  Guard, além dos nove required checks identificados por nome exato, antes de
+  considerar a PR mergeável. O workflow Security continua rodando e reportando,
+  mas é consultivo: achados de auditoria de dependência não bloqueiam o bump
+  mecânico de versão.
 - The system shall tratar rollup vazio ou pertencente a outro SHA como falha, nunca
   como CI verde.
 
@@ -32,8 +34,8 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - When a PR automática for criada pelo `GITHUB_TOKEN`, the system shall localizar
   e rerodar os runs `action_required` de CI, Security e PR Changelog Guard para
   que os resultados sejam vinculados ao rollup da PR.
-- When os required checks concluírem com sucesso e a PR ficar `CLEAN`, the system
-  shall fazer merge squash e excluir a branch automática.
+- When os required checks concluírem com sucesso, the system shall fazer merge
+  squash e excluir a branch automática, aceitando estado `CLEAN` ou `UNSTABLE`.
 
 ### State-driven
 
@@ -49,17 +51,17 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 
 - If qualquer required check falhar, for cancelado ou expirar, then the system
   shall manter a PR aberta e encerrar o workflow com falha.
-- If a PR não ficar `CLEAN` após os checks, then the system shall não tentar
-  contornar a proteção de branch.
+- If a PR não ficar `CLEAN` nem `UNSTABLE` após os checks, then the system shall
+  não tentar contornar a proteção de branch.
 
 ## Critérios de Aceite
 
 - [ ] Uma PR automática antiga não bloqueia novos bumps.
 - [ ] Um `workflow_dispatch` selecionado em qualquer ref diferente de `dev` não
       executa o job nem cria PR.
-- [ ] O workflow reroda os três workflows de `pull_request` criados pelo bot.
-- [ ] O merge só ocorre com os três workflows concluídos em `success` e os nove
-      required checks exatos verdes no head atual.
+- [ ] O workflow reroda os workflows de `pull_request` criados pelo bot.
+- [ ] O merge só ocorre com CI e PR Changelog Guard em `success` e os nove
+      required checks exatos verdes no head atual; Security é consultivo.
 - [ ] Falha, timeout, rollup vazio ou head divergente mantêm a PR aberta.
 - [ ] O próximo bump consome todas as entradas acumuladas em
       `changelog/unreleased`.
@@ -74,7 +76,6 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - Os nomes `CI`, `Security` e `PR Changelog Guard` e os nove contexts exigidos
   pela proteção são contratos operacionais. Se mudarem, esta automação e a spec
   precisam ser atualizadas juntas.
-
 ## Histórico de decisão
 
 Esta spec supersede somente o contrato de versionamento de desenvolvimento da
@@ -98,3 +99,9 @@ e changelog por uma PR protegida pelos mesmos required checks da branch.
 > 2026-08-03: `Prisma migration gate` became the ninth protected context. The
 > version bot waits for migration-history replay and drift validation before
 > merging an automatic bump.
+
+> 2026-09-22: Security became advisory for the version bot. Dependency audit
+> findings (CVEs without an immediate upgrade path) kept every bump PR at
+> `UNSTABLE`, so the bot stalled even with the nine protected contexts green.
+> The merge state now accepts `CLEAN` or `UNSTABLE`, and Security still runs and
+> is rerun when registered as `action_required`.
