@@ -72,7 +72,8 @@ deterministic capture path and an explicit access verdict for X ingestion.
 - If the capture request times out or returns an unexpected payload, then the
   system shall continue with the native-search path without failing the job.
 - If neither the capture nor the model retrieves the post, then the system
-  shall fail the job with a retryable, user-facing message.
+  shall fail the job with a user-facing message that tells the reader to
+  reprocess it.
 - If the access verdict is unparseable and the answer does not contain explicit
   retrieval-failure wording, then the system shall keep the answer.
 

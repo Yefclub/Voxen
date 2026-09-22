@@ -10,7 +10,7 @@ import pytest
 
 from src import pipeline
 from src.pipeline_errors import PermanentError
-from src.x_post import XPost
+from src.x_post import XPost, XPostMedia
 
 SOURCE_URL = "https://x.com/i/status/123456789"
 
@@ -33,7 +33,7 @@ def _capture() -> XPost:
         lang="fr",
         like_count=291,
         reply_count=13,
-        media=(),
+        media=(XPostMedia(kind="photo", url="https://pbs.twimg.com/media/x.jpg"),),
     )
 
 
@@ -137,6 +137,7 @@ async def test_pipeline_uses_capture_metadata_for_transcript(
     probe = _persisted(monkeypatch)["probe_info"]
     assert probe.channel == "@_heyrico"
     assert probe.published_at == datetime(2026, 9, 21, 14, 59, 3, tzinfo=UTC)
+    assert probe.thumbnail_url == "https://pbs.twimg.com/media/x.jpg"
     assert probe.title == "Product design cheat sheet; bookmark this."
     assert _persisted(monkeypatch)["segments"][0].text == "## Análise"
     post_context = pipeline.analyze_x_url.await_args.kwargs["post_context"]

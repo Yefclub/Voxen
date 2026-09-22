@@ -117,7 +117,7 @@ def _safe_media_url(raw: Any) -> str | None:
 def _parse_count(raw: Any) -> int | None:
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         return None
-    if not math.isfinite(raw):
+    if isinstance(raw, float) and not math.isfinite(raw):
         return None
     value = int(raw)
     return value if value >= 0 else None
@@ -150,9 +150,10 @@ def _best_video_variant(raw: Any) -> str | None:
         url = _safe_media_url(variant.get("url"))
         if url is None:
             continue
+        raw_bitrate = variant.get("bitrate")
         try:
-            bitrate = int(variant.get("bitrate") or 0)
-        except (TypeError, ValueError):
+            bitrate = int(raw_bitrate or 0)
+        except (TypeError, ValueError, OverflowError):
             bitrate = 0
         if best is None or bitrate > best[0]:
             best = (bitrate, url)

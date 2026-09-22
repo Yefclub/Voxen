@@ -162,6 +162,7 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "VideoUnavailable",
         "WriteError",
         "WriteTimeout",
+        "XCaptureError",
         "YouTubeRequestFailed",
         "YoutubeDLError",
     }
