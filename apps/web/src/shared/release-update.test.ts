@@ -51,6 +51,14 @@ describe('release update comparison', () => {
     expect(
       buildReleaseUpdateStatus({ currentVersion: 'unknown', latestTag: 'v0.14.5' }).available,
     ).toBe(false);
+    expect(
+      buildReleaseUpdateStatus({ currentVersion: '0.14.4', latestTag: 'v0.14.5', draft: true })
+        .latestEnvironment,
+    ).toBeNull();
+    expect(
+      buildReleaseUpdateStatus({ currentVersion: '0.14.4', latestTag: 'release-latest' })
+        .latestEnvironment,
+    ).toBeNull();
   });
 
   it('constructs a fixed official release URL', () => {
@@ -64,6 +72,7 @@ describe('release update comparison', () => {
       environment: 'prod',
       latestVersion: '0.14.5',
       latestTag: 'v0.14.5',
+      latestEnvironment: 'prod',
       releaseUrl: 'https://github.com/Yefclub/Voxen/releases/tag/v0.14.5',
       checkedAt: '2026-08-07T12:00:00.000Z',
     });

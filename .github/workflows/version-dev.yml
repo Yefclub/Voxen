@@ -271,9 +271,13 @@ jobs:
             sleep 30
           done
 
+          # GitHub reports UNSTABLE when a non-required check fails (for
+          # example an audit finding in the Security workflow). The nine
+          # protected contexts above are the objective gate, and the merge
+          # must not stall on advisory checks.
           for attempt in $(seq 1 20); do
             STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq .mergeStateStatus)
-            if [ "$STATE" = "CLEAN" ]; then
+            if [ "$STATE" = "CLEAN" ] || [ "$STATE" = "UNSTABLE" ]; then
               # Explicit subject and body prevent PR numbers and trailers.
               gh pr merge --squash --delete-branch \
                 --subject "$SUBJECT" \

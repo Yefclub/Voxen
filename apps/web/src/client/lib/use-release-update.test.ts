@@ -8,6 +8,7 @@ const status: ReleaseUpdateStatus = {
   environment: 'prod',
   latestVersion: '0.14.5',
   latestTag: 'v0.14.5',
+  latestEnvironment: 'prod',
   releaseUrl: 'https://github.com/Yefclub/Voxen/releases/tag/v0.14.5',
   checkedAt: '2026-08-07T12:00:00.000Z',
 };

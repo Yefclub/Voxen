@@ -18,12 +18,20 @@ export function SidebarReleaseUpdateButton({
   const status = useReleaseUpdate();
   if (!status?.available || !status.latestTag || !status.releaseUrl) return null;
 
-  const environment = t(
+  const targetEnvironment = t(
+    status.latestEnvironment === 'dev'
+      ? 'shell.releaseEnvironment.dev'
+      : 'shell.releaseEnvironment.prod',
+  );
+  const currentEnvironment = t(
     status.environment === 'dev' ? 'shell.releaseEnvironment.dev' : 'shell.releaseEnvironment.prod',
   );
-  const label = t('shell.releaseAvailable', { version: status.latestTag });
+  const label = t('shell.releaseAvailableIn', {
+    environment: targetEnvironment,
+    version: status.latestTag,
+  });
   const details = t('shell.releaseDetails', {
-    environment,
+    environment: currentEnvironment,
     current: status.currentVersion,
   });
 
@@ -45,8 +53,8 @@ export function SidebarReleaseUpdateButton({
           </a>
         </TooltipTrigger>
         <TooltipContent side="right">
-          <span className="font-medium">{label}</span>
-          <span className="ml-1 text-[var(--color-app-muted)]">· {environment}</span>
+          <span className="block font-medium">{label}</span>
+          <span className="block text-[var(--color-app-muted)]">{details}</span>
         </TooltipContent>
       </Tooltip>
     );
