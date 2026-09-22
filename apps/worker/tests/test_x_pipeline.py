@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src import pipeline
+from src import pipeline, x_pipeline
 from src.pipeline_errors import PermanentError
 from src.x_post import XPost, XPostMedia
 
@@ -57,32 +57,32 @@ async def _run_pipeline(
     analysis_error: Exception | None = None,
 ) -> None:
     monkeypatch.setattr(
-        pipeline.voxen_settings,
+        x_pipeline.voxen_settings,
         "get_openrouter_model_config",
         AsyncMock(
-            return_value=pipeline.voxen_settings.OpenRouterModelConfig(
+            return_value=x_pipeline.voxen_settings.OpenRouterModelConfig(
                 api_key="sk-test",
                 model="x-ai/grok-4.5",
                 fallback_model="x-ai/grok-4.1-fast",
             )
         ),
     )
-    monkeypatch.setattr(pipeline.x_post, "fetch_x_post", AsyncMock(return_value=capture))
+    monkeypatch.setattr(x_pipeline.x_post, "fetch_x_post", AsyncMock(return_value=capture))
     monkeypatch.setattr(
-        pipeline,
+        x_pipeline,
         "analyze_x_url",
         AsyncMock(return_value=analysis, side_effect=analysis_error),
     )
     monkeypatch.setattr(pipeline, "is_cancelled", lambda _job_id: False)
     monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock(return_value=None))
-    monkeypatch.setattr(pipeline, "_maybe_generate_title", AsyncMock(return_value=None))
-    monkeypatch.setattr(pipeline, "_persist", AsyncMock(return_value="transcript-1"))
+    monkeypatch.setattr(x_pipeline, "_maybe_generate_title", AsyncMock(return_value=None))
+    monkeypatch.setattr(x_pipeline, "_persist", AsyncMock(return_value="transcript-1"))
     monkeypatch.setattr(pipeline.db, "link_job_transcript", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline, "_enrich_persisted_transcript", AsyncMock(return_value=[]))
     monkeypatch.setattr(pipeline.db, "mark_job_done", AsyncMock(return_value=None))
 
-    await pipeline._run_x_analysis_pipeline(
+    await x_pipeline.run(
         job_id="job-1",
         user_id="user-1",
         source_url=SOURCE_URL,
@@ -91,7 +91,7 @@ async def _run_pipeline(
 
 
 def _persisted(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    return pipeline._persist.await_args.kwargs
+    return x_pipeline._persist.await_args.kwargs
 
 
 async def test_pipeline_persists_accessible_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,7 +111,7 @@ async def test_pipeline_fails_when_post_is_unavailable(monkeypatch: pytest.Monke
         )
 
     assert excinfo.value.code == "X_CONTENT_UNAVAILABLE"
-    assert pipeline._persist.await_count == 0
+    assert x_pipeline._persist.await_count == 0
 
 
 async def test_pipeline_persists_capture_when_model_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,7 +140,7 @@ async def test_pipeline_uses_capture_metadata_for_transcript(
     assert probe.thumbnail_url == "https://pbs.twimg.com/media/x.jpg"
     assert probe.title == "Product design cheat sheet; bookmark this."
     assert _persisted(monkeypatch)["segments"][0].text == "## Análise"
-    post_context = pipeline.analyze_x_url.await_args.kwargs["post_context"]
+    post_context = x_pipeline.analyze_x_url.await_args.kwargs["post_context"]
     assert "Product design cheat sheet" in post_context
 
 
@@ -149,7 +149,7 @@ async def test_pipeline_does_not_ground_on_capture_when_unavailable(
 ) -> None:
     await _run_pipeline(monkeypatch, capture=None, analysis=_analysis("## Análise", True))
 
-    assert pipeline.analyze_x_url.await_args.kwargs["post_context"] is None
+    assert x_pipeline.analyze_x_url.await_args.kwargs["post_context"] is None
 
 
 async def test_pipeline_ignores_model_denial_when_capture_exists(

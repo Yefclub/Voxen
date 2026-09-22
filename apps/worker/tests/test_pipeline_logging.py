@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src import knowledge_deletion, pipeline, safe_diagnostics
+from src import knowledge_deletion, pipeline, safe_diagnostics, x_pipeline
 from src.openrouter import OpenrouterRejectedError
 
 
@@ -350,7 +350,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
         ),
     )
     monkeypatch.setattr(
-        pipeline,
+        x_pipeline,
         "analyze_x_url",
         AsyncMock(
             return_value=SimpleNamespace(
@@ -364,12 +364,12 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
             )
         ),
     )
-    monkeypatch.setattr(pipeline.x_post, "fetch_x_post", AsyncMock(return_value=None))
+    monkeypatch.setattr(x_pipeline.x_post, "fetch_x_post", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline, "is_cancelled", lambda _job_id: False)
     monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock(return_value=None))
-    monkeypatch.setattr(pipeline, "_maybe_generate_title", AsyncMock(return_value=None))
-    monkeypatch.setattr(pipeline, "_persist", AsyncMock(return_value="transcript-1"))
+    monkeypatch.setattr(x_pipeline, "_maybe_generate_title", AsyncMock(return_value=None))
+    monkeypatch.setattr(x_pipeline, "_persist", AsyncMock(return_value="transcript-1"))
     monkeypatch.setattr(pipeline.db, "link_job_transcript", AsyncMock(return_value=None))
     monkeypatch.setattr(
         pipeline,
@@ -378,7 +378,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
     )
     monkeypatch.setattr(pipeline.db, "mark_job_done", AsyncMock(return_value=None))
 
-    await pipeline._run_x_analysis_pipeline(
+    await x_pipeline.run(
         job_id="job-1",
         user_id="user-1",
         source_url=source_url,
@@ -387,7 +387,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
 
     cost_meta = pipeline.db.insert_cost_event.await_args.kwargs["meta"]
     assert cost_meta == {"source": "x_analysis"}
-    assert pipeline._persist.await_args.kwargs["model"] == "x-ai/grok-4.1-fast"
+    assert x_pipeline._persist.await_args.kwargs["model"] == "x-ai/grok-4.1-fast"
     telemetry = repr((cost_meta, logger.entries))
     assert "x.com" not in telemetry
     assert "cliente_acme" not in telemetry
