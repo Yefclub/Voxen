@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.15.0 — 2026-09-12 · Produção
+
+### Voxen 0.15.0 — a more capable personal knowledge workspace
+
+## A knowledge graph that helps explain personal context
+
+The Brain now keeps temporal facts, safer entity aliases, durable graph
+compilation, community detection, personalized ranking, and interest signals.
+The Guide can turn those signals into explainable personal recommendations, and
+chat and MCP can use the current user's graph context without crossing
+workspace boundaries. An optional Mem0 shadow evaluation is available for
+measurement only and is disabled by default.
+
+## More control over captured knowledge
+
+Voxen can ingest batches of URLs, save private media before ingestion, and
+delete knowledge safely in the background. Notes and transcripts support
+versioned, surgical edits while retaining original evidence and exact passage
+anchors. Mermaid flows are reviewable and interactive, and research enrichment
+can follow bounded gaps back to the original cited source.
+
+## Clearer retrieval and chat evidence
+
+Chat search now combines complementary knowledge-base queries and shows the
+queries, sources, and semantic-retrieval contribution behind a result. Chat
+references can open inside Voxen, including external web and X citations, while
+reasoning collapses when the answer begins so the response stays readable.
+MCP clients can connect through OAuth 2.1, with clearer setup guidance and
+theme-aware configuration.
+
+## More resilient self-hosted operations
+
+Ingestion recovery now distinguishes provider failures, retries temporary
+contention, avoids duplicate source processing, and surfaces actionable YouTube,
+TikTok, and OpenRouter diagnostics. Structured logs and safer operational
+filters make copied Docker or Easypanel logs easier to investigate without
+exposing provider payloads or credentials. New self-hosted installations use a
+local storage volume by default, while existing deployments retain their
+configured storage.
+
+## Operational notes
+
+This release includes database migrations. Back up the instance before
+upgrading and let the normal deployment migration step complete before serving
+traffic. The new graph, enrichment, and shadow-evaluation capabilities remain
+bounded by the current user's workspace; Mem0 remains opt-in and requires a
+separately hosted service.
+
 ## v0.14.5-dev.1787243657 — 2026-08-20 · Dev
 
 ### ✨ Clearer knowledge-base search in chat
