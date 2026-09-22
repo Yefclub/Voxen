@@ -12,7 +12,7 @@
 # APP_ORIGIN deve ser a origin (scheme://host[:port]) onde o Voxen é servido.
 # Para múltiplas origins, separe por vírgula em APP_ORIGIN.
 #
-# Requer: docker + imagem minio/mc. Idempotente (sobrescreve a regra de CORS).
+# Requer: docker + imagem quay.io/minio/mc. Idempotente (sobrescreve a regra de CORS).
 # ============================================================================
 set -eu
 
@@ -79,7 +79,7 @@ docker run --rm \
   --network voxen_voxen-net \
   -e MC_HOST_voxen="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@${MINIO_INTERNAL#http://}" \
   --entrypoint /bin/sh \
-  minio/mc:latest \
+  quay.io/minio/mc:latest \
   -c "printf '%s' '$(printf '%s' "$CORS_JSON" | sed "s/'/'\\\\''/g")' > /tmp/cors.json && mc cors set voxen/${S3_BUCKET} /tmp/cors.json && mc cors get voxen/${S3_BUCKET}"
 
 echo "✓ CORS aplicado. Teste um upload grande pela UI."
