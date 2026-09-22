@@ -536,8 +536,8 @@ transcriptsRoutes.post('/:id/refresh', async (c) => {
   const queued = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:source-refresh:${transcriptId}`}))`;
     const transcript = await tx.transcript.findFirst({
-      where: { id: transcriptId, userId, source: 'WEB', status: { not: 'TRASH' } },
-      select: { id: true, url: true },
+      where: { id: transcriptId, userId, source: { in: ['WEB', 'X'] }, status: { not: 'TRASH' } },
+      select: { id: true, url: true, source: true },
     });
     if (!transcript) return { kind: 'missing' as const };
     const inflight = await tx.job.findFirst({
@@ -558,7 +558,7 @@ transcriptsRoutes.post('/:id/refresh', async (c) => {
     const job = await tx.job.create({
       data: {
         userId,
-        type: 'SCRAPE_WEB',
+        type: transcript.source === 'X' ? 'ANALYZE_X' : 'SCRAPE_WEB',
         status: 'QUEUED',
         sourceUrl: transcript.url,
         refreshTranscriptId: transcript.id,
@@ -573,7 +573,8 @@ transcriptsRoutes.post('/:id/refresh', async (c) => {
     return { kind: 'created' as const, job };
   });
 
-  if (queued.kind === 'missing') return c.json({ error: 'Fonte web não encontrada.' }, 404);
+  if (queued.kind === 'missing')
+    return c.json({ error: 'Fonte não encontrada para atualização.' }, 404);
   if (queued.kind === 'inflight') {
     return c.json(
       {
