@@ -27,6 +27,10 @@ export const ptBrTranscriptFlowMessages = {
   'library.regenerateFlowTitle': 'Regenerar fluxo?',
   'library.regenerateFlowDescription':
     'Isso consumirá tokens da OpenRouter e substituirá apenas o fluxo visual atual.',
+  'library.reprocessContent': 'Reprocessar conteúdo',
+  'library.reprocessQueued': 'Reprocessamento iniciado.',
+  'library.reprocessError': 'Não foi possível reprocessar o conteúdo.',
+  'library.reprocessFailed': 'Falha ao reprocessar',
 } as const;
 
 export const enTranscriptFlowMessages: Record<keyof typeof ptBrTranscriptFlowMessages, string> = {
@@ -58,4 +62,8 @@ export const enTranscriptFlowMessages: Record<keyof typeof ptBrTranscriptFlowMes
   'library.regenerateFlowTitle': 'Regenerate flow?',
   'library.regenerateFlowDescription':
     'This will consume OpenRouter tokens and replace only the current visual flow.',
+  'library.reprocessContent': 'Reprocess content',
+  'library.reprocessQueued': 'Reprocessing started.',
+  'library.reprocessError': "Couldn't reprocess the content.",
+  'library.reprocessFailed': 'Reprocessing failed',
 };

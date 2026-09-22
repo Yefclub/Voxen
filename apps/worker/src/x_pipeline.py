@@ -401,6 +401,16 @@ async def _persist_refresh(
                         "sourceCollectedAt" = NOW(),
                         "sourceRefreshStatus" = 'CURRENT'::"SourceRefreshStatus",
                         "sourceRefreshError" = NULL,
+                        "correctionState" = CASE
+                          WHEN "correctionRevision" > 0
+                          THEN 'STALE'::"TranscriptCorrectionState"
+                          ELSE "correctionState"
+                        END,
+                        "correctionStaleReason" = CASE
+                          WHEN "correctionRevision" > 0
+                          THEN 'source-version-changed'
+                          ELSE NULL
+                        END,
                         "updatedAt" = NOW()
                     WHERE id = $1 AND "userId" = $2
                     """,
@@ -438,6 +448,7 @@ async def _persist_refresh(
                       id, "userId", "transcriptId", version, checksum,
                       "mdPath", "plainText", metadata
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                    ON CONFLICT DO NOTHING
                     """,
                     db.generate_cuid(),
                     user_id,

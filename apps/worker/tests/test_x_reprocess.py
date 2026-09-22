@@ -133,9 +133,11 @@ async def test_unchanged_reprocess_skips_storage_and_versions(
 
     assert changed is False
     x_pipeline.storage.put_markdown.assert_not_awaited()  # type: ignore[attr-defined]
+    x_pipeline.mark_reviewable_derivatives_stale.assert_not_awaited()  # type: ignore[attr-defined]
     statements = "\n".join(str(call.args[0]) for call in conn.execute.await_args_list)
     assert 'INSERT INTO "SourceContentVersion"' in statements
     assert 'UPDATE "Transcript"' in statements
+    assert '"summaryMd" = NULL' not in statements
     assert "pg_advisory_lock" in statements
     assert "pg_advisory_unlock" in statements
 
@@ -155,6 +157,7 @@ async def test_changed_reprocess_versions_and_invalidates_derivatives(
     assert 'INSERT INTO "SourceContentVersion"' in statements
     assert '"summaryMd" = NULL' in statements
     assert '"sourceVersion" = $17' in statements
+    assert '"correctionState" = CASE' in statements
     assert 'DELETE FROM "TranscriptTag"' in statements
     assert "pg_advisory_unlock" in statements
 
