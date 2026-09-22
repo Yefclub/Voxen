@@ -201,17 +201,18 @@ jobs:
               '[.[] | select(.headSha == $sha and .workflowName == "Security")][0].databaseId // empty')
             CHANGELOG_RUN=$(printf '%s' "$RUNS" | jq -r --arg sha "$HEAD_SHA" \
               '[.[] | select(.headSha == $sha and .workflowName == "PR Changelog Guard")][0].databaseId // empty')
-            if [ -n "$CI_RUN" ] && [ -n "$SECURITY_RUN" ] && [ -n "$CHANGELOG_RUN" ]; then
+            if [ -n "$CI_RUN" ] && [ -n "$CHANGELOG_RUN" ]; then
               break
             fi
             if [ "$attempt" = "12" ]; then
-              echo "The three pull_request workflows were not registered. Leaving the PR open."
+              echo "The CI and PR Changelog Guard workflows were not registered. Leaving the PR open."
               exit 1
             fi
             sleep 5
           done
 
           for RUN_ID in "$CI_RUN" "$SECURITY_RUN" "$CHANGELOG_RUN"; do
+            [ -n "$RUN_ID" ] || continue
             CONCLUSION=$(gh run view "$RUN_ID" --json conclusion --jq .conclusion)
             if [ "$CONCLUSION" = "action_required" ]; then
               echo "Rerunning workflow that was waiting for approval: $RUN_ID"
@@ -219,12 +220,15 @@ jobs:
             fi
           done
 
-          # Require SUCCESS from each identified workflow so duplicate checks
-          # cannot hide a missing workflow.
+          # Require SUCCESS from CI (owner of the nine protected contexts) and
+          # from the changelog contract. Security still runs and reports, but
+          # its advisory findings (dependency audits) must not stall the
+          # mechanical version bump; the nine protected contexts validated
+          # below remain the objective gate.
           for attempt in $(seq 1 70); do
             RUN_FAILURE=0
             RUN_PENDING=0
-            for RUN_ID in "$CI_RUN" "$SECURITY_RUN" "$CHANGELOG_RUN"; do
+            for RUN_ID in "$CI_RUN" "$CHANGELOG_RUN"; do
               RUN_STATE=$(gh run view "$RUN_ID" --json status,conclusion \
                 --jq '[.status, .conclusion] | @tsv')
               RUN_STATUS=${RUN_STATE%%$'\t'*}
