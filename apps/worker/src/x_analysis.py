@@ -2,7 +2,7 @@
 
 Vive fora de `openrouter.py` porque o contrato do X (veredito + grounding na
 captura determinística) é domínio próprio; o transporte HTTP continua no
-`openrouter_transport`.
+`openrouter_transport` e a chamada de chat em `openrouter`.
 """
 
 from __future__ import annotations
