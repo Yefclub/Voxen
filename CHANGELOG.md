@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1790050837 — 2026-09-22 · Dev
+
+### 🐛 MinIO profile uses images published on Quay
+
+The `minio/minio` and `minio/mc` repositories are no longer available on Docker
+Hub, which broke the optional S3 profile, the CORS helper script, and the
+Easypanel smoke test in CI. All references now pull the official images from
+`quay.io/minio`.
+
 ## v0.14.5-dev.1787243657 — 2026-08-20 · Dev
 
 ### ✨ Clearer knowledge-base search in chat

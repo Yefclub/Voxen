@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1790050837",
+    "channel": "dev",
+    "type": "fix",
+    "title": "MinIO profile uses images published on Quay",
+    "body": "The `minio/minio` and `minio/mc` repositories are no longer available on Docker\nHub, which broke the optional S3 profile, the CORS helper script, and the\nEasypanel smoke test in CI. All references now pull the official images from\n`quay.io/minio`.",
+    "pr": 836,
+    "author": "Kalyel",
+    "date": "2026-09-22T01:20:22-03:00",
+    "translations": {
+      "en": {
+        "title": "MinIO profile uses images published on Quay",
+        "body": "The `minio/minio` and `minio/mc` repositories are no longer available on Docker\nHub, which broke the optional S3 profile, the CORS helper script, and the\nEasypanel smoke test in CI. All references now pull the official images from\n`quay.io/minio`."
+      },
+      "pt-BR": {
+        "title": "Perfil MinIO usa as imagens publicadas no Quay",
+        "body": "Os repositórios `minio/minio` e `minio/mc` deixaram de existir no Docker Hub, o\nque quebrava o profile opcional de S3, o script auxiliar de CORS e o smoke test\ndo Easypanel no CI. Todas as referências agora puxam as imagens oficiais do\n`quay.io/minio`."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/836"
+  },
+  {
     "version": "0.14.5-dev.1787243657",
     "channel": "dev",
     "type": "feat",
