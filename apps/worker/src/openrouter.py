@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import re
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -61,6 +63,8 @@ class XAnalysisResult:
     model: str
     tokens_in: int
     tokens_out: int
+    # None quando o caminho de análise não exige veredito (conteúdo capturado).
+    accessible: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -247,52 +251,133 @@ async def analyze_pdf_native(
     )
 
 
+_ACCESS_VERDICT_RE = re.compile(r"^\s*ACESSO\s*:\s*(OK|INDISPONIVEL)\s*$", re.IGNORECASE)
+_UNAVAILABLE_WINDOW = 600
+_UNAVAILABLE_PHRASES = (
+    "nao estava acessivel",
+    "nao esta acessivel",
+    "nao foi possivel acessar",
+    "nao consegui acessar",
+    "nao foi possivel recuperar",
+    "nao consegui recuperar",
+    "nao tenho acesso",
+    "sem acesso ao post",
+    "inaccessible",
+    "not accessible",
+    "unable to access",
+    "unable to retrieve",
+    "could not access",
+    "couldn't access",
+    "could not retrieve",
+    "couldn't retrieve",
+)
+_X_ANALYSIS_INSTRUCTIONS = (
+    "Entregue em português do Brasil, em Markdown pesquisável:\n"
+    "1. Resumo objetivo do conteúdo.\n"
+    "2. Contexto, autor/perfil citado, entidades e links relevantes.\n"
+    "3. Pontos verificáveis, ressalvas e incertezas.\n"
+    "4. Palavras-chave para busca futura."
+)
+
+
+def _strip_accents(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def split_access_verdict(raw: str) -> tuple[bool | None, str]:
+    """Separa a linha de veredito do corpo; None quando ela não existe."""
+    head, _, rest = raw.partition("\n")
+    match = _ACCESS_VERDICT_RE.match(head)
+    if match is None:
+        return None, raw.strip()
+    return match.group(1).upper() == "OK", rest.strip()
+
+
+def looks_unavailable(raw: str) -> bool:
+    """Heurística conservadora para respostas sem veredito explícito."""
+    window = _strip_accents(raw)[:_UNAVAILABLE_WINDOW]
+    return any(phrase in window for phrase in _UNAVAILABLE_PHRASES)
+
+
 async def analyze_x_url(
     *,
     url: str,
     api_key: str,
     model: str,
     fallback_model: str | None = None,
+    post_context: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> XAnalysisResult:
-    """Analisa post/thread do X usando Grok via OpenRouter com busca nativa."""
-    prompt = (
-        "Analise este post ou thread do X para uma base de conhecimento.\n\n"
-        f"URL: {url}\n\n"
-        "Entregue em português do Brasil, em Markdown pesquisável:\n"
-        "1. Resumo objetivo do conteúdo.\n"
-        "2. Contexto, autor/perfil citado, entidades e links relevantes.\n"
-        "3. Pontos verificáveis, ressalvas e incertezas.\n"
-        "4. Palavras-chave para busca futura.\n\n"
-        "Use a busca nativa no X quando disponível. Se o conteúdo não estiver "
-        "acessível, diga isso explicitamente e não invente detalhes."
-    )
-    payload: dict[str, object] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Você analisa publicações do X para uma base de conhecimento pessoal. "
-                    "Use dados recuperados pela busca nativa do X/OpenRouter, seja objetivo, "
-                    "cite URLs relevantes quando existirem e escreva em português do Brasil."
-                ),
+    """Analisa post/thread do X usando Grok via OpenRouter com busca nativa.
+
+    Com `post_context` (captura determinística), a análise é ancorada no
+    conteúdo capturado e não pede busca. Sem ele, o modelo responde com a busca
+    nativa e precisa declarar o veredito de acesso na primeira linha.
+    """
+    if post_context:
+        prompt = (
+            "Analise o post do X abaixo para uma base de conhecimento. O conteúdo "
+            "foi capturado diretamente da fonte pública e é a referência factual.\n\n"
+            f"URL: {url}\n\n"
+            "Conteúdo capturado:\n"
+            f"{post_context}\n\n"
+            f"{_X_ANALYSIS_INSTRUCTIONS}\n\n"
+            "Baseie-se apenas no conteúdo capturado e não invente detalhes."
+        )
+        payload: dict[str, object] = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Você analisa publicações do X para uma base de conhecimento pessoal. "
+                        "Seja objetivo, cite URLs relevantes quando existirem e escreva em "
+                        "português do Brasil."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "usage": {"include": True},
+        }
+    else:
+        prompt = (
+            "Analise este post ou thread do X para uma base de conhecimento.\n\n"
+            f"URL: {url}\n\n"
+            "Comece a resposta com uma única linha de veredito, exatamente "
+            "`ACESSO: OK` se você conseguiu recuperar o post, ou "
+            "`ACESSO: INDISPONIVEL` se não conseguiu. Não escreva mais nada nessa linha.\n\n"
+            f"{_X_ANALYSIS_INSTRUCTIONS}\n\n"
+            "Use a busca nativa no X quando disponível. Se o conteúdo não estiver "
+            "acessível, responda apenas com o veredito INDISPONIVEL e não invente detalhes."
+        )
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Você analisa publicações do X para uma base de conhecimento pessoal. "
+                        "Use dados recuperados pela busca nativa do X/OpenRouter, seja objetivo, "
+                        "cite URLs relevantes quando existirem e escreva em português do Brasil."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "tools": [
+                {
+                    "type": "openrouter:web_search",
+                    "parameters": {"engine": "native", "max_uses": 1},
+                }
+            ],
+            "max_tool_calls": 1,
+            "x_search_filter": {
+                "enable_image_understanding": True,
+                "enable_video_understanding": True,
             },
-            {"role": "user", "content": prompt},
-        ],
-        "tools": [
-            {
-                "type": "openrouter:web_search",
-                "parameters": {"engine": "native", "max_uses": 1},
-            }
-        ],
-        "max_tool_calls": 1,
-        "x_search_filter": {
-            "enable_image_understanding": True,
-            "enable_video_understanding": True,
-        },
-        "usage": {"include": True},
-    }
+            "usage": {"include": True},
+        }
+
     result = await _chat_completion_document(
         payload=payload,
         api_key=api_key,
@@ -300,12 +385,31 @@ async def analyze_x_url(
         fallback_model=fallback_model,
         client=client,
     )
+
+    accessible: bool | None = None
+    text = result.text
+    if post_context:
+        # O conteúdo capturado já é a evidência de acesso; um veredito eventual
+        # do modelo não deve descartar a captura (ver select_x_content).
+        verdict, body = split_access_verdict(result.text)
+        accessible = verdict
+        if body:
+            text = body
+    else:
+        verdict, body = split_access_verdict(result.text)
+        if verdict is None:
+            accessible = not looks_unavailable(result.text)
+        else:
+            accessible = verdict
+            text = body
+
     return XAnalysisResult(
-        text=result.text,
+        text=text,
         cost_usd=result.cost_usd,
         model=result.model,
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
+        accessible=accessible,
     )
 
 

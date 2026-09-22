@@ -19,6 +19,8 @@ from src.openrouter import (
     analyze_x_url,
     classify_content_folder,
     generate_content_title,
+    looks_unavailable,
+    split_access_verdict,
     transcribe_audio,
 )
 from src.openrouter_transport import (
@@ -87,6 +89,8 @@ async def test_analyze_x_url_uses_native_x_search_with_media_understanding() -> 
     )
 
     assert result.text == "Resumo do post"
+    # Sem marcador de veredito e sem frase de falha: assume acesso.
+    assert result.accessible is True
     assert client.payload is not None
     assert client.payload["tools"] == [
         {
@@ -100,6 +104,106 @@ async def test_analyze_x_url_uses_native_x_search_with_media_understanding() -> 
         "enable_image_understanding": True,
         "enable_video_understanding": True,
     }
+
+
+class ContentClient:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.payload: dict[str, Any] | None = None
+
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        assert headers["Authorization"] == "Bearer sk-test"
+        self.payload = json
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": self.content}}],
+                "usage": {"cost": "0.001", "prompt_tokens": 12, "completion_tokens": 8},
+            },
+        )
+
+
+async def test_analyze_x_url_grounds_analysis_on_captured_content() -> None:
+    client = ContentClient("## Em poucas linhas\nAnálise ancorada na captura.")
+
+    result = await analyze_x_url(
+        url="https://x.com/i/status/1234567890",
+        api_key="sk-test",
+        model="x-ai/grok-4-fast",
+        post_context="Autor: rico (@_heyrico)\nTexto do post:\nProduct design cheat sheet",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert client.payload is not None
+    assert "tools" not in client.payload
+    assert "max_tool_calls" not in client.payload
+    assert "x_search_filter" not in client.payload
+    messages = str(client.payload["messages"])
+    assert "Product design cheat sheet" in messages
+    assert "Conteúdo capturado" in messages
+    # Captura já é a evidência de acesso; sem veredito obrigatório.
+    assert result.accessible is None
+    assert result.text == "## Em poucas linhas\nAnálise ancorada na captura."
+
+
+async def test_analyze_x_url_strips_ok_verdict_from_content() -> None:
+    client = ContentClient("ACESSO: OK\n\n## Em poucas linhas\nPost recuperado na busca.")
+
+    result = await analyze_x_url(
+        url="https://x.com/i/status/1234567890",
+        api_key="sk-test",
+        model="x-ai/grok-4-fast",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.accessible is True
+    assert result.text == "## Em poucas linhas\nPost recuperado na busca."
+
+
+async def test_analyze_x_url_flags_unavailable_verdict() -> None:
+    client = ContentClient("ACESSO: INDISPONIVEL\n\nNão localizei o post.")
+
+    result = await analyze_x_url(
+        url="https://x.com/i/status/1234567890",
+        api_key="sk-test",
+        model="x-ai/grok-4-fast",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.accessible is False
+
+
+async def test_analyze_x_url_detects_missing_verdict_failure_wording() -> None:
+    client = ContentClient(
+        "O post não estava acessível pelas ferramentas disponíveis; "
+        "não foi possível recuperar o texto."
+    )
+
+    result = await analyze_x_url(
+        url="https://x.com/i/status/1234567890",
+        api_key="sk-test",
+        model="x-ai/grok-4-fast",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.accessible is False
+
+
+def test_split_access_verdict_handles_case_and_missing_line() -> None:
+    assert split_access_verdict("acesso: ok\n\ncorpo") == (True, "corpo")
+    assert split_access_verdict("ACESSO: INDISPONIVEL\ncorpo") == (False, "corpo")
+    assert split_access_verdict("## Título\ncorpo") == (None, "## Título\ncorpo")
+
+
+def test_looks_unavailable_ignores_generic_caveats() -> None:
+    assert looks_unavailable("Resumo do post. Não foi possível verificar a data exata.") is False
+    assert looks_unavailable("The page is not accessible without login.") is True
 
 
 async def test_analyze_pdf_uses_mistral_ocr_parser(tmp_path: Path) -> None:

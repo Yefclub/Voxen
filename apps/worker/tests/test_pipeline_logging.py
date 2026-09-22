@@ -359,9 +359,11 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
                 model="x-ai/grok-4.1-fast",
                 tokens_in=20,
                 tokens_out=8,
+                accessible=True,
             )
         ),
     )
+    monkeypatch.setattr(pipeline.x_post, "fetch_x_post", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline, "is_cancelled", lambda _job_id: False)
     monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock(return_value=None))

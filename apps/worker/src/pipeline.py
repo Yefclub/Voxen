@@ -30,6 +30,7 @@ from . import (
     uploaded_media,
     video_url,
     voxen_settings,
+    x_post,
     youtube_captions,
     ytdl,
 )
@@ -1013,43 +1014,75 @@ async def _run_x_analysis_pipeline(
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "analyzing_x", percent=30)
 
+    status_id = urlsplit(source_url).path.rstrip("/").split("/")[-1]
+    capture: x_post.XPost | None = None
+    try:
+        capture = await x_post.fetch_x_post(status_id)
+    except x_post.XCaptureError as exc:
+        log.warning("x-capture-failed", **_error_diagnostic(exc, "X_CAPTURE_FAILED"))
+    if capture is None:
+        log.info("x-capture-unavailable", status_id=status_id)
+    else:
+        log.info("x-capture-ok", status_id=status_id, media_count=len(capture.media))
+    post_context = x_post.render_x_post_context(capture) if capture is not None else None
+
     async def _do_call() -> Any:
         return await analyze_x_url(
             url=source_url,
             api_key=api_key,
             model=model,
             fallback_model=config.fallback_model,
+            post_context=post_context,
         )
 
-    result = await _retry_transient_or(_do_call, tries=3)
-    log_openrouter_route(log, "x_analysis", model, result.model)
-    if not result.text:
-        raise PermanentError.public(
-            "X_ANALYSIS_EMPTY",
-            "Análise vazia — o conteúdo do X não pôde ser recuperado.",
+    analysis: Any | None = None
+    try:
+        analysis = await _retry_transient_or(_do_call, tries=3)
+    except Exception as exc:  # noqa: BLE001 — captura preserva conteúdo já disponível
+        if capture is None:
+            raise
+        log.warning(
+            "x-analysis-failed-using-capture",
+            **_error_diagnostic(exc, "X_ANALYSIS_FAILED"),
         )
 
-    await db.insert_cost_event(
-        user_id=user_id,
-        kind="X_SEARCH",
-        model=result.model,
-        tokens_in=result.tokens_in,
-        tokens_out=result.tokens_out,
-        cost_usd=result.cost_usd,
-        job_id=job_id,
-        meta={
-            "source": "x_analysis",
-        },
+    if analysis is not None:
+        log_openrouter_route(log, "x_analysis", model, analysis.model)
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="X_SEARCH",
+            model=analysis.model,
+            tokens_in=analysis.tokens_in,
+            tokens_out=analysis.tokens_out,
+            cost_usd=analysis.cost_usd,
+            job_id=job_id,
+            meta={
+                "source": "x_analysis",
+            },
+        )
+
+    selection = x_post.select_x_content(
+        capture_markdown=x_post.render_x_post_markdown(capture) if capture is not None else None,
+        analysis_text=analysis.text if analysis is not None else None,
+        analysis_accessible=analysis.accessible if analysis is not None else None,
     )
+    if selection.unavailable:
+        raise PermanentError.public(
+            "X_CONTENT_UNAVAILABLE",
+            "Não foi possível recuperar o conteúdo deste post no X. "
+            "O post pode estar indisponível ou restrito; reprocesse mais tarde.",
+        )
+    if selection.source == "capture":
+        log.info("x-analysis-capture-fallback", status_id=status_id)
 
-    status_id = urlsplit(source_url).path.rstrip("/").split("/")[-1]
     probe_info = ytdl.VideoProbe(
         video_id=status_id,
-        title=f"Post do X {status_id}",
-        channel="X",
+        title=(capture.suggested_title if capture is not None else None)
+        or f"Post do X {status_id}",
+        channel=(capture.channel if capture is not None else None) or "X",
         duration_sec=0,
-        published_at=None,
-        thumbnail_url=None,
+        published_at=capture.created_at if capture is not None else None,
+        thumbnail_url=capture.preview_url if capture is not None else None,
         language_hint=None,
         available_subtitles={},
         automatic_captions={},
@@ -1057,9 +1090,9 @@ async def _run_x_analysis_pipeline(
     generated_title = await _maybe_generate_title(
         user_id=user_id,
         job_id=job_id,
-        content=result.text,
+        content=selection.content,
         source_label="Publicação do X",
-        fallback_title=f"Post do X {status_id}",
+        fallback_title=probe_info.title,
         fallback_model=model,
         log=log,
     )
@@ -1071,11 +1104,15 @@ async def _run_x_analysis_pipeline(
         job_id=job_id,
         probe_info=probe_info,
         source_url=source_url,
-        segments=(Segment(start_sec=0.0, text=result.text),),
+        segments=(Segment(start_sec=0.0, text=selection.content),),
         method="X_SEARCH",
-        model=result.model,
-        cost_usd=result.cost_usd,
-        language="pt",
+        model=analysis.model if analysis is not None else None,
+        cost_usd=analysis.cost_usd if analysis is not None else None,
+        language=(
+            "pt"
+            if selection.source == "analysis"
+            else (capture.lang if capture is not None and capture.lang else "pt")
+        ),
         title_override=generated_title,
     )
 
