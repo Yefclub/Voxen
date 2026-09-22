@@ -60,15 +60,15 @@ findings keep out of reach.
 
 ## Acceptance criteria
 
-- [ ] A development instance sees the available release labeled with the
+- [x] A development instance sees the available release labeled with the
       production channel and the installed channel in the details line.
-- [ ] The update status exposes the available channel as null whenever the
+- [x] The update status exposes the available channel as null whenever the
       release is draft, prerelease, or an invalid tag.
-- [ ] The comparison tests cover the available channel for valid and invalid
+- [x] The comparison tests cover the available channel for valid and invalid
       releases.
-- [ ] The guard fails when the development version is behind the stable
+- [x] The guard fails when the development version is behind the stable
       version and passes when it is ahead.
-- [ ] The version-dev workflow merges a green version PR even when the merge
+- [x] The version-dev workflow merges a green version PR even when the merge
       state is `UNSTABLE` because of non-required checks.
 
 ## Out of scope

@@ -59,6 +59,13 @@ describe('release update comparison', () => {
       buildReleaseUpdateStatus({ currentVersion: '0.14.4', latestTag: 'release-latest' })
         .latestEnvironment,
     ).toBeNull();
+    expect(
+      buildReleaseUpdateStatus({
+        currentVersion: '0.14.4',
+        latestTag: 'v0.14.5-beta.1',
+        prerelease: true,
+      }).latestEnvironment,
+    ).toBeNull();
   });
 
   it('constructs a fixed official release URL', () => {

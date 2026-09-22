@@ -286,7 +286,7 @@ jobs:
               break
             fi
             if [ "$attempt" = "20" ]; then
-              echo "PR did not become CLEAN after checks (state: $STATE)."
+              echo "PR did not become CLEAN or UNSTABLE after checks (state: $STATE)."
               exit 1
             fi
             sleep 15

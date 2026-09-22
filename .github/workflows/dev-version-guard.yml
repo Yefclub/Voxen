@@ -6,6 +6,9 @@
 # release as an "update" and places release history in the wrong feed.
 # version-dev self-heals on the next push to dev; this guard catches the case
 # where dev receives no push after a release.
+#
+# A failure right after a release is expected until main is synced back into
+# dev and version-dev bumps the development version.
 # ============================================================================
 
 name: Dev version guard
