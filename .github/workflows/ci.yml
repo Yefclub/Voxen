@@ -374,7 +374,7 @@ jobs:
           docker run -d --name smoke-minio --network voxen-smoke --network-alias minio \
             -e MINIO_ROOT_USER=voxen \
             -e MINIO_ROOT_PASSWORD=voxen_dev_minio_password \
-            minio/minio:latest server /data
+            quay.io/minio/minio:latest server /data
 
           for i in $(seq 1 30); do
             docker exec smoke-postgres pg_isready -U voxen -d voxen && break
@@ -395,7 +395,7 @@ jobs:
             sleep 2
           done
 
-          docker run --rm --network voxen-smoke --entrypoint sh minio/mc:latest -c \
+          docker run --rm --network voxen-smoke --entrypoint sh quay.io/minio/mc:latest -c \
             'mc alias set voxen http://minio:9000 voxen voxen_dev_minio_password && mc mb --ignore-existing voxen/voxen-transcripts'
 
           docker run -d --name voxen-easypanel --network voxen-smoke -p 3000:3000 \
