@@ -113,7 +113,9 @@ _ALLOWED_ERROR_CODES = frozenset(
         "VISION_MODEL_NOT_CONFIGURED",
         "WEB_TITLE_GENERATION_FAILED",
         "WORKER_RUNTIME_FAILED",
-        "X_ANALYSIS_EMPTY",
+        "X_ANALYSIS_FAILED",
+        "X_CAPTURE_FAILED",
+        "X_CONTENT_UNAVAILABLE",
         "X_MODEL_NOT_CONFIGURED",
         "X_URL_INVALID",
         "YOUTUBE_TRANSCRIPT_API_UNAVAILABLE",
@@ -160,6 +162,7 @@ _ALLOWED_ERROR_TYPES = frozenset(
         "VideoUnavailable",
         "WriteError",
         "WriteTimeout",
+        "XCaptureError",
         "YouTubeRequestFailed",
         "YoutubeDLError",
     }

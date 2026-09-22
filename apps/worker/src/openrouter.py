@@ -55,15 +55,6 @@ class DocumentAnalysisResult:
 
 
 @dataclass(frozen=True)
-class XAnalysisResult:
-    text: str
-    cost_usd: Decimal
-    model: str
-    tokens_in: int
-    tokens_out: int
-
-
-@dataclass(frozen=True)
 class TitleGenerationResult:
     title: str
     cost_usd: Decimal
@@ -244,68 +235,6 @@ async def analyze_pdf_native(
         model=model,
         fallback_model=fallback_model,
         client=client,
-    )
-
-
-async def analyze_x_url(
-    *,
-    url: str,
-    api_key: str,
-    model: str,
-    fallback_model: str | None = None,
-    client: httpx.AsyncClient | None = None,
-) -> XAnalysisResult:
-    """Analisa post/thread do X usando Grok via OpenRouter com busca nativa."""
-    prompt = (
-        "Analise este post ou thread do X para uma base de conhecimento.\n\n"
-        f"URL: {url}\n\n"
-        "Entregue em português do Brasil, em Markdown pesquisável:\n"
-        "1. Resumo objetivo do conteúdo.\n"
-        "2. Contexto, autor/perfil citado, entidades e links relevantes.\n"
-        "3. Pontos verificáveis, ressalvas e incertezas.\n"
-        "4. Palavras-chave para busca futura.\n\n"
-        "Use a busca nativa no X quando disponível. Se o conteúdo não estiver "
-        "acessível, diga isso explicitamente e não invente detalhes."
-    )
-    payload: dict[str, object] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Você analisa publicações do X para uma base de conhecimento pessoal. "
-                    "Use dados recuperados pela busca nativa do X/OpenRouter, seja objetivo, "
-                    "cite URLs relevantes quando existirem e escreva em português do Brasil."
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "tools": [
-            {
-                "type": "openrouter:web_search",
-                "parameters": {"engine": "native", "max_uses": 1},
-            }
-        ],
-        "max_tool_calls": 1,
-        "x_search_filter": {
-            "enable_image_understanding": True,
-            "enable_video_understanding": True,
-        },
-        "usage": {"include": True},
-    }
-    result = await _chat_completion_document(
-        payload=payload,
-        api_key=api_key,
-        model=model,
-        fallback_model=fallback_model,
-        client=client,
-    )
-    return XAnalysisResult(
-        text=result.text,
-        cost_usd=result.cost_usd,
-        model=result.model,
-        tokens_in=result.tokens_in,
-        tokens_out=result.tokens_out,
     )
 
 

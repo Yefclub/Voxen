@@ -16,7 +16,6 @@ from src.openrouter import (
     analyze_document_text,
     analyze_image,
     analyze_pdf_native,
-    analyze_x_url,
     classify_content_folder,
     generate_content_title,
     transcribe_audio,
@@ -74,32 +73,6 @@ class CaptureClient:
                 },
             },
         )
-
-
-async def test_analyze_x_url_uses_native_x_search_with_media_understanding() -> None:
-    client = CaptureClient()
-
-    result = await analyze_x_url(
-        url="https://x.com/i/status/1234567890",
-        api_key="sk-test",
-        model="x-ai/grok-4-fast",
-        client=client,  # type: ignore[arg-type]
-    )
-
-    assert result.text == "Resumo do post"
-    assert client.payload is not None
-    assert client.payload["tools"] == [
-        {
-            "type": "openrouter:web_search",
-            "parameters": {"engine": "native", "max_uses": 1},
-        }
-    ]
-    assert client.payload["max_tool_calls"] == 1
-    assert "plugins" not in client.payload
-    assert client.payload["x_search_filter"] == {
-        "enable_image_understanding": True,
-        "enable_video_understanding": True,
-    }
 
 
 async def test_analyze_pdf_uses_mistral_ocr_parser(tmp_path: Path) -> None:

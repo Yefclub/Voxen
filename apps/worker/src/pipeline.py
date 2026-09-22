@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 import botocore.exceptions
 import structlog
@@ -50,7 +49,6 @@ from .openrouter import (
     analyze_document_text,
     analyze_image,
     analyze_pdf_native,
-    analyze_x_url,
     classify_content_folder,
     generate_content_title,
     transcribe_audio,
@@ -983,108 +981,9 @@ async def _run_x_analysis_pipeline(
     source_url: str,
     log: Any,  # noqa: ANN401
 ) -> None:
-    if video_url.detect_source(source_url) != "X":
-        raise PermanentError.public(
-            "X_URL_INVALID",
-            "Job de análise do X recebeu uma URL que não é do X.",
-        )
+    from . import x_pipeline
 
-    config = await voxen_settings.get_openrouter_model_config(
-        (
-            "default_x_analysis_model",
-            "default_grok_model",
-            "default_x_model",
-            "x_analysis_model",
-        )
-    )
-    if not config.api_key:
-        raise PermanentError.public(
-            "OPENROUTER_NOT_CONFIGURED",
-            "Setup incompleto — chave da OpenRouter ausente.",
-        )
-    if not config.model:
-        raise PermanentError.public(
-            "X_MODEL_NOT_CONFIGURED",
-            "Setup incompleto — modelo de análise do X ausente.",
-        )
-    api_key = config.api_key
-    model = config.model
-
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "analyzing_x", percent=30)
-
-    async def _do_call() -> Any:
-        return await analyze_x_url(
-            url=source_url,
-            api_key=api_key,
-            model=model,
-            fallback_model=config.fallback_model,
-        )
-
-    result = await _retry_transient_or(_do_call, tries=3)
-    log_openrouter_route(log, "x_analysis", model, result.model)
-    if not result.text:
-        raise PermanentError.public(
-            "X_ANALYSIS_EMPTY",
-            "Análise vazia — o conteúdo do X não pôde ser recuperado.",
-        )
-
-    await db.insert_cost_event(
-        user_id=user_id,
-        kind="X_SEARCH",
-        model=result.model,
-        tokens_in=result.tokens_in,
-        tokens_out=result.tokens_out,
-        cost_usd=result.cost_usd,
-        job_id=job_id,
-        meta={
-            "source": "x_analysis",
-        },
-    )
-
-    status_id = urlsplit(source_url).path.rstrip("/").split("/")[-1]
-    probe_info = ytdl.VideoProbe(
-        video_id=status_id,
-        title=f"Post do X {status_id}",
-        channel="X",
-        duration_sec=0,
-        published_at=None,
-        thumbnail_url=None,
-        language_hint=None,
-        available_subtitles={},
-        automatic_captions={},
-    )
-    generated_title = await _maybe_generate_title(
-        user_id=user_id,
-        job_id=job_id,
-        content=result.text,
-        source_label="Publicação do X",
-        fallback_title=f"Post do X {status_id}",
-        fallback_model=model,
-        log=log,
-    )
-
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "uploading", percent=80)
-    new_transcript_id = await _persist(
-        user_id=user_id,
-        job_id=job_id,
-        probe_info=probe_info,
-        source_url=source_url,
-        segments=(Segment(start_sec=0.0, text=result.text),),
-        method="X_SEARCH",
-        model=result.model,
-        cost_usd=result.cost_usd,
-        language="pt",
-        title_override=generated_title,
-    )
-
-    await events.publish_job_event(user_id, job_id, "indexing", percent=95)
-    await db.link_job_transcript(job_id, new_transcript_id)
-    await _complete_persisted_job(
-        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
-    )
-    log.info("x-analysis-job-done", transcript_id=new_transcript_id)
+    await x_pipeline.run(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
 
 
 async def _reindex_brain_with_retry(user_id: str, transcript_id: str) -> bool:
