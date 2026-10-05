@@ -1,6 +1,7 @@
 ---
 tipo: fix
-titulo: More reliable TikTok and web imports
+titulo_en: More reliable TikTok and web imports
+titulo_pt_br: Importações do TikTok e da web mais confiáveis
 ---
 
 TikTok imports use an updated extractor to restore downloads affected by recent
@@ -12,3 +13,16 @@ other content can continue processing. If the source remains unavailable, Voxen
 explains that automatic attempts ended and offers retry or manual upload.
 
 Source access restrictions and safety checks remain enforced.
+
+<!-- pt-BR -->
+
+As importações do TikTok usam um extrator atualizado para recuperar downloads
+afetados por mudanças recentes nas páginas de vídeos públicos.
+
+Falhas temporárias de conexão, timeouts da web e limites de requisições recebem
+novas tentativas automáticas com limite. Importações com esperas longas voltam à
+fila para permitir o processamento de outros conteúdos. Se a fonte continuar
+indisponível, o Voxen informa que as tentativas terminaram e orienta tentar mais
+tarde ou enviar o conteúdo por upload manual.
+
+As restrições de acesso às fontes e verificações de segurança são mantidas.
