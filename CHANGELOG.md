@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1791216502 — 2026-10-05 · Dev
+
+### 🐛 More reliable TikTok and web imports
+
+TikTok imports use an updated extractor to restore downloads affected by recent
+changes to public video pages.
+
+Temporary connection failures, web timeouts and source request limits now receive
+bounded automatic retries. Imports with long cooldowns return to the queue so
+other content can continue processing. If the source remains unavailable, Voxen
+explains that automatic attempts ended and offers retry or manual upload.
+
+Network and document-processing dependencies also receive compatible security
+updates. Source access restrictions and safety checks remain enforced.
+
 ## v0.15.1-dev.1790103610 — 2026-09-22 · Dev
 
 ### 🐛 Update notices name the release channel, and dev drift is caught early

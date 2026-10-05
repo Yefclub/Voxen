@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1791216502",
+    "channel": "dev",
+    "type": "fix",
+    "title": "More reliable TikTok and web imports",
+    "body": "TikTok imports use an updated extractor to restore downloads affected by recent\nchanges to public video pages.\n\nTemporary connection failures, web timeouts and source request limits now receive\nbounded automatic retries. Imports with long cooldowns return to the queue so\nother content can continue processing. If the source remains unavailable, Voxen\nexplains that automatic attempts ended and offers retry or manual upload.\n\nNetwork and document-processing dependencies also receive compatible security\nupdates. Source access restrictions and safety checks remain enforced.",
+    "pr": 852,
+    "author": "Kalyel",
+    "date": "2026-10-05T13:08:07-03:00",
+    "translations": {
+      "en": {
+        "title": "More reliable TikTok and web imports",
+        "body": "TikTok imports use an updated extractor to restore downloads affected by recent\nchanges to public video pages.\n\nTemporary connection failures, web timeouts and source request limits now receive\nbounded automatic retries. Imports with long cooldowns return to the queue so\nother content can continue processing. If the source remains unavailable, Voxen\nexplains that automatic attempts ended and offers retry or manual upload.\n\nNetwork and document-processing dependencies also receive compatible security\nupdates. Source access restrictions and safety checks remain enforced."
+      },
+      "pt-BR": {
+        "title": "Importações do TikTok e da web mais confiáveis",
+        "body": "As importações do TikTok usam um extrator atualizado para recuperar downloads\nafetados por mudanças recentes nas páginas de vídeos públicos.\n\nFalhas temporárias de conexão, timeouts da web e limites de requisições recebem\nnovas tentativas automáticas com limite. Importações com esperas longas voltam à\nfila para permitir o processamento de outros conteúdos. Se a fonte continuar\nindisponível, o Voxen informa que as tentativas terminaram e orienta tentar mais\ntarde ou enviar o conteúdo por upload manual.\n\nAs dependências de rede e processamento de documentos também recebem\natualizações de segurança compatíveis. As restrições de acesso às fontes e\nverificações de segurança são mantidas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/852"
+  },
+  {
     "version": "0.15.1-dev.1790103610",
     "channel": "dev",
     "type": "fix",
