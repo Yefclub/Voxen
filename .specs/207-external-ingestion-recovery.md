@@ -15,6 +15,8 @@ specification covers the fault scenarios verified during the ingestion audit.
 - The system shall expose only allowlisted operational error metadata and never
   provider bodies, signed URLs, cookies or credentials.
 - The system shall limit automatic ingestion recovery to three claimed attempts.
+- The system shall use patched source-processing dependencies for security
+  advisories detected by the delivery checks, without changing their major versions.
 
 ### Event-driven
 
@@ -59,14 +61,18 @@ specification covers the fault scenarios verified during the ingestion audit.
 - [x] Subtitle fallback, cancellation and transcript checkpoint behavior pass
       existing regression tests.
 - [ ] Production deployment and reprocessing validate the reported failed item.
+- [ ] Security checks verify the refreshed network and document dependencies.
 
 ## Out of scope
 
 Private or removed content, bypassing source restrictions, new proxy services,
-unrelated updates, database schema changes and historical bulk retries.
+unrelated feature updates, database schema changes and historical bulk retries.
 
 ## Decisions
 
 The owner authorized implementation, delivery, deployment and reprocessing.
 Existing durable queue behavior is reused; no new retry scheduler is introduced.
 Long waits release the worker slot instead of delaying unrelated ingestion.
+
+> 2026-10-05: Include compatible security updates required by the delivery scans
+> for existing network and document-processing dependencies.

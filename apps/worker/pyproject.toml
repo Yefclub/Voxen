@@ -71,7 +71,10 @@ testpaths = ["tests"]
 # Pins de segurança (Trivy HIGH). Transitive de trafilatura/markitdown/etc.
 override-dependencies = [
     "lxml-html-clean>=0.4.5",
-    "soupsieve>=2.8.4",
+    "soupsieve>=2.9.0",
+    "anyio>=4.14.2,<5",
+    "urllib3>=2.8.0,<3",
+    "pyjwt>=2.15.0,<3",
     # Transitive (aioboto3/markitdown): minimum patched release.
     "aiohttp>=3.14.3,<4",
 ]

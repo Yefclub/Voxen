@@ -12,7 +12,8 @@ bounded automatic retries. Imports with long cooldowns return to the queue so
 other content can continue processing. If the source remains unavailable, Voxen
 explains that automatic attempts ended and offers retry or manual upload.
 
-Source access restrictions and safety checks remain enforced.
+Network and document-processing dependencies also receive compatible security
+updates. Source access restrictions and safety checks remain enforced.
 
 <!-- pt-BR -->
 
@@ -25,4 +26,6 @@ fila para permitir o processamento de outros conteúdos. Se a fonte continuar
 indisponível, o Voxen informa que as tentativas terminaram e orienta tentar mais
 tarde ou enviar o conteúdo por upload manual.
 
-As restrições de acesso às fontes e verificações de segurança são mantidas.
+As dependências de rede e processamento de documentos também recebem
+atualizações de segurança compatíveis. As restrições de acesso às fontes e
+verificações de segurança são mantidas.
