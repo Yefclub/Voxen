@@ -10,11 +10,16 @@ from typing import Any
 
 import yt_dlp.utils
 
-from . import tiktok_player, uploaded_media, video_url, ytdl
+from . import external_retry, tiktok_player, uploaded_media, video_url, ytdl
 from .pipeline_errors import PermanentError
 from .safe_diagnostics import error_diagnostic
 
-_EXTERNAL_ERRORS = (OSError, RuntimeError, yt_dlp.utils.YoutubeDLError)
+_EXTERNAL_ERRORS = (
+    OSError,
+    RuntimeError,
+    yt_dlp.utils.YoutubeDLError,
+    external_retry.ExternalTransientError,
+)
 
 
 @dataclass(frozen=True)
@@ -34,16 +39,20 @@ def is_extraction_error(exc: BaseException) -> bool:
 
 
 async def _retry_official[T](call: Callable[[], Awaitable[T]], *, tries: int = 2) -> T:
-    last_error: BaseException | None = None
     for attempt in range(tries):
         try:
             return await call()
         except _EXTERNAL_ERRORS as exc:
-            last_error = exc
-            if attempt < tries - 1:
-                await asyncio.sleep(1.0)
-    assert last_error is not None
-    raise last_error
+            temporary = external_retry.as_transient(exc)
+            if temporary is None:
+                raise
+            if (
+                attempt == tries - 1
+                or (temporary.retry_after or 0) > external_retry.MAX_LOCAL_WAIT_SECONDS
+            ):
+                raise temporary from exc
+            await asyncio.sleep(max(1.0, temporary.retry_after or 0))
+    raise AssertionError("Official player retry requires a positive attempt count.")
 
 
 async def _retry_impersonated[T](call: Callable[[], Awaitable[T]], *, tries: int = 2) -> T:
@@ -59,6 +68,9 @@ async def _retry_impersonated[T](call: Callable[[], Awaitable[T]], *, tries: int
             if attempt < tries - 1:
                 await asyncio.sleep(1.0)
     assert last_error is not None
+    temporary = external_retry.as_transient(last_error)
+    if temporary:
+        raise temporary from last_error
     raise last_error
 
 
@@ -148,6 +160,8 @@ async def probe_after_extraction_error(
         )
         try:
             probe, item = await _retry_official(lambda: probe_player(source_url))
+        except external_retry.ExternalTransientError:
+            raise
         except _EXTERNAL_ERRORS as player_error:
             raise PermanentError.public(
                 "EXTERNAL_DOWNLOAD_BLOCKED",
@@ -164,6 +178,8 @@ async def download_known_player_audio(
 ) -> Path:
     try:
         return await _retry_official(lambda: download_player_audio(item, out_dir))
+    except external_retry.ExternalTransientError:
+        raise
     except _EXTERNAL_ERRORS as player_error:
         raise PermanentError.public(
             "EXTERNAL_DOWNLOAD_BLOCKED",
@@ -206,6 +222,8 @@ async def download_after_extraction_error(
         try:
             _, item = await _retry_official(lambda: probe_player(source_url))
             return await _retry_official(lambda: download_player_audio(item, out_dir))
+        except external_retry.ExternalTransientError:
+            raise
         except _EXTERNAL_ERRORS as player_error:
             raise PermanentError.public(
                 "EXTERNAL_DOWNLOAD_BLOCKED",

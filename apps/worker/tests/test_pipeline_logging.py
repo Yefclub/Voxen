@@ -392,3 +392,51 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
     assert "x.com" not in telemetry
     assert "cliente_acme" not in telemetry
     assert "token=segredo" not in telemetry
+
+
+@pytest.mark.parametrize("attempt", [1, 2, 3])
+async def test_temporary_ingestion_has_durable_bounded_recovery(
+    monkeypatch: pytest.MonkeyPatch, attempt: int
+) -> None:
+    from src.external_retry import ExternalTransientError
+
+    root_logger = _install_job_dependencies(
+        monkeypatch, source_url="https://www.tiktok.com/@a/video/1234567890"
+    )
+    pipeline.db.claim_job.return_value["attempt"] = attempt
+    monkeypatch.setattr(
+        pipeline,
+        "_run_pipeline",
+        AsyncMock(
+            side_effect=ExternalTransientError(
+                "signed-url?token=private-secret", status_code=429, retry_after=120
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline.job_defer_db,
+        "defer_job_lease",
+        AsyncMock(return_value=("event-1", datetime(2026, 10, 5, tzinfo=UTC))),
+    )
+    monkeypatch.setattr(pipeline.events, "publish_recorded_job_event", AsyncMock())
+
+    await pipeline.process_job("job-1")
+
+    if attempt < 3:
+        pipeline.job_defer_db.defer_job_lease.assert_awaited_once_with(
+            "job-1", "user-1", delay_seconds=120
+        )
+        pipeline.db.mark_job_failed.assert_not_awaited()
+        pipeline.events.publish_recorded_job_event.assert_awaited_once()
+        record = next(entry for entry in root_logger.bound.entries if entry[1] == "job-deferred")
+        assert record[2] == {
+            "retry_after_seconds": 120,
+            "error_code": "EXTERNAL_INGESTION_DEFERRED",
+            "error_type": "ExternalTransientError",
+            "status_code": "429",
+        }
+    else:
+        pipeline.job_defer_db.defer_job_lease.assert_not_awaited()
+        pipeline.db.mark_job_failed.assert_awaited_once()
+        assert "temporariamente" in pipeline.db.mark_job_failed.await_args.args[1]
+    assert "private-secret" not in repr(root_logger.bound.entries)

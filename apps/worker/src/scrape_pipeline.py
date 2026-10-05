@@ -11,7 +11,7 @@ from typing import Any
 
 import structlog
 
-from . import db, events, scraper, storage, voxen_settings
+from . import db, events, external_retry, scraper, storage, voxen_settings
 from .cancellation import CancelledException, is_cancelled
 from .openrouter import generate_content_title
 from .pipeline import PermanentError, _maybe_assign_folder  # noqa: PLC2701
@@ -19,6 +19,7 @@ from .safe_diagnostics import error_diagnostic
 from .source_freshness import mark_reviewable_derivatives_stale
 
 log = structlog.get_logger(__name__)
+SCRAPE_ATTEMPT_TIMEOUT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -94,14 +95,18 @@ async def run(
 
 async def _scrape_with_retry(url: str, tries: int = 3) -> scraper.ScrapeResult:
     """Retry exp backoff só pra erros transientes."""
-    last_exc: scraper.FetchTransientError | None = None
+    last_exc: external_retry.ExternalTransientError | None = None
     for attempt in range(tries):
         try:
-            return await scraper.fetch_and_extract(url)
-        except scraper.FetchTransientError as e:
+            return await external_retry.within_deadline(
+                lambda: scraper.fetch_and_extract(url), seconds=SCRAPE_ATTEMPT_TIMEOUT_SECONDS
+            )
+        except external_retry.ExternalTransientError as e:
             last_exc = e
+            if (e.retry_after or 0) > external_retry.MAX_LOCAL_WAIT_SECONDS:
+                raise
             if attempt < tries - 1:
-                await asyncio.sleep(2**attempt)
+                await asyncio.sleep(max(2**attempt, e.retry_after or 0))
             continue
     assert last_exc is not None
     raise last_exc

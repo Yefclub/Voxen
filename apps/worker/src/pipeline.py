@@ -19,6 +19,7 @@ from . import (
     db,
     document_ingest,
     events,
+    external_retry,
     job_defer_db,
     saved_media,
     storage,
@@ -157,70 +158,73 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
 
     await events.publish_job_event(user_id, job_id, "running", percent=0)
     try:
-        if job_type == "DOWNLOAD_MEDIA":
-            if not saved_media_id:
-                raise PermanentError.public(
-                    "SAVED_MEDIA_MISSING", "Registro de mídia não encontrado."
+        async with external_retry.recover(
+            attempt=int(claimed["attempt"]), max_attempts=db.JOB_MAX_ATTEMPTS
+        ):
+            if job_type == "DOWNLOAD_MEDIA":
+                if not saved_media_id:
+                    raise PermanentError.public(
+                        "SAVED_MEDIA_MISSING", "Registro de mídia não encontrado."
+                    )
+                await saved_media.run_download(
+                    job_id=job_id,
+                    user_id=user_id,
+                    media_id=saved_media_id,
+                    log=log,
+                    retry_transient=_retry_transient,
+                    check_cancel=_check_cancel,
                 )
-            await saved_media.run_download(
-                job_id=job_id,
-                user_id=user_id,
-                media_id=saved_media_id,
-                log=log,
-                retry_transient=_retry_transient,
-                check_cancel=_check_cancel,
-            )
-        elif job_type == "DELETE_KNOWLEDGE":
-            from . import knowledge_deletion
+            elif job_type == "DELETE_KNOWLEDGE":
+                from . import knowledge_deletion
 
-            if not deletion_target_type or not deletion_target_id:
-                raise PermanentError.public(
-                    "KNOWLEDGE_DELETION_TARGET_MISSING",
-                    "O destino da exclusão não foi encontrado.",
+                if not deletion_target_type or not deletion_target_id:
+                    raise PermanentError.public(
+                        "KNOWLEDGE_DELETION_TARGET_MISSING",
+                        "O destino da exclusão não foi encontrado.",
+                    )
+                await knowledge_deletion.run(
+                    job_id=job_id,
+                    user_id=user_id,
+                    target_type=str(deletion_target_type),
+                    target_id=str(deletion_target_id),
+                    log=log,
                 )
-            await knowledge_deletion.run(
-                job_id=job_id,
-                user_id=user_id,
-                target_type=str(deletion_target_type),
-                target_id=str(deletion_target_id),
-                log=log,
-            )
-        elif job_type == "SCRAPE_WEB":
-            from . import scrape_pipeline
+            elif job_type == "SCRAPE_WEB":
+                from . import scrape_pipeline
 
-            await scrape_pipeline.run(
-                job_id=job_id,
-                user_id=user_id,
-                source_url=source_url,
-                refresh_transcript_id=refresh_transcript_id,
-                log=log,
-            )
-        elif job_type == "UPLOAD_AND_TRANSCRIBE":
-            await _run_upload_pipeline(
-                job_id=job_id,
-                user_id=user_id,
-                source_url=source_url,
-                saved_media_id=saved_media_id,
-                log=log,
-            )
-        elif job_type == "UPLOAD_AND_ANALYZE_IMAGE":
-            await _run_image_pipeline(
-                job_id=job_id, user_id=user_id, source_url=source_url, log=log
-            )
-        elif job_type == "UPLOAD_AND_ANALYZE_DOCUMENT":
-            await _run_document_pipeline(
-                job_id=job_id, user_id=user_id, source_url=source_url, log=log
-            )
-        elif job_type == "ANALYZE_X":
-            await _run_x_analysis_pipeline(
-                job_id=job_id,
-                user_id=user_id,
-                source_url=source_url,
-                refresh_transcript_id=refresh_transcript_id,
-                log=log,
-            )
-        else:
-            await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
+                await scrape_pipeline.run(
+                    job_id=job_id,
+                    user_id=user_id,
+                    source_url=source_url,
+                    refresh_transcript_id=refresh_transcript_id,
+                    log=log,
+                )
+            elif job_type == "UPLOAD_AND_TRANSCRIBE":
+                await _run_upload_pipeline(
+                    job_id=job_id,
+                    user_id=user_id,
+                    source_url=source_url,
+                    saved_media_id=saved_media_id,
+                    log=log,
+                )
+            elif job_type == "UPLOAD_AND_ANALYZE_IMAGE":
+                await _run_image_pipeline(
+                    job_id=job_id, user_id=user_id, source_url=source_url, log=log
+                )
+            elif job_type == "UPLOAD_AND_ANALYZE_DOCUMENT":
+                await _run_document_pipeline(
+                    job_id=job_id, user_id=user_id, source_url=source_url, log=log
+                )
+            elif job_type == "ANALYZE_X":
+                await _run_x_analysis_pipeline(
+                    job_id=job_id,
+                    user_id=user_id,
+                    source_url=source_url,
+                    refresh_transcript_id=refresh_transcript_id,
+                    log=log,
+                )
+            else:
+                await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
     except CancelledException:
         log.info("job-cancelled-mid-pipeline")
         # DB já foi atualizado para CANCELLED pelo endpoint. Só publica evento final.
@@ -230,7 +234,12 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         if refresh_transcript_id:
             await db.clear_source_refresh_check(user_id, refresh_transcript_id)
     except DeferredJobError as e:
-        log.info("job-deferred", retry_after_seconds=e.retry_after_seconds)
+        diagnostic = (
+            _error_diagnostic(e.__cause__, "EXTERNAL_INGESTION_DEFERRED")
+            if isinstance(e.__cause__, external_retry.ExternalTransientError)
+            else {}
+        )
+        log.info("job-deferred", retry_after_seconds=e.retry_after_seconds, **diagnostic)
         event_id, created_at = await job_defer_db.defer_job_lease(
             job_id,
             user_id,
@@ -1767,10 +1776,10 @@ async def _retry_transient[T](
     botocore BotoCoreError/ClientError). OpenRouter usa `_retry_transient_or`
     separado porque distingue auth (permanente) de 5xx (transiente).
 
-    Erros "amigáveis" determinísticos (antibot, geo, 403) viram PermanentError
-    na hora. Rate-limit (429) **retenta** com backoff maior e só vira
-    PermanentError após esgotar as tentativas — para o path de legendas ainda
-    poder fazer fallback para a transcrição remota.
+    Deterministic access blocks become permanent errors immediately.
+    Rate limits and exhausted transport failures remain transient for subtitle
+    fallback or bounded durable recovery; cooldowns above five seconds yield
+    worker capacity instead of sleeping through a long upstream outage.
 
     `immediate_passthrough`: quando dado e casa com a exceção, ela é
     relançada CRUA (sem virar PermanentError, sem consumir tentativas) —
@@ -1792,14 +1801,24 @@ async def _retry_transient[T](
             if friendly and not _is_rate_limit_error(e):
                 raise PermanentError.public("EXTERNAL_DOWNLOAD_BLOCKED", friendly) from e
             last_exc = e
+            temporary = external_retry.as_transient(e)
+            if temporary and (temporary.retry_after or 0) > external_retry.MAX_LOCAL_WAIT_SECONDS:
+                raise temporary from e
             if attempt < tries - 1:
                 delay = base_delay * (2**attempt)
                 if _is_rate_limit_error(e):
                     # YouTube 429: espera um pouco mais entre tentativas.
                     delay = max(delay, 5.0) * (attempt + 1)
+                if temporary and temporary.retry_after is not None:
+                    delay = max(delay, temporary.retry_after)
+                if delay > external_retry.MAX_LOCAL_WAIT_SECONDS and temporary:
+                    raise temporary from e
                 await asyncio.sleep(delay)
             continue
     assert last_exc is not None
+    temporary = external_retry.as_transient(last_exc)
+    if temporary:
+        raise temporary from last_exc
     friendly = _friendly_external_error(last_exc)
     if friendly:
         raise PermanentError.public("EXTERNAL_DOWNLOAD_BLOCKED", friendly) from last_exc

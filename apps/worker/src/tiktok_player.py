@@ -11,6 +11,8 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
+from .external_retry import parse_retry_after
+
 PLAYER_ITEMS_URL = "https://www.tiktok.com/player/api/v1/items"
 OEMBED_URL = "https://www.tiktok.com/oembed"
 MAX_METADATA_BYTES = 2 * 1024 * 1024
@@ -28,6 +30,13 @@ _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 
 class TikTokPlayerError(RuntimeError):
     """A sanitized official-player fallback failure safe for operational logs."""
+
+    def __init__(
+        self, detail: str, *, status_code: int | None = None, retry_after: float | None = None
+    ) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 @dataclass(frozen=True)
@@ -62,7 +71,9 @@ def _json_object(response: requests.Response, *, operation: str) -> dict[str, An
     if response.status_code != 200:
         response.close()
         raise TikTokPlayerError(
-            f"TikTok player fallback rejected {operation} (HTTP {response.status_code})."
+            f"TikTok player fallback rejected {operation} (HTTP {response.status_code}).",
+            status_code=response.status_code,
+            retry_after=parse_retry_after(response.headers.get("Retry-After")),
         )
     declared = _content_length(response.headers)
     if declared is not None and declared > MAX_METADATA_BYTES:
@@ -287,7 +298,11 @@ def download_media_sync(
         if response is None or response.status_code not in (200, 206):
             status = response.status_code if response is not None else 0
             raise TikTokPlayerError(
-                f"TikTok player fallback could not download media (HTTP {status})."
+                f"TikTok player fallback could not download media (HTTP {status}).",
+                status_code=status,
+                retry_after=parse_retry_after(response.headers.get("Retry-After"))
+                if response is not None
+                else None,
             )
         content_type = response.headers.get("content-type", "").lower().split(";", 1)[0]
         if not (
@@ -313,6 +328,7 @@ def download_media_sync(
         if total == 0:
             raise TikTokPlayerError("TikTok player fallback returned empty media.")
     except requests.RequestException as exc:
+        destination.unlink(missing_ok=True)
         raise TikTokPlayerError(
             "TikTok player fallback could not download official media."
         ) from exc

@@ -26,6 +26,7 @@ import structlog
 import trafilatura
 from trafilatura.metadata import Document
 
+from .external_retry import ExternalTransientError, is_temporary_status, parse_retry_after
 from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
@@ -62,10 +63,10 @@ class RobotsBlockedError(ScraperError):
 
 
 class FetchBlockedError(ScraperError):
-    """Site retornou 403/429/4xx OU URL aponta pra host privado/interno."""
+    """Site retornou 403/4xx permanente OU URL aponta pra host privado/interno."""
 
 
-class FetchTransientError(ScraperError):
+class FetchTransientError(ExternalTransientError, ScraperError):
     """Timeout, 5xx, rede — retry vale a pena."""
 
 
@@ -92,6 +93,8 @@ def _resolve_and_validate(host: str) -> set[str]:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as e:
+        if e.errno == socket.EAI_AGAIN:
+            raise FetchTransientError("Temporary DNS resolution failure.") from e
         raise FetchBlockedError(f"Host não resolve: {host}") from e
     ips: set[str] = set()
     for info in infos:
@@ -189,7 +192,7 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
         FetchTransientError: timeout/5xx (retry)
         EmptyContentError: conteúdo < MIN_CONTENT_CHARS
     """
-    expected_ips = _assert_public_host(url)
+    expected_ips = await asyncio.to_thread(_assert_public_host, url)
 
     # Lê admin_email opcional pra header `From:` (RFC 7231 §5.5.1 — boa-prática
     # pra sites identificarem o operador do bot). Best-effort: se settings DB
@@ -292,19 +295,23 @@ async def _fetch_with_manual_redirects(
                 if not location:
                     raise FetchBlockedError("Redirect sem Location.")
                 next_url = urljoin(current, location)
-                current_expected = _assert_public_host(next_url)
+                current_expected = await asyncio.to_thread(_assert_public_host, next_url)
                 current = next_url
                 continue
 
-            if res.status_code in (403, 429):
+            if is_temporary_status(res.status_code):
+                raise FetchTransientError(
+                    "External page temporarily unavailable.",
+                    status_code=res.status_code,
+                    retry_after=parse_retry_after(res.headers.get("Retry-After")),
+                )
+            if res.status_code == 403:
                 raise FetchBlockedError(
                     f"Site bloqueou acesso (HTTP {res.status_code}). "
                     "Sites com proteção anti-bot não são suportados."
                 )
             if 400 <= res.status_code < 500:
                 raise FetchBlockedError(f"Site retornou HTTP {res.status_code}.")
-            if 500 <= res.status_code < 600:
-                raise FetchTransientError(f"Servidor retornou HTTP {res.status_code}.")
 
             content_length = res.headers.get("Content-Length")
             if content_length and int(content_length) > MAX_BODY_BYTES:
@@ -361,7 +368,7 @@ async def _check_robots(url: str) -> None:
             raise FetchBlockedError("URL malformada.")
         robots_url = f"{parsed.scheme}://{parsed.hostname}/robots.txt"
         # Re-valida o host (retorna IPs pra detecção pós-GET de DNS rebinding)
-        robots_ips = _assert_public_host(robots_url)
+        robots_ips = await asyncio.to_thread(_assert_public_host, robots_url)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0),
             follow_redirects=False,
@@ -401,6 +408,3 @@ __all__ = [
     "FetchTransientError",
     "EmptyContentError",
 ]
-
-# Silencia warning de import unused (asyncio mantido pra uso futuro de gather)
-_ = asyncio
