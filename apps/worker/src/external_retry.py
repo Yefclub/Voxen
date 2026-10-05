@@ -73,10 +73,22 @@ def as_transient(exc: BaseException) -> ExternalTransientError | None:
             break
         if isinstance(current, ExternalTransientError):
             return current
+        # DownloadError stores the original yt-dlp networking error in exc_info
+        # rather than chaining it with __cause__. Inspect it before string fallback.
+        exc_info = getattr(current, "exc_info", None)
+        if isinstance(exc_info, tuple) and len(exc_info) >= 2:
+            wrapped = exc_info[1]
+            if isinstance(wrapped, BaseException) and wrapped is not current:
+                current = wrapped
+                continue
         response = getattr(current, "response", None)
         status = getattr(current, "status_code", None)
         if status is None:
+            status = getattr(current, "status", None)
+        if status is None:
             status = getattr(response, "status_code", None)
+        if status is None:
+            status = getattr(response, "status", None)
         if isinstance(status, int):
             if not is_temporary_status(status):
                 return None

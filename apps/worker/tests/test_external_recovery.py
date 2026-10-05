@@ -3,12 +3,15 @@
 import socket
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 import requests
 import yt_dlp.utils
+from yt_dlp.networking.common import Response as YtdlpResponse
+from yt_dlp.networking.exceptions import HTTPError as YtdlpHTTPError
 
 from src import external_retry, pipeline, scrape_pipeline, scraper, tiktok_ingestion, tiktok_player
 from src.pipeline_errors import DeferredJobError, PermanentError
@@ -179,3 +182,45 @@ async def test_nonresponding_web_fetch_has_total_deadline(monkeypatch) -> None:
     with pytest.raises(external_retry.ExternalTransientError):
         await scrape_pipeline._scrape_with_retry("https://example.com", tries=1)
     assert cancelled.is_set()
+
+
+def _ytdlp_http_error(status: int, *, wrapped: bool) -> BaseException:
+    response = YtdlpResponse(
+        BytesIO(b"private provider body"),
+        "https://example.com?token=private-secret",
+        {"Retry-After": "120"},
+        status=status,
+    )
+    error = YtdlpHTTPError(response)
+    return (
+        yt_dlp.utils.DownloadError(
+            "HTTP Error: upstream failure", exc_info=(type(error), error, None)
+        )
+        if wrapped
+        else error
+    )
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+@pytest.mark.parametrize("status", [403, 429, 503])
+def test_real_ytdlp_http_errors_preserve_structured_cooldown(status, wrapped) -> None:
+    temporary = external_retry.as_transient(_ytdlp_http_error(status, wrapped=wrapped))
+    if status == 403:
+        assert temporary is None
+    else:
+        assert temporary is not None
+        assert temporary.status_code == status
+        assert temporary.retry_after == 120
+        assert "private" not in str(temporary)
+
+
+async def test_wrapped_ytdlp_cooldown_defers_before_local_retry(monkeypatch) -> None:
+    call = AsyncMock(side_effect=_ytdlp_http_error(429, wrapped=True))
+    sleep = AsyncMock()
+    monkeypatch.setattr(pipeline.asyncio, "sleep", sleep)
+    with pytest.raises(DeferredJobError) as caught:
+        async with external_retry.recover(attempt=1, max_attempts=3):
+            await pipeline._retry_transient(call)
+    call.assert_awaited_once()
+    sleep.assert_not_awaited()
+    assert caught.value.retry_after_seconds == 120
