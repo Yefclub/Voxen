@@ -371,50 +371,35 @@ jobs:
           docker run -d --name smoke-redis --network voxen-smoke --network-alias redis \
             redis:7-alpine redis-server --requirepass dev
 
-          docker run -d --name smoke-minio --network voxen-smoke --network-alias minio \
-            -e MINIO_ROOT_USER=voxen \
-            -e MINIO_ROOT_PASSWORD=voxen_dev_minio_password \
-            quay.io/minio/minio:latest server /data
-
           for i in $(seq 1 30); do
             docker exec smoke-postgres pg_isready -U voxen -d voxen && break
             test "$i" != 30
             sleep 2
           done
 
-          for i in $(seq 1 30); do
-            docker exec smoke-redis redis-cli -a dev ping | grep -q PONG && break
-            test "$i" != 30
-            sleep 2
-          done
-
-          for i in $(seq 1 30); do
-            docker run --rm --network voxen-smoke curlimages/curl:latest \
-              -fsS http://minio:9000/minio/health/ready && break
-            test "$i" != 30
-            sleep 2
-          done
-
-          docker run --rm --network voxen-smoke --entrypoint sh quay.io/minio/mc:latest -c \
-            'mc alias set voxen http://minio:9000 voxen voxen_dev_minio_password && mc mb --ignore-existing voxen/voxen-transcripts'
-
           docker run -d --name voxen-easypanel --network voxen-smoke -p 3000:3000 \
+            --mount type=volume,source=voxen-smoke-storage,target=/data/storage \
             -e APP_BASE_URL=http://localhost:3000 \
             -e DATABASE_URL=postgresql://voxen:dev@postgres:5432/voxen \
             -e REDIS_URL=redis://:dev@redis:6379/0 \
             -e BETTER_AUTH_SECRET=ci-secret-not-for-production-use-at-least-32-bytes-yes-this-is-long-enough \
             -e MASTER_KEY=dm94ZW5fY2lfbWFzdGVyX2tleV8zMl9ieXRlcyEhISE= \
-            -e S3_ENDPOINT=http://minio:9000 \
-            -e S3_ACCESS_KEY=voxen \
-            -e S3_SECRET_KEY=voxen_dev_minio_password \
-            -e S3_BUCKET=voxen-transcripts \
-            -e S3_REGION=us-east-1 \
-            -e S3_FORCE_PATH_STYLE=true \
+            -e STORAGE_DRIVER=local \
+            -e STORAGE_LOCAL_PATH=/data/storage \
             voxen-easypanel:ci
 
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3000/health/deep; then
-              exit 0
+              docker exec voxen-easypanel sh -c 'printf "volume-persistence" > /data/storage/ci-smoke-marker'
+              docker restart voxen-easypanel
+              for retry in $(seq 1 60); do
+                if curl -fsS http://localhost:3000/health/deep; then
+                  docker exec voxen-easypanel sh -c 'test "$(cat /data/storage/ci-smoke-marker)" = "volume-persistence" && rm /data/storage/ci-smoke-marker'
+                  exit 0
+                fi
+                sleep 3
+              done
+              break
             fi
             docker logs --tail=80 voxen-easypanel
             sleep 3

@@ -17,6 +17,8 @@ specification covers the fault scenarios verified during the ingestion audit.
 - The system shall limit automatic ingestion recovery to three claimed attempts.
 - The system shall use patched source-processing dependencies for security
   advisories detected by the delivery checks, without changing their major versions.
+- The default single-container deployment validation shall exercise storage
+  persistence on a local volume without requiring an external object store.
 
 ### Event-driven
 
@@ -62,6 +64,7 @@ specification covers the fault scenarios verified during the ingestion audit.
       existing regression tests.
 - [ ] Production deployment and reprocessing validate the reported failed item.
 - [ ] Security checks verify the refreshed network and document dependencies.
+- [ ] The combined-image smoke check verifies local-volume storage and restart.
 
 ## Out of scope
 
@@ -76,3 +79,6 @@ Long waits release the worker slot instead of delaying unrelated ingestion.
 
 > 2026-10-05: Include compatible security updates required by the delivery scans
 > for existing network and document-processing dependencies.
+>
+> 2026-10-05: Align the combined-image smoke check with default local storage
+> after the optional object-store registry rejected unauthenticated image pulls.
