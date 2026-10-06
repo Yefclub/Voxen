@@ -2,9 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { TranscriptEnrichment } from '../../prisma-generated/client';
 import { db } from '../lib/db';
-import { deleteBrainForSource } from '../lib/brain';
-import { reindexTranscriptEnrichmentBrain } from '../lib/brain-enrichments';
-import { invalidateGraphCache } from '../lib/graph-cache';
+import { enrichmentContract, type EnrichmentParent } from '../lib/enrichment-contract';
+import { EnrichmentCommandError, mutateEnrichment } from '../lib/enrichment-commands';
 import {
   enqueueKnowledgeDeletion,
   KnowledgeDeletionConflictError,
@@ -39,7 +38,7 @@ export function registerTranscriptEnrichmentTools(
     async (args) => {
       const transcript = await db.transcript.findFirst({
         where: { id: args.transcript_id, userId, status: { not: 'TRASH' } },
-        select: { id: true, sourceVersion: true, sourceChecksum: true },
+        select: { id: true, sourceVersion: true, sourceChecksum: true, status: true },
       });
       if (!transcript) return fail('Transcrição não encontrada (ou fora do escopo do token).');
       const enrichments = await db.transcriptEnrichment.findMany({
@@ -52,6 +51,7 @@ export function registerTranscriptEnrichmentTools(
           serializeTranscriptEnrichment(
             { ...item, staleReason: getTranscriptEnrichmentStaleReason(item, transcript) },
             publicOrigin,
+            transcript,
           ),
         ),
       });
@@ -70,12 +70,16 @@ export function registerTranscriptEnrichmentTools(
     async (args) => {
       const enrichment = await db.transcriptEnrichment.findFirst({
         where: { id: args.enrichment_id, userId, transcript: { userId, status: { not: 'TRASH' } } },
-        include: { transcript: { select: { sourceVersion: true, sourceChecksum: true } } },
+        include: {
+          transcript: { select: { sourceVersion: true, sourceChecksum: true, status: true } },
+        },
       });
       if (!enrichment) return fail('Contexto adicional não encontrado.');
       const staleReason = getTranscriptEnrichmentStaleReason(enrichment, enrichment.transcript);
       const current = { ...enrichment, staleReason };
-      return ok({ enrichment: serializeTranscriptEnrichment(current, publicOrigin) });
+      return ok({
+        enrichment: serializeTranscriptEnrichment(current, publicOrigin, enrichment.transcript),
+      });
     },
   );
 }
@@ -123,9 +127,11 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
       title: 'Revisar contexto adicional',
       description:
         'Aceita ou dispensa uma pesquisa externa. Aceitar inclui o contexto citado na busca e ' +
-        'no Brain; dispensar remove somente seus derivados.',
+        'no Brain; dispensar remove somente seus derivados. Leia primeiro e envie expected_revision e expected_checksum; conflitos exigem nova leitura.',
       inputSchema: {
         enrichment_id: z.string().min(1),
+        expected_revision: z.number().int().min(1),
+        expected_checksum: z.string().regex(/^[a-f0-9]{64}$/),
         action: z.enum(['accept', 'dismiss', 'cancel']),
       },
       annotations: {
@@ -137,51 +143,25 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
       },
     },
     async (args) => {
-      const existing = await db.transcriptEnrichment.findFirst({
-        where: { id: args.enrichment_id, userId },
-        include: { transcript: { select: { sourceVersion: true, sourceChecksum: true } } },
-      });
-      if (!existing) return fail('Contexto adicional não encontrado.');
-      if (args.action === 'cancel') {
-        if (!['PENDING', 'RUNNING', 'RETRY'].includes(existing.status)) {
-          return fail('A execução já foi concluída.');
-        }
-        const updated = await db.transcriptEnrichment.update({
-          where: { id: existing.id },
-          data: { cancelRequestedAt: new Date() },
+      try {
+        const { enrichment: updated, parent } = await mutateEnrichment({
+          userId,
+          enrichmentId: args.enrichment_id,
+          action: args.action,
+          expectedRevision: args.expected_revision,
+          expectedChecksum: args.expected_checksum,
         });
-        return ok({ id: updated.id, status: updated.status, cancelRequested: true });
-      }
-      if (args.action === 'accept') {
-        if (existing.status !== 'READY') return fail('O contexto ainda não está pronto.');
-        const staleReason = getTranscriptEnrichmentStaleReason(existing, existing.transcript);
-        if (staleReason) {
-          if (!existing.staleReason) {
-            await db.transcriptEnrichment.update({
-              where: { id: existing.id },
-              data: { staleReason },
-            });
-          }
-          return fail('O contexto está desatualizado.');
-        }
-        if (normalizeTranscriptEnrichmentCitations(existing.citations).length === 0) {
-          return fail('O contexto não possui citações utilizáveis.');
-        }
-        const updated = await db.transcriptEnrichment.update({
-          where: { id: existing.id },
-          data: { reviewState: 'ACCEPTED', acceptedAt: new Date(), dismissedAt: null },
+        return ok({
+          id: updated.id,
+          status: updated.status,
+          reviewState: updated.reviewState,
+          cancelRequested: Boolean(updated.cancelRequestedAt),
+          ...enrichmentContract(updated, parent),
         });
-        await reindexTranscriptEnrichmentBrain(userId, updated.id);
-        await invalidateGraphCache(userId);
-        return ok({ id: updated.id, status: updated.status, reviewState: updated.reviewState });
+      } catch (error) {
+        if (error instanceof EnrichmentCommandError) return fail(error.message);
+        throw error;
       }
-      const updated = await db.transcriptEnrichment.update({
-        where: { id: existing.id },
-        data: { reviewState: 'DISMISSED', dismissedAt: new Date(), acceptedAt: null },
-      });
-      await deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', updated.id);
-      await invalidateGraphCache(userId);
-      return ok({ id: updated.id, status: updated.status, reviewState: updated.reviewState });
     },
   );
 
@@ -189,9 +169,12 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
     'voxen_edit_transcript_enrichment',
     {
       title: 'Editar contexto adicional',
-      description: 'Edita título e Markdown, preservando as citações e a identidade externa.',
+      description:
+        'Edita título e Markdown, preservando citações. Leia primeiro e envie expected_revision e expected_checksum; conflitos exigem nova leitura.',
       inputSchema: {
         enrichment_id: z.string().min(1),
+        expected_revision: z.number().int().min(1),
+        expected_checksum: z.string().regex(/^[a-f0-9]{64}$/),
         title: z.string().trim().min(1).max(300),
         content: z.string().trim().min(1).max(200_000),
       },
@@ -204,19 +187,26 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
       },
     },
     async (args) => {
-      const existing = await db.transcriptEnrichment.findFirst({
-        where: { id: args.enrichment_id, userId, status: 'READY' },
-      });
-      if (!existing) return fail('Contexto adicional pronto não encontrado.');
-      const updated = await db.transcriptEnrichment.update({
-        where: { id: existing.id },
-        data: { title: args.title, content: args.content, editedAt: new Date() },
-      });
-      if (updated.reviewState === 'ACCEPTED') {
-        await reindexTranscriptEnrichmentBrain(userId, updated.id);
-        await invalidateGraphCache(userId);
+      try {
+        const { enrichment: updated, parent } = await mutateEnrichment({
+          userId,
+          enrichmentId: args.enrichment_id,
+          action: 'edit',
+          title: args.title,
+          content: args.content,
+          expectedRevision: args.expected_revision,
+          expectedChecksum: args.expected_checksum,
+        });
+        return ok({
+          id: updated.id,
+          title: updated.title,
+          reviewState: updated.reviewState,
+          ...enrichmentContract(updated, parent),
+        });
+      } catch (error) {
+        if (error instanceof EnrichmentCommandError) return fail(error.message);
+        throw error;
       }
-      return ok({ id: updated.id, title: updated.title, reviewState: updated.reviewState });
     },
   );
 
@@ -272,8 +262,10 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
 function serializeTranscriptEnrichment(
   item: TranscriptEnrichment,
   publicOrigin: string,
+  parent: EnrichmentParent,
 ): Record<string, unknown> {
   return {
+    ...enrichmentContract(item, parent),
     id: item.id,
     transcriptId: item.transcriptId,
     type: item.type,

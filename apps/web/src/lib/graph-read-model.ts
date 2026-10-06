@@ -1,5 +1,6 @@
 import type { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import { filterAccessibleBrainNodes } from './brain-source-visibility';
 import {
   FULL_EDGE_LIMIT,
   FULL_NODE_LIMIT,
@@ -34,6 +35,7 @@ export interface GraphReadNode {
     | null;
   sourceId: string | null;
   transcriptId?: string;
+  enrichmentRevision?: number;
   weight: number;
   updatedAt: string;
 }
@@ -115,6 +117,19 @@ export async function readGraphSlice(input: {
   const bounded = focusId
     ? await readFocusedRecords(userId, focusId, hops, input.includeArchived ?? false)
     : await readRepresentativeRecords(userId);
+  const enrichmentNodes = bounded.nodes.filter((node) => node.sourceType === 'EXTERNAL_ENRICHMENT');
+  const current = new Set(
+    (await filterAccessibleBrainNodes(userId, enrichmentNodes, input.includeArchived)).map(
+      (node) => node.id,
+    ),
+  );
+  bounded.nodes = bounded.nodes.filter(
+    (node) => node.sourceType !== 'EXTERNAL_ENRICHMENT' || current.has(node.id),
+  );
+  const visible = new Set(bounded.nodes.map((node) => node.id));
+  bounded.edges = bounded.edges.filter(
+    (edge) => visible.has(edge.fromNodeId) && visible.has(edge.toNodeId),
+  );
   const degree = new Map<string, number>();
   for (const edge of bounded.edges) {
     degree.set(edge.fromNodeId, (degree.get(edge.fromNodeId) ?? 0) + 1);
@@ -267,6 +282,13 @@ export function toGraphReadNode(node: RawNode, degree = 0): GraphReadNode {
     sourceType: node.sourceType,
     sourceId: node.sourceId,
     transcriptId: graphTranscriptId(node),
+    ...(node.sourceType === 'EXTERNAL_ENRICHMENT' &&
+    node.metadata &&
+    typeof node.metadata === 'object' &&
+    'enrichmentRevision' in node.metadata &&
+    typeof node.metadata.enrichmentRevision === 'number'
+      ? { enrichmentRevision: node.metadata.enrichmentRevision }
+      : {}),
     weight: 1 + Math.min(degree, 8),
     updatedAt: node.updatedAt.toISOString(),
   };

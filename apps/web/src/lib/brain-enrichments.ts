@@ -36,6 +36,7 @@ export async function reindexTranscriptEnrichmentBrain(
     },
     select: {
       id: true,
+      revision: true,
       title: true,
       content: true,
       citations: true,
@@ -59,6 +60,7 @@ export async function reindexTranscriptEnrichmentBrain(
     sourceId: enrichment.id,
     metadata: {
       authority: 'external-derived',
+      enrichmentRevision: enrichment.revision,
       transcriptId: enrichment.transcriptId,
       citations: { items: enrichment.citations },
       brainIndexVersion: BRAIN_INDEX_VERSION,
@@ -101,6 +103,7 @@ export async function reindexTranscriptEnrichmentBrain(
   const remainsCurrent = await db.transcriptEnrichment.findFirst({
     where: {
       id: enrichment.id,
+      revision: enrichment.revision,
       userId,
       status: 'READY',
       reviewState: 'ACCEPTED',

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { createMcpToken } from '../src/lib/mcp-tokens';
@@ -8,7 +8,7 @@ describe.skipIf(!process.env.DATABASE_URL)('bounded hub aggregation', () => {
     foreignId = '',
     token = '';
   const count = 20_000;
-  beforeAll(async () => {
+  async function seedGraph(): Promise<void> {
     ownerId = (
       await db.user.create({
         data: {
@@ -67,11 +67,12 @@ describe.skipIf(!process.env.DATABASE_URL)('bounded hub aggregation', () => {
         kind: 'RELATED_TO',
       })),
     });
-  });
+  }
   afterAll(async () => {
     await db.user.deleteMany({ where: { id: { in: [ownerId, foreignId] } } });
   });
   test('20k nodes/40k edges respect the existing SQL deadline and count valid endpoints exactly', async () => {
+    await seedGraph();
     const response = await app.fetch(
       new Request('http://localhost/mcp', {
         method: 'POST',
@@ -105,5 +106,5 @@ describe.skipIf(!process.env.DATABASE_URL)('bounded hub aggregation', () => {
         .map((h) => h.id)
         .sort(),
     );
-  }, 10_000);
+  }, 30_000);
 });

@@ -1,5 +1,16 @@
 import { z } from 'zod';
+const concurrency = {
+  revision: z.number().int().min(1),
+  checksum: z.string().regex(/^[a-f0-9]{64}$/),
+  projection: z.object({
+    state: z.enum(['PENDING', 'SYNCED']),
+    revision: z.number().int(),
+    appliedRevision: z.number().int(),
+    errorCode: z.string().nullable(),
+  }),
+};
 const enrichment = z.object({
+  ...concurrency,
   id: z.string(),
   transcriptId: z.string(),
   type: z.string(),
@@ -31,12 +42,18 @@ export const MCP_ENRICHMENT_OUTPUT_SHAPES = {
     reviewState: z.string(),
   },
   voxen_review_transcript_enrichment: {
+    ...concurrency,
     id: z.string(),
     status: z.string(),
     cancelRequested: z.boolean().optional(),
     reviewState: z.string().optional(),
   },
-  voxen_edit_transcript_enrichment: { id: z.string(), title: z.string(), reviewState: z.string() },
+  voxen_edit_transcript_enrichment: {
+    ...concurrency,
+    id: z.string(),
+    title: z.string(),
+    reviewState: z.string(),
+  },
   voxen_delete_transcript_enrichment: {
     id: z.string(),
     title: z.string(),

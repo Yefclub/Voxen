@@ -181,8 +181,10 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   }, [data?.transcript.sourceRefreshStatus, refresh]);
 
   useEffect(() => {
-    const active = enrichmentsData?.enrichments.some((item) =>
-      ['PENDING', 'RUNNING', 'RETRY'].includes(item.status),
+    const active = enrichmentsData?.enrichments.some(
+      (item) =>
+        ['PENDING', 'RUNNING', 'RETRY'].includes(item.status) ||
+        item.projection.state === 'PENDING',
     );
     if (!active) return;
     const timer = window.setInterval(() => void refreshEnrichments(), 5_000);
@@ -214,6 +216,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       toast.error(
         error instanceof ApiError ? error.message : translate('library.additionalContextError'),
       );
+      if (error instanceof ApiError && error.status === 409) await refreshEnrichments();
       throw error;
     }
   }

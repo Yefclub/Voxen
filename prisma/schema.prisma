@@ -1506,48 +1506,56 @@ enum TranscriptEnrichmentTrigger {
 }
 
 model TranscriptEnrichment {
-  id                String                          @id @default(cuid())
-  userId            String
-  transcriptId      String
-  configRevisionId  String?
-  runKey            String
-  type              TranscriptEnrichmentType        @default(WEB_RESEARCH)
-  status            TranscriptEnrichmentStatus      @default(PENDING)
-  reviewState       TranscriptEnrichmentReviewState @default(SUGGESTED)
-  trigger           TranscriptEnrichmentTrigger
-  title             String                          @default("")
-  content           String                          @default("") @db.Text
-  citations         Json                            @default("[]")
-  queries           Json                            @default("[]")
-  rationale         String?                         @db.Text
-  noResearchReason  String?                         @db.Text
-  sourceVersion     Int                             @default(0)
-  sourceChecksum    String?
-  model             String?
-  costUsd           Decimal?                        @db.Decimal(10, 6)
-  tokensIn          Int                             @default(0)
-  tokensOut         Int                             @default(0)
-  searchCallCount   Int                             @default(0)
-  searchResultCount Int                             @default(0)
-  attempt           Int                             @default(0)
-  nextAttemptAt     DateTime?
-  startedAt         DateTime?
-  generatedAt       DateTime?
-  checkedAt         DateTime?
-  expiresAt         DateTime?
-  acceptedAt        DateTime?
-  dismissedAt       DateTime?
-  editedAt          DateTime?
-  cancelRequestedAt DateTime?
-  staleReason       String?                         @db.Text
-  lastError         String?                         @db.Text
-  createdAt         DateTime                        @default(now())
-  updatedAt         DateTime                        @default(now()) @updatedAt
-  user              User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript        Transcript                      @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
-  configRevision    ConfigRevision?                 @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+  id                           String                          @id @default(cuid())
+  userId                       String
+  transcriptId                 String
+  configRevisionId             String?
+  runKey                       String
+  type                         TranscriptEnrichmentType        @default(WEB_RESEARCH)
+  status                       TranscriptEnrichmentStatus      @default(PENDING)
+  reviewState                  TranscriptEnrichmentReviewState @default(SUGGESTED)
+  trigger                      TranscriptEnrichmentTrigger
+  title                        String                          @default("")
+  content                      String                          @default("") @db.Text
+  citations                    Json                            @default("[]")
+  queries                      Json                            @default("[]")
+  rationale                    String?                         @db.Text
+  noResearchReason             String?                         @db.Text
+  sourceVersion                Int                             @default(0)
+  sourceChecksum               String?
+  model                        String?
+  costUsd                      Decimal?                        @db.Decimal(10, 6)
+  tokensIn                     Int                             @default(0)
+  tokensOut                    Int                             @default(0)
+  searchCallCount              Int                             @default(0)
+  searchResultCount            Int                             @default(0)
+  attempt                      Int                             @default(0)
+  nextAttemptAt                DateTime?
+  startedAt                    DateTime?
+  generatedAt                  DateTime?
+  checkedAt                    DateTime?
+  expiresAt                    DateTime?
+  acceptedAt                   DateTime?
+  dismissedAt                  DateTime?
+  editedAt                     DateTime?
+  cancelRequestedAt            DateTime?
+  staleReason                  String?                         @db.Text
+  lastError                    String?                         @db.Text
+  revision                     Int                             @default(1)
+  brainProjectedRevision       Int                             @default(1)
+  brainProjectionPending       Boolean                         @default(false)
+  brainProjectionAttempt       Int                             @default(0)
+  brainProjectionNextAttemptAt DateTime?
+  brainProjectionErrorCode     String?
+  brainProjectedAt             DateTime?
+  createdAt                    DateTime                        @default(now())
+  updatedAt                    DateTime                        @default(now()) @updatedAt
+  user                         User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript                   Transcript                      @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  configRevision               ConfigRevision?                 @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
 
   @@unique([userId, transcriptId, runKey])
+  @@index([brainProjectionPending, brainProjectionNextAttemptAt, updatedAt], map: "TranscriptEnrichment_projection_due_idx")
   @@index([userId, transcriptId, createdAt(sort: Desc)])
   @@index([status, nextAttemptAt, createdAt])
   @@index([userId, reviewState, updatedAt(sort: Desc)])

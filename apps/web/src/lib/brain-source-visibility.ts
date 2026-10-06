@@ -117,12 +117,20 @@ export async function filterCurrentOwnedBrainSources<T extends SourceReference>(
           sourceVersion: true,
           sourceChecksum: true,
           expiresAt: true,
+          revision: true,
+          brainProjectedRevision: true,
+          brainProjectionPending: true,
           transcript: { select: { sourceVersion: true, sourceChecksum: true } },
         },
       });
       retain(
         'EXTERNAL_ENRICHMENT',
-        rows.filter((row) => !getTranscriptEnrichmentStaleReason(row, row.transcript)),
+        rows.filter(
+          (row) =>
+            !row.brainProjectionPending &&
+            row.brainProjectedRevision === row.revision &&
+            !getTranscriptEnrichmentStaleReason(row, row.transcript),
+        ),
       );
     })(),
   ]);
@@ -135,7 +143,12 @@ export async function filterCurrentOwnedBrainSources<T extends SourceReference>(
 }
 
 export async function filterAccessibleBrainNodes<
-  T extends { id: string; sourceType: BrainSourceType | null; sourceId: string | null },
+  T extends {
+    id: string;
+    sourceType: BrainSourceType | null;
+    sourceId: string | null;
+    metadata?: unknown;
+  },
 >(
   userId: string,
   nodes: T[],
@@ -152,11 +165,36 @@ export async function filterAccessibleBrainNodes<
       (source) => `${source.sourceType}:${source.sourceId}`,
     ),
   );
+  const enrichmentIds = nodes
+    .filter((node) => node.sourceType === 'EXTERNAL_ENRICHMENT' && node.sourceId)
+    .map((node) => node.sourceId!);
+  const enrichmentRevisions = new Map(
+    (enrichmentIds.length
+      ? await client.transcriptEnrichment.findMany({
+          where: { userId, id: { in: enrichmentIds } },
+          select: { id: true, revision: true },
+        })
+      : []
+    ).map((row) => [row.id, row.revision]),
+  );
+  const currentStamp = (node: T): boolean => {
+    if (node.sourceType !== 'EXTERNAL_ENRICHMENT') return true;
+    const revision = enrichmentRevisions.get(node.sourceId!);
+    const metadata =
+      node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+        ? (node.metadata as Record<string, unknown>)
+        : {};
+    return (
+      metadata.enrichmentRevision === revision ||
+      (revision === 1 && metadata.enrichmentRevision === undefined)
+    );
+  };
   return nodes.filter(
     (node) =>
-      node.sourceType === null ||
-      node.sourceType === 'MANUAL' ||
-      visible.has(`${node.sourceType}:${node.sourceId}`),
+      currentStamp(node) &&
+      (node.sourceType === null ||
+        node.sourceType === 'MANUAL' ||
+        visible.has(`${node.sourceType}:${node.sourceId}`)),
   );
 }
 
@@ -187,6 +225,10 @@ export function currentBrainNodeSourceCondition(alias: 'n' | 'f' | 't'): Prisma.
       JOIN "Transcript" source_transcript ON source_transcript.id = source_enrichment."transcriptId"
         AND source_transcript."userId" = source_enrichment."userId"
       WHERE source_enrichment.id = ${node}."sourceId" AND source_enrichment."userId" = ${node}."userId"
+        AND NOT source_enrichment."brainProjectionPending"
+        AND source_enrichment."brainProjectedRevision" = source_enrichment.revision
+        AND ((${node}.metadata -> 'enrichmentRevision') = to_jsonb(source_enrichment.revision)
+          OR (source_enrichment.revision = 1 AND NOT (${node}.metadata ? 'enrichmentRevision')))
         AND source_transcript.status = 'ACTIVE'::"ContentStatus"
         AND source_enrichment.status = 'READY' AND source_enrichment."reviewState" = 'ACCEPTED'
         AND source_enrichment."staleReason" IS NULL

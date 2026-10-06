@@ -41,6 +41,9 @@ export function mcpAgentGuidance(origin: string, locale: unknown): string {
       ? 'For note patches, preview first and apply only with the same expected_revision. Re-read after revision or source conflicts.'
       : 'Para patches de notas, gere o preview antes e aplique com a mesma expected_revision. Releia após conflitos de revisão ou fonte.',
     en
+      ? 'Before reviewing or editing research, read its revision and checksum, then pass expected_revision and expected_checksum. On conflict, read again; never overwrite unseen changes. projection.state=PENDING means graph synchronization will retry automatically.'
+      : 'Antes de revisar ou editar pesquisa, leia revision e checksum e envie expected_revision e expected_checksum. Em conflito, releia; nunca sobrescreva alterações não vistas. projection.state=PENDING indica que a sincronização do grafo será repetida automaticamente.',
+    en
       ? 'Large READ results use _mcp metadata and JSON dataChunk fragments. Repeat the same READ arguments with content_cursor=nextCursor; concatenate fragments in order and parse only when nextCursor is null. Restart if content changed.'
       : 'Resultados READ grandes usam metadados _mcp e fragmentos JSON dataChunk. Repita os mesmos argumentos READ com content_cursor=nextCursor; concatene os fragmentos em ordem e só interprete o JSON quando nextCursor for null. Reinicie se o conteúdo mudou.',
     en

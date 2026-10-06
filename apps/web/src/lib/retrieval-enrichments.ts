@@ -33,6 +33,8 @@ export async function ftsSearchTranscriptEnrichments(
       AND e."staleReason" IS NULL
       AND (e."expiresAt" IS NULL OR e."expiresAt" >= NOW())
       AND t.status = 'ACTIVE'::"ContentStatus"
+      AND e."sourceVersion" = t."sourceVersion"
+      AND e."sourceChecksum" IS NOT DISTINCT FROM t."sourceChecksum"
       AND to_tsvector('portuguese', concat_ws(E'\n\n', e.title, e.content))
           @@ websearch_to_tsquery('portuguese', ${q})
     ORDER BY rank DESC, e."updatedAt" DESC

@@ -413,3 +413,17 @@ versão automaticamente.
 - [MCP no Cursor](https://docs.cursor.com/context/model-context-protocol)
 - [Conectores customizados do Grok](https://docs.x.ai/grok/connectors)
 - [Debug e MCP Inspector](https://modelcontextprotocol.io/docs/tools/debugging)
+
+### Consistência ao revisar e editar pesquisas
+
+Leia a pesquisa imediatamente antes de revisar, cancelar ou editar. A resposta
+inclui `revision`, `checksum` e `projection`. Envie essa mesma versão em
+`expected_revision` e `expected_checksum` à ferramenta MCP de escrita. Um conflito
+exige nova leitura e uma decisão consciente; não repita uma sobrescrita sem
+conhecer a alteração. A API REST usa `expectedRevision` e `expectedChecksum`.
+
+Uma escrita bem-sucedida salva a pesquisa canônica e enfileira sua projeção no
+grafo atomicamente. `projection.state=PENDING` indica sincronização ou repetição
+automática. Evidências antigas do grafo ficam ocultas enquanto há trabalho
+pendente. Falhas de projeção não desfazem a pesquisa salva; leituras não executam
+escritas de manutenção.

@@ -20,6 +20,14 @@ export type TranscriptEnrichmentStatus =
 
 export interface TranscriptEnrichment {
   id: string;
+  revision: number;
+  checksum: string;
+  projection: {
+    state: 'PENDING' | 'SYNCED';
+    revision: number;
+    appliedRevision: number;
+    errorCode: string | null;
+  };
   status: TranscriptEnrichmentStatus;
   reviewState: 'SUGGESTED' | 'ACCEPTED' | 'DISMISSED';
   trigger: 'AUTO' | 'MANUAL' | 'MCP';
@@ -80,6 +88,10 @@ export function AdditionalContextBlock({
   t: TranslateFn;
 }): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSnapshot, setEditSnapshot] = useState<{
+    expectedRevision: number;
+    expectedChecksum: string;
+  } | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -88,8 +100,17 @@ export function AdditionalContextBlock({
   async function mutate(id: string, body: Record<string, unknown>): Promise<void> {
     setBusyId(id);
     try {
-      await onUpdate(id, body);
-      setEditingId(null);
+      const current = enrichments.find((item) => item.id === id);
+      if (!current) return;
+      const snapshot =
+        body.action === 'edit'
+          ? editSnapshot
+          : { expectedRevision: current.revision, expectedChecksum: current.checksum };
+      if (!snapshot) return;
+      await onUpdate(id, { ...body, ...snapshot });
+      if (body.action === 'edit') setEditingId(null);
+    } catch {
+      // The page reports the error; preserve the editing snapshot and unsaved draft.
     } finally {
       setBusyId(null);
     }
@@ -165,6 +186,15 @@ export function AdditionalContextBlock({
                       ? t('library.additionalContextStale')
                       : t(STATUS_KEYS[item.status])}
                   </Badge>
+                  {item.projection.state === 'PENDING' && (
+                    <Badge variant="warning" role="status">
+                      {t(
+                        item.projection.errorCode
+                          ? 'library.additionalContextProjectionRetry'
+                          : 'library.additionalContextProjectionPending',
+                      )}
+                    </Badge>
+                  )}
                   <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]">
                     {item.trigger} · {formatDateTime(new Date(item.createdAt), locale)}
                   </span>
@@ -302,9 +332,13 @@ export function AdditionalContextBlock({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={busy}
+                    disabled={busy || editing}
                     onClick={() => {
                       setEditingId(item.id);
+                      setEditSnapshot({
+                        expectedRevision: item.revision,
+                        expectedChecksum: item.checksum,
+                      });
                       setDraftTitle(item.title);
                       setDraftContent(item.content);
                     }}
