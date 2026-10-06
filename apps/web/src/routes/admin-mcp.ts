@@ -28,7 +28,7 @@ adminMcpRoutes.get('/', async (c) => {
         clientId: true,
         name: true,
         uri: true,
-        public: true,
+        tokenEndpointAuthMethod: true,
         disabled: true,
         requirePKCE: true,
         redirectUris: true,
@@ -49,6 +49,8 @@ adminMcpRoutes.get('/', async (c) => {
     oauthEnabled,
     oauthClients: oauthClients.map((client) => ({
       ...client,
+      public: client.tokenEndpointAuthMethod === 'none',
+      tokenEndpointAuthMethod: undefined,
       consentCount: client._count.oauthConsents,
       _count: undefined,
       redirectHosts: client.redirectUris.flatMap((value) => {
@@ -164,7 +166,7 @@ adminMcpRoutes.post('/oauth/clients', async (c) => {
       response_types: ['code'],
       scope: scopes.join(' '),
       require_pkce: true,
-      type: confidential ? 'web' : 'native',
+      application_type: confidential ? 'web' : 'native',
     },
   });
   await writeMcpOAuthAudit({

@@ -263,6 +263,9 @@ Com token pessoal, use uma referência secreta no servidor:
 credencial na URL. Registre a versão instalada e o resultado real; configuração
 documentada não equivale a validar a conta do cliente.
 
+O transporte MCP aceita tokens Bearer comuns. Tokens vinculados a prova, como
+DPoP, são recusados nessa interface; configure o cliente para o fluxo Bearer.
+
 ## Descoberta OAuth 2.1 e clientes manuais
 
 OAuth vem desativado por padrão. Depois de habilitado, clientes com descoberta
@@ -304,6 +307,25 @@ curl --fail-with-body "$VOXEN_URL/api/auth/oauth2/register" \
 
 Guarde o `client_id` retornado; cliente público com PKCE não tem client secret.
 O Voxen exige redirect exato e só permite HTTP para callbacks loopback.
+
+### Clientes por documento de metadados e callbacks locais
+
+O Voxen suporta o perfil MCP 2026-07-28 de documentos de clientes (CIMD). O
+cliente pode usar como identidade o URL HTTPS exato de seu documento. A
+descoberta anuncia `client_id_metadata_document_supported` e
+`authorization_response_iss_parameter_supported`; as respostas de autorização
+incluem o emissor em `iss`. O transporte fixa o endereço aprovado pelo DNS,
+aceita somente endereços públicos, recusa redirects e limita cada troca a cinco
+segundos/128 KiB. As credenciais ficam no cliente, fora dos prompts. A descoberta
+continua exigindo consentimento explícito e autorização de recurso/escopos.
+
+Callbacks HTTP loopback registrados podem variar somente a porta. Host, caminho
+e query devem coincidir com o registro; os demais redirects continuam exatos.
+A migração aditiva do Better Auth 1.7.7 e o backfill do recurso canônico preservam
+sessões, identidades de clientes, chaves e concessões de refresh existentes. O
+acesso MCP também verifica o vínculo cliente/recurso e qualquer sessão indicada
+pelo JWT. Os testes com SDKs e documentos não confirmam todas as versões de
+clientes comerciais; a validação pela conta é feita separadamente.
 
 ## Grok Web
 

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { auth, resolveMcpOAuthResource } from '../lib/auth';
+import { validateMcpOAuthRedirect } from '../lib/mcp-oauth-redirect';
 import { db } from '../lib/db';
 import { isMcpOAuthEnabled, MCP_OAUTH_SCOPES, writeMcpOAuthAudit } from '../lib/mcp-oauth';
 
@@ -87,7 +88,7 @@ mcpOAuthAccountRoutes.get('/consent-context', async (c) => {
     where: { clientId },
     select: { name: true, uri: true, icon: true, disabled: true, redirectUris: true },
   });
-  if (!client || client.disabled || !client.redirectUris.includes(redirectUri)) {
+  if (!client || client.disabled || !validateMcpOAuthRedirect(redirectUri, client.redirectUris)) {
     return c.json({ error: 'Cliente ou redirect URI OAuth inválido.' }, 400);
   }
   return c.json({

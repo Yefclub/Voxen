@@ -344,6 +344,9 @@ const port = Number(process.env.PORT ?? 3000);
 // Só em produção (entrypoint seta NODE_ENV=production): em dev/test o import de
 // `../src/index` pelos testes não deve tocar /run/voxen nem DB.
 if (process.env.NODE_ENV === 'production') {
+  const { ensureMcpOauthResourceUpgrade } = await import('./lib/mcp-oauth-upgrade');
+  const { resolveMcpOAuthResource } = await import('./lib/auth');
+  await ensureMcpOauthResourceUpgrade(resolveMcpOAuthResource());
   void import('./lib/enrichment-projection').then(({ startEnrichmentProjectionMaintenance }) =>
     startEnrichmentProjectionMaintenance(),
   );

@@ -102,7 +102,12 @@ async function verifyMcpOAuthJwt(token: string): Promise<VerifiedMcpOAuthJwt | n
       issuer: mcpOAuthIssuer(),
     });
     const userId = typeof payload.sub === 'string' ? payload.sub : null;
-    const clientId = typeof payload.azp === 'string' ? payload.azp : null;
+    const clientId =
+      typeof payload.client_id === 'string'
+        ? payload.client_id
+        : typeof payload.azp === 'string'
+          ? payload.azp
+          : null;
     const tokenId = typeof payload.jti === 'string' ? payload.jti : null;
     if (
       !userId ||
@@ -124,10 +129,13 @@ export async function authenticateMcpOAuthToken(token: string): Promise<McpOAuth
   const verified = await verifyMcpOAuthJwt(token);
   if (!verified) return null;
   const { payload, userId, clientId } = verified;
+  // This transport accepts ordinary Bearer tokens, never sender-constrained
+  // credentials without their request-bound proof. Revocation still verifies them.
+  if (payload.cnf !== undefined) return null;
   const oauthScopes = parseOAuthScopes(payload.scope);
   if (oauthScopes.length === 0) return null;
 
-  const [user, client, consent, revoked] = await Promise.all([
+  const [user, client, consent, revoked, resourceLink, session] = await Promise.all([
     db.user.findUnique({ where: { id: userId }, select: { status: true } }),
     db.oauthClient.findUnique({
       where: { clientId },
@@ -135,19 +143,32 @@ export async function authenticateMcpOAuthToken(token: string): Promise<McpOAuth
     }),
     db.oauthConsent.findFirst({
       where: { clientId, userId },
-      select: { scopes: true },
+      select: { scopes: true, resources: true },
     }),
     db.mcpOauthRevokedAccessToken.findUnique({
       where: { tokenId: verified.tokenId },
       select: { id: true },
     }),
+    db.oauthClientResource.findUnique({
+      where: { clientId_resourceId: { clientId, resourceId: resolveMcpOAuthResource() } },
+      select: { id: true },
+    }),
+    typeof payload.sid === 'string'
+      ? db.session.findFirst({
+          where: { id: payload.sid, userId, expiresAt: { gt: new Date() } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
   ]);
   if (
     user?.status !== 'APPROVED' ||
     !client ||
     client.disabled === true ||
     !consent ||
+    !consent.resources.includes(resolveMcpOAuthResource()) ||
     revoked ||
+    !resourceLink ||
+    (payload.sid !== undefined && (typeof payload.sid !== 'string' || !session)) ||
     oauthScopes.some((scope) => !consent.scopes.includes(scope))
   ) {
     return null;

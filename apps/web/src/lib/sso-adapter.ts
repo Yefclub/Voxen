@@ -84,17 +84,46 @@ function protectTransactionAdapter(adapter: TransactionAdapter): TransactionAdap
         return exposed ? [exposed as T] : [];
       });
     },
+    async consumeOne<T>(args: Parameters<AuthAdapter['consumeOne']>[0]): Promise<T | null> {
+      if (args.model === 'ssoProvider')
+        throw new Error('A gestão direta de provedores SSO está desativada.');
+      return adapter.consumeOne<T>(args);
+    },
+    async incrementOne<T>(args: Parameters<AuthAdapter['incrementOne']>[0]): Promise<T | null> {
+      if (args.model === 'ssoProvider')
+        throw new Error('A gestão direta de provedores SSO está desativada.');
+      return adapter.incrementOne<T>(args);
+    },
     async create(args) {
       if (args.model === 'ssoProvider') {
         throw new Error('A gestão direta de provedores SSO está desativada.');
       }
       return adapter.create(args);
     },
-    async update(args) {
+    async update<T>(args: Parameters<AuthAdapter['update']>[0]): Promise<T | null> {
       if (args.model === 'ssoProvider') {
-        throw new Error('A gestão direta de provedores SSO está desativada.');
+        // SSO 1.7 locks its current provider row during account linking with an
+        // identity-preserving update. Permit only that exact lock operation;
+        // configuration writes remain exclusive to Voxen's encrypted admin API.
+        const providerId = args.update.providerId;
+        if (
+          typeof providerId !== 'string' ||
+          Object.keys(args.update).length !== 1 ||
+          !args.where?.some(
+            (where) => where.field === 'providerId' && where.value === providerId,
+          ) ||
+          args.where.some(
+            (where) =>
+              !['id', 'providerId'].includes(where.field) ||
+              (where.operator !== undefined && where.operator !== 'eq') ||
+              (where.connector !== undefined && where.connector !== 'AND'),
+          )
+        )
+          throw new Error('A gestão direta de provedores SSO está desativada.');
+        const updated = await adapter.update<T>(args);
+        return exposeProviderConfig(updated) as T | null;
       }
-      return adapter.update(args);
+      return adapter.update<T>(args);
     },
     async updateMany(args) {
       if (args.model === 'ssoProvider') {
@@ -134,6 +163,6 @@ function protectSsoProviderWrites(adapter: AuthAdapter): AuthAdapter {
  * admin contract.
  */
 export const encryptedSsoPrismaAdapter = (options: BetterAuthOptions): AuthAdapter => {
-  const base = prismaAdapter(db, { provider: 'postgresql' })(options);
+  const base = prismaAdapter(db, { provider: 'postgresql', transaction: true })(options);
   return protectSsoProviderWrites(base);
 };
