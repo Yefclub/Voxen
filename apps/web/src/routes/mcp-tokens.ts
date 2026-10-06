@@ -3,7 +3,12 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { createMcpToken, parseMcpScopes, toMcpTokenMetadata } from '../lib/mcp-tokens';
+import {
+  createMcpToken,
+  parseMcpExpiry,
+  parseMcpScopes,
+  toMcpTokenMetadata,
+} from '../lib/mcp-tokens';
 import { getSetting } from '../lib/settings';
 
 type Vars = { userId: string; isAdmin: boolean };
@@ -39,11 +44,11 @@ mcpTokenRoutes.get('/', async (c) => {
 mcpTokenRoutes.post('/', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const label = typeof body.label === 'string' ? body.label.trim() : '';
-  const scopes = parseMcpScopes(body.scopes);
+  const scopes = parseMcpScopes(body.scopes === undefined ? ['READ'] : body.scopes);
   if (!label || label.length > 100)
     return c.json({ error: 'Rótulo deve ter entre 1 e 100 caracteres.' }, 400);
   if (!scopes) return c.json({ error: 'Escopos MCP inválidos.' }, 400);
-  const expiresAt = parseExpiry(body.expiresAt);
+  const expiresAt = parseMcpExpiry(body.expiresAt);
   if (expiresAt === undefined)
     return c.json({ error: 'Data de expiração inválida ou no passado.' }, 400);
   const enabled = (await getSetting('mcp_user_tokens_enabled').catch(() => null)) === 'true';
@@ -63,10 +68,3 @@ mcpTokenRoutes.delete('/:id', async (c) => {
   if (result.count === 0) return c.json({ error: 'Token não encontrado ou já revogado.' }, 404);
   return c.json({ ok: true });
 });
-
-function parseExpiry(value: unknown): Date | null | undefined {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) || date <= new Date() ? undefined : date;
-}

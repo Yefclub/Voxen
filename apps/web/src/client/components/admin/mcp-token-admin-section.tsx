@@ -6,6 +6,9 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Spinner } from '../ui/spinner';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { defaultMcpTokenExpiryInput, nextLocalDateTimeInputMin } from '../../lib/local-datetime';
 import { Switch } from '../ui/switch';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from '../../lib/api';
@@ -45,11 +48,13 @@ interface McpPromptResponse {
 }
 
 export function McpTokenAdminSection(): React.ReactElement {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [status, setStatus] = useState<McpAdminStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [newTokenId, setNewTokenId] = useState<string | null>(null);
-  const [rotating, setRotating] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [writeAccess, setWriteAccess] = useState(false);
+  const [expiresAt, setExpiresAt] = useState(defaultMcpTokenExpiryInput);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [tokenToRevoke, setTokenToRevoke] = useState<string | null>(null);
   const [updatingPolicy, setUpdatingPolicy] = useState(false);
@@ -79,21 +84,26 @@ export function McpTokenAdminSection(): React.ReactElement {
     }
   }
 
-  async function rotate(): Promise<void> {
-    setRotating(true);
+  async function createToken(): Promise<void> {
+    setCreating(true);
     try {
       const r = await apiPost<{ token: string; metadata: { id: string } }>(
         '/api/admin/mcp/rotate',
-        {},
+        {
+          scopes: writeAccess ? ['READ', 'WRITE'] : ['READ'],
+          expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        },
       );
       setNewToken(r.token);
       setNewTokenId(r.metadata.id);
+      setWriteAccess(false);
+      setExpiresAt(defaultMcpTokenExpiryInput());
       toast.success(t('admin.integrations.mcp.generated'));
       await refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t('common.error'));
     } finally {
-      setRotating(false);
+      setCreating(false);
     }
   }
 
@@ -335,12 +345,34 @@ export function McpTokenAdminSection(): React.ReactElement {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="primary" onClick={() => void rotate()} disabled={rotating}>
-              {rotating ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
-              {status.enabled
-                ? t('admin.integrations.mcp.rotateToken')
-                : t('admin.integrations.mcp.generateToken')}
+          <div className="space-y-3 rounded-lg border border-[var(--color-app-border)] p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label htmlFor="admin-mcp-write">{t('account.mcp.writeAccess')}</Label>
+                <p className="mt-1 text-xs text-[var(--color-app-muted)]">
+                  {t('account.mcp.writeAccessHint')}
+                </p>
+              </div>
+              <Switch id="admin-mcp-write" checked={writeAccess} onCheckedChange={setWriteAccess} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="admin-mcp-expiry">{t('account.mcp.expiresAt')}</Label>
+              <Input
+                id="admin-mcp-expiry"
+                type="datetime-local"
+                value={expiresAt}
+                min={nextLocalDateTimeInputMin(new Date())}
+                onChange={(event) => setExpiresAt(event.target.value)}
+              />
+              <p className="text-xs text-[var(--color-app-muted)]">
+                {locale === 'en'
+                  ? 'Default: 90 days. Clear the date only if you intentionally need a non-expiring token. Existing tokens remain active until revoked.'
+                  : 'Padrão: 90 dias. Limpe a data somente se precisar de um token sem expiração. Tokens existentes continuam ativos até serem revogados.'}
+              </p>
+            </div>
+            <Button variant="primary" onClick={() => void createToken()} disabled={creating}>
+              {creating ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
+              {t('admin.integrations.mcp.generateToken')}
             </Button>
           </div>
         </CardContent>

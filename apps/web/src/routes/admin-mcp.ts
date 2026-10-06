@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isMcpOAuthEnabled, isValidMcpOAuthRedirect, writeMcpOAuthAudit } from '../lib/mcp-oauth';
-import { createMcpToken, parseMcpScopes, toMcpTokenMetadata } from '../lib/mcp-tokens';
+import {
+  createMcpToken,
+  parseMcpExpiry,
+  parseMcpScopes,
+  toMcpTokenMetadata,
+} from '../lib/mcp-tokens';
 import { getSetting, setSettings } from '../lib/settings';
 import type { AdminVariables } from './admin-guard';
 
@@ -181,14 +186,15 @@ adminMcpRoutes.post('/oauth/clients', async (c) => {
   );
 });
 
+// Compatibility alias: this endpoint creates an additional token; it never revokes grants.
 adminMcpRoutes.post('/rotate', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const scopes = parseMcpScopes(body.scopes === undefined ? ['READ'] : body.scopes);
+  const expiresAt = parseMcpExpiry(body.expiresAt);
+  if (!scopes || expiresAt === undefined)
+    return c.json({ error: 'Dados do token MCP inválidos.' }, 400);
   const adminUserId = c.get('adminUserId');
-  const created = await createMcpToken({
-    userId: adminUserId,
-    label: 'Admin',
-    scopes: ['READ', 'WRITE'],
-    expiresAt: null,
-  });
+  const created = await createMcpToken({ userId: adminUserId, label: 'Admin', scopes, expiresAt });
   c.header('Cache-Control', 'no-store');
   return c.json(
     {
@@ -204,7 +210,7 @@ adminMcpRoutes.post('/tokens', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const userId = typeof body.userId === 'string' ? body.userId : '';
   const label = typeof body.label === 'string' ? body.label.trim() : '';
-  const scopes = parseMcpScopes(body.scopes);
+  const scopes = parseMcpScopes(body.scopes === undefined ? ['READ'] : body.scopes);
   const expiresAt = parseMcpExpiry(body.expiresAt);
   if (!userId || !label || label.length > 100 || !scopes || expiresAt === undefined) {
     return c.json({ error: 'Dados do token MCP inválidos.' }, 400);
@@ -230,7 +236,7 @@ adminMcpRoutes.delete('/tokens/:id', async (c) => {
 });
 
 adminMcpRoutes.post('/prompt', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown; token?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown };
   const appUrl = normalizeAppOrigin(body.appUrl);
   if (!appUrl) return c.json({ error: 'URL da aplicação inválida.' }, 400);
 
@@ -289,13 +295,6 @@ adminMcpRoutes.delete('/', async (c) => {
   await setSettings({ mcp_api_token: null }, { actorUserId: c.get('adminUserId') });
   return c.json({ ok: true });
 });
-
-function parseMcpExpiry(value: unknown): Date | null | undefined {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) || date <= new Date() ? undefined : date;
-}
 
 function normalizeAppOrigin(value: unknown): string | null {
   if (typeof value !== 'string') return null;

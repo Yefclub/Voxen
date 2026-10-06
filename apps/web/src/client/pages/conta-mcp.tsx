@@ -13,7 +13,7 @@ import { Spinner } from '../components/ui/spinner';
 import { Switch } from '../components/ui/switch';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
-import { nextLocalDateTimeInputMin } from '../lib/local-datetime';
+import { defaultMcpTokenExpiryInput, nextLocalDateTimeInputMin } from '../lib/local-datetime';
 import { AccountPageNav } from '../components/account/account-page-nav';
 import { McpClientSetup } from '../components/account/mcp-client-setup';
 
@@ -55,7 +55,7 @@ export function ContaMcpPage(): React.ReactElement {
   const [oauthStatus, setOAuthStatus] = useState<OAuthGrantStatus | null>(null);
   const [label, setLabel] = useState('');
   const [writeAccess, setWriteAccess] = useState(false);
-  const [expiresAt, setExpiresAt] = useState('');
+  const [expiresAt, setExpiresAt] = useState(defaultMcpTokenExpiryInput);
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -105,7 +105,7 @@ export function ContaMcpPage(): React.ReactElement {
       setSecret(response.token);
       setLabel('');
       setWriteAccess(false);
-      setExpiresAt('');
+      setExpiresAt(defaultMcpTokenExpiryInput());
       toast.success(t('account.mcp.created'));
       await refresh();
     } catch (error) {
