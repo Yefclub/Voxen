@@ -38,7 +38,19 @@ async function productionBrain(item: BenchmarkCase) {
         const term = query.where?.OR?.[0]?.key?.contains;
         return documents
           .filter((document) => term && document.brainTerms.includes(term))
-          .map((document) => ({ id: document.id, sourceId: document.id })) as never;
+          .map((document) => ({
+            id: document.id,
+            sourceType: 'TRANSCRIPT',
+            sourceId: document.id,
+          })) as never;
+      }) as never,
+    },
+    transcript: {
+      findMany: (async (query: { where: { userId: string; id: { in: string[] } } }) => {
+        expect(query.where.userId).toBe('benchmark-user');
+        return documents
+          .filter((document) => query.where.id.in.includes(document.id))
+          .map((document) => ({ id: document.id }));
       }) as never,
     },
     transcriptEnrichment: { findMany: (async () => []) as never },

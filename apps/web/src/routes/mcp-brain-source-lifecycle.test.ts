@@ -17,6 +17,9 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP Brain source lifecycle', () => {
         { id: foreignId, email: `${foreignId}@example.test`, name: 'Foreign', status: 'APPROVED' },
       ],
     });
+    await db.note.create({
+      data: { id: `owned-note-${suffix}`, userId: ownerId, title: 'Owned note' },
+    });
     for (const [id, userId, status] of [
       [activeId, ownerId, 'ACTIVE'],
       [archivedId, ownerId, 'ARCHIVED'],
@@ -46,12 +49,12 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP Brain source lifecycle', () => {
     await db.$disconnect();
   });
 
-  test('keeps non-transcript evidence plus active owned transcripts only', async () => {
+  test('keeps owned notes and active owned transcripts only', async () => {
     const sources = await keepCurrentOwnedSources(ownerId, [
       { sourceType: 'TRANSCRIPT' as const, sourceId: activeId, marker: 'active' },
       { sourceType: 'TRANSCRIPT' as const, sourceId: archivedId, marker: 'archived' },
       { sourceType: 'TRANSCRIPT' as const, sourceId: foreignTranscriptId, marker: 'foreign' },
-      { sourceType: 'NOTE' as const, sourceId: 'owned-note', marker: 'note' },
+      { sourceType: 'NOTE' as const, sourceId: `owned-note-${suffix}`, marker: 'note' },
     ]);
 
     expect(sources.map((source) => source.marker)).toEqual(['active', 'note']);

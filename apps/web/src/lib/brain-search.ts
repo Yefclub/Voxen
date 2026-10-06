@@ -1,8 +1,12 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import {
+  filterAccessibleBrainNodes,
+  type BrainSourceVisibilityDb,
+} from './brain-source-visibility';
 import { normalizeEntityAlias } from './brain-temporal';
 
-type BrainSearchDb = Pick<typeof db, 'brainNode' | 'transcriptEnrichment' | '$queryRaw'>;
+type BrainSearchDb = Pick<typeof db, 'brainNode' | '$queryRaw'> & BrainSourceVisibilityDb;
 
 const brainSearchNodeSelect = {
   id: true,
@@ -85,39 +89,11 @@ export async function searchBrainNodes(
     if (candidates.length === 0) break;
     skip += candidates.length;
 
-    const enrichmentIds = candidates.flatMap((node) =>
-      node.sourceType === 'EXTERNAL_ENRICHMENT' && node.sourceId ? [node.sourceId] : [],
-    );
-    if (enrichmentIds.length === 0) {
-      for (const candidate of candidates) {
-        if (seenNodeIds.has(candidate.id)) continue;
-        seenNodeIds.add(candidate.id);
-        results.push(candidate);
-      }
-    } else {
-      const currentEnrichments = await client.transcriptEnrichment.findMany({
-        where: {
-          id: { in: enrichmentIds },
-          userId,
-          status: 'READY',
-          reviewState: 'ACCEPTED',
-          staleReason: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-          transcript: { status: 'ACTIVE' },
-        },
-        select: { id: true },
-      });
-      const currentIds = new Set(currentEnrichments.map((item) => item.id));
-      for (const candidate of candidates) {
-        if (
-          candidate.sourceType === 'EXTERNAL_ENRICHMENT' &&
-          (candidate.sourceId === null || !currentIds.has(candidate.sourceId))
-        )
-          continue;
-        if (seenNodeIds.has(candidate.id)) continue;
-        seenNodeIds.add(candidate.id);
-        results.push(candidate);
-      }
+    const currentCandidates = await filterAccessibleBrainNodes(userId, candidates, false, client);
+    for (const candidate of currentCandidates) {
+      if (seenNodeIds.has(candidate.id)) continue;
+      seenNodeIds.add(candidate.id);
+      results.push(candidate);
     }
     if (candidates.length < batchSize) break;
   }
