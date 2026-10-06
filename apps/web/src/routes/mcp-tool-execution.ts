@@ -98,10 +98,20 @@ export function installMcpToolExecution(
           const result = await callback(originalArgs, context);
           if ('isError' in result && result.isError) {
             code = 'MCP_TOOL_REJECTED';
-            const message = result.content
-              .filter((item) => item.type === 'text')
-              .map((item) => (item.type === 'text' ? item.text : ''))
-              .join('\n');
+            const message = Array.isArray(result.content)
+              ? result.content
+                  .flatMap((item: unknown) =>
+                    item &&
+                    typeof item === 'object' &&
+                    'type' in item &&
+                    item.type === 'text' &&
+                    'text' in item &&
+                    typeof item.text === 'string'
+                      ? [item.text]
+                      : [],
+                  )
+                  .join('\n')
+              : 'The operation was rejected.';
             return fail(
               JSON.stringify({
                 code,
