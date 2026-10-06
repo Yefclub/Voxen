@@ -42,7 +42,7 @@ The owner approved completing this audit backlog and deploying the result.
 - [x] UI captures edit preconditions, preserves drafts on conflict and explains projection state.
 - [x] English/PT-BR MCP guidance and output/input schemas describe the new contract.
 - [x] Playwright verifies changed controls in four themes and mobile.
-- [ ] Full checks, migration/quality gates, actual build and independent review pass without weakening baselines.
+- [x] Full checks, migration/quality gates, actual build and independent review pass without weakening baselines.
 
 ## Decisions
 
@@ -61,5 +61,9 @@ Real database concurrency/projection tests passed, including persisted retry,
 late acknowledgement and obsolete graph stamps. Actual legacy and modern MCP
 clients passed read/write/conflict contract checks. The additive migration gate
 passed. Browser verification passed conflict draft retention, fresh editing,
-acceptance and dismissal in four themes, mobile and English/PT-BR. The mobile cancellation control and localized retry badge also passed. Final full
-checks, runtime image and review are pending.
+acceptance and dismissal in four themes, mobile and English/PT-BR. The mobile cancellation control and localized retry badge also passed. Full checks and dependency audit passed; migration gate and all quality ratchets
+passed. The combined Docker Compose image built successfully. Independent
+review approved the implementation and corrective deltas. Browser graph slices
+and their caches now reject pending/obsolete enrichment snapshots; real database
+and API regressions cover pending, retries, and recovery. The scaled fixture
+uses a bounded test body compatible with both supported Bun versions.
