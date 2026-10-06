@@ -629,6 +629,7 @@ model Transcript {
   @@unique([id, userId])
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
+  @@index([userId, status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([userId, folderId])
   @@index([userId, source])
   @@index([userId, language])
@@ -1411,6 +1412,7 @@ model Note {
   @@index([userId, parentId])
   @@index([userId, sourceType, sourceId])
   @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model NoteRevision {
