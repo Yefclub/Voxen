@@ -12,7 +12,7 @@ import {
 
 async function call(body: unknown, token = ''): Promise<Response> {
   return app.fetch(
-    new Request('http://localhost/mcp', {
+    new Request(new URL('/mcp', process.env.APP_BASE_URL || 'http://localhost'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -418,6 +418,80 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     } finally {
       await db.job.deleteMany({ where: { userId, sourceUrl: 'https://youtu.be/mcpBatch001' } });
       await deleteSetting('openrouter_api_key').catch(() => {});
+    }
+  });
+
+  it('keyset note pages remain stable across inserts, edits and deleted boundary rows', async () => {
+    const prefix = 'mcp-keyset-' + crypto.randomUUID();
+    const sameTime = new Date('2126-01-01T00:00:00.000Z');
+    const ids = ['a', 'b', 'c'].map((suffix) => prefix + suffix);
+    await db.note.createMany({
+      data: ids.map((id) => ({
+        id,
+        userId,
+        title: id,
+        content: 'Stable page fixture',
+        createdAt: sameTime,
+      })),
+    });
+    const list = async (arguments_: Record<string, unknown>) => {
+      const response = await call(
+        {
+          jsonrpc: '2.0',
+          id: 430,
+          method: 'tools/call',
+          params: { name: 'voxen_list_notes', arguments: arguments_ },
+        },
+        READ_TOKEN,
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()) as {
+        result: {
+          isError?: boolean;
+          content: { text: string }[];
+          structuredContent: { notes: { id: string }[]; nextCursor: string | null };
+        };
+      };
+    };
+    try {
+      const first = (await list({ limit: 2 })).result.structuredContent;
+      expect(first.notes.map((n) => n.id)).toEqual([ids[2]!, ids[1]!]);
+      expect(first.nextCursor).toBeTruthy();
+      await db.note.create({
+        data: {
+          id: prefix + 'new',
+          userId,
+          title: 'Inserted after page one',
+          createdAt: new Date('2126-02-01'),
+        },
+      });
+      await db.note.update({
+        where: { id: ids[2]! },
+        data: { content: 'Edited after page one', updatedAt: new Date('2126-03-01') },
+      });
+      await db.note.delete({ where: { id: ids[1]! } });
+      const second = (await list({ limit: 2, cursor: first.nextCursor })).result.structuredContent;
+      expect(second.notes[0]?.id).toBe(ids[0]!);
+      expect(
+        second.notes.some((n) => first.notes.some((p) => p.id === n.id) || n.id === prefix + 'new'),
+      ).toBe(false);
+      for (const cursor of [
+        '-1',
+        'not-base64',
+        Buffer.from('2').toString('base64'),
+        first.nextCursor! + 'tampered',
+      ]) {
+        const invalid = await list({ cursor });
+        expect(invalid.result.isError).toBe(true);
+        expect(invalid.result.content[0]!.text).toContain('MCP_INVALID_CURSOR');
+      }
+      const changedFilter = await list({
+        cursor: first.nextCursor,
+        transcript_id: 'different-filter',
+      });
+      expect(changedFilter.result.isError).toBe(true);
+    } finally {
+      await db.note.deleteMany({ where: { userId, id: { startsWith: prefix } } });
     }
   });
 

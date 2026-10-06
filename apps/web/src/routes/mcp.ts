@@ -3,10 +3,10 @@
 // share the same tool catalog and immutable authenticated owner identity.
 
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { servePreparedMcpExchange } from './mcp-http-exchange';
+import { resolveMcpRequestOrigin } from './mcp-origin-boundary';
 import { withMcpRequest } from './mcp-request-body';
 import { VOXEN_VERSION } from '../lib/build-identity';
 import { db } from '../lib/db';
@@ -38,6 +38,7 @@ import {
   registerTranscriptEnrichmentWriteTools,
 } from './mcp-transcript-enrichment-tools';
 import { authenticateMcp } from './mcp-authentication';
+import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
 import { requiredMcpToolScope } from './mcp-tool-policy';
 import { registerMcpJobStatusTool } from './mcp-job-status-tool';
 import { registerWriteTools } from './mcp-write-tools';
@@ -117,7 +118,8 @@ const VOXEN_INSTRUCTIONS = [
 // ----------------------------------------------------------------------------
 
 mcpRoutes.all('/', async (c) => {
-  if (!originAllowed(c)) {
+  const publicOrigin = resolveMcpRequestOrigin(c.req.raw);
+  if (!publicOrigin) {
     return c.json({ error: 'Origem não permitida.' }, 403);
   }
   return withMcpRequest(c.req.raw, async (prepared) => {
@@ -172,44 +174,10 @@ mcpRoutes.all('/', async (c) => {
       );
     }
     return servePreparedMcpExchange(prepared, () =>
-      buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c)),
+      buildVoxenMcpServer(identity.userId, identity.scopes, publicOrigin),
     );
   });
 });
-
-// Defesa contra DNS rebinding (spec 2025-11-25): se houver header Origin (cliente
-// browser), ele precisa bater com a origem da aplicação. Clientes não-browser
-// (agentes/CLI) não mandam Origin — esses passam.
-function originAllowed(c: Context): boolean {
-  const origin = c.req.header('origin');
-  if (!origin) return true;
-  const appBase = process.env.APP_BASE_URL;
-  if (!appBase) return true;
-  try {
-    return new URL(origin).origin === new URL(appBase).origin;
-  } catch {
-    return false;
-  }
-}
-
-function resolveMcpPublicOrigin(c: Context): string {
-  const configured = process.env.APP_BASE_URL?.trim();
-  if (configured) {
-    try {
-      const url = new URL(configured);
-      if (
-        (url.protocol === 'https:' || url.protocol === 'http:') &&
-        !url.username &&
-        !url.password
-      ) {
-        return url.origin;
-      }
-    } catch {
-      // Fallback para a origem da requisição abaixo.
-    }
-  }
-  return new URL(c.req.url).origin;
-}
 
 // Bearer token -> identidade imutável do dono. O token legado global não é
 // aceito: o admin o revoga explicitamente pela tela de integrações.
@@ -340,7 +308,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         'Lista as transcrições do usuário (mais recentes primeiro), com paginação por cursor. ' +
         'Use para navegar a Base de conhecimento quando não há um termo de busca específico. Prefira ' +
         'voxen_search_transcripts quando souber o que procura. Passe `cursor` (vindo de ' +
-        '`next_cursor`) para a próxima página.',
+        '`nextCursor`) para a próxima página.',
       inputSchema: {
         limit: z
           .number()
@@ -349,7 +317,11 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
           .max(100)
           .optional()
           .describe('Itens por página (padrão 30).'),
-        cursor: z.string().optional().describe('Cursor opaco da página seguinte (next_cursor).'),
+        cursor: z
+          .string()
+          .max(2048)
+          .optional()
+          .describe('Cursor opaco da página seguinte (nextCursor).'),
       },
       outputSchema: {
         transcripts: z.array(
@@ -370,12 +342,13 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
     },
     async (args) => {
       const limit = bounded(args.limit, 30, 1, 100);
-      const offset = decodeCursor(args.cursor);
+      const pageContext = { userId, tool: 'transcripts' as const };
+      const page = decodeMcpPageCursor(args.cursor, pageContext);
+      if (!page.valid) return fail('MCP_INVALID_CURSOR: Restart pagination without a cursor.');
       const rows = await db.transcript.findMany({
-        where: { userId, status: 'ACTIVE' },
-        orderBy: { createdAt: 'desc' },
-        skip: offset,
-        take: limit,
+        where: { userId, status: 'ACTIVE', ...mcpPageBoundary(page.position) },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
         select: {
           id: true,
           source: true,
@@ -388,7 +361,8 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
           tags: { select: { tag: { select: { name: true } } } },
         },
       });
-      const transcripts = rows.map((t) => ({
+      const selected = rows.slice(0, limit);
+      const transcripts = selected.map((t) => ({
         id: t.id,
         source: t.source,
         url: t.url,
@@ -401,7 +375,10 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
       }));
       return ok({
         transcripts,
-        nextCursor: rows.length === limit ? encodeCursor(offset + limit) : null,
+        nextCursor:
+          rows.length > limit
+            ? encodeMcpPageCursor(selected[selected.length - 1]!, pageContext)
+            : null,
       });
     },
   );
@@ -745,7 +722,7 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
     {
       title: 'Listar notas',
       description:
-        'Lista notas e pastas do usuário (mais recentes primeiro), com paginação por cursor. ' +
+        'Lista notas e pastas do usuário por data de criação (mais recentes primeiro), com paginação por cursor. ' +
         '`kind` indica se é NOTE ou FOLDER; `parentId` dá a hierarquia.',
       inputSchema: {
         limit: z
@@ -755,7 +732,11 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           .max(100)
           .optional()
           .describe('Itens por página (padrão 30).'),
-        cursor: z.string().optional().describe('Cursor opaco da página seguinte (next_cursor).'),
+        cursor: z
+          .string()
+          .max(2048)
+          .optional()
+          .describe('Cursor opaco da página seguinte (nextCursor).'),
         transcript_id: z
           .string()
           .min(1)
@@ -791,23 +772,26 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
     },
     async (args) => {
       const limit = bounded(args.limit, 30, 1, 100);
-      const offset = decodeCursor(args.cursor);
+      const pageContext = { userId, tool: 'notes' as const, transcriptId: args.transcript_id };
+      const page = decodeMcpPageCursor(args.cursor, pageContext);
+      if (!page.valid) return fail('MCP_INVALID_CURSOR: Restart pagination without a cursor.');
       const rows = await db.note.findMany({
         where: {
           userId,
+          ...mcpPageBoundary(page.position),
           ...(args.transcript_id
             ? { transcriptSources: { some: { transcriptId: args.transcript_id, userId } } }
             : {}),
         },
-        orderBy: { updatedAt: 'desc' },
-        skip: offset,
-        take: limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
         select: {
           id: true,
           parentId: true,
           kind: true,
           title: true,
           updatedAt: true,
+          createdAt: true,
           transcriptSources: {
             where: args.transcript_id ? { transcriptId: args.transcript_id, userId } : { userId },
             select: {
@@ -828,7 +812,8 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           },
         },
       });
-      const notes = rows.map((note) => ({
+      const selected = rows.slice(0, limit);
+      const notes = selected.map((note) => ({
         id: note.id,
         parentId: note.parentId,
         kind: note.kind,
@@ -848,7 +833,10 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       }));
       return ok({
         notes,
-        nextCursor: rows.length === limit ? encodeCursor(offset + limit) : null,
+        nextCursor:
+          rows.length > limit
+            ? encodeMcpPageCursor(selected[selected.length - 1]!, pageContext)
+            : null,
       });
     },
   );
@@ -1272,17 +1260,3 @@ const BRAIN_NODE_SELECT = {
   metadata: true,
   updatedAt: true,
 } as const;
-
-function decodeCursor(cursor: string | undefined): number {
-  if (!cursor) return 0;
-  try {
-    const n = parseInt(Buffer.from(cursor, 'base64').toString('utf8'), 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function encodeCursor(offset: number): string {
-  return Buffer.from(String(offset), 'utf8').toString('base64');
-}
