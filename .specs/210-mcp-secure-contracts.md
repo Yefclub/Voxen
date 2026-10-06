@@ -49,7 +49,7 @@ OAuth schema/CIMD migration and enrichment write concurrency remain separate.
 - [x] Transport/auth/catalog/domain registration responsibilities are split into bounded modules.
 - [x] English/PT-BR guides and UI are consistent with the implemented contracts.
 - [x] UI interactions and themes are verified in isolated Playwright before/after captures.
-- [ ] Full checks, actual runtime build and independent review pass without weakening gates.
+- [x] Full checks, actual runtime build and independent review pass without weakening gates.
 
 ## Decisions
 
@@ -65,3 +65,17 @@ continuation re-runs the read authorization/lifecycle checks; changes invalidate
 the continuation. No content cache is introduced. Oversized write replies provide
 bounded outcome identifiers and follow-up READ instructions rather than a write
 continuation. Normal tool result contracts include these explicit alternatives.
+
+
+## Validation
+
+Full lint, formatting, TypeScript/Python typing and test checks passed: 80 script,
+1,738 web, 125 extension and 559 worker tests. The real combined runtime image
+built successfully through Docker Compose. Both additive migrations passed the
+full migration gate with existing full-text indexes/triggers retained. Coverage,
+duplication, file-size and dependency gates passed without baseline changes.
+Independent review approved the final implementation and corrective commits.
+Isolated Playwright checked the changed controls in both locales, all four themes
+and a mobile viewport. Real v1/v2 SDK regressions validate populated outputs,
+continuation and bounded protocol failures. JSON-RPC batches are rejected before
+authentication/execution, matching their removal from the MCP specification.
