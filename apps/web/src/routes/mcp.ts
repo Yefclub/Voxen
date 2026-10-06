@@ -35,6 +35,11 @@ import {
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
+import { registerBrainPathTool } from './mcp-brain-path-tool';
+import {
+  filterAccessibleBrainNodes,
+  currentBrainNodeSourceCondition,
+} from '../lib/brain-source-visibility';
 import { registerBrainTimelineTool } from './mcp-brain-timeline-tool';
 import { keepCurrentOwnedSources } from './mcp-brain-source-lifecycle';
 import {
@@ -1062,6 +1067,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
         ? await db.brainNode.findMany({
             where: {
               userId,
+              status: { in: ['ACTIVE', 'ARCHIVED'] },
               OR: [
                 { key: { contains: query, mode: 'insensitive' } },
                 { label: { contains: query, mode: 'insensitive' } },
@@ -1073,7 +1079,12 @@ function registerBrainTools(server: McpServer, userId: string): void {
             select: BRAIN_NODE_SELECT,
           })
         : await searchBrainNodes(userId, query, limit);
-      return ok({ results: nodes, query });
+      return ok({
+        results: args.include_archived
+          ? await filterAccessibleBrainNodes(userId, nodes, true)
+          : nodes,
+        query,
+      });
     },
   );
 
@@ -1099,21 +1110,29 @@ function registerBrainTools(server: McpServer, userId: string): void {
         where: {
           userId,
           OR: [{ id: ref }, { key: ref }],
-          ...(args.include_archived ? {} : { status: 'ACTIVE' as const }),
+          status: { in: args.include_archived ? ['ACTIVE', 'ARCHIVED'] : ['ACTIVE'] },
         },
         select: BRAIN_NODE_SELECT,
       });
-      if (!node) return fail('Nó não encontrado.');
+      if (
+        !node ||
+        !(await filterAccessibleBrainNodes(userId, [node], args.include_archived)).length
+      )
+        return fail('Nó não encontrado.');
       const edges = await db.brainEdge.findMany({
         where: {
           userId,
           OR: [{ fromNodeId: node.id }, { toNodeId: node.id }],
           ...(args.include_archived
-            ? {}
+            ? {
+                status: { in: ['ACTIVE', 'ARCHIVED'] },
+                from: { userId, status: { in: ['ACTIVE', 'ARCHIVED'] } },
+                to: { userId, status: { in: ['ACTIVE', 'ARCHIVED'] } },
+              }
             : {
                 status: 'ACTIVE' as const,
-                from: { status: 'ACTIVE' as const },
-                to: { status: 'ACTIVE' as const },
+                from: { userId, status: 'ACTIVE' as const },
+                to: { userId, status: 'ACTIVE' as const },
               }),
         },
         orderBy: { updatedAt: 'desc' },
@@ -1130,7 +1149,19 @@ function registerBrainTools(server: McpServer, userId: string): void {
           to: { select: BRAIN_NODE_SELECT },
         },
       });
-      return ok({ node, edges });
+      const visible = new Set(
+        (
+          await filterAccessibleBrainNodes(
+            userId,
+            edges.flatMap((edge) => [edge.from, edge.to]),
+            args.include_archived,
+          )
+        ).map((item) => item.id),
+      );
+      return ok({
+        node,
+        edges: edges.filter((edge) => visible.has(edge.from.id) && visible.has(edge.to.id)),
+      });
     },
   );
 
@@ -1199,6 +1230,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
                   where: {
                     userId,
                     invalidatedAt: null,
+                    AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
                     edge: {
                       method: 'llm-grounded',
                       kind: 'SUPPORTS',
@@ -1262,149 +1294,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
     },
   );
 
-  server.registerTool(
-    'voxen_brain_path',
-    {
-      title: 'Conexão entre dois nós',
-      description:
-        'Tenta encontrar a conexão (caminho de até 3 saltos) entre dois nós do Brain. Use para ' +
-        'explicar COMO duas entidades/tópicos se relacionam na Base de conhecimento.',
-      inputSchema: {
-        from_node_id: z.string().min(1).describe('ID ou key do nó de origem.'),
-        to_node_id: z.string().min(1).describe('ID ou key do nó de destino.'),
-        max_depth: z
-          .number()
-          .int()
-          .min(1)
-          .max(3)
-          .optional()
-          .describe('Profundidade máxima (1–3). Default 3.'),
-      },
-      annotations: { ...READ_ONLY, title: 'Conexão entre dois nós' },
-    },
-    async (args) => {
-      const fromRef = args.from_node_id.trim();
-      const toRef = args.to_node_id.trim();
-      if (!fromRef || !toRef) return fail('from_node_id e to_node_id são obrigatórios.');
-      const maxDepth = args.max_depth ?? 3;
-      type PathRow = {
-        id: string;
-        kind: string;
-        method: string;
-        fromNodeId: string;
-        toNodeId: string;
-        viaNodeId: string | null;
-        viaLabel: string | null;
-        depth: number;
-      };
-      const paths = await db.$queryRaw<PathRow[]>`
-        WITH endpoints AS (
-          SELECT
-            (SELECT id FROM "BrainNode"
-             WHERE "userId" = ${userId} AND status = 'ACTIVE'::"ContentStatus"
-               AND (id = ${fromRef} OR key = ${fromRef})
-             LIMIT 1) AS from_id,
-            (SELECT id FROM "BrainNode"
-             WHERE "userId" = ${userId} AND status = 'ACTIVE'::"ContentStatus"
-               AND (id = ${toRef} OR key = ${toRef})
-             LIMIT 1) AS to_id
-        ),
-        active_edges AS (
-          SELECT e.*
-          FROM "BrainEdge" e
-          JOIN "BrainNode" f ON f.id = e."fromNodeId"
-          JOIN "BrainNode" t ON t.id = e."toNodeId"
-          WHERE e."userId" = ${userId}
-            AND e.status = 'ACTIVE'::"ContentStatus"
-            AND f.status = 'ACTIVE'::"ContentStatus"
-            AND t.status = 'ACTIVE'::"ContentStatus"
-        ),
-        direct AS (
-          SELECT e.id, e.kind::text AS kind, e.method, e."fromNodeId", e."toNodeId",
-                 NULL::text AS "viaNodeId", NULL::text AS "viaLabel", 1 AS depth
-          FROM active_edges e, endpoints ep
-          WHERE ep.from_id IS NOT NULL
-            AND ep.to_id IS NOT NULL
-            AND ((e."fromNodeId" = ep.from_id AND e."toNodeId" = ep.to_id)
-              OR (e."fromNodeId" = ep.to_id AND e."toNodeId" = ep.from_id))
-        ),
-        two_hop AS (
-          SELECT e1.id || ':' || e2.id AS id,
-                 e1.kind::text || ' -> ' || e2.kind::text AS kind,
-                 e1.method || ' -> ' || e2.method AS method,
-                 e1."fromNodeId",
-                 e2."toNodeId",
-                 via.id AS "viaNodeId",
-                 via.label AS "viaLabel",
-                 2 AS depth
-          FROM active_edges e1
-          JOIN active_edges e2 ON e1.id <> e2.id
-          JOIN endpoints ep ON TRUE
-          JOIN "BrainNode" via
-            ON via.id = CASE
-              WHEN e1."fromNodeId" = ep.from_id THEN e1."toNodeId"
-              ELSE e1."fromNodeId"
-            END
-          WHERE ep.from_id IS NOT NULL
-            AND ep.to_id IS NOT NULL
-            AND (e1."fromNodeId" = ep.from_id OR e1."toNodeId" = ep.from_id)
-            AND (e2."fromNodeId" = ep.to_id OR e2."toNodeId" = ep.to_id)
-            AND via.id = CASE
-              WHEN e2."fromNodeId" = ep.to_id THEN e2."toNodeId"
-              ELSE e2."fromNodeId"
-            END
-          LIMIT 5
-        ),
-        three_hop AS (
-          SELECT e1.id || ':' || e2.id || ':' || e3.id AS id,
-                 e1.kind::text || ' -> ' || e2.kind::text || ' -> ' || e3.kind::text AS kind,
-                 e1.method || ' -> ' || e2.method || ' -> ' || e3.method AS method,
-                 e1."fromNodeId",
-                 e3."toNodeId",
-                 via1.id AS "viaNodeId",
-                 via1.label || ' / ' || via2.label AS "viaLabel",
-                 3 AS depth
-          FROM active_edges e1
-          JOIN active_edges e2 ON e1.id <> e2.id
-          JOIN active_edges e3 ON e3.id <> e1.id AND e3.id <> e2.id
-          JOIN endpoints ep ON TRUE
-          JOIN "BrainNode" via1
-            ON via1.id = CASE
-              WHEN e1."fromNodeId" = ep.from_id THEN e1."toNodeId"
-              ELSE e1."fromNodeId"
-            END
-          JOIN "BrainNode" via2
-            ON via2.id = CASE
-              WHEN e2."fromNodeId" = via1.id THEN e2."toNodeId"
-              WHEN e2."toNodeId" = via1.id THEN e2."fromNodeId"
-              ELSE NULL
-            END
-          WHERE ep.from_id IS NOT NULL
-            AND ep.to_id IS NOT NULL
-            AND (e1."fromNodeId" = ep.from_id OR e1."toNodeId" = ep.from_id)
-            AND via2.id IS NOT NULL
-            AND (e3."fromNodeId" = ep.to_id OR e3."toNodeId" = ep.to_id)
-            AND (
-              (e3."fromNodeId" = via2.id AND e3."toNodeId" = ep.to_id)
-              OR (e3."toNodeId" = via2.id AND e3."fromNodeId" = ep.to_id)
-              OR (e3."fromNodeId" = via2.id OR e3."toNodeId" = via2.id)
-            )
-          LIMIT 5
-        )
-        SELECT * FROM direct
-        WHERE ${maxDepth} >= 1
-        UNION ALL
-        SELECT * FROM two_hop
-        WHERE ${maxDepth} >= 2
-        UNION ALL
-        SELECT * FROM three_hop
-        WHERE ${maxDepth} >= 3
-        ORDER BY depth ASC
-        LIMIT 15
-      `;
-      return ok({ paths, maxDepth });
-    },
-  );
+  registerBrainPathTool(server, userId);
 
   server.registerTool(
     'voxen_brain_hubs',
@@ -1435,8 +1325,14 @@ function registerBrainTools(server: McpServer, userId: string): void {
           ON e."userId" = n."userId"
          AND e.status = 'ACTIVE'::"ContentStatus"
          AND (e."fromNodeId" = n.id OR e."toNodeId" = n.id)
+        JOIN "BrainNode" f ON f.id = e."fromNodeId" AND f."userId" = n."userId"
+        JOIN "BrainNode" t ON t.id = e."toNodeId" AND t."userId" = n."userId"
         WHERE n."userId" = ${userId}
           AND n.status = 'ACTIVE'::"ContentStatus"
+          AND f.status = 'ACTIVE'::"ContentStatus" AND t.status = 'ACTIVE'::"ContentStatus"
+          AND ${currentBrainNodeSourceCondition('n')}
+          AND ${currentBrainNodeSourceCondition('f')}
+          AND ${currentBrainNodeSourceCondition('t')}
         GROUP BY n.id
         ORDER BY degree DESC
         LIMIT ${limit}

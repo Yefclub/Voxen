@@ -14,7 +14,6 @@ import {
   getTranscriptEnrichmentStaleReason,
   normalizeTranscriptEnrichmentCitations,
   queueTranscriptResearch,
-  refreshTranscriptEnrichmentFreshness,
   TranscriptResearchQueueError,
 } from '../lib/transcript-enrichments';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
@@ -43,23 +42,18 @@ export function registerTranscriptEnrichmentTools(
         select: { id: true, sourceVersion: true, sourceChecksum: true },
       });
       if (!transcript) return fail('Transcrição não encontrada (ou fora do escopo do token).');
-      const staleAcceptedIds = await refreshTranscriptEnrichmentFreshness({
-        userId,
-        transcriptId: transcript.id,
-        sourceVersion: transcript.sourceVersion,
-        sourceChecksum: transcript.sourceChecksum,
-      });
-      await Promise.all(
-        staleAcceptedIds.map((id) => deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', id)),
-      );
-      if (staleAcceptedIds.length > 0) await invalidateGraphCache(userId);
       const enrichments = await db.transcriptEnrichment.findMany({
         where: { userId, transcriptId: transcript.id },
         orderBy: { createdAt: 'desc' },
         take: bounded(args.limit, 20, 1, 30),
       });
       return ok({
-        enrichments: enrichments.map((item) => serializeTranscriptEnrichment(item, publicOrigin)),
+        enrichments: enrichments.map((item) =>
+          serializeTranscriptEnrichment(
+            { ...item, staleReason: getTranscriptEnrichmentStaleReason(item, transcript) },
+            publicOrigin,
+          ),
+        ),
       });
     },
   );
@@ -75,21 +69,12 @@ export function registerTranscriptEnrichmentTools(
     },
     async (args) => {
       const enrichment = await db.transcriptEnrichment.findFirst({
-        where: { id: args.enrichment_id, userId },
+        where: { id: args.enrichment_id, userId, transcript: { userId, status: { not: 'TRASH' } } },
         include: { transcript: { select: { sourceVersion: true, sourceChecksum: true } } },
       });
       if (!enrichment) return fail('Contexto adicional não encontrado.');
       const staleReason = getTranscriptEnrichmentStaleReason(enrichment, enrichment.transcript);
-      const current = staleReason
-        ? await db.transcriptEnrichment.update({
-            where: { id: enrichment.id },
-            data: { staleReason },
-          })
-        : enrichment;
-      if (staleReason && enrichment.reviewState === 'ACCEPTED') {
-        await deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', enrichment.id);
-        await invalidateGraphCache(userId);
-      }
+      const current = { ...enrichment, staleReason };
       return ok({ enrichment: serializeTranscriptEnrichment(current, publicOrigin) });
     },
   );

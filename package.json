@@ -25,7 +25,9 @@
       "postcss": "8.5.26",
       "deepmerge-ts": "8.0.0",
       "@xmldom/xmldom": "0.8.15",
-      "undici@^7": "7.29.1"
+      "undici@^7": "7.29.1",
+      "source-map-js": "1.2.2",
+      "proxy-addr": "2.0.8"
     },
     "patchedDependencies": {
       "reagraph@4.32.0": "patches/reagraph@4.32.0.patch"
