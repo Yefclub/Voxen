@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1791271650 — 2026-10-06 · Dev
+
+### ⚡ Reliable MCP hubs on larger graphs
+
+Hub queries aggregate eligible edge endpoints through indexed identity lookups, preserving ownership and provenance checks without repeated full owner scans. Bounded MCP graph reads avoid JIT compilation overhead and retain their three-second SQL deadline.
+
 ## v0.15.1-dev.1791266554 — 2026-10-06 · Dev
 
 ### 🔒 Safer MCP credentials, permissions and result contracts
