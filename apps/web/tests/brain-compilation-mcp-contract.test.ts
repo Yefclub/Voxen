@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-const source = await Bun.file(new URL('../src/routes/mcp.ts', import.meta.url)).text();
+const source = await Bun.file(new URL('../src/routes/mcp-graph-tools.ts', import.meta.url)).text();
 
 test('MCP expõe cobertura e localização da compilação grounded', () => {
   expect(source).toContain("'voxen_brain_compilation_status'");

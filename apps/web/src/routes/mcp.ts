@@ -200,7 +200,7 @@ function buildVoxenMcpServer(
   return server;
 }
 
-// Ferramentas de recuperação PROGRESSIVA sobre o `.md` canônico (S3): estrutura,
+// Progressive retrieval reads canonical Markdown through the configured storage driver.
 // leitura por linhas/seção/tempo, expansão de contexto, relacionados e
 // verificação de citações. Toda a lógica vem de lib/retrieval.ts (compartilhada
 // com o agente in-app). Read-only e escopadas por userId.

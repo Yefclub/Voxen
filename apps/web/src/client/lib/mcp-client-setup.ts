@@ -78,8 +78,8 @@ function setupsEn(endpoint: string): McpClientSetup[] {
       label: 'Cursor',
       status: 'conditional',
       summary:
-        'Custom Authorization headers vary by Cursor version. Use a secret header only when your installed version explicitly supports it; otherwise wait for Voxen OAuth.',
-      config: `Endpoint: ${endpoint}\nAuthorization: Bearer ${TOKEN_PLACEHOLDER}`,
+        'Use remote OAuth after the administrator enables it. The official guide also documents secret headers using environment variables. Validate your installed Cursor version.',
+      config: JSON.stringify({ mcpServers: { voxen: { url: endpoint } } }, null, 2),
     },
     {
       id: 'inspector',
@@ -125,7 +125,7 @@ function setupsPtBr(endpoint: string): McpClientSetup[] {
     },
     cursor: {
       summary:
-        'O suporte a header Authorization varia por versão. Use somente quando a sua instalação oferecer header secreto; caso contrário, aguarde o OAuth do Voxen.',
+        'Use OAuth remoto após o administrador habilitá-lo. O guia oficial também documenta headers secretos por variáveis de ambiente. Valide sua versão do Cursor.',
       config: setups[4]!.config,
     },
     inspector: {

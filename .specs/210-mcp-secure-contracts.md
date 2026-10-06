@@ -37,18 +37,18 @@ OAuth schema/CIMD migration and enrichment write concurrency remain separate.
 - If a cursor, query, identifier or tool result exceeds its contract, then the system shall reject or paginate it without exposing raw implementation failures.
 
 ## Acceptance criteria
-- [ ] Personal/admin metadata and prompt APIs never expose token hashes or raw secrets.
-- [ ] Generated configurations/prompts use credential environment placeholders and current OAuth guidance.
-- [ ] READ job monitoring, bidirectional scope challenges and safe token defaults behave consistently.
-- [ ] Argument/result bounds, exact continuation and safe failure codes are covered by regressions.
-- [ ] Every tool has truthful annotations and a validated output contract derived from the catalog.
-- [ ] Pagination survives inserts, edits, deletion and equal timestamps without duplicates or invalid offset conversion.
-- [ ] Rate/concurrency safeguards and telemetry throttling preserve immediate revocation and recover from backend failures.
-- [ ] Logs contain safe tool outcomes/correlation and bounded audit retention is verified.
-- [ ] Canonical origins/hosts, localhost variants and build identity are validated.
-- [ ] Transport/auth/catalog/domain registration responsibilities are split into bounded modules.
-- [ ] English/PT-BR guides and UI are consistent with the implemented contracts.
-- [ ] UI interactions and themes are verified in isolated Playwright before/after captures.
+- [x] Personal/admin metadata and prompt APIs never expose token hashes or raw secrets.
+- [x] Generated configurations/prompts use credential environment placeholders and current OAuth guidance.
+- [x] READ job monitoring, bidirectional scope challenges and safe token defaults behave consistently.
+- [x] Argument/result bounds, exact continuation and safe failure codes are covered by regressions.
+- [x] Every tool has truthful annotations and a validated output contract derived from the catalog.
+- [x] Pagination survives inserts, edits, deletion and equal timestamps without duplicates or invalid offset conversion.
+- [x] Rate/concurrency safeguards and telemetry throttling preserve immediate revocation and recover from backend failures.
+- [x] Logs contain safe tool outcomes/correlation and bounded audit retention is verified.
+- [x] Canonical origins/hosts, localhost variants and build identity are validated.
+- [x] Transport/auth/catalog/domain registration responsibilities are split into bounded modules.
+- [x] English/PT-BR guides and UI are consistent with the implemented contracts.
+- [x] UI interactions and themes are verified in isolated Playwright before/after captures.
 - [ ] Full checks, actual runtime build and independent review pass without weakening gates.
 
 ## Decisions

@@ -28,6 +28,7 @@ interface McpAdminStatus {
     label: string;
     scopes: string[];
     revokedAt: string | null;
+    expiresAt: string | null;
     user: { email: string; name: string };
   }[];
   oauthClients: {
@@ -161,6 +162,7 @@ export function McpTokenAdminSection(): React.ReactElement {
       const origin = window.location.origin;
       const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', {
         appUrl: origin,
+        locale,
       });
       await writeClipboardText(res.prompt, t('admin.integrations.copyError'));
       setPromptCopied(true);
@@ -207,7 +209,11 @@ export function McpTokenAdminSection(): React.ReactElement {
                 </p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
                   {t('admin.integrations.mcp.activeCount', {
-                    count: status.tokens.filter((token) => !token.revokedAt).length,
+                    count: status.tokens.filter(
+                      (token) =>
+                        !token.revokedAt &&
+                        (!token.expiresAt || new Date(token.expiresAt).getTime() > Date.now()),
+                    ).length,
                   })}
                 </p>
               </div>
@@ -257,7 +263,10 @@ export function McpTokenAdminSection(): React.ReactElement {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-[var(--color-app-fg)]">{token.label}</p>
                     <p className="truncate text-xs text-[var(--color-app-muted)]">
-                      {token.user.name || token.user.email} · {token.scopes.join(', ')}
+                      {token.user.name || token.user.email} · {token.scopes.join(', ')}·{' '}
+                      {token.expiresAt
+                        ? new Date(token.expiresAt).toLocaleString(locale)
+                        : t('account.mcp.noExpiry')}
                     </p>
                   </div>
                   {token.revokedAt ? (

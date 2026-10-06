@@ -31,6 +31,68 @@ Comece com somente leitura. Habilite escrita apenas para um cliente que
 realmente precise modificar sua base e cujo comportamento de aprovação você
 conheça.
 
+Novos tokens usam **READ** e expiram em **90 dias** por padrão. Escolha WRITE e/ou
+um token sem expiração de forma explícita. Tokens existentes e concessões OAuth
+mantêm suas configurações. A ação do admin cria um token adicional; revogar é uma
+ação separada. Prompts copiados contêm instruções e uma variável de ambiente,
+nunca o segredo Bearer.
+
+## Contratos de execução e resultados
+
+O catálogo tem **44 ferramentas: 31 READ e 13 WRITE**, com escopos, anotações de
+efeitos e schemas de saída validados. `voxen_get_job_status` é READ, inclusive
+para jobs enviados por um cliente com escrita. Os metadados informam a versão
+real do Voxen em execução.
+
+Argumentos desconhecidos são rejeitados. Consultas têm limite de 2.000 caracteres,
+identificadores de 256, listas de 100 itens e argumentos aninhados de 10 níveis;
+cada ferramenta pode ter limites menores. IDs RPC aceitam strings de até 128
+caracteres ou inteiros seguros. O prazo de 30 segundos começa na leitura do corpo
+e inclui autenticação e execução. Consultas pesadas do grafo têm limite de 3
+segundos no PostgreSQL.
+
+Respostas de ferramentas têm limite de 96 KiB. Resultados pequenos mantêm o
+contrato normal. READ grandes retornam `dataChunk` e metadados `_mcp`: `format`
+é `application/json`, `offsetUnit` é `utf16`, `resultChecksum` identifica o JSON
+completo e `nextCursor` é a continuação assinada. Repita a mesma ferramenta e os
+argumentos originais com `content_cursor: nextCursor`, concatene os `dataChunk`
+em ordem e só interprete o JSON quando `nextCursor` virar null. Cada página
+confere novamente propriedade e ciclo de vida. Conteúdo alterado, outro usuário/
+ferramenta/filtro ou cursor expirado exigem reiniciar sem `content_cursor`.
+O cursor vale cinco minutos; cada página seguinte renova o prazo. Resultados
+completos acima de 16 MiB exigem uma página menor ou um trecho progressivo.
+
+WRITE grandes retornam `summary` limitado e instruções READ em `_mcp.followUp`.
+`toolExecution: completed` indica que a chamada terminou; um job enfileirado ainda
+precisa ser acompanhado. `applied: false` indica que o preview não aplicou escrita.
+WRITE nunca aceita `content_cursor`. Confira o estado atual antes de repetir uma
+escrita com resultado incerto.
+
+Listagens de notas/transcrições usam cursores assinados em `nextCursor`, por data
+de criação decrescente e depois ID decrescente. Excluir o limite de uma página ou
+editar um item não desloca as páginas seguintes; novos itens mais recentes
+aparecem ao reiniciar a listagem. Preserve o filtro original. Cursores antigos de
+offset são rejeitados com instruções de reinício.
+
+A proteção permite 600 chamadas/minuto por usuário, 1.200 por conexão e 6.000 no
+servidor. Ela usa o endereço TCP observado, sem confiar em headers encaminhados
+pelo cliente. Há quatro ferramentas ativas por usuário e dezesseis no servidor;
+callbacks que excederam o prazo mantêm a vaga até realmente terminarem. HTTP
+429/503 inclui `Retry-After`. Credenciais inválidas retornam 401; indisponibilidade
+da autenticação/proteção retorna 503. Erros de ferramentas usam códigos seguros
+e `requestId`, sem detalhes de banco, caminhos ou credenciais.
+
+Auditoria OAuth mantém até 30 dias e os 20.000 registros mais recentes, com limpeza
+por minuto em lotes limitados. Logs de ferramentas registram nome, duração,
+resultado e identificadores não secretos; não registram argumentos, conteúdo ou
+Bearer. Configure `APP_BASE_URL` canônica válida em produção. Sem ela, o MCP
+bloqueia o acesso; desenvolvimento aceita somente origem/host local compatível.
+
+A suíte de protocolo testa SDKs 2.3.1 (atual) e 1.32.1 (legado). Integrações com
+contas de produtos específicos ainda exigem testes reais. Clientes hospedados
+precisam alcançar seu HTTPS pela rede deles; regras geográficas do firewall
+também se aplicam a esses serviços.
+
 ## Contexto pessoal e grafo
 
 Credenciais com leitura expõem `voxen_personal_context`. A ferramenta reúne,
@@ -185,14 +247,17 @@ headers de versão/beta atuais do conector MCP da Anthropic.
 
 ## Cursor
 
-O Cursor documenta Streamable HTTP remoto e OAuth. A superfície de header
-customizado mudou entre versões, por isso o Voxen não publica um `mcp.json` com
-token como se fosse universal. Se a sua versão oferecer explicitamente um
-header Authorization secreto, use o endpoint e Bearer acima. Nunca anexe o
-token à URL.
+O [guia oficial do Cursor](https://cursor.com/docs/mcp) documenta HTTP remoto,
+OAuth e headers por variáveis de ambiente. Para OAuth, habilite-o no Voxen e use:
 
-Caso contrário, use o fluxo OAuth normal do Cursor após a habilitação pelo
-administrador. Ao reportar compatibilidade, informe a versão e o resultado.
+```json
+{ "mcpServers": { "voxen": { "url": "https://SEU-HOST-VOXEN/mcp" } } }
+```
+
+Com token pessoal, use uma referência secreta no servidor:
+`"headers": {"Authorization": "Bearer ${env:VOXEN_MCP_TOKEN}"}`. Nunca coloque a
+credencial na URL. Registre a versão instalada e o resultado real; configuração
+documentada não equivale a validar a conta do cliente.
 
 ## Descoberta OAuth 2.1 e clientes manuais
 

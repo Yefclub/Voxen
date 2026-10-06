@@ -118,7 +118,7 @@ describe('Mermaid transcript flow contract', () => {
       Bun.file(
         new URL('../src/client/components/library/transcript-derived-content.tsx', import.meta.url),
       ).text(),
-      Bun.file(new URL('../src/routes/mcp.ts', import.meta.url)).text(),
+      Bun.file(new URL('../src/routes/mcp-transcript-reading-tools.ts', import.meta.url)).text(),
       Bun.file(new URL('../src/lib/chat/runtime.ts', import.meta.url)).text(),
       Bun.file(new URL('../../../prisma/schema.prisma', import.meta.url)).text(),
       Bun.file(

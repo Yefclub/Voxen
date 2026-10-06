@@ -150,10 +150,10 @@ export function McpClientSetup({
           <Textarea readOnly value={setup.config} rows={6} className="font-mono text-xs" />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--color-app-muted)]">
-              {setup.id === 'grok'
+              {setup.id === 'grok' || setup.id === 'cursor'
                 ? locale === 'en'
-                  ? 'OAuth must be enabled by the administrator. Do not paste a personal token into Grok.'
-                  : 'O administrador precisa habilitar OAuth. Não cole token pessoal no Grok.'
+                  ? 'OAuth must be enabled by the administrator. Sign in through the client; keep personal tokens out of OAuth credential fields.'
+                  : 'O administrador precisa habilitar OAuth. Entre pelo cliente; mantenha tokens pessoais fora dos campos de credenciais OAuth.'
                 : setup.status === 'unsupported'
                   ? locale === 'en'
                     ? 'OAuth is required; no personal token is included in this configuration.'
