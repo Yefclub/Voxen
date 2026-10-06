@@ -1,11 +1,12 @@
 import type { McpServer, ToolCallback, ToolAnnotations } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { structuredLog } from '../lib/structured-log';
-import { MCP_TOOL_SCOPES } from './mcp-tool-policy';
+import { MCP_TOOL_SCOPES, mcpToolAnnotations } from './mcp-tool-policy';
 import { type McpConcurrencyLimiter, mcpToolConcurrency } from './mcp-request-protection';
 import { budgetMcpResult, McpResultBudgetError, MCP_RESULT_WIRE_BYTES } from './mcp-result-budget';
 import { MCP_READ_PAGE_SCHEMA, MCP_WRITE_SUMMARY_SCHEMA } from './mcp-result-schemas';
 import { boundedMcpInputShape, validMcpArgumentBudget, MCP_INPUT_LIMITS } from './mcp-input-budget';
+import { mcpNormalOutputSchema } from './mcp-output-contracts';
 import { fail, ok } from './mcp-tool-helpers';
 
 type Input = z.ZodObject<z.ZodRawShape>;
@@ -32,10 +33,7 @@ export function installMcpToolExecution(
     const read = scope === 'READ';
     const annotations: ToolAnnotations = {
       ...config.annotations,
-      readOnlyHint: read,
-      destructiveHint: read ? false : (config.annotations?.destructiveHint ?? false),
-      idempotentHint: read ? true : (config.annotations?.idempotentHint ?? false),
-      openWorldHint: read ? false : (config.annotations?.openWorldHint ?? false),
+      ...mcpToolAnnotations(name as keyof typeof MCP_TOOL_SCOPES),
     };
     const inputSchema = z
       .object({
@@ -53,7 +51,7 @@ export function installMcpToolExecution(
           : {}),
       })
       .strict();
-    const normalOutput = config.outputSchema ? z.object(config.outputSchema) : undefined;
+    const normalOutput = mcpNormalOutputSchema(name, config.outputSchema);
     const outputSchema = normalOutput
       ? z.union([normalOutput, read ? MCP_READ_PAGE_SCHEMA : MCP_WRITE_SUMMARY_SCHEMA])
       : undefined;
@@ -117,6 +115,17 @@ export function installMcpToolExecution(
               string,
               unknown
             >;
+            if (normalOutput && !normalOutput.safeParse(normalized).success) {
+              code = 'MCP_OUTPUT_INVALID';
+              return fail(
+                JSON.stringify({
+                  code,
+                  requestId: identity.requestId,
+                  message:
+                    'Tool returned an invalid public result. For writes, verify current state before retrying.',
+                }),
+              );
+            }
             return ok(
               budgetMcpResult(
                 normalized,

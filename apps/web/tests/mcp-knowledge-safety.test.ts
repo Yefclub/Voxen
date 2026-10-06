@@ -357,10 +357,16 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP current knowledge', () => {
       query: folder.title,
     });
     expect(search.structuredContent!.results.map((item) => item.id)).toContain(node.id);
-    const neighbors = await tool<{ edges: Array<{ id: string }> }>('voxen_brain_neighbors', {
-      node_id: node.id,
-    });
+    const neighbors = await tool<{ edges: Array<{ id: string; confidence: number }> }>(
+      'voxen_brain_neighbors',
+      {
+        node_id: node.id,
+      },
+    );
     expect(neighbors.structuredContent!.edges.map((item) => item.id)).toContain(edge.id);
+    expect(neighbors.structuredContent!.edges.find((item) => item.id === edge.id)?.confidence).toBe(
+      1,
+    );
     const paths = await tool<{ paths: Path[] }>('voxen_brain_path', {
       from_node_id: node.id,
       to_node_id: topic.id,

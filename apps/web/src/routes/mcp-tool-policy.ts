@@ -48,6 +48,68 @@ export const MCP_TOOL_SCOPES = {
   voxen_delete_knowledge: 'WRITE',
 } as const satisfies Record<string, McpScope>;
 
+type WriteEffects = { destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
+const WRITE_EFFECTS = {
+  voxen_create_note: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  voxen_update_note: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  voxen_patch_note: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  voxen_restore_note_revision: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  voxen_patch_transcript: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  voxen_restore_transcript_correction: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  voxen_request_transcription: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  voxen_request_transcriptions: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  voxen_request_transcript_research: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  voxen_review_transcript_enrichment: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  voxen_edit_transcript_enrichment: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  voxen_delete_transcript_enrichment: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  voxen_delete_knowledge: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+} satisfies Record<string, WriteEffects>;
+
+export function mcpToolAnnotations(name: keyof typeof MCP_TOOL_SCOPES) {
+  if (MCP_TOOL_SCOPES[name] === 'READ')
+    return {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    };
+  const effects = WRITE_EFFECTS[name as keyof typeof WRITE_EFFECTS];
+  if (!effects) throw new Error('MCP write effect policy is missing');
+  return { readOnlyHint: false, ...effects };
+}
+
 export function requiredMcpToolScope(payload: unknown): McpScope | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const request = payload as { method?: unknown; params?: { name?: unknown } };

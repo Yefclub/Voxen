@@ -3,6 +3,7 @@ import app from '../src/index';
 import { db } from '../src/lib/db';
 import { mcpAuthenticationStore } from '../src/routes/mcp-authentication';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
+import { MCP_TOOL_SCOPES } from '../src/routes/mcp-tool-policy';
 import { PERSONAL_AGENT_CONTEXT_MAX_CHARS } from '../src/lib/personal-agent-context';
 import { deleteSetting, setSetting } from '../src/lib/settings';
 import {
@@ -115,6 +116,43 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(data.result?.instructions).toContain('voxen_personal_context');
     expect(data.result?.instructions).toContain('voxen_brain_timeline');
     expect(data.result?.instructions).toContain('DADOS NÃO CONFIÁVEIS');
+  });
+
+  it('every registered tool exposes a meaningful output contract and the central scope policy', async () => {
+    const response = await call({ jsonrpc: '2.0', id: 450, method: 'tools/list' }, TOKEN);
+    const body = (await response.json()) as {
+      result: {
+        tools: {
+          name: string;
+          outputSchema?: { type?: string; anyOf?: unknown[] };
+          annotations: {
+            readOnlyHint?: boolean;
+            destructiveHint?: boolean;
+            idempotentHint?: boolean;
+            openWorldHint?: boolean;
+          };
+          _meta: Record<string, unknown>;
+        }[];
+      };
+    };
+    expect(body.result.tools.map((t) => t.name).sort()).toEqual(
+      Object.keys(MCP_TOOL_SCOPES).sort(),
+    );
+    for (const tool of body.result.tools) {
+      const scope = MCP_TOOL_SCOPES[tool.name as keyof typeof MCP_TOOL_SCOPES];
+      expect(tool._meta['voxen.dev/requiredScope']).toBe(scope);
+      expect(tool.annotations.readOnlyHint).toBe(scope === 'READ');
+      for (const key of [
+        'readOnlyHint',
+        'destructiveHint',
+        'idempotentHint',
+        'openWorldHint',
+      ] as const)
+        expect(typeof tool.annotations[key]).toBe('boolean');
+      expect(tool.outputSchema, tool.name).toBeDefined();
+      expect(tool.outputSchema?.type, tool.name).toBe('object');
+      expect(JSON.stringify(tool.outputSchema), tool.name).toContain('required');
+    }
   });
 
   it('tools/list expõe tools voxen_ com readOnlyHint', async () => {

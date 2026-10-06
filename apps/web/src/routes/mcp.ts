@@ -1083,7 +1083,9 @@ function registerBrainTools(server: McpServer, userId: string): void {
       );
       return ok({
         node,
-        edges: edges.filter((edge) => visible.has(edge.from.id) && visible.has(edge.to.id)),
+        edges: edges
+          .filter((edge) => visible.has(edge.from.id) && visible.has(edge.to.id))
+          .map((edge) => ({ ...edge, confidence: Number(edge.confidence) })),
       });
     },
   );
@@ -1182,7 +1184,10 @@ function registerBrainTools(server: McpServer, userId: string): void {
         keepCurrentOwnedSources(userId, conflictingSources),
       ]);
       return ok({
-        sources: currentSources,
+        sources: currentSources.map((source) => ({
+          ...source,
+          fact: source.fact ? { ...source.fact, confidence: Number(source.fact.confidence) } : null,
+        })),
         conflicting_sources: currentConflicts,
       });
     },

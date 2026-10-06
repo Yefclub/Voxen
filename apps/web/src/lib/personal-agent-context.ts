@@ -220,9 +220,10 @@ export function serializePersonalAgentContext(context: PersonalAgentContext): st
 export function enforcePersonalAgentContextBudget(
   context: PersonalAgentContext,
   serialize: (value: PersonalAgentContext) => string = JSON.stringify,
+  maxChars = PERSONAL_AGENT_CONTEXT_MAX_CHARS,
 ): PersonalAgentContext {
   let guard = 0;
-  while (serialize(context).length > PERSONAL_AGENT_CONTEXT_MAX_CHARS && guard < 100) {
+  while (serialize(context).length > maxChars && guard < 100) {
     context.metadata.contextTruncated = true;
     const removable = [
       context.recommendations.length > 1 ? context.recommendations : null,

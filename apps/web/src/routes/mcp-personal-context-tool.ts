@@ -27,7 +27,13 @@ export function registerMcpPersonalContextTool(
     async () => {
       try {
         const context = await loadPersonalAgentContext(userId);
-        return ok({ ...enforcePersonalAgentContextBudget(withPublicLinks(context, publicOrigin)) });
+        return ok({
+          ...enforcePersonalAgentContextBudget(
+            withPublicLinks(context, publicOrigin),
+            JSON.stringify,
+            8000,
+          ),
+        });
       } catch {
         return fail('O contexto pessoal não está disponível neste momento.');
       }
