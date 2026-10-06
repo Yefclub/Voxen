@@ -106,7 +106,10 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       result?: { serverInfo?: { name?: string; version?: string }; instructions?: string };
     };
     expect(data.result?.serverInfo?.name).toBe('voxen-mcp');
-    expect(data.result?.serverInfo?.version).toBe('0.6.0');
+    const version = (await (
+      await app.fetch(new Request('http://localhost/api/version'))
+    ).json()) as { version: string };
+    expect(data.result?.serverInfo?.version).toBe(version.version);
     expect(data.result?.instructions).toContain('tags e resumo');
     expect(data.result?.instructions).toContain('source_anchors');
     expect(data.result?.instructions).toContain('voxen_personal_context');

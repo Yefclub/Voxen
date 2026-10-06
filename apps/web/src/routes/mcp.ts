@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { servePreparedMcpExchange } from './mcp-http-exchange';
 import { withMcpRequest } from './mcp-request-body';
+import { VOXEN_VERSION } from '../lib/build-identity';
 import { db } from '../lib/db';
 import { noteContentChecksum } from '../lib/note-revisions';
 import { type McpScope } from '../lib/mcp-tokens';
@@ -222,7 +223,7 @@ function buildVoxenMcpServer(
   publicOrigin: string,
 ): McpServer {
   const server = new McpServer(
-    { name: 'voxen-mcp', version: '0.6.0' },
+    { name: 'voxen-mcp', version: VOXEN_VERSION },
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
