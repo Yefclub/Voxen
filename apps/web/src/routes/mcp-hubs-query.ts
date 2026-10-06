@@ -7,11 +7,11 @@ export function mcpHubsQuery(userId: string, limit: number): Prisma.Sql {
           FROM "BrainEdge" e
           -- Keep identity lookups indexed even when a newly inserted owner lacks statistics.
           JOIN LATERAL (
-            SELECT id, "userId", status, "sourceType", "sourceId" FROM "BrainNode"
+            SELECT id, "userId", status, "sourceType", "sourceId", metadata FROM "BrainNode"
             WHERE id = e."fromNodeId" OFFSET 0
           ) f ON f."userId" = e."userId"
           JOIN LATERAL (
-            SELECT id, "userId", status, "sourceType", "sourceId" FROM "BrainNode"
+            SELECT id, "userId", status, "sourceType", "sourceId", metadata FROM "BrainNode"
             WHERE id = e."toNodeId" OFFSET 0
           ) t ON t."userId" = e."userId"
           WHERE e."userId" = ${userId} AND e.status = 'ACTIVE'::"ContentStatus"
