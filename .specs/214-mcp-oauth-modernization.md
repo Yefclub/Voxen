@@ -11,6 +11,7 @@ configuration must survive the upgrade.
 ## Requirements
 
 ### Ubiquitous
+
 - The system shall upgrade Better Auth and its enabled packages together to the verified current maintenance release.
 - The system shall bind OAuth tokens, clients and grants to the canonical MCP resource with explicit scopes and short access-token lifetime.
 - The system shall preserve existing account identities, sessions, client identifiers, grants, refresh tokens and signing keys through reviewed additive migrations.
@@ -18,17 +19,20 @@ configuration must survive the upgrade.
 - The system shall maintain PKCE, consent, approval, revocation and least-privilege checks.
 
 ### Event-driven
+
 - When a client identifies itself by an HTTPS metadata document, the system shall discover and validate it through a DNS-pinned, public-address-only transport with no redirects and bounded time/bytes.
 - When a native client uses a varying loopback port, the system shall allow only the registered loopback host and path, without broad wildcard redirects.
 - When old short-lived access tokens overlap the rollout, the system shall recognize their original claim format without expanding accepted audience or scopes.
 - When existing refresh tokens are used after rollout, the system shall retain the original client/user/resource grant and replay protection.
 
 ### Unwanted behavior
+
 - If metadata resolves to any private or special-use address, changes hostname/TLS identity, redirects, exceeds bounds, or has an invalid document, then the system shall reject discovery.
 - If client, consent or user authorization has been revoked or disabled, then the system shall reject access immediately.
 - If the canonical resource or OAuth storage is unavailable, then the system shall fail closed without exposing secrets.
 
 ## Acceptance criteria
+
 - [x] Reviewed package APIs and official upgrade/CIMD guidance match the implementation.
 - [x] Additive schema/migration and resource backfill preserve pre-upgrade identities and credentials.
 - [x] Login, encrypted SSO, PKCE/consent, refresh/replay, revocation and scope regressions pass.
@@ -59,6 +63,10 @@ legacy access remained revocable and refresh renewed with the original grant.
 Backfill idempotence and data preservation regressions passed. Metadata client
 OAuth/PKCE with changing loopback port passed, including consent, issuer response,
 client-resource unlink and session deletion. Existing login/SSO/OAuth regressions
-passed. The actual Bun pinned-address probe rejected a connection to the selected
+passed after adapting provider row locking and transaction-scoped identity reads.
+Verified pending SSO accounts commit without a session; denied registration
+returns the provider's generic response without persisting an identity. A real
+TLS fixture accepts its trusted matching certificate and rejects an otherwise
+trusted certificate for another hostname on Bun. The actual Bun pinned-address probe rejected a connection to the selected
 alternate public address; bounded transport unit cases passed. Full gates, UI
 verification, final independent review and deployment remain pending.

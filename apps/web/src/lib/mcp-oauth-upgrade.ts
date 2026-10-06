@@ -3,8 +3,8 @@ import { db } from './db';
 
 /** One-time, additive binding of pre-1.7 MCP grants; no user, secret, token or key is replaced. */
 export async function ensureMcpOauthResourceUpgrade(resource: string): Promise<void> {
-  const marker =
-    'voxen:mcp-oauth-resource:v1:' + createHash('sha256').update(resource).digest('hex');
+  const resourceHash = createHash('sha256').update(resource).digest('hex');
+  const marker = 'voxen:mcp-oauth-resource:v1:' + resourceHash;
   await db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SET LOCAL statement_timeout = '5s'`;
@@ -31,7 +31,7 @@ export async function ensureMcpOauthResourceUpgrade(resource: string): Promise<v
           Prisma.sql`UPDATE ${Prisma.raw('"' + table + '"')} SET resources = ARRAY[${resource}]::text[] WHERE COALESCE(cardinality(resources),0) = 0 AND scopes && ARRAY['mcp:read','mcp:write']::text[]`,
         );
       }
-      await tx.$executeRaw`INSERT INTO "OauthClientResource" (id,"clientId","resourceId","createdAt") SELECT 'mcp-upgrade:' || "clientId", "clientId", ${resource}, NOW() FROM "OauthClient" WHERE scopes && ARRAY['mcp:read','mcp:write']::text[] ON CONFLICT ("clientId","resourceId") DO NOTHING`;
+      await tx.$executeRaw`INSERT INTO "OauthClientResource" (id,"clientId","resourceId","createdAt") SELECT ${'mcp-upgrade:' + resourceHash + ':'} || "clientId", "clientId", ${resource}, NOW() FROM "OauthClient" WHERE scopes && ARRAY['mcp:read','mcp:write']::text[] ON CONFLICT ("clientId","resourceId") DO NOTHING`;
       await tx.verification.create({
         data: {
           id: marker,

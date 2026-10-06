@@ -1241,7 +1241,7 @@ describeIfDb('auth + admin approval flow', () => {
     try {
       const callback = await completeOidc(flow);
       expect(callback.status).toBe(302);
-      expect(callback.headers.get('location')).toContain('token_not_verified');
+      expect(callback.headers.get('location')).toContain('invalid_provider');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1466,15 +1466,16 @@ describeIfDb('auth + admin approval flow', () => {
     await setSetting('onboarding_done', 'true');
     await setSetting('allow_signups', 'false');
 
-    await expect(
-      auth.api.signUpEmail({
-        body: {
-          email: 'blocked@voxen.local',
-          password: 'senha-super-segura-789',
-          name: 'Blocked',
-        },
-      }),
-    ).rejects.toMatchObject({ status: 'FORBIDDEN' });
+    // Better Auth 1.7 masks rejected registrations to prevent enumeration.
+    // The generic response must carry no session and persist no new identity.
+    const response = await auth.api.signUpEmail({
+      body: {
+        email: 'blocked@voxen.local',
+        password: 'senha-super-segura-789',
+        name: 'Blocked',
+      },
+    });
+    expect(response.token).toBeNull();
     expect(await db.user.findUnique({ where: { email: 'blocked@voxen.local' } })).toBeNull();
   });
 

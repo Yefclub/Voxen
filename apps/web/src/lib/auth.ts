@@ -9,6 +9,7 @@
 
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { APIError } from 'better-auth/api';
+import { getCurrentAdapter } from '@better-auth/core/context';
 import { cimd } from '@better-auth/cimd';
 import { fetchMcpClientMetadata } from './mcp-metadata-transport';
 import { validateMcpOAuthRedirect } from './mcp-oauth-redirect';
@@ -24,7 +25,7 @@ import {
   normalizeSsoDomains,
   scrubFederatedAccountTokens,
 } from './sso-oidc';
-import { currentSsoProviderId } from './sso-request-context';
+import { currentSsoProviderId, denyPendingSsoSession } from './sso-request-context';
 import { resolveAuthBaseURL } from './auth-base-url';
 import { structuredLog } from './structured-log';
 
@@ -95,16 +96,28 @@ async function assertFederatedIdentity(input: {
 }): Promise<void> {
   const provider = await getActiveSsoProvider(input.providerId);
   if (!provider) {
-    throw new APIError('FORBIDDEN', { message: 'Provedor OIDC não encontrado.' });
+    throw new APIError('FORBIDDEN', {
+      message: 'Provedor OIDC não encontrado.',
+      code: 'SSO_PROVIDER_UNAVAILABLE',
+    });
   }
   if (!provider.domainVerified) {
-    throw new APIError('FORBIDDEN', { message: 'Domínio do provedor OIDC não verificado.' });
+    throw new APIError('FORBIDDEN', {
+      message: 'Domínio do provedor OIDC não verificado.',
+      code: 'SSO_DOMAIN_UNVERIFIED',
+    });
   }
   if (input.requireClaimVerification && input.emailVerified !== true) {
-    throw new APIError('FORBIDDEN', { message: 'O provedor OIDC não verificou o e-mail.' });
+    throw new APIError('FORBIDDEN', {
+      message: 'O provedor OIDC não verificou o e-mail.',
+      code: 'SSO_EMAIL_UNVERIFIED',
+    });
   }
   if (!emailMatchesSsoDomains(input.email, normalizeSsoDomains(provider.domain))) {
-    throw new APIError('FORBIDDEN', { message: 'E-mail fora dos domínios autorizados.' });
+    throw new APIError('FORBIDDEN', {
+      message: 'E-mail fora dos domínios autorizados.',
+      code: 'SSO_EMAIL_DOMAIN_DENIED',
+    });
   }
 }
 
@@ -123,7 +136,10 @@ function verifiedEmailFromOidcIdToken(idToken: unknown): string {
     throw new APIError('FORBIDDEN', { message: 'ID token OIDC inválido.' });
   }
   if (claims.email_verified !== true || typeof claims.email !== 'string') {
-    throw new APIError('FORBIDDEN', { message: 'O provedor OIDC não verificou o e-mail.' });
+    throw new APIError('FORBIDDEN', {
+      message: 'O provedor OIDC não verificou o e-mail.',
+      code: 'SSO_EMAIL_UNVERIFIED',
+    });
   }
   return claims.email.trim().toLowerCase();
 }
@@ -308,9 +324,10 @@ const config = {
         before: async (account) => {
           const provider = await getActiveSsoProvider(account.providerId);
           if (!provider) return { data: account };
-          const user = await db.user.findUnique({
-            where: { id: account.userId },
-            select: { email: true },
+          const adapter = await getCurrentAdapter((await auth.$context).adapter);
+          const user = await adapter.findOne<{ email: string }>({
+            model: 'user',
+            where: [{ field: 'id', value: account.userId }],
           });
           if (!user) {
             throw new APIError('UNAUTHORIZED', { message: 'Usuário federado não encontrado.' });
@@ -347,9 +364,10 @@ const config = {
       create: {
         // Antes de criar session (i.e., login): bloqueia se não APPROVED.
         before: async (session) => {
-          const user = await db.user.findUnique({
-            where: { id: session.userId },
-            select: { status: true },
+          const adapter = await getCurrentAdapter((await auth.$context).adapter);
+          const user = await adapter.findOne<{ status: string }>({
+            model: 'user',
+            where: [{ field: 'id', value: session.userId }],
           });
           if (!user) {
             throw new APIError('UNAUTHORIZED', {
@@ -358,6 +376,12 @@ const config = {
             });
           }
           if (user.status === 'PENDING') {
+            if (currentSsoProviderId()) {
+              // Commit the verified account for administrator approval, while
+              // refusing the session inside the same SSO transaction.
+              denyPendingSsoSession();
+              return false;
+            }
             throw new APIError('FORBIDDEN', {
               message: 'Cadastro aguardando aprovação do administrador.',
               code: 'ACCOUNT_PENDING',

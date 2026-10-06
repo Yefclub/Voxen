@@ -44,6 +44,7 @@ export const fetchMcpClientMetadata: ClientMetadataResourceFetch = async (input,
   )
     throw new TypeError('Metadata requires public routable addresses');
   const pinned = addresses[0]!;
+  let cleanupSignal = () => {};
   return new Promise<Response>((resolve, reject) => {
     const connection = metadataNetwork.request(
       url,
@@ -65,6 +66,12 @@ export const fetchMcpClientMetadata: ClientMetadataResourceFetch = async (input,
       },
       (response) => {
         const status = response.statusCode ?? 500;
+        if (!Number.isInteger(status) || status < 200 || status > 599) {
+          response.destroy();
+          connection.destroy();
+          reject(new TypeError('Invalid metadata response status'));
+          return;
+        }
         // 304 is a conditional metadata response, not a redirect.
         if (status >= 300 && status < 400 && status !== 304) {
           response.destroy();
@@ -92,24 +99,37 @@ export const fetchMcpClientMetadata: ClientMetadataResourceFetch = async (input,
         response.on('error', () => reject(new TypeError('Metadata response failed')));
         response.on('aborted', () => reject(new TypeError('Metadata response interrupted')));
         response.on('end', () => {
-          const headers = new Headers();
-          for (const [key, value] of Object.entries(response.headers)) {
-            if (Array.isArray(value)) for (const item of value) headers.append(key, item);
-            else if (value !== undefined) headers.set(key, value);
+          try {
+            const headers = new Headers();
+            for (const [key, value] of Object.entries(response.headers)) {
+              if (Array.isArray(value)) for (const item of value) headers.append(key, item);
+              else if (value !== undefined) headers.set(key, value);
+            }
+            resolve(
+              new Response(
+                original.method === 'HEAD' || [204, 205, 304].includes(status)
+                  ? null
+                  : Buffer.concat(chunks),
+                { status, headers },
+              ),
+            );
+          } catch {
+            reject(new TypeError('Invalid metadata response'));
           }
-          resolve(
-            new Response(
-              original.method === 'HEAD' || [204, 205, 304].includes(status)
-                ? null
-                : Buffer.concat(chunks),
-              { status, headers },
-            ),
-          );
         });
       },
     );
     // Keep this listener through destruction: Bun can report more than one connection error.
     connection.on('error', () => reject(new TypeError('Metadata connection failed')));
+    const aborted = () => {
+      connection.destroy();
+      reject(new TypeError('Metadata deadline exceeded'));
+    };
+    signal.addEventListener('abort', aborted, { once: true });
+    cleanupSignal = () => signal.removeEventListener('abort', aborted);
+    // The total deadline also covers a socket that closes without a response.
+    // Bun may emit request.close before incoming response events finish.
+    if (signal.aborted) aborted();
     connection.end();
-  });
+  }).finally(() => cleanupSignal());
 };

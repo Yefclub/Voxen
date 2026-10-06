@@ -15,7 +15,7 @@ import {
 } from '../lib/mcp-oauth';
 import { isBlockedDirectSsoRoute } from '../lib/sso-oidc';
 import { assertProviderRuntimeEndpointsPublic } from '../lib/sso-provider-service';
-import { withSsoProviderRequest } from '../lib/sso-request-context';
+import { withSsoProviderRequest, pendingSsoSessionDenied } from '../lib/sso-request-context';
 
 export const publicAuthenticationRoutes = new Hono();
 
@@ -358,9 +358,12 @@ publicAuthenticationRoutes.on(['GET', 'POST'], '/api/auth/*', async (c) => {
     }
   }
   let response = oidcCallback?.[1]
-    ? await withSsoProviderRequest(decodeURIComponent(oidcCallback[1]), () =>
-        auth.handler(handlerRequest),
-      )
+    ? await withSsoProviderRequest(decodeURIComponent(oidcCallback[1]), async () => {
+        const callbackResponse = await auth.handler(handlerRequest);
+        // No session was written; the verified pending identity was committed.
+        if (pendingSsoSessionDenied()) return c.redirect('/entrar?error=ACCOUNT_PENDING');
+        return callbackResponse;
+      })
     : await auth.handler(handlerRequest);
   const unsupportedJwtRevocation =
     response.status === 400 &&

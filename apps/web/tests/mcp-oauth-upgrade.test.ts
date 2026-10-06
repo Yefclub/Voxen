@@ -4,6 +4,7 @@ import { ensureMcpOauthResourceUpgrade } from '../src/lib/mcp-oauth-upgrade';
 
 describe.skipIf(!process.env.DATABASE_URL)('additive OAuth resource backfill', () => {
   test('preserves legacy identities, token/secret/key bytes and timestamps and binds only unbound MCP grants', async () => {
+    const secondResource = `https://second-${crypto.randomUUID()}.example.test/mcp`;
     const resource = `https://legacy-${crypto.randomUUID()}.example.test/mcp`;
     const user = await db.user.create({
       data: {
@@ -98,13 +99,23 @@ describe.skipIf(!process.env.DATABASE_URL)('additive OAuth resource backfill', (
       expect(
         await db.oauthClientResource.count({ where: { clientId, resourceId: resource } }),
       ).toBe(1);
+      await ensureMcpOauthResourceUpgrade(secondResource);
+      expect(await db.oauthClientResource.count({ where: { clientId } })).toBe(2);
+      expect(
+        (await db.oauthConsent.findUniqueOrThrow({ where: { id: consent.id } })).resources,
+      ).toEqual([resource]);
     } finally {
       await db.oauthClient.deleteMany({ where: { clientId } });
       await db.user.deleteMany({ where: { id: user.id } });
       if (keyId) await db.jwks.deleteMany({ where: { id: keyId } });
-      await db.oauthResource.deleteMany({ where: { identifier: resource } });
+      await db.oauthResource.deleteMany({
+        where: { identifier: { in: [resource, secondResource] } },
+      });
       await db.verification.deleteMany({
-        where: { identifier: 'voxen:mcp-oauth-resource-upgrade', value: resource },
+        where: {
+          identifier: 'voxen:mcp-oauth-resource-upgrade',
+          value: { in: [resource, secondResource] },
+        },
       });
     }
   });

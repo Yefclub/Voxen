@@ -100,6 +100,22 @@ describe.skipIf(!process.env.DATABASE_URL)('metadata document OAuth clients', ()
         where: { clientId_resourceId: { clientId, resourceId: resolveMcpOAuthResource() } },
       }),
     ).not.toBeNull();
+    const contextQuery = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirect,
+      scope: 'mcp:read offline_access',
+    });
+    const context = await fetch('/api/mcp/oauth/consent-context?' + contextQuery, {
+      headers: { cookie },
+    });
+    expect(context.status).toBe(200);
+    for (const wrong of ['http://localhost:49152/auth/callback', 'http://127.0.0.1:49152/other']) {
+      contextQuery.set('redirect_uri', wrong);
+      expect(
+        (await fetch('/api/mcp/oauth/consent-context?' + contextQuery, { headers: { cookie } }))
+          .status,
+      ).toBe(400);
+    }
     const consent = await fetch('/api/auth/oauth2/consent', {
       method: 'POST',
       headers: { cookie, 'content-type': 'application/json' },
