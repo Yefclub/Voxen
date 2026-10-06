@@ -6,6 +6,8 @@ export const MCP_GRAPH_NODE_SCHEMA = z.object({
   type: z.string(),
   sourceType: z.string().nullable(),
   sourceId: z.string().nullable(),
+  description: z.string().nullable().optional(),
+  status: z.string().optional(),
   metadata: z.json(),
   updatedAt: z.string(),
 });
