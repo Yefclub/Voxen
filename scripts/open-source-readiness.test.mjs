@@ -88,9 +88,11 @@ test("known patched dependency versions are selected", () => {
     /\^(?:2\.(?:[1-9]|\d{2,})|[3-9]\.)/,
   );
   assert.match(
-    web.dependencies["@modelcontextprotocol/sdk"],
-    /\^1\.(?:3[0-9]|[4-9]\d)\./,
+    web.dependencies["@modelcontextprotocol/server"],
+    /^2\.(?:[3-9]|\d{2,})\./,
   );
+  assert.equal(web.dependencies["@modelcontextprotocol/sdk"], undefined);
+  assert.equal(web.dependencies["@hono/mcp"], undefined);
   assert.match(workspace.pnpm.overrides.postcss, /8\.5\.(?:2[3-9]|[3-9]\d)/);
 
   for (const vulnerable of [

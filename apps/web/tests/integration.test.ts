@@ -486,7 +486,7 @@ describeIfDb('auth + admin approval flow', () => {
         headers: {
           authorization: `Bearer ${token.token}`,
           'content-type': 'application/json',
-          accept: 'application/json',
+          accept: 'application/json, text/event-stream',
         },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
       }),

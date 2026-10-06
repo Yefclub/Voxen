@@ -14,6 +14,8 @@ const TEST_SOURCE = `mcp-oauth-suite-${crypto.randomUUID()}`;
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
+  if (path === '/mcp' && !headers.has('accept'))
+    headers.set('accept', 'application/json, text/event-stream');
   if (!headers.has('cf-connecting-ip')) headers.set('cf-connecting-ip', TEST_SOURCE);
   return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }));
 }
@@ -509,7 +511,7 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
       headers: {
         authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
-        accept: 'application/json',
+        accept: 'application/json, text/event-stream',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',

@@ -66,7 +66,7 @@ async function mcpCall(token: string, body: unknown): Promise<Response> {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      accept: 'application/json',
+      accept: 'application/json, text/event-stream',
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),

@@ -1,5 +1,5 @@
 import { Prisma } from '../../prisma-generated/client';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { db } from '../lib/db';
 import { currentBrainNodeSourceCondition } from '../lib/brain-source-visibility';

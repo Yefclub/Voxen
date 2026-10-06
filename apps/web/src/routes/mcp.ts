@@ -1,23 +1,13 @@
-// ============================================================================
-// /mcp — Model Context Protocol server (Streamable HTTP, spec 2025-11-25)
-// ============================================================================
-// Expõe a Base de conhecimento do Voxen como fonte de contexto pra outras IAs (Claude Desktop,
-// Cursor, agentes próprios) via o SDK oficial @modelcontextprotocol/sdk + o
-// transporte Streamable HTTP do @hono/mcp.
-//
-// Auth: Bearer token individual, persistido apenas como SHA-256. Cada token
-// pertence a UM user — TODAS as queries das tools são escopadas por esse userId.
-//
-// Stateless por design: um McpServer + transport são criados por request, com as
-// tools fechando sobre o userId autenticado. Sem Mcp-Session-Id — alinhado com a
-// direção stateless do protocolo e com o modelo single-tenant do Voxen.
-// ============================================================================
+// Owner-scoped MCP tools served through the official v2 Web Standard transport.
+// Each request creates a fresh server. Modern 2026 and legacy 2025 clients
+// share the same tool catalog and immutable authenticated owner identity.
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPTransport } from '@hono/mcp';
+import { McpServer } from '@modelcontextprotocol/server';
+import { servePreparedMcpExchange } from './mcp-http-exchange';
+import { withMcpRequest } from './mcp-request-body';
 import { db } from '../lib/db';
 import { noteContentChecksum } from '../lib/note-revisions';
 import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
@@ -58,7 +48,6 @@ import {
 import { registerMcpPersonalContextTool } from './mcp-personal-context-tool';
 
 export const mcpRoutes = new Hono();
-
 // Guia de alto nível devolvido no `initialize` (campo `instructions`). É o
 // primeiro contexto que qualquer agente recebe — explica o que é o Voxen, como
 // as tools se encaixam e as boas práticas de uso.
@@ -131,49 +120,46 @@ mcpRoutes.all('/', async (c) => {
   if (!originAllowed(c)) {
     return c.json({ error: 'Origem não permitida.' }, 403);
   }
-  const identity = await authenticateMcp(c);
-  if (!identity) {
-    const supplied = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
-    if (supplied.split('.').length === 3) {
+  return withMcpRequest(c.req.raw, async (prepared) => {
+    const identity = await authenticateMcp(c);
+    if (!identity) {
+      const supplied = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      if (supplied.split('.').length === 3) {
+        await writeMcpOAuthAudit({
+          event: 'resource_rejection',
+          outcome: 'denied',
+          metadata: { reason: 'invalid_token', path: '/mcp' },
+        });
+      }
+      c.header('WWW-Authenticate', mcpBearerChallenge({ error: 'invalid_token' }));
+      return c.json(
+        { error: 'Auth obrigatória ou inválida. Envie Authorization: Bearer <token>.' },
+        401,
+      );
+    }
+    if (
+      identity.credentialClass === 'oauth' &&
+      !identity.scopes.includes('WRITE') &&
+      requestsWriteTool(prepared.body)
+    ) {
+      c.header(
+        'WWW-Authenticate',
+        mcpBearerChallenge({ error: 'insufficient_scope', scope: 'mcp:write' }),
+      );
       await writeMcpOAuthAudit({
         event: 'resource_rejection',
         outcome: 'denied',
-        metadata: { reason: 'invalid_token', path: '/mcp' },
+        actorUserId: identity.userId,
+        targetUserId: identity.userId,
+        clientId: identity.clientId,
+        metadata: { reason: 'insufficient_scope', path: '/mcp' },
       });
+      return c.json({ error: 'Escopo mcp:write obrigatório para esta operação.' }, 403);
     }
-    c.header('WWW-Authenticate', mcpBearerChallenge({ error: 'invalid_token' }));
-    return c.json(
-      { error: 'Auth obrigatória ou inválida. Envie Authorization: Bearer <token>.' },
-      401,
+    return servePreparedMcpExchange(prepared, () =>
+      buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c)),
     );
-  }
-  if (
-    identity.credentialClass === 'oauth' &&
-    !identity.scopes.includes('WRITE') &&
-    (await requestsWriteTool(c))
-  ) {
-    c.header(
-      'WWW-Authenticate',
-      mcpBearerChallenge({ error: 'insufficient_scope', scope: 'mcp:write' }),
-    );
-    await writeMcpOAuthAudit({
-      event: 'resource_rejection',
-      outcome: 'denied',
-      actorUserId: identity.userId,
-      targetUserId: identity.userId,
-      clientId: identity.clientId,
-      metadata: { reason: 'insufficient_scope', path: '/mcp' },
-    });
-    return c.json({ error: 'Escopo mcp:write obrigatório para esta operação.' }, 403);
-  }
-  const server = buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c));
-  // enableJsonResponse: responde application/json em vez de abrir um stream SSE
-  // por request. Nossas tools são request/response (sem streaming do servidor),
-  // então JSON é mais simples e compatível (curl, Open WebUI, etc.).
-  const transport = new StreamableHTTPTransport({ enableJsonResponse: true });
-  await server.connect(transport);
-  const res = await transport.handleRequest(c);
-  return res ?? c.body(null, 202);
+  });
 });
 
 // Defesa contra DNS rebinding (spec 2025-11-25): se houver header Origin (cliente
@@ -236,23 +222,17 @@ const WRITE_TOOL_NAMES = new Set([
   'voxen_delete_knowledge',
 ]);
 
-async function requestsWriteTool(c: Context): Promise<boolean> {
-  if (c.req.method !== 'POST') return false;
-  try {
-    const payload: unknown = await c.req.raw.clone().json();
-    const requests = Array.isArray(payload) ? payload : [payload];
-    return requests.some((request) => {
-      if (!request || typeof request !== 'object') return false;
-      const value = request as { method?: unknown; params?: { name?: unknown } };
-      return (
-        value.method === 'tools/call' &&
-        typeof value.params?.name === 'string' &&
-        WRITE_TOOL_NAMES.has(value.params.name)
-      );
-    });
-  } catch {
-    return false;
-  }
+function requestsWriteTool(payload: unknown): boolean {
+  const requests = Array.isArray(payload) ? payload : [payload];
+  return requests.some((request) => {
+    if (!request || typeof request !== 'object') return false;
+    const value = request as { method?: unknown; params?: { name?: unknown } };
+    return (
+      value.method === 'tools/call' &&
+      typeof value.params?.name === 'string' &&
+      WRITE_TOOL_NAMES.has(value.params.name)
+    );
+  });
 }
 
 async function authenticateMcp(c: Context): Promise<McpIdentity | null> {
@@ -326,6 +306,8 @@ function buildVoxenMcpServer(
     registerWriteTools(server, userId);
     registerTranscriptEnrichmentWriteTools(server, userId);
   }
+  // The catalog is static for this authenticated request; no notification bus is exposed.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
   return server;
 }
 
