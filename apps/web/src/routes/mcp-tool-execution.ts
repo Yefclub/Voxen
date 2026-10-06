@@ -5,6 +5,7 @@ import { MCP_TOOL_SCOPES } from './mcp-tool-policy';
 import { type McpConcurrencyLimiter, mcpToolConcurrency } from './mcp-request-protection';
 import { budgetMcpResult, McpResultBudgetError, MCP_RESULT_WIRE_BYTES } from './mcp-result-budget';
 import { MCP_READ_PAGE_SCHEMA, MCP_WRITE_SUMMARY_SCHEMA } from './mcp-result-schemas';
+import { boundedMcpInputShape, validMcpArgumentBudget, MCP_INPUT_LIMITS } from './mcp-input-budget';
 import { fail, ok } from './mcp-tool-helpers';
 
 type Input = z.ZodObject<z.ZodRawShape>;
@@ -38,7 +39,7 @@ export function installMcpToolExecution(
     };
     const inputSchema = z
       .object({
-        ...config.inputSchema,
+        ...boundedMcpInputShape(config.inputSchema ?? {}),
         ...(read
           ? {
               content_cursor: z
@@ -63,7 +64,11 @@ export function installMcpToolExecution(
         inputSchema,
         outputSchema,
         annotations,
-        _meta: { ...config._meta, 'voxen.dev/requiredScope': scope },
+        _meta: {
+          ...config._meta,
+          'voxen.dev/requiredScope': scope,
+          'voxen.dev/inputLimits': MCP_INPUT_LIMITS,
+        },
       },
       async (args, context) => {
         const started = performance.now();
@@ -82,6 +87,16 @@ export function installMcpToolExecution(
             );
           }
           const { content_cursor, ...originalArgs } = args;
+          if (!validMcpArgumentBudget(originalArgs)) {
+            code = 'MCP_ARGUMENTS_TOO_LARGE';
+            return fail(
+              JSON.stringify({
+                code,
+                requestId: identity.requestId,
+                message: 'Tool arguments exceed their identifier, query, nesting or array limits.',
+              }),
+            );
+          }
           const result = await callback(originalArgs, context);
           if ('isError' in result && result.isError) {
             code = 'MCP_TOOL_REJECTED';

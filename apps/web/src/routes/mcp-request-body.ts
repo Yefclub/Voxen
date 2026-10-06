@@ -78,6 +78,26 @@ export async function withMcpRequest(
     } catch {
       body = undefined;
     }
+    if (body && typeof body === 'object' && !Array.isArray(body) && 'id' in body) {
+      const id = body.id;
+      if (
+        (typeof id === 'string' && id.length > 128) ||
+        (typeof id === 'number' && !Number.isSafeInteger(id))
+      ) {
+        return Response.json(
+          {
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32600,
+              message:
+                'RPC identifiers must be strings of at most 128 characters or safe integers.',
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
     // A fresh buffered body avoids transferring a live Bun request stream.
     const prepared = new Request(request.url, {
       method: request.method,
