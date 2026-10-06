@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
+import { mcpAuthenticationStore } from '../src/routes/mcp-authentication';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
 import { PERSONAL_AGENT_CONTEXT_MAX_CHARS } from '../src/lib/personal-agent-context';
 import { deleteSetting, setSetting } from '../src/lib/settings';
@@ -414,6 +415,81 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     } finally {
       await db.job.deleteMany({ where: { userId, sourceUrl: 'https://youtu.be/mcpBatch001' } });
       await deleteSetting('openrouter_api_key').catch(() => {});
+    }
+  });
+
+  it('READ credentials can monitor jobs and both credential scopes receive precise challenges', async () => {
+    const readList = await call({ jsonrpc: '2.0', id: 401, method: 'tools/list' }, READ_TOKEN);
+    const body = (await readList.json()) as { result: { tools: { name: string }[] } };
+    expect(body.result.tools.map((tool) => tool.name)).toContain('voxen_get_job_status');
+    const job = await db.job.create({
+      data: {
+        userId,
+        type: 'SCRAPE_WEB',
+        sourceUrl: 'https://example.com/scope-job',
+        status: 'QUEUED',
+      },
+    });
+    try {
+      const result = await call(
+        {
+          jsonrpc: '2.0',
+          id: 402,
+          method: 'tools/call',
+          params: { name: 'voxen_get_job_status', arguments: { job_id: job.id } },
+        },
+        READ_TOKEN,
+      );
+      expect(result.status).toBe(200);
+      expect(await result.json()).toMatchObject({
+        result: { structuredContent: { id: job.id, status: 'QUEUED' } },
+      });
+      for (const [token, name, scope] of [
+        [READ_TOKEN, 'voxen_create_note', 'mcp:write'],
+        [WRITE_TOKEN, 'voxen_read_note', 'mcp:read'],
+      ] as const) {
+        const denied = await call(
+          { jsonrpc: '2.0', id: 403, method: 'tools/call', params: { name, arguments: {} } },
+          token,
+        );
+        expect(denied.status).toBe(403);
+        expect(denied.headers.get('www-authenticate')).toContain(`scope="${scope}"`);
+      }
+    } finally {
+      await db.job.delete({ where: { id: job.id } });
+    }
+  });
+
+  it('authentication backend failures are safe 503 responses rather than invalid credentials', async () => {
+    const failure = spyOn(mcpAuthenticationStore, 'findToken').mockRejectedValueOnce(
+      new Error('SQL PRIVATE_PATH PRIVATE_BEARER'),
+    );
+    try {
+      const response = await call({ jsonrpc: '2.0', id: 410, method: 'tools/list' }, TOKEN);
+      expect(response.status).toBe(503);
+      expect(response.headers.get('www-authenticate')).toBeNull();
+      expect(await response.text()).not.toContain('PRIVATE');
+      expect(response.headers.get('retry-after')).toBeTruthy();
+    } finally {
+      failure.mockRestore();
+    }
+  });
+
+  it('last-used telemetry is throttled while each request still checks current authorization', async () => {
+    const where = { tokenHash: hashMcpToken(READ_TOKEN) };
+    await db.mcpToken.update({ where, data: { lastUsedAt: null } });
+    const updates = spyOn(mcpAuthenticationStore, 'recordUse');
+    const reads = spyOn(mcpAuthenticationStore, 'findToken');
+    try {
+      for (let id = 420; id < 422; id++)
+        expect((await call({ jsonrpc: '2.0', id, method: 'tools/list' }, READ_TOKEN)).status).toBe(
+          200,
+        );
+      expect(updates).toHaveBeenCalledTimes(1);
+      expect(reads).toHaveBeenCalledTimes(2);
+    } finally {
+      updates.mockRestore();
+      reads.mockRestore();
     }
   });
 

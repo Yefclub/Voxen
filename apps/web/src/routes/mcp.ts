@@ -10,7 +10,7 @@ import { servePreparedMcpExchange } from './mcp-http-exchange';
 import { withMcpRequest } from './mcp-request-body';
 import { db } from '../lib/db';
 import { noteContentChecksum } from '../lib/note-revisions';
-import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
+import { type McpScope } from '../lib/mcp-tokens';
 import { searchBrainNodes } from '../lib/brain-search';
 import {
   expandContextFromMd,
@@ -36,15 +36,14 @@ import {
   registerTranscriptEnrichmentTools,
   registerTranscriptEnrichmentWriteTools,
 } from './mcp-transcript-enrichment-tools';
+import { authenticateMcp } from './mcp-authentication';
+import { requiredMcpToolScope } from './mcp-tool-policy';
+import { registerMcpJobStatusTool } from './mcp-job-status-tool';
 import { registerWriteTools } from './mcp-write-tools';
 import { registerMcpNoteRevisionReadTools } from './mcp-note-revision-read-tools';
 import { registerMcpTranscriptCorrectionReadTools } from './mcp-transcript-correction-tools';
 import { loadTranscriptCorrectionHead } from '../lib/transcript-correction-versioning';
-import {
-  authenticateMcpOAuthToken,
-  mcpBearerChallenge,
-  writeMcpOAuthAudit,
-} from '../lib/mcp-oauth';
+import { mcpBearerChallenge, writeMcpOAuthAudit } from '../lib/mcp-oauth';
 import { registerMcpPersonalContextTool } from './mcp-personal-context-tool';
 
 export const mcpRoutes = new Hono();
@@ -121,7 +120,16 @@ mcpRoutes.all('/', async (c) => {
     return c.json({ error: 'Origem não permitida.' }, 403);
   }
   return withMcpRequest(c.req.raw, async (prepared) => {
-    const identity = await authenticateMcp(c);
+    let identity;
+    try {
+      identity = await authenticateMcp(c);
+    } catch {
+      c.header('Retry-After', '5');
+      return c.json(
+        { error: 'MCP authentication is temporarily unavailable.', code: 'MCP_AUTH_UNAVAILABLE' },
+        503,
+      );
+    }
     if (!identity) {
       const supplied = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
       if (supplied.split('.').length === 3) {
@@ -131,20 +139,23 @@ mcpRoutes.all('/', async (c) => {
           metadata: { reason: 'invalid_token', path: '/mcp' },
         });
       }
-      c.header('WWW-Authenticate', mcpBearerChallenge({ error: 'invalid_token' }));
+      c.header(
+        'WWW-Authenticate',
+        mcpBearerChallenge({ error: 'invalid_token', scope: 'mcp:read' }),
+      );
       return c.json(
         { error: 'Auth obrigatória ou inválida. Envie Authorization: Bearer <token>.' },
         401,
       );
     }
-    if (
-      identity.credentialClass === 'oauth' &&
-      !identity.scopes.includes('WRITE') &&
-      requestsWriteTool(prepared.body)
-    ) {
+    const requiredScope = requiredMcpToolScope(prepared.body);
+    if (requiredScope && !identity.scopes.includes(requiredScope)) {
       c.header(
         'WWW-Authenticate',
-        mcpBearerChallenge({ error: 'insufficient_scope', scope: 'mcp:write' }),
+        mcpBearerChallenge({
+          error: 'insufficient_scope',
+          scope: requiredScope === 'WRITE' ? 'mcp:write' : 'mcp:read',
+        }),
       );
       await writeMcpOAuthAudit({
         event: 'resource_rejection',
@@ -154,7 +165,10 @@ mcpRoutes.all('/', async (c) => {
         clientId: identity.clientId,
         metadata: { reason: 'insufficient_scope', path: '/mcp' },
       });
-      return c.json({ error: 'Escopo mcp:write obrigatório para esta operação.' }, 403);
+      return c.json(
+        { error: `Escopo mcp:${requiredScope.toLowerCase()} obrigatório para esta operação.` },
+        403,
+      );
     }
     return servePreparedMcpExchange(prepared, () =>
       buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c)),
@@ -198,90 +212,6 @@ function resolveMcpPublicOrigin(c: Context): string {
 
 // Bearer token -> identidade imutável do dono. O token legado global não é
 // aceito: o admin o revoga explicitamente pela tela de integrações.
-type McpIdentity = {
-  userId: string;
-  scopes: McpScope[];
-  credentialClass: 'personal' | 'oauth';
-  clientId?: string;
-};
-
-const WRITE_TOOL_NAMES = new Set([
-  'voxen_create_note',
-  'voxen_update_note',
-  'voxen_patch_note',
-  'voxen_restore_note_revision',
-  'voxen_patch_transcript',
-  'voxen_restore_transcript_correction',
-  'voxen_request_transcription',
-  'voxen_request_transcriptions',
-  'voxen_get_job_status',
-  'voxen_request_transcript_research',
-  'voxen_review_transcript_enrichment',
-  'voxen_edit_transcript_enrichment',
-  'voxen_delete_transcript_enrichment',
-  'voxen_delete_knowledge',
-]);
-
-function requestsWriteTool(payload: unknown): boolean {
-  const requests = Array.isArray(payload) ? payload : [payload];
-  return requests.some((request) => {
-    if (!request || typeof request !== 'object') return false;
-    const value = request as { method?: unknown; params?: { name?: unknown } };
-    return (
-      value.method === 'tools/call' &&
-      typeof value.params?.name === 'string' &&
-      WRITE_TOOL_NAMES.has(value.params.name)
-    );
-  });
-}
-
-async function authenticateMcp(c: Context): Promise<McpIdentity | null> {
-  const authorization = c.req.header('Authorization') ?? '';
-  const match = /^Bearer\s+([^\s]+)\s*$/i.exec(authorization);
-  const token = match?.[1] ?? '';
-  if (!token) return null;
-  const now = new Date();
-  const row = await db.mcpToken
-    .findUnique({
-      where: { tokenHash: hashMcpToken(token) },
-      select: {
-        id: true,
-        userId: true,
-        scopes: true,
-        revokedAt: true,
-        expiresAt: true,
-        user: { select: { status: true } },
-      },
-    })
-    .catch(() => null);
-  if (
-    row &&
-    !row.revokedAt &&
-    (!row.expiresAt || row.expiresAt > now) &&
-    row.user.status === 'APPROVED'
-  ) {
-    const scopes = deserializeMcpScopes(row.scopes);
-    if (scopes.length > 0) {
-      // Não há informação sensível no timestamp; falha de telemetria não bloqueia
-      // uma conexão MCP válida.
-      await db.mcpToken
-        .update({ where: { id: row.id }, data: { lastUsedAt: now } })
-        .catch(() => undefined);
-      return { userId: row.userId, scopes, credentialClass: 'personal' };
-    }
-  }
-
-  const oauth = await authenticateMcpOAuthToken(token);
-  return oauth
-    ? {
-        userId: oauth.userId,
-        scopes: oauth.scopes,
-        credentialClass: 'oauth',
-        clientId: oauth.clientId,
-      }
-    : null;
-}
-
 // ----------------------------------------------------------------------------
 // Server + tools (criados por request, fechando sobre o userId)
 // ----------------------------------------------------------------------------
@@ -296,6 +226,7 @@ function buildVoxenMcpServer(
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
+    registerMcpJobStatusTool(server, userId);
     registerTranscriptTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
     registerTranscriptEnrichmentTools(server, userId, publicOrigin);
