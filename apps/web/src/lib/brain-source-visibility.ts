@@ -47,7 +47,7 @@ export async function filterCurrentOwnedBrainSources<T extends SourceReference>(
       retain(
         'NOTE',
         await client.note.findMany({
-          where: { userId, id: { in: requested }, kind: 'NOTE' },
+          where: { userId, id: { in: requested } },
           select: { id: true },
         }),
       );
@@ -170,7 +170,7 @@ export function currentBrainNodeSourceCondition(alias: 'n' | 'f' | 't'): Prisma.
         AND source_transcript."userId" = ${node}."userId" AND source_transcript.status = 'ACTIVE'::"ContentStatus"))
     OR (${node}."sourceType" = 'NOTE'::"BrainSourceType" AND EXISTS (
       SELECT 1 FROM "Note" source_note WHERE source_note.id = ${node}."sourceId"
-        AND source_note."userId" = ${node}."userId" AND source_note.kind = 'NOTE'))
+        AND source_note."userId" = ${node}."userId"))
     OR (${node}."sourceType" = 'FOLDER'::"BrainSourceType" AND (
       EXISTS (SELECT 1 FROM "Note" source_note WHERE source_note.id = ${node}."sourceId"
         AND source_note."userId" = ${node}."userId" AND source_note.kind = 'FOLDER')

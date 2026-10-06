@@ -312,6 +312,68 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP current knowledge', () => {
     expect(await keepCurrentOwnedSources(ownerId, inputs)).toEqual([inputs[0]!]);
   });
 
+  test('keeps canonical NOTE folder projections accessible across Brain tools', async () => {
+    const folder = await db.note.create({
+      data: { userId: ownerId, kind: 'FOLDER', title: `Folder ${crypto.randomUUID()}` },
+    });
+    const node = await db.brainNode.create({
+      data: {
+        userId: ownerId,
+        key: `NOTE:${folder.id}`,
+        type: 'FOLDER',
+        label: folder.title,
+        sourceType: 'NOTE',
+        sourceId: folder.id,
+      },
+    });
+    const topic = await db.brainNode.create({
+      data: {
+        userId: ownerId,
+        key: `TOPIC:${crypto.randomUUID()}`,
+        type: 'TOPIC',
+        label: 'Folder topic',
+      },
+    });
+    const edge = await db.brainEdge.create({
+      data: {
+        userId: ownerId,
+        fromNodeId: node.id,
+        toNodeId: topic.id,
+        kind: 'RELATED_TO',
+        confidence: 1,
+        method: 'fixture',
+      },
+    });
+    const source = await db.brainSource.create({
+      data: {
+        userId: ownerId,
+        nodeId: node.id,
+        sourceType: 'NOTE',
+        sourceId: folder.id,
+        excerpt: folder.title,
+      },
+    });
+    const search = await tool<{ results: Array<{ id: string }> }>('voxen_brain_search', {
+      query: folder.title,
+    });
+    expect(search.structuredContent!.results.map((item) => item.id)).toContain(node.id);
+    const neighbors = await tool<{ edges: Array<{ id: string }> }>('voxen_brain_neighbors', {
+      node_id: node.id,
+    });
+    expect(neighbors.structuredContent!.edges.map((item) => item.id)).toContain(edge.id);
+    const paths = await tool<{ paths: Path[] }>('voxen_brain_path', {
+      from_node_id: node.id,
+      to_node_id: topic.id,
+    });
+    expect(paths.structuredContent!.paths[0]!.nodeIds).toEqual([node.id, topic.id]);
+    const hubs = await tool<{ hubs: Array<{ id: string }> }>('voxen_brain_hubs', { limit: 30 });
+    expect(hubs.structuredContent!.hubs.map((item) => item.id)).toContain(node.id);
+    const sources = await tool<{ sources: Array<{ id: string }> }>('voxen_brain_sources', {
+      ref: node.id,
+    });
+    expect(sources.structuredContent!.sources.map((item) => item.id)).toContain(source.id);
+  });
+
   test('retains existing owned folders, completed jobs and unarchived conversations', async () => {
     const noteFolder = await db.note.create({
       data: { userId: ownerId, kind: 'FOLDER', title: 'Note folder' },
