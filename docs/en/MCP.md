@@ -268,6 +268,9 @@ For a personal token, use a secret environment reference in the server entry:
 credential to the URL. Record the installed Cursor version and actual result;
 documented configuration does not establish account-level validation.
 
+The MCP transport accepts ordinary Bearer tokens. Sender-constrained tokens,
+such as DPoP, are rejected on this interface; configure the client for Bearer.
+
 ## OAuth 2.1 discovery and manual clients
 
 OAuth is disabled by default. Once enabled, point discovery-capable clients at

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { createHash, randomBytes } from 'node:crypto';
+import { generateKeyPair, exportJWK, calculateJwkThumbprint, SignJWT, decodeJwt } from 'jose';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { resolveMcpOAuthResource } from '../src/lib/auth';
@@ -62,9 +63,10 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
     return (await response.json()) as { active: boolean };
   }
 
-  async function issueConfidentialTokens(): Promise<{
+  async function issueConfidentialTokens(dpopProof?: string): Promise<{
     accessToken: string;
     refreshToken: string;
+    tokenType: string;
   }> {
     const verifier = randomBytes(48).toString('base64url');
     const query = new URLSearchParams({
@@ -99,7 +101,10 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
     expect(code?.length ?? 0).toBeGreaterThan(10);
     const token = await request('/api/auth/oauth2/token', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        ...(dpopProof ? { DPoP: dpopProof } : {}),
+      },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         client_id: confidentialClientId,
@@ -110,9 +115,17 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
         resource: resolveMcpOAuthResource(),
       }),
     });
-    expect(token.status).toBe(200);
-    const body = (await token.json()) as { access_token: string; refresh_token: string };
-    return { accessToken: body.access_token, refreshToken: body.refresh_token };
+    expect(token.status, await token.clone().text()).toBe(200);
+    const body = (await token.json()) as {
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+    };
+    return {
+      accessToken: body.access_token,
+      refreshToken: body.refresh_token,
+      tokenType: body.token_type,
+    };
   }
 
   beforeAll(async () => {
@@ -892,6 +905,44 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
       select: { outcome: true },
     });
     expect(audit?.outcome).toBe('denied');
+  });
+
+  it('rejects proof-bound access on the Bearer transport while preserving revocation and ordinary Bearer access', async () => {
+    const { publicKey, privateKey } = await generateKeyPair('ES256');
+    const jwk = await exportJWK(publicKey);
+    const proof = await new SignJWT({ htm: 'POST', htu: 'http://localhost/api/auth/oauth2/token' })
+      .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk })
+      .setIssuedAt()
+      .setJti(crypto.randomUUID())
+      .sign(privateKey);
+    const bound = await issueConfidentialTokens(proof);
+    expect(bound.tokenType).toBe('DPoP');
+    const payload = decodeJwt(bound.accessToken);
+    expect(payload.cnf).toEqual({ jkt: await calculateJwkThumbprint(jwk) });
+    const present = (token: string) =>
+      request('/mcp', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      });
+    expect((await present(bound.accessToken)).status).toBe(401);
+    const revoke = await request('/api/auth/oauth2/revoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: confidentialClientId,
+        client_secret: confidentialClientSecret,
+        token: bound.accessToken,
+      }),
+    });
+    expect(revoke.status).toBe(200);
+    expect(
+      await db.mcpOauthRevokedAccessToken.findUnique({ where: { tokenId: payload.jti! } }),
+    ).not.toBeNull();
+    const ordinary = await issueConfidentialTokens();
+    expect(ordinary.tokenType).toBe('Bearer');
+    expect(decodeJwt(ordinary.accessToken).cnf).toBeUndefined();
+    expect((await present(ordinary.accessToken)).status).toBe(200);
   });
 
   it('fails closed when OAuth is disabled', async () => {

@@ -129,6 +129,9 @@ export async function authenticateMcpOAuthToken(token: string): Promise<McpOAuth
   const verified = await verifyMcpOAuthJwt(token);
   if (!verified) return null;
   const { payload, userId, clientId } = verified;
+  // This transport accepts ordinary Bearer tokens, never sender-constrained
+  // credentials without their request-bound proof. Revocation still verifies them.
+  if (payload.cnf !== undefined) return null;
   const oauthScopes = parseOAuthScopes(payload.scope);
   if (oauthScopes.length === 0) return null;
 

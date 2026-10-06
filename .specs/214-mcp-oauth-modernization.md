@@ -17,6 +17,7 @@ configuration must survive the upgrade.
 - The system shall preserve existing account identities, sessions, client identifiers, grants, refresh tokens and signing keys through reviewed additive migrations.
 - The system shall preserve the encrypted SSO adapter and its management boundaries.
 - The system shall maintain PKCE, consent, approval, revocation and least-privilege checks.
+- The Bearer MCP transport shall reject sender-constrained tokens while preserving their revocation.
 
 ### Event-driven
 
@@ -39,7 +40,7 @@ configuration must survive the upgrade.
 - [x] Metadata transport has adversarial DNS/TLS/redirect/body/deadline tests on the actual Bun runtime.
 - [x] Metadata client registration and strict dynamic loopback callbacks pass an end-to-end OAuth flow.
 - [x] Current and overlapping legacy JWTs remain resource-bound and revocable.
-- [ ] Discovery/UI/docs accurately advertise supported behavior.
+- [x] Discovery/UI/docs accurately advertise supported behavior.
 - [ ] Full checks, migration/quality gates, real image build and independent review pass.
 - [ ] Native deployment preserves settings/storage and passes live authorization and MCP probes.
 
@@ -70,3 +71,10 @@ TLS fixture accepts its trusted matching certificate and rejects an otherwise
 trusted certificate for another hostname on Bun. The actual Bun pinned-address probe rejected a connection to the selected
 alternate public address; bounded transport unit cases passed. Full gates, UI
 verification, final independent review and deployment remain pending.
+
+Final boundary regression: a real provider-issued DPoP JWT was accepted as
+Bearer before the correction (RED). The resource now rejects its confirmation
+claim; its revocation still persists, and ordinary Bearer access remains valid
+(GREEN). The UI passed both locales, all client selection/copy controls, four
+themes and mobile with the existing session. Final gates/build are repeated
+after this boundary correction.

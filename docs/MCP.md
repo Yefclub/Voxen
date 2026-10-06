@@ -263,6 +263,9 @@ Com token pessoal, use uma referência secreta no servidor:
 credencial na URL. Registre a versão instalada e o resultado real; configuração
 documentada não equivale a validar a conta do cliente.
 
+O transporte MCP aceita tokens Bearer comuns. Tokens vinculados a prova, como
+DPoP, são recusados nessa interface; configure o cliente para o fluxo Bearer.
+
 ## Descoberta OAuth 2.1 e clientes manuais
 
 OAuth vem desativado por padrão. Depois de habilitado, clientes com descoberta
