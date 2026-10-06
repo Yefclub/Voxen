@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.15.1-dev.1791266554 — 2026-10-06 · Dev
+
+### 🔒 Safer MCP credentials, permissions and result contracts
+
+Copied agent guidance no longer includes bearer secrets, and token lists expose only public metadata. New tokens default to READ and a 90-day expiry; users can explicitly choose write access or no expiry.
+
+All 44 tools now declare scopes, effects and validated output schemas. READ credentials can monitor ingestion jobs. Large reads use signed, owner-bound JSON continuation; large write replies provide safe follow-up identifiers without a write continuation. Stable listing cursors survive inserts, edits and deletion.
+
+MCP now bounds arguments, responses, concurrency and heavy graph queries, preserves authentication availability errors, emits safe diagnostics and prunes operational OAuth audit records. Connection guidance and the reported build version match the running application.
+
 ## v0.15.1-dev.1791254360 — 2026-10-05 · Dev
 
 ### ✨ Modern MCP protocol with legacy client compatibility
