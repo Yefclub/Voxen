@@ -419,3 +419,16 @@ The SDK clients handle metadata, headers and version negotiation automatically.
 - [Cursor MCP](https://docs.cursor.com/context/model-context-protocol)
 - [Grok custom connectors](https://docs.x.ai/grok/connectors)
 - [MCP debugging and Inspector](https://modelcontextprotocol.io/docs/tools/debugging)
+
+### Research review and edit consistency
+
+Read the research immediately before a review, cancellation or edit. Its response
+includes `revision`, `checksum`, and `projection`. Pass that exact snapshot as
+`expected_revision` and `expected_checksum` to the MCP write tool. A conflict
+requires a fresh read and a deliberate decision; do not retry an unseen overwrite.
+REST uses `expectedRevision` and `expectedChecksum` with the same checks.
+
+A successful write commits the canonical research and queues its graph projection
+atomically. `projection.state=PENDING` means the graph will synchronize or retry
+automatically. Older graph evidence is hidden while pending. Projection errors do
+not undo the saved research, and reads never perform repair writes.

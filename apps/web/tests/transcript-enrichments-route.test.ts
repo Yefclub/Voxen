@@ -4,6 +4,8 @@ import app from '../src/index';
 import { brainNodeKey } from '../src/lib/brain';
 import { reindexTranscriptEnrichmentBrain } from '../src/lib/brain-enrichments';
 import { searchBrainNodes } from '../src/lib/brain-search';
+import { enrichmentChecksum } from '../src/lib/enrichment-contract';
+import { repairEnrichmentProjection } from '../src/lib/enrichment-projection';
 import { db } from '../src/lib/db';
 import { ftsSearchTranscriptEnrichments } from '../src/lib/retrieval-enrichments';
 import { setSettings } from '../src/lib/settings';
@@ -131,6 +133,17 @@ describeIfDb('reviewable transcript enrichments API', () => {
     });
   }
 
+  async function preconditions(id: string) {
+    const row = await db.transcriptEnrichment.findUniqueOrThrow({
+      where: { id },
+      include: { transcript: true },
+    });
+    return {
+      expectedRevision: row.revision,
+      expectedChecksum: enrichmentChecksum(row, row.transcript),
+    };
+  }
+
   it('hides transcripts and enrichments from unauthenticated and foreign users', async () => {
     const transcript = await createTranscript();
     const enrichment = await createReadyEnrichment(transcript.id);
@@ -143,10 +156,44 @@ describeIfDb('reviewable transcript enrichments API', () => {
       (
         await request(
           `/api/transcripts/${transcript.id}/enrichments/${enrichment.id}`,
-          apiInit(otherCookie, 'PATCH', { action: 'accept' }),
+          apiInit(otherCookie, 'PATCH', {
+            action: 'accept',
+            expectedRevision: 1,
+            expectedChecksum: 'a'.repeat(64),
+          }),
         )
       ).status,
     ).toBe(404);
+  });
+
+  it('requires write preconditions and keeps both read adapters free of repair side effects', async () => {
+    const transcript = await createTranscript();
+    const row = await createReadyEnrichment(transcript.id, { reviewState: 'ACCEPTED' });
+    await reindexTranscriptEnrichmentBrain(ownerId, row.id);
+    await db.transcript.update({ where: { id: transcript.id }, data: { sourceVersion: 2 } });
+    const before = await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: row.id } });
+    const nodes = await db.brainNode.count({ where: { userId: ownerId, sourceId: row.id } });
+    for (const path of [
+      `/api/transcripts/${transcript.id}/enrichments`,
+      `/api/transcripts/${transcript.id}/enrichments/${row.id}`,
+    ]) {
+      const response = await request(path, apiInit(ownerCookie));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      const data = body.enrichment ?? body.enrichments[0];
+      expect(data.staleReason).toBe('source-version-changed');
+      expect(data.revision).toBe(1);
+      expect(data.checksum).toMatch(/^[a-f0-9]{64}$/);
+    }
+    expect(await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: row.id } })).toEqual(
+      before,
+    );
+    expect(await db.brainNode.count({ where: { userId: ownerId, sourceId: row.id } })).toBe(nodes);
+    const missing = await request(
+      `/api/transcripts/${transcript.id}/enrichments/${row.id}`,
+      apiInit(ownerCookie, 'PATCH', { action: 'dismiss' }),
+    );
+    expect(missing.status).toBe(400);
   });
 
   it('enforces OFF/MANUAL policy, user isolation, idempotency, and active sources', async () => {
@@ -223,9 +270,11 @@ describeIfDb('reviewable transcript enrichments API', () => {
 
     const acceptedResponse = await request(
       `/api/transcripts/${transcript.id}/enrichments/${enrichment.id}`,
-      apiInit(ownerCookie, 'PATCH', { action: 'accept' }),
+      apiInit(ownerCookie, 'PATCH', { action: 'accept', ...(await preconditions(enrichment.id)) }),
     );
     expect(acceptedResponse.status).toBe(200);
+    expect((await acceptedResponse.json()).enrichment.projection.state).toBe('PENDING');
+    expect(await repairEnrichmentProjection(ownerId, enrichment.id)).toBe(true);
     const accepted = await db.transcriptEnrichment.findUniqueOrThrow({
       where: { id: enrichment.id },
     });
@@ -246,11 +295,13 @@ describeIfDb('reviewable transcript enrichments API', () => {
       `/api/transcripts/${transcript.id}/enrichments/${enrichment.id}`,
       apiInit(ownerCookie, 'PATCH', {
         action: 'edit',
+        ...(await preconditions(enrichment.id)),
         title: 'Reviewed external evidence',
         content: 'Reviewed finding with retained provenance.',
       }),
     );
     expect(editedResponse.status).toBe(200);
+    expect(await repairEnrichmentProjection(ownerId, enrichment.id)).toBe(true);
     const edited = await db.transcriptEnrichment.findUniqueOrThrow({
       where: { id: enrichment.id },
     });
@@ -265,9 +316,10 @@ describeIfDb('reviewable transcript enrichments API', () => {
 
     const dismissedResponse = await request(
       `/api/transcripts/${transcript.id}/enrichments/${enrichment.id}`,
-      apiInit(ownerCookie, 'PATCH', { action: 'dismiss' }),
+      apiInit(ownerCookie, 'PATCH', { action: 'dismiss', ...(await preconditions(enrichment.id)) }),
     );
     expect(dismissedResponse.status).toBe(200);
+    expect(await repairEnrichmentProjection(ownerId, enrichment.id)).toBe(true);
     expect(
       await db.brainNode.findFirst({
         where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
@@ -478,7 +530,7 @@ describeIfDb('reviewable transcript enrichments API', () => {
     });
     const unsafeResponse = await request(
       `/api/transcripts/${transcript.id}/enrichments/${unsafe.id}`,
-      apiInit(ownerCookie, 'PATCH', { action: 'accept' }),
+      apiInit(ownerCookie, 'PATCH', { action: 'accept', ...(await preconditions(unsafe.id)) }),
     );
     expect(unsafeResponse.status).toBe(422);
     expect(
@@ -492,12 +544,17 @@ describeIfDb('reviewable transcript enrichments API', () => {
     });
     const staleResponse = await request(
       `/api/transcripts/${transcript.id}/enrichments/${stale.id}`,
-      apiInit(ownerCookie, 'PATCH', { action: 'accept' }),
+      apiInit(ownerCookie, 'PATCH', { action: 'accept', ...(await preconditions(stale.id)) }),
     );
     expect(staleResponse.status).toBe(409);
     expect(
       (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: stale.id } })).staleReason,
-    ).toBe('source-version-changed');
+    ).toBeNull();
+    const staleRead = await request(
+      `/api/transcripts/${transcript.id}/enrichments/${stale.id}`,
+      apiInit(ownerCookie),
+    );
+    expect((await staleRead.json()).enrichment.staleReason).toBe('source-version-changed');
   });
 
   it('tops up graph search after a full page of obsolete enrichment nodes', async () => {

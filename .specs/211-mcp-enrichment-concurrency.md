@@ -33,15 +33,15 @@ The owner approved completing this audit backlog and deploying the result.
 - If a credential lacks WRITE, then the system shall keep all mutation commands unavailable.
 
 ## Acceptance criteria
-- [ ] Revision/checksum and projection state are present in REST/MCP reads and validated tool outputs.
-- [ ] REST and MCP share one transactional command boundary with mandatory preconditions.
-- [ ] Concurrent edits/reviews, worker changes and publication/cancellation races have real database regressions.
-- [ ] Canonical writes and pending projection commit atomically; projection failure remains repairable after restart.
-- [ ] Graph leases, bounded retries and late acknowledgements cannot lose newer work.
-- [ ] Current graph reads reject pending/older enrichment snapshots; reads do not mutate records.
-- [ ] UI captures edit preconditions, preserves drafts on conflict and explains projection state.
-- [ ] English/PT-BR MCP guidance and output/input schemas describe the new contract.
-- [ ] Playwright verifies changed controls in four themes and mobile.
+- [x] Revision/checksum and projection state are present in REST/MCP reads and validated tool outputs.
+- [x] REST and MCP share one transactional command boundary with mandatory preconditions.
+- [x] Concurrent edits/reviews, worker changes and publication/cancellation races have real database regressions.
+- [x] Canonical writes and pending projection commit atomically; projection failure remains repairable after restart.
+- [x] Graph leases, bounded retries and late acknowledgements cannot lose newer work.
+- [x] Current graph reads reject pending/older enrichment snapshots; reads do not mutate records.
+- [x] UI captures edit preconditions, preserves drafts on conflict and explains projection state.
+- [x] English/PT-BR MCP guidance and output/input schemas describe the new contract.
+- [x] Playwright verifies changed controls in four themes and mobile.
 - [ ] Full checks, migration/quality gates, actual build and independent review pass without weakening baselines.
 
 ## Decisions
@@ -54,3 +54,12 @@ existing records and credentials through an additive migration. Projection uses
 owner graph leases, current lifecycle checks and conditional acknowledgement.
 It never holds the canonical transaction across graph materialization. Retry
 bookkeeping must not change canonical timestamps or consume a client's revision.
+
+## Validation
+
+Real database concurrency/projection tests passed, including persisted retry,
+late acknowledgement and obsolete graph stamps. Actual legacy and modern MCP
+clients passed read/write/conflict contract checks. The additive migration gate
+passed. Browser verification passed conflict draft retention, fresh editing,
+acceptance and dismissal in four themes, mobile and English/PT-BR. The mobile cancellation control and localized retry badge also passed. Final full
+checks, runtime image and review are pending.

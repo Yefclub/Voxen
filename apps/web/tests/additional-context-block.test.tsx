@@ -43,6 +43,9 @@ afterAll(() => {
 
 const enrichment: TranscriptEnrichment = {
   id: 'context-1',
+  revision: 1,
+  checksum: 'a'.repeat(64),
+  projection: { state: 'SYNCED', revision: 1, appliedRevision: 1, errorCode: null },
   status: 'READY',
   reviewState: 'SUGGESTED',
   trigger: 'MANUAL',
@@ -137,5 +140,69 @@ describe('AdditionalContextBlock', () => {
         node.children.filter((child): child is string => typeof child === 'string'),
       );
     expect(renderedText).toContain('library.additionalContextCreditsExhausted');
+  });
+  test('retains the observed edit snapshot and draft across polling and conflicts', async () => {
+    let renderer!: ReactTestRenderer;
+    let sent: Record<string, unknown> = {};
+    let reject = true;
+    const onUpdate = async (_id: string, body: Record<string, unknown>) => {
+      sent = body;
+      if (reject) throw new Error('Conflict');
+    };
+    const view = (row: TranscriptEnrichment) => (
+      <I18nProvider>
+        <AdditionalContextBlock
+          enrichments={[row]}
+          researchMode="MANUAL"
+          loading={false}
+          locale="en"
+          onQueue={() => undefined}
+          onUpdate={onUpdate}
+          onDelete={async () => undefined}
+          t={t}
+        />
+      </I18nProvider>
+    );
+    const button = (text: string) =>
+      renderer.root.findAllByType('button').find((node) => node.children.includes(text))!;
+    await act(async () => {
+      renderer = create(view(enrichment));
+    });
+    await act(async () => {
+      button('notes.edit').props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findByType('textarea').props.onChange({ target: { value: 'Unsaved draft' } });
+    });
+    await act(async () => {
+      renderer.update(
+        view({ ...enrichment, revision: 2, checksum: 'b'.repeat(64), content: 'Other editor' }),
+      );
+    });
+    await act(async () => {
+      button('common.save').props.onClick();
+    });
+    expect(sent).toMatchObject({
+      action: 'edit',
+      expectedRevision: 1,
+      expectedChecksum: 'a'.repeat(64),
+      content: 'Unsaved draft',
+    });
+    expect(renderer.root.findByType('textarea').props.value).toBe('Unsaved draft');
+    reject = false;
+    await act(async () => {
+      button('common.cancel').props.onClick();
+    });
+    await act(async () => {
+      button('library.additionalContextAccept').props.onClick();
+    });
+    expect(sent).toMatchObject({
+      action: 'accept',
+      expectedRevision: 2,
+      expectedChecksum: 'b'.repeat(64),
+    });
+    await act(async () => {
+      renderer.unmount();
+    });
   });
 });
