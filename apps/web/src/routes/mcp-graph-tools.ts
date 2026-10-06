@@ -1,3 +1,4 @@
+import { mcpHubsQuery } from './mcp-hubs-query';
 import { withMcpReadDeadline } from './mcp-read-deadline';
 import { z } from 'zod';
 import { type McpServer } from '@modelcontextprotocol/server';
@@ -5,10 +6,7 @@ import { db } from '../lib/db';
 import { searchBrainNodes } from '../lib/brain-search';
 import { bounded, fail, ok, publicMcpProcessingError, READ_ONLY } from './mcp-tool-helpers';
 import { registerBrainPathTool } from './mcp-brain-path-tool';
-import {
-  filterAccessibleBrainNodes,
-  currentBrainNodeSourceCondition,
-} from '../lib/brain-source-visibility';
+import { filterAccessibleBrainNodes } from '../lib/brain-source-visibility';
 import { registerBrainTimelineTool } from './mcp-brain-timeline-tool';
 import { keepCurrentOwnedSources } from './mcp-brain-source-lifecycle';
 
@@ -297,27 +295,8 @@ export function registerBrainTools(server: McpServer, userId: string): void {
         type: string;
         degree: number;
       };
-      const hubs = await withMcpReadDeadline(
-        (tx) => tx.$queryRaw<HubRow[]>`
-        SELECT n.id, n.key, n.label, n.type::text AS type,
-               COUNT(e.id)::int AS degree
-        FROM "BrainNode" n
-        JOIN "BrainEdge" e
-          ON e."userId" = n."userId"
-         AND e.status = 'ACTIVE'::"ContentStatus"
-         AND (e."fromNodeId" = n.id OR e."toNodeId" = n.id)
-        JOIN "BrainNode" f ON f.id = e."fromNodeId" AND f."userId" = n."userId"
-        JOIN "BrainNode" t ON t.id = e."toNodeId" AND t."userId" = n."userId"
-        WHERE n."userId" = ${userId}
-          AND n.status = 'ACTIVE'::"ContentStatus"
-          AND f.status = 'ACTIVE'::"ContentStatus" AND t.status = 'ACTIVE'::"ContentStatus"
-          AND ${currentBrainNodeSourceCondition('n')}
-          AND ${currentBrainNodeSourceCondition('f')}
-          AND ${currentBrainNodeSourceCondition('t')}
-        GROUP BY n.id
-        ORDER BY degree DESC
-        LIMIT ${limit}
-      `,
+      const hubs = await withMcpReadDeadline((tx) =>
+        tx.$queryRaw<HubRow[]>(mcpHubsQuery(userId, limit)),
       );
       return ok({ hubs });
     },
