@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.1-dev.1791251164 — 2026-10-05 · Dev
+
+### 🐛 MCP graph paths and evidence stay consistent
+
+MCP graph paths now preserve the requested endpoints and show traversal order
+when relationships are stored in the opposite direction. Queries exclude
+cyclic walks and use a bounded execution deadline.
+
+Archived graph queries exclude trash, and evidence checks verify the current
+owner, source version and research state. Read-only research tools report
+freshness without changing research records or deleting graph projections.
+
+Update vulnerable transitive dependencies identified by the delivery security audits: source-map-js, proxy-addr and multidict.
+
 ## v0.15.1-dev.1791216502 — 2026-10-05 · Dev
 
 ### 🐛 More reliable TikTok and web imports

@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1791251164",
+    "channel": "dev",
+    "type": "fix",
+    "title": "MCP graph paths and evidence stay consistent",
+    "body": "MCP graph paths now preserve the requested endpoints and show traversal order\nwhen relationships are stored in the opposite direction. Queries exclude\ncyclic walks and use a bounded execution deadline.\n\nArchived graph queries exclude trash, and evidence checks verify the current\nowner, source version and research state. Read-only research tools report\nfreshness without changing research records or deleting graph projections.\n\nUpdate vulnerable transitive dependencies identified by the delivery security audits: source-map-js, proxy-addr and multidict.",
+    "pr": 855,
+    "author": "Kalyel",
+    "date": "2026-10-05T22:45:50-03:00",
+    "translations": {
+      "en": {
+        "title": "MCP graph paths and evidence stay consistent",
+        "body": "MCP graph paths now preserve the requested endpoints and show traversal order\nwhen relationships are stored in the opposite direction. Queries exclude\ncyclic walks and use a bounded execution deadline.\n\nArchived graph queries exclude trash, and evidence checks verify the current\nowner, source version and research state. Read-only research tools report\nfreshness without changing research records or deleting graph projections.\n\nUpdate vulnerable transitive dependencies identified by the delivery security audits: source-map-js, proxy-addr and multidict."
+      },
+      "pt-BR": {
+        "title": "Caminhos e evidências do MCP mais consistentes",
+        "body": "Os caminhos do grafo pelo MCP preservam os pontos solicitados e mostram a ordem\nde navegação mesmo quando as relações estão armazenadas na direção oposta. As\nconsultas excluem ciclos e têm um limite de execução.\n\nAs consultas de arquivados excluem a lixeira, e as evidências verificam o dono,\na versão da fonte e o estado da pesquisa. As ferramentas de leitura informam a\natualidade da pesquisa sem modificar seus registros ou apagar partes do grafo.\n\nAtualiza as dependências transitivas source-map-js, proxy-addr e multidict, com correções de segurança identificadas durante a entrega."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/855"
+  },
+  {
     "version": "0.15.1-dev.1791216502",
     "channel": "dev",
     "type": "fix",
