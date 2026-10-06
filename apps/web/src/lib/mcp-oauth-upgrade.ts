@@ -3,6 +3,7 @@ import { db } from './db';
 
 /** One-time, additive binding of pre-1.7 MCP grants; no user, secret, token or key is replaced. */
 export async function ensureMcpOauthResourceUpgrade(resource: string): Promise<void> {
+  // codeql[js/insufficient-password-hash] Hashes the public MCP resource URL only for deterministic migration namespaces; no credential is hashed.
   const resourceHash = createHash('sha256').update(resource).digest('hex');
   const marker = 'voxen:mcp-oauth-resource:v1:' + resourceHash;
   await db.$transaction(
