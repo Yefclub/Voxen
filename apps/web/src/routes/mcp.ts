@@ -39,6 +39,8 @@ import {
 } from './mcp-transcript-enrichment-tools';
 import { authenticateMcp } from './mcp-authentication';
 import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
+import { installMcpToolExecution } from './mcp-tool-execution';
+import { validCorrelationId } from '../lib/structured-log';
 import { requiredMcpToolScope } from './mcp-tool-policy';
 import { registerMcpJobStatusTool } from './mcp-job-status-tool';
 import { registerWriteTools } from './mcp-write-tools';
@@ -174,7 +176,12 @@ mcpRoutes.all('/', async (c) => {
       );
     }
     return servePreparedMcpExchange(prepared, () =>
-      buildVoxenMcpServer(identity.userId, identity.scopes, publicOrigin),
+      buildVoxenMcpServer(
+        identity.userId,
+        identity.scopes,
+        publicOrigin,
+        validCorrelationId(c.res.headers.get('x-request-id')) ?? crypto.randomUUID(),
+      ),
     );
   });
 });
@@ -189,11 +196,13 @@ function buildVoxenMcpServer(
   userId: string,
   scopes: readonly McpScope[],
   publicOrigin: string,
+  requestId: string,
 ): McpServer {
   const server = new McpServer(
     { name: 'voxen-mcp', version: VOXEN_VERSION },
     { instructions: VOXEN_INSTRUCTIONS },
   );
+  installMcpToolExecution(server, { userId, requestId });
   if (scopes.includes('READ')) {
     registerMcpJobStatusTool(server, userId);
     registerTranscriptTools(server, userId, publicOrigin);
