@@ -98,6 +98,28 @@ export async function withMcpRequest(
         );
       }
     }
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      const method = 'method' in body ? body.method : undefined;
+      const params = 'params' in body ? body.params : undefined;
+      const name =
+        params && typeof params === 'object' && 'name' in params ? params.name : undefined;
+      if (
+        (typeof method === 'string' && method.length > 128) ||
+        (typeof name === 'string' && name.length > 128)
+      ) {
+        return Response.json(
+          {
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32600,
+              message: 'RPC methods and tool names must not exceed 128 characters.',
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
     // A fresh buffered body avoids transferring a live Bun request stream.
     const prepared = new Request(request.url, {
       method: request.method,
