@@ -10,6 +10,7 @@ export const MCP_GRAPH_NODE_SCHEMA = z.object({
   status: z.string().optional(),
   metadata: z.json(),
   updatedAt: z.string(),
+  createdAt: z.string().optional(),
 });
 const endpoint = z.object({ id: z.string(), key: z.string(), label: z.string(), type: z.string() });
 const source = z

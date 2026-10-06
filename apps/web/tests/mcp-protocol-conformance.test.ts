@@ -37,6 +37,28 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
       data: { userId, title: 'Protocol fixture', content: 'Owned protocol evidence.' },
     });
     noteId = note.id;
+    await db.brainNode.create({
+      data: {
+        userId,
+        key: `TOPIC:${crypto.randomUUID()}`,
+        type: 'TOPIC',
+        label: 'Protocol evidence',
+      },
+    });
+    await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: `https://example.test/protocol-${crypto.randomUUID()}`,
+        title: 'Protocol evidence',
+        durationSec: 0,
+        language: 'en',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/protocol.md`,
+        plainText: 'Protocol evidence for a populated search result.',
+        frontmatter: {},
+      },
+    });
   });
 
   afterAll(async () => {
@@ -59,6 +81,18 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
         arguments: { query: 'Protocol fixture' },
       });
       expect(JSON.stringify(search)).toContain(noteId);
+      for (const name of [
+        'voxen_search_transcripts',
+        'voxen_search_knowledge',
+        'voxen_brain_search',
+      ]) {
+        const populated = await client.callTool({
+          name,
+          arguments: { query: 'Protocol evidence' },
+        });
+        expect(populated.isError).not.toBe(true);
+        expect(JSON.stringify(populated.structuredContent)).toContain('Protocol evidence');
+      }
       const read = await client.callTool({
         name: 'voxen_read_note',
         arguments: { note_id: noteId },
@@ -94,6 +128,18 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
           arguments: { query: 'Protocol fixture' },
         });
         expect(JSON.stringify(search)).toContain(noteId);
+        for (const name of [
+          'voxen_search_transcripts',
+          'voxen_search_knowledge',
+          'voxen_brain_search',
+        ]) {
+          const populated = await client.callTool({
+            name,
+            arguments: { query: 'Protocol evidence' },
+          });
+          expect(populated.isError).not.toBe(true);
+          expect(JSON.stringify(populated.structuredContent)).toContain('Protocol evidence');
+        }
         const read = await client.callTool({
           name: 'voxen_read_note',
           arguments: { note_id: noteId },

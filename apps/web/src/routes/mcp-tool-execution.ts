@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { structuredLog } from '../lib/structured-log';
 import { MCP_TOOL_SCOPES, mcpToolAnnotations } from './mcp-tool-policy';
 import { type McpConcurrencyLimiter, mcpToolConcurrency } from './mcp-request-protection';
-import { budgetMcpResult, McpResultBudgetError, MCP_RESULT_WIRE_BYTES } from './mcp-result-budget';
+import { budgetMcpResult, McpResultBudgetError } from './mcp-result-budget';
 import { MCP_READ_PAGE_SCHEMA, MCP_WRITE_SUMMARY_SCHEMA } from './mcp-result-schemas';
 import { boundedMcpInputShape, validMcpArgumentBudget, MCP_INPUT_LIMITS } from './mcp-input-budget';
 import { mcpNormalOutputSchema } from './mcp-output-contracts';
@@ -98,16 +98,20 @@ export function installMcpToolExecution(
           const result = await callback(originalArgs, context);
           if ('isError' in result && result.isError) {
             code = 'MCP_TOOL_REJECTED';
-            return Buffer.byteLength(JSON.stringify(result)) <= MCP_RESULT_WIRE_BYTES - 4096
-              ? result
-              : fail(
-                  JSON.stringify({
-                    code,
-                    requestId: identity.requestId,
-                    message:
-                      'The operation was rejected. Inspect the item in Voxen before retrying.',
-                  }),
-                );
+            const message = result.content
+              .filter((item) => item.type === 'text')
+              .map((item) => (item.type === 'text' ? item.text : ''))
+              .join('\n');
+            return fail(
+              JSON.stringify({
+                code,
+                requestId: identity.requestId,
+                message:
+                  Buffer.byteLength(message) <= 4096
+                    ? message
+                    : 'The operation was rejected. Inspect the item in Voxen before retrying.',
+              }),
+            );
           }
           if ('structuredContent' in result && result.structuredContent) {
             // Dates and database numeric wrappers must match their public JSON representation.

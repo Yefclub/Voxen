@@ -11,55 +11,62 @@ import { ok } from '../src/routes/mcp-tool-helpers';
 test.each([false, true])(
   'tool execution sanitizes callback failures for modern=%s',
   async (modern) => {
-    const response = await serveMcpExchange(
-      new Request('http://localhost:3000/mcp', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json, text/event-stream',
-          ...(modern
-            ? {
-                'MCP-Protocol-Version': '2026-07-28',
-                'Mcp-Method': 'tools/call',
-                'Mcp-Name': 'voxen_brain_hubs',
-              }
-            : {}),
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'tools/call',
-          params: {
-            name: 'voxen_brain_hubs',
-            arguments: {},
+    for (const rejected of [false, true]) {
+      const response = await serveMcpExchange(
+        new Request('http://localhost:3000/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
             ...(modern
               ? {
-                  _meta: {
-                    'io.modelcontextprotocol/protocolVersion': '2026-07-28',
-                    'io.modelcontextprotocol/clientCapabilities': {},
-                  },
+                  'MCP-Protocol-Version': '2026-07-28',
+                  'Mcp-Method': 'tools/call',
+                  'Mcp-Name': 'voxen_brain_hubs',
                 }
               : {}),
           },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: {
+              name: 'voxen_brain_hubs',
+              arguments: {},
+              ...(modern
+                ? {
+                    _meta: {
+                      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+                      'io.modelcontextprotocol/clientCapabilities': {},
+                    },
+                  }
+                : {}),
+            },
+          }),
         }),
-      }),
-      () => {
-        const server = new McpServer({ name: 'boundary-test', version: '1' });
-        installMcpToolExecution(server, { userId: 'test-owner', requestId: 'test-correlation' });
-        server.registerTool('voxen_brain_hubs', { inputSchema: {} }, async () => {
-          throw new Error('SQL PRIVATE_PATH PRIVATE_TOKEN');
-        });
-        return server;
-      },
-    );
-    expect(response.status).toBe(200);
-    const result = (await response.json()) as {
-      result: { isError: boolean; content: { text: string }[] };
-    };
-    expect(result.result.isError).toBe(true);
-    expect(JSON.stringify(result)).not.toContain('PRIVATE');
-    expect(result.result.content[0]!.text).toContain('MCP_TOOL_FAILED');
-    expect(result.result.content[0]!.text).toContain('test-correlation');
+        () => {
+          const server = new McpServer({ name: 'boundary-test', version: '1' });
+          installMcpToolExecution(server, { userId: 'test-owner', requestId: 'test-correlation' });
+          server.registerTool('voxen_brain_hubs', { inputSchema: {} }, async () => {
+            if (rejected) return fail('Note not found.');
+            throw new Error('SQL PRIVATE_PATH PRIVATE_TOKEN');
+          });
+          return server;
+        },
+      );
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as {
+        result: { isError: boolean; content: { text: string }[] };
+      };
+      expect(result.result.isError).toBe(true);
+      expect(JSON.stringify(result)).not.toContain('PRIVATE');
+      expect(result.result.content[0]!.text).toContain(
+        rejected ? 'MCP_TOOL_REJECTED' : 'MCP_TOOL_FAILED',
+      );
+      if (rejected)
+        expect(JSON.parse(result.result.content[0]!.text).message).toBe('Note not found.');
+      expect(result.result.content[0]!.text).toContain('test-correlation');
+    }
   },
 );
 
