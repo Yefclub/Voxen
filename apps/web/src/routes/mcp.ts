@@ -25,7 +25,14 @@ import {
   searchKnowledgeBase,
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
-import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
+import {
+  bounded,
+  fail,
+  ok,
+  publicMcpProcessingError,
+  READ_ONLY,
+  toMcpContentUrl,
+} from './mcp-tool-helpers';
 import { registerBrainPathTool } from './mcp-brain-path-tool';
 import {
   filterAccessibleBrainNodes,
@@ -1201,7 +1208,11 @@ function registerBrainTools(server: McpServer, userId: string): void {
           updatedAt: true,
         },
       });
-      return ok({ compilation });
+      return ok({
+        compilation: compilation
+          ? { ...compilation, lastError: publicMcpProcessingError(compilation.lastError) }
+          : null,
+      });
     },
   );
 

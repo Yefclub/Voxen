@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { getTranscriptBrief } from '../lib/agent-content';
 import { TRANSCRIPT_BRIEF_SCHEMA } from './mcp-transcription-schemas';
-import { fail, ok } from './mcp-tool-helpers';
+import { fail, ok, publicMcpProcessingError } from './mcp-tool-helpers';
 
 export function registerMcpJobStatusTool(server: McpServer, userId: string): void {
   server.registerTool(
@@ -46,7 +46,7 @@ export function registerMcpJobStatusTool(server: McpServer, userId: string): voi
         id: job.id,
         status: job.status,
         transcriptId: job.transcriptId ?? null,
-        error: job.errorMsg ?? null,
+        error: publicMcpProcessingError(job.errorMsg),
         brief,
       });
     },

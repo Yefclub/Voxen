@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { summarizeNotePatch } from '../lib/note-revisions';
+import { NotePatchError, summarizeNotePatch } from '../lib/note-revisions';
 import {
   commitTranscriptCorrection,
   commitTranscriptCorrectionSnapshot,
@@ -8,11 +8,13 @@ import {
   syncTranscriptCorrectionGraph,
   TranscriptCorrectionConflictError,
   TranscriptCorrectionNotFoundError,
+  TranscriptCorrectionPreviewMismatchError,
   type TranscriptCorrectionHead,
 } from '../lib/transcript-correction-versioning';
 import { TranscriptPatchOperationSchema } from '../lib/transcript-correction-schemas';
 import {
   applyTranscriptPatch,
+  TranscriptCorrectionInvariantError,
   searchWithinTranscript,
   transcriptCorrectionChecksum,
   transcriptMarkdownToPlainText,
@@ -289,5 +291,11 @@ function correctionFailure(error: unknown): ReturnType<typeof fail> {
     return fail(
       `Conflito: revisão atual ${error.currentRevision}, checksum ${error.currentChecksum}, fonte ${error.sourceVersion}/${error.sourceChecksum ?? 'null'}.`,
     );
-  return fail(error instanceof Error ? error.message : 'Falha ao processar a correção.');
+  if (
+    error instanceof NotePatchError ||
+    error instanceof TranscriptCorrectionInvariantError ||
+    error instanceof TranscriptCorrectionPreviewMismatchError
+  )
+    return fail(error.message);
+  throw error;
 }

@@ -521,6 +521,22 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       expect(await result.json()).toMatchObject({
         result: { structuredContent: { id: job.id, status: 'QUEUED' } },
       });
+      await db.job.update({
+        where: { id: job.id },
+        data: { status: 'FAILED', errorMsg: 'SQL PRIVATE_PATH PRIVATE_BEARER' },
+      });
+      const failedJob = await call(
+        {
+          jsonrpc: '2.0',
+          id: 404,
+          method: 'tools/call',
+          params: { name: 'voxen_get_job_status', arguments: { job_id: job.id } },
+        },
+        READ_TOKEN,
+      );
+      const failedBody = await failedJob.text();
+      expect(failedBody).toContain('FAILED');
+      expect(failedBody).not.toContain('PRIVATE');
       for (const [token, name, scope] of [
         [READ_TOKEN, 'voxen_create_note', 'mcp:write'],
         [WRITE_TOKEN, 'voxen_read_note', 'mcp:read'],
