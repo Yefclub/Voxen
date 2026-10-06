@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1791271650",
+    "channel": "dev",
+    "type": "perf",
+    "title": "Reliable MCP hubs on larger graphs",
+    "body": "Hub queries aggregate eligible edge endpoints through indexed identity lookups, preserving ownership and provenance checks without repeated full owner scans. Bounded MCP graph reads avoid JIT compilation overhead and retain their three-second SQL deadline.",
+    "pr": 866,
+    "author": "Kalyel",
+    "date": "2026-10-06T04:27:18-03:00",
+    "translations": {
+      "en": {
+        "title": "Reliable MCP hubs on larger graphs",
+        "body": "Hub queries aggregate eligible edge endpoints through indexed identity lookups, preserving ownership and provenance checks without repeated full owner scans. Bounded MCP graph reads avoid JIT compilation overhead and retain their three-second SQL deadline."
+      },
+      "pt-BR": {
+        "title": "Hubs MCP confiáveis em grafos maiores",
+        "body": "Consultas de hubs agregam as pontas de relações válidas por índices de identidade, preservando verificações de usuário e proveniência sem repetir varreduras completas. Leituras MCP limitadas do grafo evitam o custo de compilação JIT e mantêm o prazo SQL de três segundos."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/866"
+  },
+  {
     "version": "0.15.1-dev.1791266554",
     "channel": "dev",
     "type": "security",
