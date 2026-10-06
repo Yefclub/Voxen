@@ -53,3 +53,15 @@ Transport/version migration, OAuth schema migration, write concurrency and clien
 The graph path deadline is three seconds. Existing projection repair remains a
 maintenance responsibility; read results enforce freshness independently of
 whether that repair has run.
+
+## CI security remediation
+
+The first CI run detected newly indexed advisories in existing transitive
+dependencies. Before this increment can merge, production resolution shall use
+`source-map-js` 1.2.2, `proxy-addr` 2.0.8 and `multidict` 6.9.1 or newer compatible
+6.x versions. Regenerate the frozen lockfiles and repeat dependency audits,
+regressions, type checks and the actual build without relaxing security gates.
+
+References: [source-map-js advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q),
+[proxy-addr advisory](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
+[multidict advisory](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925).
