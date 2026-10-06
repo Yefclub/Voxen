@@ -57,3 +57,11 @@ Apply moderate self-hosted safeguards to accidental loops rather than commercial
 quotas. Preserve credential secrets, stored user content, OAuth grants and local
 storage. Read continuation must be explicit and verifiable; write results must
 never encourage blindly repeating uncertain writes.
+
+Large read results retain the normal result when it fits the wire budget. Larger
+results use explicitly labeled JSON text fragments and a signed `content_cursor`,
+bound to owner, tool, original arguments and the current result checksum. Each
+continuation re-runs the read authorization/lifecycle checks; changes invalidate
+the continuation. No content cache is introduced. Oversized write replies provide
+bounded outcome identifiers and follow-up READ instructions rather than a write
+continuation. Normal tool result contracts include these explicit alternatives.

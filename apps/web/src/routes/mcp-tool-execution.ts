@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { structuredLog } from '../lib/structured-log';
 import { MCP_TOOL_SCOPES } from './mcp-tool-policy';
 import { type McpConcurrencyLimiter, mcpToolConcurrency } from './mcp-request-protection';
+import { budgetMcpResult, McpResultBudgetError, MCP_RESULT_WIRE_BYTES } from './mcp-result-budget';
+import { MCP_READ_PAGE_SCHEMA, MCP_WRITE_SUMMARY_SCHEMA } from './mcp-result-schemas';
 import { fail, ok } from './mcp-tool-helpers';
 
 type Input = z.ZodObject<z.ZodRawShape>;
@@ -34,12 +36,32 @@ export function installMcpToolExecution(
       idempotentHint: read ? true : (config.annotations?.idempotentHint ?? false),
       openWorldHint: read ? false : (config.annotations?.openWorldHint ?? false),
     };
+    const inputSchema = z
+      .object({
+        ...config.inputSchema,
+        ...(read
+          ? {
+              content_cursor: z
+                .string()
+                .max(2048)
+                .optional()
+                .describe(
+                  'Signed continuation of the same READ result. Keep the original arguments unchanged.',
+                ),
+            }
+          : {}),
+      })
+      .strict();
+    const normalOutput = config.outputSchema ? z.object(config.outputSchema) : undefined;
+    const outputSchema = normalOutput
+      ? z.union([normalOutput, read ? MCP_READ_PAGE_SCHEMA : MCP_WRITE_SUMMARY_SCHEMA])
+      : undefined;
     return original(
       name,
       {
         ...config,
-        inputSchema: z.object(config.inputSchema ?? {}),
-        outputSchema: config.outputSchema ? z.object(config.outputSchema) : undefined,
+        inputSchema,
+        outputSchema,
         annotations,
         _meta: { ...config._meta, 'voxen.dev/requiredScope': scope },
       },
@@ -59,10 +81,20 @@ export function installMcpToolExecution(
               }),
             );
           }
-          const result = await callback(args, context);
+          const { content_cursor, ...originalArgs } = args;
+          const result = await callback(originalArgs, context);
           if ('isError' in result && result.isError) {
             code = 'MCP_TOOL_REJECTED';
-            return result;
+            return Buffer.byteLength(JSON.stringify(result)) <= MCP_RESULT_WIRE_BYTES - 4096
+              ? result
+              : fail(
+                  JSON.stringify({
+                    code,
+                    requestId: identity.requestId,
+                    message:
+                      'The operation was rejected. Inspect the item in Voxen before retrying.',
+                  }),
+                );
           }
           if ('structuredContent' in result && result.structuredContent) {
             // Dates and database numeric wrappers must match their public JSON representation.
@@ -70,10 +102,35 @@ export function installMcpToolExecution(
               string,
               unknown
             >;
-            return ok(normalized);
+            return ok(
+              budgetMcpResult(
+                normalized,
+                {
+                  userId: identity.userId,
+                  tool: name,
+                  args: originalArgs,
+                  requestId: identity.requestId,
+                  cursor: typeof content_cursor === 'string' ? content_cursor : undefined,
+                },
+                scope,
+              ),
+            );
           }
           return result;
-        } catch {
+        } catch (error) {
+          if (error instanceof McpResultBudgetError) {
+            code = error.code;
+            return fail(
+              JSON.stringify({
+                code,
+                requestId: identity.requestId,
+                message:
+                  code === 'MCP_RESULT_TOO_LARGE'
+                    ? 'Request a smaller page or a progressive content excerpt.'
+                    : 'Restart the READ tool without content_cursor and preserve its original arguments.',
+              }),
+            );
+          }
           code = 'MCP_TOOL_FAILED';
           return fail(
             JSON.stringify({
