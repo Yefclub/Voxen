@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1791254360",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Modern MCP protocol with legacy client compatibility",
+    "body": "The MCP endpoint supports protocol revision 2026-07-28 through the maintained\nofficial SDK while preserving 2025-era clients and JSON tool responses. Invalid\ntransport requests return protocol errors, request bodies are bounded to one\nMiB, and per-request resources close on success, failure or cancellation.",
+    "pr": 858,
+    "author": "Kalyel",
+    "date": "2026-10-05T23:39:09-03:00",
+    "translations": {
+      "en": {
+        "title": "Modern MCP protocol with legacy client compatibility",
+        "body": "The MCP endpoint supports protocol revision 2026-07-28 through the maintained\nofficial SDK while preserving 2025-era clients and JSON tool responses. Invalid\ntransport requests return protocol errors, request bodies are bounded to one\nMiB, and per-request resources close on success, failure or cancellation."
+      },
+      "pt-BR": {
+        "title": "Protocolo MCP atual com compatibilidade para clientes anteriores",
+        "body": "O endpoint MCP suporta o protocolo 2026-07-28 pelo SDK oficial atualizado e\npreserva os clientes de 2025 e as respostas JSON das ferramentas. Requisições\ninválidas retornam erros de protocolo, os corpos têm limite de 1 MiB e os\nrecursos de cada chamada são fechados ao concluir, falhar ou cancelar."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/858"
+  },
+  {
     "version": "0.15.1-dev.1791251164",
     "channel": "dev",
     "type": "fix",

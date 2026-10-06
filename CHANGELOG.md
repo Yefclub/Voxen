@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1791254360 — 2026-10-05 · Dev
+
+### ✨ Modern MCP protocol with legacy client compatibility
+
+The MCP endpoint supports protocol revision 2026-07-28 through the maintained
+official SDK while preserving 2025-era clients and JSON tool responses. Invalid
+transport requests return protocol errors, request bodies are bounded to one
+MiB, and per-request resources close on success, failure or cancellation.
+
 ## v0.15.1-dev.1791251164 — 2026-10-05 · Dev
 
 ### 🐛 MCP graph paths and evidence stay consistent
