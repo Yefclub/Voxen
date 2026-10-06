@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveMcpExchange } from '../src/routes/mcp-http-exchange';
+import app from '../src/index';
 
 function request(modern: boolean, signal?: AbortSignal): Request {
   return new Request('http://localhost:3000/mcp', {
@@ -135,5 +136,73 @@ test.each([false, true])('bounds a stalled exchange with modern=%s', async (mode
     expect(await response.text()).not.toContain('late reply');
   } finally {
     release();
+  }
+});
+
+test.each(['deadline', 'abort'])(
+  'cancels an incomplete body on %s before creating a server',
+  async (mode) => {
+    let cancelled = false;
+    let created = false;
+    const abort = new AbortController();
+    const incomplete = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const raw = new Request('http://localhost:3000/mcp', {
+      method: 'POST',
+      body: incomplete,
+      signal: abort.signal,
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+    });
+    const timer = mode === 'abort' ? setTimeout(() => abort.abort(), 10) : undefined;
+    try {
+      const response = await serveMcpExchange(
+        raw,
+        () => {
+          created = true;
+          throw new Error('Incomplete body must not create a server');
+        },
+        { deadlineMs: 25 },
+      );
+      expect(response.status).toBe(mode === 'deadline' ? 504 : 499);
+      expect(created).toBe(false);
+      expect(cancelled).toBe(true);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+);
+
+test('the HTTP entrypoint cancels an incomplete body before authentication', async () => {
+  let cancelled = false;
+  const abort = new AbortController();
+  const raw = new Request('http://localhost:3000/mcp', {
+    method: 'POST',
+    signal: abort.signal,
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+  });
+  const timer = setTimeout(() => abort.abort(), 10);
+  try {
+    const response = await app.fetch(raw);
+    expect(response.status).toBe(499);
+    expect(cancelled).toBe(true);
+  } finally {
+    clearTimeout(timer);
   }
 });

@@ -6,24 +6,12 @@ import {
 } from '@modelcontextprotocol/server';
 import { structuredDiagnostic } from '../lib/structured-log';
 
-export const MCP_REQUEST_BYTES = 1024 * 1024;
-export const MCP_EXCHANGE_DEADLINE_MS = 30_000;
-
-function cancelledExchange(timedOut = false): Response {
-  return Response.json(
-    {
-      jsonrpc: '2.0',
-      id: null,
-      error: {
-        code: -32000,
-        message: timedOut
-          ? 'Request deadline exceeded. Check current state before retrying writes.'
-          : 'Request was cancelled.',
-      },
-    },
-    { status: timedOut ? 504 : 499 },
-  );
-}
+import {
+  MCP_REQUEST_BYTES,
+  withMcpRequest,
+  cancelledMcpRequest,
+  type PreparedMcpRequest,
+} from './mcp-request-body';
 
 async function completeExchange(
   request: Request,
@@ -34,25 +22,35 @@ async function completeExchange(
   const deadline = new AbortController();
   const signal = AbortSignal.any([request.signal, deadline.signal]);
   const timer = setTimeout(() => deadline.abort(), deadlineMs);
-  let onAbort = () => {};
-  const cancelled = new Promise<Response>((resolve) => {
-    onAbort = () => resolve(cancelledExchange(deadline.signal.aborted));
-  });
-  signal.addEventListener('abort', onAbort, { once: true });
-  try {
-    if (signal.aborted) return cancelledExchange(deadline.signal.aborted);
-    return await Promise.race([execute(request), cancelled]);
-  } finally {
-    clearTimeout(timer);
-    signal.removeEventListener('abort', onAbort);
-    await close().catch((error: unknown) =>
+  let closing: Promise<void> | undefined;
+  const closeOnce = () =>
+    (closing ??= close().catch((error: unknown) =>
       structuredDiagnostic(
         'warning',
         'mcp-transport-close-error',
         'MCP_TRANSPORT_CLOSE_ERROR',
         error,
       ),
-    );
+    ));
+  const timedOut = () =>
+    deadline.signal.aborted ||
+    (request.signal.reason instanceof DOMException &&
+      request.signal.reason.name === 'TimeoutError');
+  let onAbort = () => {};
+  const cancelled = new Promise<Response>((resolve) => {
+    onAbort = () => {
+      void closeOnce();
+      resolve(cancelledMcpRequest(timedOut()));
+    };
+  });
+  signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    if (signal.aborted) return cancelledMcpRequest(timedOut());
+    return await Promise.race([execute(request), cancelled]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+    await closeOnce();
   }
 }
 
@@ -76,15 +74,27 @@ export async function serveMcpExchange(
   factory: () => McpServer,
   options: { deadlineMs?: number } = {},
 ): Promise<Response> {
-  if (request.signal.aborted) return cancelledExchange();
+  return withMcpRequest(
+    request,
+    (prepared) => servePreparedMcpExchange(prepared, factory),
+    options,
+  );
+}
+
+export async function servePreparedMcpExchange(
+  prepared: PreparedMcpRequest,
+  factory: () => McpServer,
+): Promise<Response> {
+  const { request, body, deadlineMs } = prepared;
+  if (request.signal.aborted)
+    return cancelledMcpRequest(
+      request.signal.reason instanceof DOMException &&
+        request.signal.reason.name === 'TimeoutError',
+    );
   if (request.method !== 'POST') return rejectedExchange(405);
 
   // Voxen does not publish subscription capabilities or cross-request events.
   // Reject listen explicitly so a client cannot open an empty keepalive stream.
-  const body: unknown = await request
-    .clone()
-    .json()
-    .catch(() => undefined);
   if (
     body &&
     typeof body === 'object' &&
@@ -119,7 +129,7 @@ export async function serveMcpExchange(
           await instance?.close();
         }
       },
-      options.deadlineMs ?? MCP_EXCHANGE_DEADLINE_MS,
+      deadlineMs,
     );
   }
 
@@ -135,6 +145,6 @@ export async function serveMcpExchange(
       return transport.handleRequest(controlled);
     },
     () => server.close(),
-    options.deadlineMs ?? MCP_EXCHANGE_DEADLINE_MS,
+    deadlineMs,
   );
 }
