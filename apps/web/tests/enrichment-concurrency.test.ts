@@ -4,6 +4,9 @@ import {
   repairEnrichmentProjection,
 } from '../src/lib/enrichment-projection';
 import { filterAccessibleBrainNodes } from '../src/lib/brain-source-visibility';
+import { readGraphSlice } from '../src/lib/graph-read-model';
+import { readCurrentGraphCache } from '../src/lib/graph-cached-read';
+import { getRedisPublisher } from '../src/lib/redis';
 import { db } from '../src/lib/db';
 import { enrichmentChecksum, enrichmentContract } from '../src/lib/enrichment-contract';
 import { EnrichmentCommandError, mutateEnrichment } from '../src/lib/enrichment-commands';
@@ -284,5 +287,49 @@ describe.skipIf(!process.env.DATABASE_URL)('canonical enrichment concurrency', (
       (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: f.row.id } }))
         .brainProjectionPending,
     ).toBe(true);
+  });
+  test('fresh and cached graph slices hide obsolete research throughout pending and retry', async () => {
+    const f = await fixture();
+    const accepted = (await mutateEnrichment({ ...f.preconditions, action: 'accept' })).enrichment;
+    expect(await repairEnrichmentProjection(userId, accepted.id)).toBe(true);
+    const input = { userId, view: 'full' as const, hops: 1 };
+    const original = await readGraphSlice(input);
+    const oldNode = original.nodes.find((node) => node.sourceId === accepted.id)!;
+    expect(oldNode.enrichmentRevision).toBe(2);
+    const key = `voxen:graph:v4:${userId}:cas-regression`;
+    await getRedisPublisher().set(key, JSON.stringify(original), 'EX', 60);
+    expect(await readCurrentGraphCache(userId, key)).not.toBeNull();
+    await mutateEnrichment({
+      userId,
+      enrichmentId: accepted.id,
+      expectedRevision: accepted.revision,
+      expectedChecksum: enrichmentChecksum(accepted, f.parent),
+      action: 'edit',
+      title: 'New graph title',
+      content: 'New graph content',
+    });
+    expect((await readGraphSlice(input)).nodes.some((node) => node.id === oldNode.id)).toBe(false);
+    expect(await readCurrentGraphCache(userId, key)).toBeNull();
+    const failure = spyOn(enrichmentProjectionWork, 'materialize').mockRejectedValue(
+      new Error('Projection unavailable'),
+    );
+    restores.push(() => failure.mockRestore());
+    expect(await repairEnrichmentProjection(userId, accepted.id)).toBe(false);
+    expect((await readGraphSlice(input)).nodes.some((node) => node.id === oldNode.id)).toBe(false);
+    expect(await readCurrentGraphCache(userId, key)).toBeNull();
+    failure.mockRestore();
+    await db.$executeRaw`UPDATE "TranscriptEnrichment" SET "brainProjectionNextAttemptAt"=NULL WHERE id=${accepted.id}`;
+    expect(await repairEnrichmentProjection(userId, accepted.id)).toBe(true);
+    // Even a retained old cache cannot revive the pre-edit snapshot after acknowledgement.
+    await getRedisPublisher().set(key, JSON.stringify(original), 'EX', 60);
+    expect(await readCurrentGraphCache(userId, key)).toBeNull();
+    const fresh = await readGraphSlice(input);
+    expect(fresh.nodes.find((node) => node.id === oldNode.id)).toMatchObject({
+      label: 'New graph title',
+      enrichmentRevision: 3,
+    });
+    await getRedisPublisher().set(key, JSON.stringify(fresh), 'EX', 60);
+    expect(await readCurrentGraphCache(userId, key)).not.toBeNull();
+    await getRedisPublisher().del(key);
   });
 });

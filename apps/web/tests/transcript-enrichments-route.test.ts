@@ -275,6 +275,12 @@ describeIfDb('reviewable transcript enrichments API', () => {
     expect(acceptedResponse.status).toBe(200);
     expect((await acceptedResponse.json()).enrichment.projection.state).toBe('PENDING');
     expect(await repairEnrichmentProjection(ownerId, enrichment.id)).toBe(true);
+    const cachedGraph = await request('/api/graph', apiInit(ownerCookie));
+    expect(
+      (await cachedGraph.json()).nodes.some(
+        (node: { sourceId: string }) => node.sourceId === enrichment.id,
+      ),
+    ).toBe(true);
     const accepted = await db.transcriptEnrichment.findUniqueOrThrow({
       where: { id: enrichment.id },
     });
@@ -301,6 +307,12 @@ describeIfDb('reviewable transcript enrichments API', () => {
       }),
     );
     expect(editedResponse.status).toBe(200);
+    const pendingGraph = await request('/api/graph', apiInit(ownerCookie));
+    expect(
+      (await pendingGraph.json()).nodes.some(
+        (node: { sourceId: string }) => node.sourceId === enrichment.id,
+      ),
+    ).toBe(false);
     expect(await repairEnrichmentProjection(ownerId, enrichment.id)).toBe(true);
     const edited = await db.transcriptEnrichment.findUniqueOrThrow({
       where: { id: enrichment.id },
@@ -319,6 +331,12 @@ describeIfDb('reviewable transcript enrichments API', () => {
       apiInit(ownerCookie, 'PATCH', { action: 'dismiss', ...(await preconditions(enrichment.id)) }),
     );
     expect(dismissedResponse.status).toBe(200);
+    const dismissedGraph = await request('/api/graph?refresh=1', apiInit(ownerCookie));
+    expect(
+      (await dismissedGraph.json()).nodes.some(
+        (node: { sourceId: string }) => node.sourceId === enrichment.id,
+      ),
+    ).toBe(false);
     expect(await repairEnrichmentProjection(ownerId, enrichment.id)).toBe(true);
     expect(
       await db.brainNode.findFirst({

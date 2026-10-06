@@ -20,6 +20,7 @@ import {
   reindexTranscriptsBrain,
 } from '../lib/brain';
 import { reindexTranscriptEnrichmentsBrain } from '../lib/brain-enrichments';
+import { readCurrentGraphCache } from '../lib/graph-cached-read';
 import { readBrainCoverage } from '../lib/graph-brain-coverage';
 import {
   type GraphReadEdge,
@@ -199,10 +200,8 @@ graphRoutes.get('/', async (c) => {
   const cacheKey = `${graphCacheKey(userId)}:${view}${focusId ? `:f:${focusId}:h${hops}` : ''}:p:${personalization.cacheFragment}`;
   if (!force && !refresh) {
     try {
-      const cached = await getRedisPublisher().get(cacheKey);
-      if (cached) {
-        return c.json(JSON.parse(cached));
-      }
+      const cached = await readCurrentGraphCache(userId, cacheKey);
+      if (cached) return c.body(cached, 200, { 'Content-Type': 'application/json; charset=utf-8' });
     } catch {
       // ignora — cache miss não bloqueia
     }
