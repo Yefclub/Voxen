@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1791278414 — 2026-10-06 · Dev
+
+### 🔒 OAuth MCP atualizado com clientes por metadados e concessões preservadas
+
+- Upgrade Better Auth and its enabled packages to 1.7.7 with additive resource and signing-key metadata migrations, preserving existing accounts, sessions, keys and refresh grants.
+- Support secure HTTPS client metadata documents, explicit resource links and strict dynamic loopback callbacks; retain immediate JWT revocation and live authorization checks.
+
 ## v0.15.1-dev.1791273653 — 2026-10-06 · Dev
 
 ### 🐛 Revisão de pesquisas sem sobrescrever alterações simultâneas

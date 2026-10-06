@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1791278414",
+    "channel": "dev",
+    "type": "security",
+    "title": "OAuth MCP atualizado com clientes por metadados e concessões preservadas",
+    "body": "- Upgrade Better Auth and its enabled packages to 1.7.7 with additive resource and signing-key metadata migrations, preserving existing accounts, sessions, keys and refresh grants.\n- Support secure HTTPS client metadata documents, explicit resource links and strict dynamic loopback callbacks; retain immediate JWT revocation and live authorization checks.",
+    "pr": 871,
+    "author": "Kalyel",
+    "date": "2026-10-06T06:20:03-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/871"
+  },
+  {
     "version": "0.15.1-dev.1791273653",
     "channel": "dev",
     "type": "fix",
