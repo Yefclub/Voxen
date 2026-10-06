@@ -67,7 +67,7 @@ describe.skipIf(!process.env.DATABASE_URL)('bounded hub aggregation', () => {
         kind: 'RELATED_TO',
       })),
     });
-  }, 30_000);
+  });
   afterAll(async () => {
     await db.user.deleteMany({ where: { id: { in: [ownerId, foreignId] } } });
   });
