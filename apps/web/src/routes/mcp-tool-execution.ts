@@ -2,6 +2,7 @@ import type { McpServer, ToolCallback, ToolAnnotations } from '@modelcontextprot
 import { z } from 'zod';
 import { structuredLog } from '../lib/structured-log';
 import { MCP_TOOL_SCOPES } from './mcp-tool-policy';
+import { type McpConcurrencyLimiter, mcpToolConcurrency } from './mcp-request-protection';
 import { fail, ok } from './mcp-tool-helpers';
 
 type Input = z.ZodObject<z.ZodRawShape>;
@@ -16,7 +17,11 @@ type ToolConfig = {
 type ExecutionIdentity = { userId: string; requestId: string };
 
 /** Apply one execution boundary to every domain registration without weakening its types. */
-export function installMcpToolExecution(server: McpServer, identity: ExecutionIdentity): void {
+export function installMcpToolExecution(
+  server: McpServer,
+  identity: ExecutionIdentity,
+  limiter: McpConcurrencyLimiter = mcpToolConcurrency,
+): void {
   const original = server.registerTool.bind(server);
   const register = (name: string, config: ToolConfig, callback: ToolCallback<Input>) => {
     if (!Object.hasOwn(MCP_TOOL_SCOPES, name)) throw new Error('MCP tool policy is missing');
@@ -41,7 +46,19 @@ export function installMcpToolExecution(server: McpServer, identity: ExecutionId
       async (args, context) => {
         const started = performance.now();
         let code = 'MCP_TOOL_OK';
+        const release = limiter.acquire(identity.userId);
         try {
+          if (!release) {
+            code = 'MCP_BUSY';
+            return fail(
+              JSON.stringify({
+                code,
+                requestId: identity.requestId,
+                retryAfterSeconds: 1,
+                message: 'MCP execution capacity is busy. Retry after the indicated delay.',
+              }),
+            );
+          }
           const result = await callback(args, context);
           if ('isError' in result && result.isError) {
             code = 'MCP_TOOL_REJECTED';
@@ -66,6 +83,7 @@ export function installMcpToolExecution(server: McpServer, identity: ExecutionId
             }),
           );
         } finally {
+          release?.();
           structuredLog(code === 'MCP_TOOL_OK' ? 'info' : 'warning', 'mcp-tool-finished', {
             request_id: identity.requestId,
             actor_id: identity.userId,

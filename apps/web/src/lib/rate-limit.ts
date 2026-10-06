@@ -66,7 +66,7 @@ export async function rateLimitRequiredWithRedis(
   limit: number,
   windowSec: number,
 ): Promise<RateLimitResult> {
-  const result = await rateLimitWithRedis(redis, key, limit, windowSec);
+  const result = await performRateLimit(redis, key, limit, windowSec, true);
   if (result.count < 1) throw new Error('Rate-limit store unavailable');
   return result;
 }
@@ -77,14 +77,28 @@ export async function rateLimitWithRedis(
   limit: number,
   windowSec: number,
 ): Promise<RateLimitResult> {
+  return performRateLimit(redis, key, limit, windowSec, false);
+}
+
+async function performRateLimit(
+  redis: RateLimitRedis,
+  key: string,
+  limit: number,
+  windowSec: number,
+  required: boolean,
+): Promise<RateLimitResult> {
   const results = await redis.multi().incr(key).expire(key, windowSec, 'NX').ttl(key).exec();
   if (!results) {
     // MULTI/EXEC abortado (raro — connection drop). Falha aberta: permite,
     // mas não conta — alternativa seria 503, mas single-tenant não compensa.
     return { allowed: true, count: 0, limit, resetIn: windowSec };
   }
+  if (required && results.some(([error]) => error !== null))
+    throw new Error('Rate-limit store unavailable');
   const count = (results[0]?.[1] as number) ?? 0;
   const ttl = (results[2]?.[1] as number) ?? windowSec;
+  if (required && (!Number.isSafeInteger(count) || count < 1 || !Number.isFinite(ttl) || ttl < 0))
+    throw new Error('Rate-limit store unavailable');
   return {
     allowed: count <= limit,
     count,

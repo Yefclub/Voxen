@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { McpServer } from '@modelcontextprotocol/server';
 import { installMcpToolExecution } from '../src/routes/mcp-tool-execution';
 import { serveMcpExchange } from '../src/routes/mcp-http-exchange';
+import { McpConcurrencyLimiter } from '../src/routes/mcp-request-protection';
 import { ok } from '../src/routes/mcp-tool-helpers';
 
 test.each([false, true])(
@@ -59,7 +60,7 @@ test.each([false, true])(
   },
 );
 
-test('registry annotations are authoritative and read results normalize Date values', async () => {
+test('registry annotations are authoritative for each permission scope', async () => {
   const server = new McpServer({ name: 'contract-test', version: '1' });
   installMcpToolExecution(server, { userId: 'owner', requestId: 'correlation' });
   server.registerTool(
@@ -88,4 +89,63 @@ test('registry annotations are authoritative and read results normalize Date val
     openWorldHint: false,
   });
   expect(result.result.tools[0]!._meta['voxen.dev/requiredScope']).toBe('READ');
+});
+
+test('timed-out tool work retains capacity until its callback actually settles', async () => {
+  const limiter = new McpConcurrencyLimiter(1, 1);
+  let unblock!: () => void;
+  let markStarted!: () => void;
+  const held = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const request = () =>
+    new Request('http://localhost:3000/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'voxen_brain_hubs', arguments: {} },
+      }),
+    });
+  const factory = (hold: boolean) => () => {
+    const server = new McpServer({ name: 'capacity-test', version: '1' });
+    installMcpToolExecution(
+      server,
+      { userId: 'capacity-owner', requestId: 'capacity-correlation' },
+      limiter,
+    );
+    server.registerTool('voxen_brain_hubs', { inputSchema: {} }, async () => {
+      if (hold) {
+        markStarted();
+        await held;
+      }
+      return ok({ hubs: [] });
+    });
+    return server;
+  };
+  const exchange = serveMcpExchange(request(), factory(true), { deadlineMs: 100 });
+  try {
+    await started;
+    expect((await exchange).status).toBe(504);
+    const blocked = await serveMcpExchange(request(), factory(false));
+    const denied = (await blocked.json()) as {
+      result: { isError: boolean; content: { text: string }[] };
+    };
+    expect(denied.result.isError).toBe(true);
+    expect(denied.result.content[0]!.text).toContain('MCP_BUSY');
+    unblock();
+    const recovered = await serveMcpExchange(request(), factory(false));
+    expect(await recovered.json()).toMatchObject({ result: { structuredContent: { hubs: [] } } });
+  } finally {
+    unblock();
+    await exchange;
+  }
 });

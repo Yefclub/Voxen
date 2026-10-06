@@ -46,6 +46,7 @@ import {
 } from './mcp-transcript-enrichment-tools';
 import { authenticateMcp } from './mcp-authentication';
 import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
+import { checkMcpRequestRate } from './mcp-request-protection';
 import { installMcpToolExecution } from './mcp-tool-execution';
 import { validCorrelationId } from '../lib/structured-log';
 import { requiredMcpToolScope } from './mcp-tool-policy';
@@ -132,6 +133,8 @@ mcpRoutes.all('/', async (c) => {
     return c.json({ error: 'Origem não permitida.' }, 403);
   }
   return withMcpRequest(c.req.raw, async (prepared) => {
+    const protection = await checkMcpRequestRate(c);
+    if (protection) return protection;
     let identity;
     try {
       identity = await authenticateMcp(c);
@@ -160,6 +163,8 @@ mcpRoutes.all('/', async (c) => {
         401,
       );
     }
+    const ownerProtection = await checkMcpRequestRate(c, identity.userId);
+    if (ownerProtection) return ownerProtection;
     const requiredScope = requiredMcpToolScope(prepared.body);
     if (requiredScope && !identity.scopes.includes(requiredScope)) {
       c.header(
