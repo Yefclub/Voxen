@@ -1,23 +1,13 @@
-// ============================================================================
-// /mcp — Model Context Protocol server (Streamable HTTP, spec 2025-11-25)
-// ============================================================================
-// Expõe a Base de conhecimento do Voxen como fonte de contexto pra outras IAs (Claude Desktop,
-// Cursor, agentes próprios) via o SDK oficial @modelcontextprotocol/sdk + o
-// transporte Streamable HTTP do @hono/mcp.
-//
-// Auth: Bearer token individual, persistido apenas como SHA-256. Cada token
-// pertence a UM user — TODAS as queries das tools são escopadas por esse userId.
-//
-// Stateless por design: um McpServer + transport são criados por request, com as
-// tools fechando sobre o userId autenticado. Sem Mcp-Session-Id — alinhado com a
-// direção stateless do protocolo e com o modelo single-tenant do Voxen.
-// ============================================================================
+// Owner-scoped MCP tools served through the official v2 Web Standard transport.
+// Each request creates a fresh server. Modern 2026 and legacy 2025 clients
+// share the same tool catalog and immutable authenticated owner identity.
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPTransport } from '@hono/mcp';
+import { McpServer } from '@modelcontextprotocol/server';
+import { bodyLimit } from 'hono/body-limit';
+import { MCP_REQUEST_BYTES, serveMcpExchange } from './mcp-http-exchange';
 import { db } from '../lib/db';
 import { noteContentChecksum } from '../lib/note-revisions';
 import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
@@ -58,6 +48,21 @@ import {
 import { registerMcpPersonalContextTool } from './mcp-personal-context-tool';
 
 export const mcpRoutes = new Hono();
+mcpRoutes.use(
+  '*',
+  bodyLimit({
+    maxSize: MCP_REQUEST_BYTES,
+    onError: (c) =>
+      c.json(
+        {
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32600, message: 'Request body exceeds one MiB.' },
+        },
+        413,
+      ),
+  }),
+);
 
 // Guia de alto nível devolvido no `initialize` (campo `instructions`). É o
 // primeiro contexto que qualquer agente recebe — explica o que é o Voxen, como
@@ -166,14 +171,9 @@ mcpRoutes.all('/', async (c) => {
     });
     return c.json({ error: 'Escopo mcp:write obrigatório para esta operação.' }, 403);
   }
-  const server = buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c));
-  // enableJsonResponse: responde application/json em vez de abrir um stream SSE
-  // por request. Nossas tools são request/response (sem streaming do servidor),
-  // então JSON é mais simples e compatível (curl, Open WebUI, etc.).
-  const transport = new StreamableHTTPTransport({ enableJsonResponse: true });
-  await server.connect(transport);
-  const res = await transport.handleRequest(c);
-  return res ?? c.body(null, 202);
+  return serveMcpExchange(c.req.raw, () =>
+    buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c)),
+  );
 });
 
 // Defesa contra DNS rebinding (spec 2025-11-25): se houver header Origin (cliente
@@ -326,6 +326,8 @@ function buildVoxenMcpServer(
     registerWriteTools(server, userId);
     registerTranscriptEnrichmentWriteTools(server, userId);
   }
+  // The catalog is static for this authenticated request; no notification bus is exposed.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
   return server;
 }
 

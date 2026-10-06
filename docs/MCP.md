@@ -6,6 +6,12 @@ O Voxen expõe a Base de conhecimento de cada usuário aprovado por um servidor
 remoto do [Model Context Protocol](https://modelcontextprotocol.io/). O endpoint
 usa Streamable HTTP e cada credencial fica vinculada a exatamente um usuário.
 
+O mesmo endpoint suporta o protocolo **2026-07-28** e os clientes de 2025.
+Clientes atuais usam descoberta e metadados por chamada; os anteriores mantêm
+o handshake `initialize`. As chamadas devem aceitar JSON e SSE, e o corpo tem
+limite de 1 MiB. Não há streams de sessão GET/DELETE nem assinaturas; as
+ferramentas são chamadas por POST.
+
 ## Dados da conexão
 
 | Campo        | Valor                                               |
@@ -259,6 +265,23 @@ curl --fail-with-body https://SEU-HOST-VOXEN/mcp \
 
 No MCP Inspector, selecione Streamable HTTP, informe o endpoint e configure o
 Authorization nos controles de autenticação/headers. Nunca use query parameter.
+
+O teste de descoberta do protocolo atual inclui os headers obrigatórios e os
+metadados de capacidades do cliente:
+
+```bash
+curl --fail-with-body https://SEU-HOST-VOXEN/mcp \
+  -H "Authorization: Bearer $VOXEN_MCP_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"voxen-smoke-test","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
+```
+
+Chamadas atuais a `tools/call` também exigem que `Mcp-Name` corresponda a
+`params.name`. Os clientes do SDK gerenciam metadados, headers e negociação de
+versão automaticamente.
 
 ## Diagnóstico
 

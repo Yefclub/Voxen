@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { queryBrainTimeline } from '../lib/brain-temporal';
 import { fail, ok, READ_ONLY } from './mcp-tool-helpers';

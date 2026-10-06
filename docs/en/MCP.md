@@ -6,6 +6,12 @@ Voxen exposes each approved user's knowledge base through a remote
 [Model Context Protocol](https://modelcontextprotocol.io/) server. The endpoint
 uses Streamable HTTP and every credential is bound to exactly one Voxen user.
 
+The same endpoint supports protocol revision **2026-07-28** and legacy 2025
+clients. Modern clients discover the server and send per-request metadata;
+legacy clients keep the `initialize` handshake. Requests must accept both JSON
+and SSE, and bodies are limited to 1 MiB. Standalone GET/DELETE session streams
+and subscriptions are not exposed; tool calls use POST.
+
 ## Connection details
 
 | Field          | Value                                      |
@@ -264,6 +270,22 @@ curl --fail-with-body https://YOUR-VOXEN-HOST/mcp \
 Use MCP Inspector for interactive tool discovery and calls. Select Streamable
 HTTP, enter the endpoint, and configure the Authorization header in its auth or
 request-header controls. Do not paste the token into a URL query parameter.
+
+A modern discovery smoke test includes the required matching headers and
+client-capability metadata:
+
+```bash
+curl --fail-with-body https://YOUR-VOXEN-HOST/mcp \
+  -H "Authorization: Bearer $VOXEN_MCP_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"voxen-smoke-test","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
+```
+
+Modern `tools/call` requests also require `Mcp-Name` to match `params.name`.
+The SDK clients handle metadata, headers and version negotiation automatically.
 
 ## Troubleshooting
 
