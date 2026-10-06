@@ -41,7 +41,7 @@ configuration must survive the upgrade.
 - [x] Metadata client registration and strict dynamic loopback callbacks pass an end-to-end OAuth flow.
 - [x] Current and overlapping legacy JWTs remain resource-bound and revocable.
 - [x] Discovery/UI/docs accurately advertise supported behavior.
-- [ ] Full checks, migration/quality gates, real image build and independent review pass.
+- [x] Full checks, migration/quality gates, real image build and independent review pass.
 - [ ] Native deployment preserves settings/storage and passes live authorization and MCP probes.
 
 ## Primary references
@@ -70,11 +70,14 @@ returns the provider's generic response without persisting an identity. A real
 TLS fixture accepts its trusted matching certificate and rejects an otherwise
 trusted certificate for another hostname on Bun. The actual Bun pinned-address probe rejected a connection to the selected
 alternate public address; bounded transport unit cases passed. Full gates, UI
-verification, final independent review and deployment remain pending.
+verification and final independent review passed; deployment remains pending.
 
 Final boundary regression: a real provider-issued DPoP JWT was accepted as
 Bearer before the correction (RED). The resource now rejects its confirmation
 claim; its revocation still persists, and ordinary Bearer access remains valid
 (GREEN). The UI passed both locales, all client selection/copy controls, four
-themes and mobile with the existing session. Final gates/build are repeated
-after this boundary correction.
+themes and mobile with the existing session. Final gates/build passed after this boundary correction: 1,776 web tests,
+125 extension tests and 559 worker tests; coverage/duplication and dependency
+audits passed. The combined Docker Compose image built successfully. The final
+OAuth regression also passed on Bun 1.2, and independent review approved the
+corrective commit. Native deployment and account-client validation follow.
