@@ -84,6 +84,16 @@ function protectTransactionAdapter(adapter: TransactionAdapter): TransactionAdap
         return exposed ? [exposed as T] : [];
       });
     },
+    async consumeOne<T>(args: Parameters<AuthAdapter['consumeOne']>[0]): Promise<T | null> {
+      if (args.model === 'ssoProvider')
+        throw new Error('A gestão direta de provedores SSO está desativada.');
+      return adapter.consumeOne<T>(args);
+    },
+    async incrementOne<T>(args: Parameters<AuthAdapter['incrementOne']>[0]): Promise<T | null> {
+      if (args.model === 'ssoProvider')
+        throw new Error('A gestão direta de provedores SSO está desativada.');
+      return adapter.incrementOne<T>(args);
+    },
     async create(args) {
       if (args.model === 'ssoProvider') {
         throw new Error('A gestão direta de provedores SSO está desativada.');
@@ -134,6 +144,6 @@ function protectSsoProviderWrites(adapter: AuthAdapter): AuthAdapter {
  * admin contract.
  */
 export const encryptedSsoPrismaAdapter = (options: BetterAuthOptions): AuthAdapter => {
-  const base = prismaAdapter(db, { provider: 'postgresql' })(options);
+  const base = prismaAdapter(db, { provider: 'postgresql', transaction: true })(options);
   return protectSsoProviderWrites(base);
 };

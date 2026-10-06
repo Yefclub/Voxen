@@ -215,7 +215,7 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
         scope: 'mcp:read offline_access',
       }),
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     const body = (await response.json()) as {
       client_id: string;
       client_secret?: string;
@@ -265,7 +265,9 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
       headers: { cookie },
       redirect: 'manual',
     });
-    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.status).toBe(302);
+    expect(oauthResponseHasErrorRedirect(response)).toBe(true);
+    expect(new URL(response.headers.get('location')!).pathname).toBe('/api/auth/error');
 
     const missingPkce = new URLSearchParams({
       client_id: clientId,
@@ -622,7 +624,7 @@ describeIfDb('MCP OAuth 2.1 authorization server', () => {
         resource: resolveMcpOAuthResource(),
       }),
     });
-    expect(secondRefresh.status).toBe(200);
+    expect(secondRefresh.status, await secondRefresh.clone().text()).toBe(200);
     const secondRefreshed = (await secondRefresh.json()) as {
       access_token: string;
       refresh_token: string;

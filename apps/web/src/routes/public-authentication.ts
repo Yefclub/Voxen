@@ -32,9 +32,8 @@ type OAuthAuditContext = {
 function basicClientId(authorization: string | undefined): string | undefined {
   if (!authorization?.startsWith('Basic ')) return undefined;
   try {
-    return (
-      Buffer.from(authorization.slice(6), 'base64').toString('utf8').split(':', 1)[0] || undefined
-    );
+    const encoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8').split(':', 1)[0];
+    return encoded ? decodeURIComponent(encoded.replace(/\+/g, ' ')) : undefined;
   } catch {
     return undefined;
   }
@@ -86,7 +85,7 @@ async function oauthAuditContext(
     }
   }
   const clientId =
-    values.get('client_id')?.slice(0, 255) || basicClientId(c.req.header('authorization'));
+    values.get('client_id')?.slice(0, 2048) || basicClientId(c.req.header('authorization'));
   const requestedScopes = values.get('scope')?.split(/\s+/).filter(Boolean);
   if (path.endsWith('/oauth2/register')) return { event: 'client_registration', clientId };
   if (path.endsWith('/oauth2/authorize')) {
@@ -312,6 +311,26 @@ publicAuthenticationRoutes.on(['GET', 'POST'], '/api/auth/*', async (c) => {
     ? await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null)
     : null;
   let handlerRequest = c.req.raw;
+  if (path.endsWith('/oauth2/register') && c.req.method === 'POST') {
+    const registration = (await handlerRequest.clone().json()) as Record<string, unknown>;
+    // Older MCP clients omit application_type for native HTTP loopback callbacks.
+    if (
+      registration.application_type === undefined &&
+      registration.token_endpoint_auth_method === 'none' &&
+      Array.isArray(registration.redirect_uris) &&
+      registration.redirect_uris.some(
+        (value) => typeof value === 'string' && value.startsWith('http:'),
+      )
+    ) {
+      const headers = new Headers(handlerRequest.headers);
+      headers.delete('content-length');
+      handlerRequest = new Request(handlerRequest.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...registration, application_type: 'native' }),
+      });
+    }
+  }
   if (auditContext?.event === 'token_revocation') {
     const contentType = handlerRequest.headers.get('content-type') ?? '';
     const headers = new Headers(handlerRequest.headers);
@@ -343,17 +362,30 @@ publicAuthenticationRoutes.on(['GET', 'POST'], '/api/auth/*', async (c) => {
         auth.handler(handlerRequest),
       )
     : await auth.handler(handlerRequest);
+  const unsupportedJwtRevocation =
+    response.status === 400 &&
+    auditContext?.event === 'token_revocation' &&
+    (
+      await response
+        .clone()
+        .json()
+        .catch(() => null)
+    )?.error === 'unsupported_token_type';
   if (
-    response.status < 400 &&
+    (response.status < 400 || unsupportedJwtRevocation) &&
     auditContext?.event === 'token_revocation' &&
     auditContext.revocationToken &&
     auditContext.revocationToken.split('.').length === 3
   ) {
     try {
+      if (!auditContext.clientId) throw new Error('Authenticated client identity is unavailable');
       await recordMcpOAuthAccessTokenRevocation(
         auditContext.revocationToken,
         auditContext.clientId,
       );
+      // The provider already authenticated the client; Voxen persists JWT revocation separately.
+      if (unsupportedJwtRevocation)
+        response = new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store' } });
     } catch {
       response = Response.json(
         {

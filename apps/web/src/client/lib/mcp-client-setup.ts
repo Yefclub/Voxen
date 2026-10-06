@@ -26,7 +26,8 @@ function setupsEn(endpoint: string): McpClientSetup[] {
       id: 'codex',
       label: 'Codex',
       status: 'supported',
-      summary: 'Set VOXEN_MCP_TOKEN in the environment, then add this to config.toml.',
+      summary:
+        'Set VOXEN_MCP_TOKEN in the environment, then add this to config.toml. For OAuth, enable it in Voxen, use the guide’s URL-only configuration and run codex mcp login voxen.',
       config: `[mcp_servers.voxen]\nurl = "${endpoint}"\nbearer_token_env_var = "VOXEN_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`,
     },
     {
@@ -108,7 +109,8 @@ function setupsPtBr(endpoint: string): McpClientSetup[] {
   const setups = setupsEn(endpoint);
   const translated: Record<McpClientId, Pick<McpClientSetup, 'summary' | 'config'>> = {
     codex: {
-      summary: 'Defina VOXEN_MCP_TOKEN no ambiente e adicione ao config.toml.',
+      summary:
+        'Defina VOXEN_MCP_TOKEN no ambiente e adicione ao config.toml. Para OAuth, habilite no Voxen, use a configuração só com URL do guia e execute codex mcp login voxen.',
       config: setups[0]!.config,
     },
     claude: {

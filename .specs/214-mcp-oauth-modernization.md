@@ -29,12 +29,12 @@ configuration must survive the upgrade.
 - If the canonical resource or OAuth storage is unavailable, then the system shall fail closed without exposing secrets.
 
 ## Acceptance criteria
-- [ ] Reviewed package APIs and official upgrade/CIMD guidance match the implementation.
-- [ ] Additive schema/migration and resource backfill preserve pre-upgrade identities and credentials.
-- [ ] Login, encrypted SSO, PKCE/consent, refresh/replay, revocation and scope regressions pass.
-- [ ] Metadata transport has adversarial DNS/TLS/redirect/body/deadline tests on the actual Bun runtime.
-- [ ] Metadata client registration and strict dynamic loopback callbacks pass an end-to-end OAuth flow.
-- [ ] Current and overlapping legacy JWTs remain resource-bound and revocable.
+- [x] Reviewed package APIs and official upgrade/CIMD guidance match the implementation.
+- [x] Additive schema/migration and resource backfill preserve pre-upgrade identities and credentials.
+- [x] Login, encrypted SSO, PKCE/consent, refresh/replay, revocation and scope regressions pass.
+- [x] Metadata transport has adversarial DNS/TLS/redirect/body/deadline tests on the actual Bun runtime.
+- [x] Metadata client registration and strict dynamic loopback callbacks pass an end-to-end OAuth flow.
+- [x] Current and overlapping legacy JWTs remain resource-bound and revocable.
 - [ ] Discovery/UI/docs accurately advertise supported behavior.
 - [ ] Full checks, migration/quality gates, real image build and independent review pass.
 - [ ] Native deployment preserves settings/storage and passes live authorization and MCP probes.
@@ -50,3 +50,15 @@ configuration must survive the upgrade.
 Use the OAuth provider's canonical registration and resource mechanisms. Adapt
 only the boundaries required by Voxen. Do not replace existing sessions, keys or
 user data, loosen redirect/origin checks, or weaken repository quality gates.
+
+## Validation
+
+Actual 1.6.25-issued session, JWT and refresh credentials passed the 1.7.7 cutover
+probe: password/client-secret hashes and signing-key bytes stayed unchanged;
+legacy access remained revocable and refresh renewed with the original grant.
+Backfill idempotence and data preservation regressions passed. Metadata client
+OAuth/PKCE with changing loopback port passed, including consent, issuer response,
+client-resource unlink and session deletion. Existing login/SSO/OAuth regressions
+passed. The actual Bun pinned-address probe rejected a connection to the selected
+alternate public address; bounded transport unit cases passed. Full gates, UI
+verification, final independent review and deployment remain pending.

@@ -308,6 +308,25 @@ curl --fail-with-body "$VOXEN_URL/api/auth/oauth2/register" \
 Keep the returned `client_id`; a public PKCE client has no client secret. Voxen
 requires exact redirect matching and accepts HTTP only for loopback callbacks.
 
+### Metadata-document clients and loopback callbacks
+
+Voxen supports the MCP 2026-07-28 client metadata profile (CIMD). Clients can
+identify themselves with their exact HTTPS metadata-document URL. Discovery
+advertises `client_id_metadata_document_supported` and
+`authorization_response_iss_parameter_supported`; authorization responses bind
+the issuer with `iss`. Documents use a public-address-only DNS-pinned transport
+with no redirects and a five-second/128-KiB bound. Credentials remain in the
+client and outside prompts. Client discovery still requires explicit user
+consent and resource/scopes authorization.
+
+Registered HTTP loopback redirects can vary only their port. The registered
+hostname, path and query must still match. All other redirects remain exact.
+Existing sessions, client identities, keys and refresh grants are preserved by
+the additive Better Auth 1.7.7 migration and canonical resource backfill. Active
+MCP credentials also require a current client-resource link and any JWT-bound
+session. Metadata-document SDK tests do not establish compatibility with every
+installed vendor client; complete account-level client validation separately.
+
 ## Grok Web
 
 Grok Web custom connectors require a public HTTPS endpoint and an OAuth flow.

@@ -9,7 +9,9 @@
 
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { APIError } from 'better-auth/api';
-import { randomUUID } from 'node:crypto';
+import { cimd } from '@better-auth/cimd';
+import { fetchMcpClientMetadata } from './mcp-metadata-transport';
+import { validateMcpOAuthRedirect } from './mcp-oauth-redirect';
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { jwt } from 'better-auth/plugins/jwt';
 import { oneTimeToken } from 'better-auth/plugins/one-time-token';
@@ -186,14 +188,24 @@ const config = {
       jwt: { issuer: `${new URL(authBaseURL).origin}/api/auth` },
     }),
     oauthProvider({
-      silenceWarnings: { oauthAuthServerConfig: true },
+      validateRedirectUri: validateMcpOAuthRedirect,
       loginPage: '/entrar',
       consentPage: '/oauth/consent',
       scopes: ['mcp:read', 'mcp:write', 'offline_access'],
-      validAudiences: [mcpOAuthResource],
+      resources: [
+        {
+          identifier: mcpOAuthResource,
+          name: 'Voxen MCP',
+          allowedScopes: ['mcp:read', 'mcp:write', 'offline_access'],
+          accessTokenTtl: MCP_OAUTH_ACCESS_TOKEN_TTL_SEC,
+        },
+      ],
       grantTypes: ['authorization_code', 'refresh_token'],
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
+      enforcePerClientResources: true,
+      clientRegistrationDefaultResources: [mcpOAuthResource],
+      clientRegistrationAllowedResources: [mcpOAuthResource],
       clientRegistrationDefaultScopes: ['mcp:read'],
       clientRegistrationAllowedScopes: ['mcp:read', 'mcp:write', 'offline_access'],
       accessTokenExpiresIn: MCP_OAUTH_ACCESS_TOKEN_TTL_SEC,
@@ -201,23 +213,33 @@ const config = {
       codeExpiresIn: 5 * 60,
       storeClientSecret: 'hashed',
       storeTokens: 'hashed',
-      customAccessTokenClaims: async ({ user, resource }) => {
+      customAccessTokenClaims: async ({ user, resources }) => {
         if (!user || user.status !== 'APPROVED') {
           throw new APIError('FORBIDDEN', {
             message: 'A conta Voxen não está aprovada para delegar acesso MCP.',
             code: 'MCP_OAUTH_USER_NOT_APPROVED',
           });
         }
-        if (resource !== mcpOAuthResource) {
+        if (resources?.length !== 1 || resources[0] !== mcpOAuthResource) {
           throw new APIError('BAD_REQUEST', {
             message: 'O recurso OAuth solicitado não corresponde ao MCP desta instância.',
             code: 'MCP_OAUTH_RESOURCE_MISMATCH',
           });
         }
         return {
-          jti: randomUUID(),
           'https://voxen.dev/claims/credential_class': 'mcp_oauth',
         };
+      },
+    }),
+    cimd({
+      fetchClientMetadataResource: fetchMcpClientMetadata,
+      metadataProfile: 'mcp-2026-07-28',
+      maxCacheEntries: 500,
+      metadataFetchPolicy: {
+        maximumConcurrentFetches: 8,
+        maximumConcurrentFetchesPerOrigin: 2,
+        maximumFetchesPerMinute: 60,
+        maximumFetchesPerOriginPerMinute: 15,
       },
     }),
     // Login rápido por QR (spec 060). O `generate` exige sessão válida
