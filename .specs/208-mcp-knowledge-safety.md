@@ -42,7 +42,7 @@ MCP-03, MCP-04, MCP-05, MCP-12 and their MCP-08 regression cases.
 - [x] Evidence checks cover current owned transcripts, notes/folders and accepted current research; missing/foreign/stale sources are excluded.
 - [x] Read-only research calls report computed freshness while stored records and graph nodes remain unchanged.
 - [x] Existing tool names, response fields and approved user isolation remain compatible.
-- [ ] Focused regressions, complete pre-PR checks, independent review and the runtime build pass.
+- [x] Focused regressions, complete pre-PR checks, independent review and the runtime build pass.
 
 ## Out of scope
 
