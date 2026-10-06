@@ -344,6 +344,19 @@ const port = Number(process.env.PORT ?? 3000);
 // Só em produção (entrypoint seta NODE_ENV=production): em dev/test o import de
 // `../src/index` pelos testes não deve tocar /run/voxen nem DB.
 if (process.env.NODE_ENV === 'production') {
+  void import('./lib/mcp-audit-retention')
+    .then(({ maintainMcpOAuthAudit }) => {
+      void maintainMcpOAuthAudit();
+      setInterval(() => void maintainMcpOAuthAudit(), 60_000).unref();
+    })
+    .catch((error) =>
+      structuredDiagnostic(
+        'warning',
+        'mcp-audit-maintenance-failed',
+        'MCP_AUDIT_MAINTENANCE_FAILED',
+        error,
+      ),
+    );
   void import('./lib/proxy-agent-tunnel')
     .then(({ syncChiselAuthfile }) => syncChiselAuthfile())
     .catch((err) => {

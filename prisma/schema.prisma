@@ -385,6 +385,7 @@ model McpOauthAuditEvent {
   @@index([event, createdAt])
   @@index([clientId, createdAt])
   @@index([targetUserId, createdAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // Short-lived denylist for revoked OAuth JWTs. Only the random signed `jti` is
