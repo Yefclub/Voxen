@@ -39,7 +39,7 @@ of MCP-06. OAuth, tool contracts and output bounds remain separate increments.
 - [x] GET/DELETE and unsupported subscriptions cannot create idle streams.
 - [x] Successful, failed and aborted exchanges close per-request resources.
 - [x] Tool names, scopes and existing response fields remain compatible.
-- [ ] Full checks, real Docker build and independent review pass.
+- [x] Full checks, real Docker build and independent review pass.
 
 ## Decisions and references
 
