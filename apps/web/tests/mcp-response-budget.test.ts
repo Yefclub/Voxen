@@ -4,6 +4,7 @@ import { serveMcpExchange } from '../src/routes/mcp-http-exchange';
 import { installMcpToolExecution } from '../src/routes/mcp-tool-execution';
 import { MCP_RESULT_WIRE_BYTES } from '../src/routes/mcp-result-budget';
 import { boundMcpToolResponse } from '../src/routes/mcp-response-budget';
+import { withMcpRequest } from '../src/routes/mcp-request-body';
 import { ok } from '../src/routes/mcp-tool-helpers';
 
 test.each([false, true])('SDK errors remain bounded for modern=%s', async (modern) => {
@@ -98,3 +99,37 @@ test('oversized streaming reply is cancelled and gets a small retry-safe error',
   expect(result.headers.has('content-length')).toBe(false);
   expect(await result.json()).toMatchObject({ id: 'correlation', error: { code: -32000 } });
 });
+
+test.each(['name', 'key', 'id', 'normal'])(
+  'rejects RPC batch %s before authentication or execution',
+  async (variant) => {
+    let entered = false;
+    const large = 'BATCH_PRIVATE_CANARY'.repeat(20000);
+    const call = {
+      jsonrpc: '2.0',
+      id: variant === 'id' ? large : 1,
+      method: 'tools/call',
+      params: {
+        name: variant === 'name' ? large : 'voxen_brain_hubs',
+        arguments: variant === 'key' ? { [large]: true } : {},
+      },
+    };
+    const response = await withMcpRequest(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(variant === 'normal' ? [call, { ...call, id: 2 }] : [call]),
+      }),
+      async () => {
+        entered = true;
+        return Response.json({ ok: true });
+      },
+    );
+    expect(entered).toBe(false);
+    expect(response.status).toBe(400);
+    const text = await response.text();
+    expect(text).not.toContain('BATCH_PRIVATE_CANARY');
+    expect(Buffer.byteLength(text)).toBeLessThan(1024);
+    expect(JSON.parse(text)).toMatchObject({ id: null, error: { code: -32600 } });
+  },
+);

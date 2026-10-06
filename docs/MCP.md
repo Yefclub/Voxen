@@ -47,7 +47,11 @@ real do Voxen em execução.
 Argumentos desconhecidos são rejeitados. Consultas têm limite de 2.000 caracteres,
 identificadores de 256, listas de 100 itens e argumentos aninhados de 10 níveis;
 cada ferramenta pode ter limites menores. IDs RPC aceitam strings de até 128
-caracteres ou inteiros seguros. O prazo de 30 segundos começa na leitura do corpo
+caracteres ou inteiros seguros; métodos/nomes de ferramentas RPC também têm limite de 128 caracteres.
+Lotes JSON-RPC são rejeitados antes da autenticação ou execução. Envie chamadas RPC
+individuais; `voxen_request_transcriptions` continua aceitando vários links na mesma
+chamada. Isso segue a [mudança MCP de 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/changelog).
+O prazo de 30 segundos começa na leitura do corpo
 e inclui autenticação e execução. Consultas pesadas do grafo têm limite de 3
 segundos no PostgreSQL.
 

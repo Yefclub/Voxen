@@ -78,6 +78,20 @@ export async function withMcpRequest(
     } catch {
       body = undefined;
     }
+    // MCP removed JSON-RPC batches in 2025-06-18; reject before any authentication or writes.
+    if (Array.isArray(body)) {
+      return Response.json(
+        {
+          jsonrpc: '2.0',
+          id: null,
+          error: {
+            code: -32600,
+            message: 'JSON-RPC batches are not supported. Send one MCP request at a time.',
+          },
+        },
+        { status: 400 },
+      );
+    }
     if (body && typeof body === 'object' && !Array.isArray(body) && 'id' in body) {
       const id = body.id;
       if (
@@ -110,7 +124,10 @@ export async function withMcpRequest(
         return Response.json(
           {
             jsonrpc: '2.0',
-            id: null,
+            id:
+              'id' in body && (typeof body.id === 'string' || typeof body.id === 'number')
+                ? body.id
+                : null,
             error: {
               code: -32600,
               message: 'RPC methods and tool names must not exceed 128 characters.',
