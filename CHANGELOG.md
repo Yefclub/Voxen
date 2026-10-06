@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1791273653 — 2026-10-06 · Dev
+
+### 🐛 Revisão de pesquisas sem sobrescrever alterações simultâneas
+
+### Fixed
+- Require the observed research revision and checksum for manual review, editing and cancellation through MCP and the web API, preserving unsaved drafts on conflicts.
+- Persist retryable graph synchronization together with saved research, hide obsolete graph evidence, and keep research reads free of repair side effects.
+
 ## v0.15.1-dev.1791271650 — 2026-10-06 · Dev
 
 ### ⚡ Reliable MCP hubs on larger graphs

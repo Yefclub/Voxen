@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1791273653",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Revisão de pesquisas sem sobrescrever alterações simultâneas",
+    "body": "### Fixed\n- Require the observed research revision and checksum for manual review, editing and cancellation through MCP and the web API, preserving unsaved drafts on conflicts.\n- Persist retryable graph synchronization together with saved research, hide obsolete graph evidence, and keep research reads free of repair side effects.",
+    "pr": 869,
+    "author": "Kalyel",
+    "date": "2026-10-06T05:00:40-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/869"
+  },
+  {
     "version": "0.15.1-dev.1791271650",
     "channel": "dev",
     "type": "perf",
