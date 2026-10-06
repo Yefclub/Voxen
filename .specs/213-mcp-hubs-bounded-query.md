@@ -17,7 +17,7 @@ under normal load. Optimize the query instead of increasing the deadline.
 ## Acceptance criteria
 - [x] Scaled graph regression passes within the existing deadline.
 - [x] Self-loops, foreign edges and inactive/invalid source endpoints are handled correctly.
-- [ ] Full checks, quality gates, real image build and independent review pass.
+- [x] Full checks, quality gates, real image build and independent review pass.
 - [ ] The actual deployed graph passes both MCP protocol probes after rollout.
 
 
@@ -27,3 +27,9 @@ Aggregate edges first using indexed node identities. A shared materialized node
 CTE can choose quadratic rescans when a newly inserted owner is absent from
 statistics; keep primary-key uniqueness visible to the planner. Disable JIT only
 inside bounded MCP read transactions to avoid compilation consuming the deadline.
+
+## Validation
+
+All local checks and dependency audit passed. Coverage: web 49.49%, worker
+73.78%; duplication 2.44%. The combined Docker Compose image built successfully
+from commit 9cdad34. Independent review approved that commit.
