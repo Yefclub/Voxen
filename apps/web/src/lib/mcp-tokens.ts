@@ -50,7 +50,16 @@ export function toMcpTokenMetadata(token: {
   lastUsedAt: Date | null;
   revokedAt: Date | null;
 }): McpTokenMetadata {
-  return { ...token, scopes: deserializeMcpScopes(token.scopes) };
+  return {
+    id: token.id,
+    userId: token.userId,
+    label: token.label,
+    scopes: deserializeMcpScopes(token.scopes),
+    createdAt: token.createdAt,
+    expiresAt: token.expiresAt,
+    lastUsedAt: token.lastUsedAt,
+    revokedAt: token.revokedAt,
+  };
 }
 
 export async function createMcpToken(input: {

@@ -2,12 +2,7 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isMcpOAuthEnabled, isValidMcpOAuthRedirect, writeMcpOAuthAudit } from '../lib/mcp-oauth';
-import {
-  createMcpToken,
-  hashMcpToken,
-  parseMcpScopes,
-  toMcpTokenMetadata,
-} from '../lib/mcp-tokens';
+import { createMcpToken, parseMcpScopes, toMcpTokenMetadata } from '../lib/mcp-tokens';
 import { getSetting, setSettings } from '../lib/settings';
 import type { AdminVariables } from './admin-guard';
 
@@ -239,14 +234,6 @@ adminMcpRoutes.post('/prompt', async (c) => {
   const appUrl = normalizeAppOrigin(body.appUrl);
   if (!appUrl) return c.json({ error: 'URL da aplicação inválida.' }, 400);
 
-  const token = typeof body.token === 'string' ? body.token.trim() : '';
-  if (!token) return c.json({ error: 'Informe o token recém-criado.' }, 400);
-  const valid = await db.mcpToken.findFirst({
-    where: { tokenHash: hashMcpToken(token), userId: c.get('adminUserId'), revokedAt: null },
-    select: { id: true },
-  });
-  if (!valid) return c.json({ error: 'Token MCP inválido ou revogado.' }, 409);
-
   const endpoint = `${appUrl}/mcp`;
   const prompt = [
     'Você é um agente de IA autorizado a consultar o Voxen desta instância via MCP.',
@@ -259,8 +246,9 @@ adminMcpRoutes.post('/prompt', async (c) => {
     'Como conectar:',
     `- URL da aplicação: ${appUrl}`,
     `- Endpoint MCP (Streamable HTTP): ${endpoint}`,
-    '- Transporte: MCP Streamable HTTP (spec 2025-11-25). Configure este endpoint como um servidor MCP HTTP no seu cliente (Claude Desktop, Cursor, etc.).',
-    `- Header obrigatório: Authorization: Bearer ${token}`,
+    '- Transporte: MCP Streamable HTTP (2026-07-28, com compatibilidade para clientes de 2025). Configure este endpoint como um servidor MCP HTTP no seu cliente (Claude Desktop, Cursor, etc.).',
+    '- Configure a credencial apenas no cliente MCP: Authorization: Bearer ${VOXEN_MCP_TOKEN}.',
+    '- Prefira OAuth 2.1 + PKCE quando o cliente oferecer autorização remota. Nunca cole o segredo neste prompt.',
     '',
     'Ferramentas de leitura:',
     '- voxen_search_knowledge: busca unificada em notas e transcrições; use primeiro para perguntas temáticas ou factuais.',
@@ -291,7 +279,7 @@ adminMcpRoutes.post('/prompt', async (c) => {
     '- Respeite o escopo do workspace vinculado ao token.',
     '',
     'Exemplo de configuração (cliente compatível com MCP Streamable HTTP):',
-    `  "voxen": { "url": "${endpoint}", "headers": { "Authorization": "Bearer ${token}" } }`,
+    `  "voxen": { "url": "${endpoint}", "headers": { "Authorization": "Bearer \${VOXEN_MCP_TOKEN}" } }`,
   ].join('\n');
 
   return c.json({ prompt });
