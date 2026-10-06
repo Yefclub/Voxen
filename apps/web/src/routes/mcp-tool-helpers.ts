@@ -30,3 +30,10 @@ export function bounded(
   return Math.max(min, Math.min(Math.trunc(parsed), max));
 }
 export const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
+
+/** Stored operational errors can contain infrastructure details; expose a safe status. */
+export function publicMcpProcessingError(error: string | null): string | null {
+  return error
+    ? 'MCP_PROCESSING_FAILED: Open the item in Voxen to inspect its processing status.'
+    : null;
+}

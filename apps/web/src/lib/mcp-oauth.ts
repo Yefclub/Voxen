@@ -120,47 +120,43 @@ async function verifyMcpOAuthJwt(token: string): Promise<VerifiedMcpOAuthJwt | n
 }
 
 export async function authenticateMcpOAuthToken(token: string): Promise<McpOAuthIdentity | null> {
-  if (!(await isMcpOAuthEnabled())) return null;
-  try {
-    const verified = await verifyMcpOAuthJwt(token);
-    if (!verified) return null;
-    const { payload, userId, clientId } = verified;
-    const oauthScopes = parseOAuthScopes(payload.scope);
-    if (oauthScopes.length === 0) return null;
+  if ((await getSetting('mcp_oauth_enabled')) !== 'true') return null;
+  const verified = await verifyMcpOAuthJwt(token);
+  if (!verified) return null;
+  const { payload, userId, clientId } = verified;
+  const oauthScopes = parseOAuthScopes(payload.scope);
+  if (oauthScopes.length === 0) return null;
 
-    const [user, client, consent, revoked] = await Promise.all([
-      db.user.findUnique({ where: { id: userId }, select: { status: true } }),
-      db.oauthClient.findUnique({
-        where: { clientId },
-        select: { disabled: true },
-      }),
-      db.oauthConsent.findFirst({
-        where: { clientId, userId },
-        select: { scopes: true },
-      }),
-      db.mcpOauthRevokedAccessToken.findUnique({
-        where: { tokenId: verified.tokenId },
-        select: { id: true },
-      }),
-    ]);
-    if (
-      user?.status !== 'APPROVED' ||
-      !client ||
-      client.disabled === true ||
-      !consent ||
-      revoked ||
-      oauthScopes.some((scope) => !consent.scopes.includes(scope))
-    ) {
-      return null;
-    }
-
-    const scopes: McpScope[] = [];
-    if (oauthScopes.includes('mcp:read')) scopes.push('READ');
-    if (oauthScopes.includes('mcp:write')) scopes.push('WRITE');
-    return scopes.length > 0 ? { userId, clientId, scopes, oauthScopes } : null;
-  } catch {
+  const [user, client, consent, revoked] = await Promise.all([
+    db.user.findUnique({ where: { id: userId }, select: { status: true } }),
+    db.oauthClient.findUnique({
+      where: { clientId },
+      select: { disabled: true },
+    }),
+    db.oauthConsent.findFirst({
+      where: { clientId, userId },
+      select: { scopes: true },
+    }),
+    db.mcpOauthRevokedAccessToken.findUnique({
+      where: { tokenId: verified.tokenId },
+      select: { id: true },
+    }),
+  ]);
+  if (
+    user?.status !== 'APPROVED' ||
+    !client ||
+    client.disabled === true ||
+    !consent ||
+    revoked ||
+    oauthScopes.some((scope) => !consent.scopes.includes(scope))
+  ) {
     return null;
   }
+
+  const scopes: McpScope[] = [];
+  if (oauthScopes.includes('mcp:read')) scopes.push('READ');
+  if (oauthScopes.includes('mcp:write')) scopes.push('WRITE');
+  return scopes.length > 0 ? { userId, clientId, scopes, oauthScopes } : null;
 }
 
 /**

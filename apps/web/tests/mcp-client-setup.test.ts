@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { mcpAgentGuidance } from '../src/lib/mcp-agent-guidance';
 import { mcpOAuthSsoCallback } from '../src/client/lib/mcp-oauth-login';
 import { mcpClientSetups, mcpTokenPlaceholder } from '../src/client/lib/mcp-client-setup';
 
@@ -42,6 +43,29 @@ describe('MCP client setup', () => {
     expect(setups.some((setup) => setup.config.includes(placeholder))).toBe(true);
     expect(setups.every((setup) => !setup.config.includes('one-time-test-token'))).toBe(true);
     expect(setups.find((setup) => setup.id === 'claude')?.config).toContain('VOXEN_MCP_TOKEN');
+  });
+
+  it('Cursor instructions use remote OAuth and do not wait for an unimplemented feature', () => {
+    for (const locale of ['en', 'pt-BR'] as const) {
+      const cursor = mcpClientSetups(locale, ENDPOINT).find((setup) => setup.id === 'cursor')!;
+      expect(JSON.parse(cursor.config)).toEqual({ mcpServers: { voxen: { url: ENDPOINT } } });
+      expect(cursor.summary).toContain('OAuth');
+      expect(cursor.summary).not.toMatch(/wait for|aguarde/);
+    }
+  });
+
+  it('agent guidance is localized, separates READ job status and uses safe continuation instructions', () => {
+    const en = mcpAgentGuidance('https://voxen.example', 'en');
+    const pt = mcpAgentGuidance('https://voxen.example', 'pt-BR');
+    expect(en).toContain('READ tools:');
+    expect(pt).toContain('Ferramentas READ:');
+    expect(en.split('WRITE tools:')[0]).toContain('voxen_get_job_status');
+    expect(en.split('WRITE tools:')[1]?.split('\n\n')[0]).not.toContain('voxen_get_job_status');
+    for (const guide of [en, pt]) {
+      expect(guide).toContain('content_cursor=nextCursor');
+      expect(guide).toContain('${VOXEN_MCP_TOKEN}');
+      expect(guide).not.toMatch(/vxn_mcp_[A-Za-z0-9_-]{16,}/);
+    }
   });
 
   it('does not present a personal token as Grok OAuth credentials', () => {

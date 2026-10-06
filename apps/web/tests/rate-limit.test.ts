@@ -3,7 +3,7 @@
 // Skipa se DATABASE_URL não setado (CI tem Redis em sidecar).
 // ============================================================================
 
-import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, test } from 'bun:test';
 import { rateLimit, rateLimitRequiredWithRedis, rateLimitWithRedis } from '../src/lib/rate-limit';
 import { closeRedis, getRedisPublisher } from '../src/lib/redis';
 
@@ -100,4 +100,21 @@ describe('rateLimitWithRedis', () => {
       rateLimitRequiredWithRedis(redis, 'voxen:test:required-abort', 3, 60),
     ).rejects.toThrow('Rate-limit store unavailable');
   });
+});
+
+test('required limiter rejects command errors even when INCR succeeded', async () => {
+  const pipeline = {
+    incr: () => pipeline,
+    expire: () => pipeline,
+    ttl: () => pipeline,
+    exec: async () =>
+      [
+        [null, 1],
+        [new Error('Expiry backend failure'), null],
+        [null, -1],
+      ] as [Error | null, unknown][],
+  };
+  await expect(
+    rateLimitRequiredWithRedis({ multi: () => pipeline }, 'required-command-failure', 3, 60),
+  ).rejects.toThrow('Rate-limit store unavailable');
 });

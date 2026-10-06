@@ -27,3 +27,11 @@ export function nextLocalDateTimeInputMin(
     pad(local.getUTCMinutes()),
   ].join('');
 }
+
+/** A safe initial expiry, formatted for the user's local datetime input. */
+export function defaultMcpTokenExpiryInput(now = new Date()): string {
+  const expiry = new Date(now.getTime() + 90 * 86400_000);
+  return new Date(expiry.getTime() - expiry.getTimezoneOffset() * MINUTE_MS)
+    .toISOString()
+    .slice(0, 16);
+}

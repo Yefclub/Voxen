@@ -30,6 +30,72 @@ or client-secret field. Revoking it does not sign you out of Voxen.
 Use a read-only token first. Enable write access only for a client that needs to
 modify your knowledge base and whose approval behavior you understand.
 
+New tokens default to **READ** and expire after **90 days**. Choose WRITE and/or
+an intentional non-expiring token explicitly. Existing tokens and OAuth grants
+retain their settings. The admin creation action creates an additional token;
+revocation is a separate action. Copied agent prompts contain connection guidance
+and an environment placeholder, never a bearer secret.
+
+## Execution and result contracts
+
+The catalog contains **44 tools: 31 READ and 13 WRITE**, with required scopes,
+explicit effect annotations and validated output schemas. `voxen_get_job_status`
+is READ, including jobs submitted by a WRITE-capable client. Server metadata
+reports the actual running Voxen version.
+
+Arguments reject unknown fields. Queries are limited to 2,000 characters,
+identifiers to 256, arrays to 100 items and nested arguments to 10 levels;
+individual tools can impose tighter limits. RPC IDs use strings up to 128
+characters or safe integers; RPC methods/tool names are also limited to 128 characters.
+JSON-RPC batches are rejected before authentication or execution. Send individual
+RPC requests; `voxen_request_transcriptions` still accepts multiple links in one
+tool call. This follows the [2025-06-18 MCP change](https://modelcontextprotocol.io/specification/2025-06-18/changelog).
+A request has a 30-second deadline from body reading
+through authentication and execution. Heavy graph SQL reads have a 3-second
+statement budget.
+
+Tool replies are bounded to 96 KiB. Small results retain their normal contract.
+Large READ results return `dataChunk` and `_mcp` metadata: `format` is
+`application/json`, `offsetUnit` is `utf16`, `resultChecksum` identifies the full
+JSON result, and `nextCursor` is the signed continuation. Repeat the same tool and
+original arguments with `content_cursor: nextCursor`, concatenate `dataChunk`
+values in order and parse JSON only after `nextCursor` becomes null. Each page
+rechecks ownership and content lifecycle. Changed content, a different owner/tool/
+argument set or an expired cursor requires restarting without `content_cursor`.
+A cursor lasts five minutes; each next page receives a fresh expiry. Full read
+results above 16 MiB require a smaller page or progressive excerpt.
+
+Large WRITE replies contain a bounded `summary` and `_mcp.followUp` READ
+instructions. `toolExecution: completed` describes completion of the tool call;
+a queued job still requires monitoring. `applied: false` means a preview did not
+apply a write. WRITE tools never accept `content_cursor`. After any uncertain
+write, verify current state before retrying.
+
+Note/transcript listing uses signed keyset cursors in `nextCursor`. Order is
+creation time descending, then ID descending. Deleting a page boundary or editing
+an item does not shift subsequent pages; newly inserted newer items appear when
+listing starts again. Keep the original filter unchanged. Old offset cursors are
+rejected with restart guidance.
+
+Self-hosted safeguards allow 600 requests/minute per owner, 1,200 per connection
+peer and 6,000 globally. They use the observed TCP peer, not caller-controlled
+forwarding headers. Execution allows four active tools per owner and sixteen
+globally; timed-out callbacks keep capacity until they actually settle. HTTP
+429/503 responses include `Retry-After`. Invalid credentials return 401; an
+unavailable authentication/protection backend returns 503. Tool failures return
+safe codes and a correlation `requestId`, without database/path/credential details.
+
+Operational OAuth auditing retains up to 30 days and the newest 20,000 records,
+pruned every minute in bounded batches. Tool diagnostics log names, durations,
+outcomes and non-secret identifiers; they do not log arguments, content or bearer
+secrets. Configure a valid canonical `APP_BASE_URL` in production. Without one,
+MCP fails closed; development only accepts a matching loopback origin/host.
+
+The protocol suite exercises SDK clients 2.3.1 (modern) and 1.32.1 (legacy).
+Named product/client-account integrations still require their own real-client
+validation. Hosted clients must reach your HTTPS endpoint from their network;
+geographic firewall rules also apply to those services.
+
 ## Personal and graph context
 
 Read-capable credentials expose `voxen_personal_context`. The tool combines
@@ -190,14 +256,17 @@ requirements.
 
 ## Cursor
 
-Cursor documents remote Streamable HTTP and OAuth. Its static custom-header
-surface has changed between versions, so Voxen does not publish a token-bearing
-`mcp.json` snippet as universally compatible. If your installed Cursor version
-explicitly supports a secret Authorization header for remote MCP, use the
-endpoint and Bearer value above. Never append the token to the URL.
+[Cursor's official guide](https://cursor.com/docs/mcp) documents remote HTTP,
+OAuth and environment-variable headers. For OAuth, enable it in Voxen and add:
 
-Otherwise use Cursor's normal OAuth flow after the instance administrator
-enables OAuth. Record the Cursor version and result when reporting compatibility.
+```json
+{ "mcpServers": { "voxen": { "url": "https://YOUR-VOXEN-HOST/mcp" } } }
+```
+
+For a personal token, use a secret environment reference in the server entry:
+`"headers": {"Authorization": "Bearer ${env:VOXEN_MCP_TOKEN}"}`. Never append a
+credential to the URL. Record the installed Cursor version and actual result;
+documented configuration does not establish account-level validation.
 
 ## OAuth 2.1 discovery and manual clients
 

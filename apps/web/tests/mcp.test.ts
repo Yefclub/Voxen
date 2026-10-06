@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
+import { mcpAuthenticationStore } from '../src/routes/mcp-authentication';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
+import { MCP_TOOL_SCOPES } from '../src/routes/mcp-tool-policy';
 import { PERSONAL_AGENT_CONTEXT_MAX_CHARS } from '../src/lib/personal-agent-context';
 import { deleteSetting, setSetting } from '../src/lib/settings';
 import {
@@ -11,7 +13,7 @@ import {
 
 async function call(body: unknown, token = ''): Promise<Response> {
   return app.fetch(
-    new Request('http://localhost/mcp', {
+    new Request(new URL('/mcp', process.env.APP_BASE_URL || 'http://localhost'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -105,12 +107,52 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       result?: { serverInfo?: { name?: string; version?: string }; instructions?: string };
     };
     expect(data.result?.serverInfo?.name).toBe('voxen-mcp');
-    expect(data.result?.serverInfo?.version).toBe('0.6.0');
+    const version = (await (
+      await app.fetch(new Request('http://localhost/api/version'))
+    ).json()) as { version: string };
+    expect(data.result?.serverInfo?.version).toBe(version.version);
     expect(data.result?.instructions).toContain('tags e resumo');
     expect(data.result?.instructions).toContain('source_anchors');
     expect(data.result?.instructions).toContain('voxen_personal_context');
     expect(data.result?.instructions).toContain('voxen_brain_timeline');
     expect(data.result?.instructions).toContain('DADOS NÃO CONFIÁVEIS');
+  });
+
+  it('every registered tool exposes a meaningful output contract and the central scope policy', async () => {
+    const response = await call({ jsonrpc: '2.0', id: 450, method: 'tools/list' }, TOKEN);
+    const body = (await response.json()) as {
+      result: {
+        tools: {
+          name: string;
+          outputSchema?: { type?: string; anyOf?: unknown[] };
+          annotations: {
+            readOnlyHint?: boolean;
+            destructiveHint?: boolean;
+            idempotentHint?: boolean;
+            openWorldHint?: boolean;
+          };
+          _meta: Record<string, unknown>;
+        }[];
+      };
+    };
+    expect(body.result.tools.map((t) => t.name).sort()).toEqual(
+      Object.keys(MCP_TOOL_SCOPES).sort(),
+    );
+    for (const tool of body.result.tools) {
+      const scope = MCP_TOOL_SCOPES[tool.name as keyof typeof MCP_TOOL_SCOPES];
+      expect(tool._meta['voxen.dev/requiredScope']).toBe(scope);
+      expect(tool.annotations.readOnlyHint).toBe(scope === 'READ');
+      for (const key of [
+        'readOnlyHint',
+        'destructiveHint',
+        'idempotentHint',
+        'openWorldHint',
+      ] as const)
+        expect(typeof tool.annotations[key]).toBe('boolean');
+      expect(tool.outputSchema, tool.name).toBeDefined();
+      expect(tool.outputSchema?.type, tool.name).toBe('object');
+      expect(JSON.stringify(tool.outputSchema), tool.name).toContain('required');
+    }
   });
 
   it('tools/list expõe tools voxen_ com readOnlyHint', async () => {
@@ -414,6 +456,171 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     } finally {
       await db.job.deleteMany({ where: { userId, sourceUrl: 'https://youtu.be/mcpBatch001' } });
       await deleteSetting('openrouter_api_key').catch(() => {});
+    }
+  });
+
+  it('keyset note pages remain stable across inserts, edits and deleted boundary rows', async () => {
+    const prefix = 'mcp-keyset-' + crypto.randomUUID();
+    const sameTime = new Date('2126-01-01T00:00:00.000Z');
+    const ids = ['a', 'b', 'c'].map((suffix) => prefix + suffix);
+    await db.note.createMany({
+      data: ids.map((id) => ({
+        id,
+        userId,
+        title: id,
+        content: 'Stable page fixture',
+        createdAt: sameTime,
+      })),
+    });
+    const list = async (arguments_: Record<string, unknown>) => {
+      const response = await call(
+        {
+          jsonrpc: '2.0',
+          id: 430,
+          method: 'tools/call',
+          params: { name: 'voxen_list_notes', arguments: arguments_ },
+        },
+        READ_TOKEN,
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()) as {
+        result: {
+          isError?: boolean;
+          content: { text: string }[];
+          structuredContent: { notes: { id: string }[]; nextCursor: string | null };
+        };
+      };
+    };
+    try {
+      const first = (await list({ limit: 2 })).result.structuredContent;
+      expect(first.notes.map((n) => n.id)).toEqual([ids[2]!, ids[1]!]);
+      expect(first.nextCursor).toBeTruthy();
+      await db.note.create({
+        data: {
+          id: prefix + 'new',
+          userId,
+          title: 'Inserted after page one',
+          createdAt: new Date('2126-02-01'),
+        },
+      });
+      await db.note.update({
+        where: { id: ids[2]! },
+        data: { content: 'Edited after page one', updatedAt: new Date('2126-03-01') },
+      });
+      await db.note.delete({ where: { id: ids[1]! } });
+      const second = (await list({ limit: 2, cursor: first.nextCursor })).result.structuredContent;
+      expect(second.notes[0]?.id).toBe(ids[0]!);
+      expect(
+        second.notes.some((n) => first.notes.some((p) => p.id === n.id) || n.id === prefix + 'new'),
+      ).toBe(false);
+      for (const cursor of [
+        '-1',
+        'not-base64',
+        Buffer.from('2').toString('base64'),
+        first.nextCursor! + 'tampered',
+      ]) {
+        const invalid = await list({ cursor });
+        expect(invalid.result.isError).toBe(true);
+        expect(invalid.result.content[0]!.text).toContain('MCP_INVALID_CURSOR');
+      }
+      const changedFilter = await list({
+        cursor: first.nextCursor,
+        transcript_id: 'different-filter',
+      });
+      expect(changedFilter.result.isError).toBe(true);
+    } finally {
+      await db.note.deleteMany({ where: { userId, id: { startsWith: prefix } } });
+    }
+  });
+
+  it('READ credentials can monitor jobs and both credential scopes receive precise challenges', async () => {
+    const readList = await call({ jsonrpc: '2.0', id: 401, method: 'tools/list' }, READ_TOKEN);
+    const body = (await readList.json()) as { result: { tools: { name: string }[] } };
+    expect(body.result.tools.map((tool) => tool.name)).toContain('voxen_get_job_status');
+    const job = await db.job.create({
+      data: {
+        userId,
+        type: 'SCRAPE_WEB',
+        sourceUrl: 'https://example.com/scope-job',
+        status: 'QUEUED',
+      },
+    });
+    try {
+      const result = await call(
+        {
+          jsonrpc: '2.0',
+          id: 402,
+          method: 'tools/call',
+          params: { name: 'voxen_get_job_status', arguments: { job_id: job.id } },
+        },
+        READ_TOKEN,
+      );
+      expect(result.status).toBe(200);
+      expect(await result.json()).toMatchObject({
+        result: { structuredContent: { id: job.id, status: 'QUEUED' } },
+      });
+      await db.job.update({
+        where: { id: job.id },
+        data: { status: 'FAILED', errorMsg: 'SQL PRIVATE_PATH PRIVATE_BEARER' },
+      });
+      const failedJob = await call(
+        {
+          jsonrpc: '2.0',
+          id: 404,
+          method: 'tools/call',
+          params: { name: 'voxen_get_job_status', arguments: { job_id: job.id } },
+        },
+        READ_TOKEN,
+      );
+      const failedBody = await failedJob.text();
+      expect(failedBody).toContain('FAILED');
+      expect(failedBody).not.toContain('PRIVATE');
+      for (const [token, name, scope] of [
+        [READ_TOKEN, 'voxen_create_note', 'mcp:write'],
+        [WRITE_TOKEN, 'voxen_read_note', 'mcp:read'],
+      ] as const) {
+        const denied = await call(
+          { jsonrpc: '2.0', id: 403, method: 'tools/call', params: { name, arguments: {} } },
+          token,
+        );
+        expect(denied.status).toBe(403);
+        expect(denied.headers.get('www-authenticate')).toContain(`scope="${scope}"`);
+      }
+    } finally {
+      await db.job.delete({ where: { id: job.id } });
+    }
+  });
+
+  it('authentication backend failures are safe 503 responses rather than invalid credentials', async () => {
+    const failure = spyOn(mcpAuthenticationStore, 'findToken').mockRejectedValueOnce(
+      new Error('SQL PRIVATE_PATH PRIVATE_BEARER'),
+    );
+    try {
+      const response = await call({ jsonrpc: '2.0', id: 410, method: 'tools/list' }, TOKEN);
+      expect(response.status).toBe(503);
+      expect(response.headers.get('www-authenticate')).toBeNull();
+      expect(await response.text()).not.toContain('PRIVATE');
+      expect(response.headers.get('retry-after')).toBeTruthy();
+    } finally {
+      failure.mockRestore();
+    }
+  });
+
+  it('last-used telemetry is throttled while each request still checks current authorization', async () => {
+    const where = { tokenHash: hashMcpToken(READ_TOKEN) };
+    await db.mcpToken.update({ where, data: { lastUsedAt: null } });
+    const updates = spyOn(mcpAuthenticationStore, 'recordUse');
+    const reads = spyOn(mcpAuthenticationStore, 'findToken');
+    try {
+      for (let id = 420; id < 422; id++)
+        expect((await call({ jsonrpc: '2.0', id, method: 'tools/list' }, READ_TOKEN)).status).toBe(
+          200,
+        );
+      expect(updates).toHaveBeenCalledTimes(1);
+      expect(reads).toHaveBeenCalledTimes(2);
+    } finally {
+      updates.mockRestore();
+      reads.mockRestore();
     }
   });
 

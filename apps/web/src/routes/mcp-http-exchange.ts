@@ -4,6 +4,7 @@ import {
   type McpServer,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
+import { boundMcpToolResponse } from './mcp-response-budget';
 import { structuredDiagnostic } from '../lib/structured-log';
 
 import {
@@ -121,7 +122,8 @@ export async function servePreparedMcpExchange(
     );
     return completeExchange(
       request,
-      (controlled) => handler.fetch(controlled),
+      (controlled) =>
+        handler.fetch(controlled).then((response) => boundMcpToolResponse(response, body)),
       async () => {
         try {
           await handler.close();
@@ -142,7 +144,7 @@ export async function servePreparedMcpExchange(
     request,
     async (controlled) => {
       await server.connect(transport);
-      return transport.handleRequest(controlled);
+      return boundMcpToolResponse(await transport.handleRequest(controlled), body);
     },
     () => server.close(),
     deadlineMs,

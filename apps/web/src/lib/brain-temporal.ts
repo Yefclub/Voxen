@@ -36,11 +36,18 @@ type BrainTimelineRow = {
   sources: unknown;
 };
 
+export class BrainTimelineInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BrainTimelineInputError';
+  }
+}
+
 function parseInstant(value: string | undefined, field: string): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime()))
-    throw new Error(`${field} must be a valid ISO-8601 date.`);
+    throw new BrainTimelineInputError(`${field} must be a valid ISO-8601 date.`);
   return parsed;
 }
 
@@ -62,8 +69,9 @@ export async function queryBrainTimeline(
   const asOf = parseInstant(input.asOf, 'asOf');
   const from = parseInstant(input.from, 'from');
   const to = parseInstant(input.to, 'to');
-  if (asOf && (from || to)) throw new Error('asOf cannot be combined with from/to.');
-  if (from && to && to <= from) throw new Error('to must be later than from.');
+  if (asOf && (from || to))
+    throw new BrainTimelineInputError('asOf cannot be combined with from/to.');
+  if (from && to && to <= from) throw new BrainTimelineInputError('to must be later than from.');
   const limit = Math.max(1, Math.min(50, Math.trunc(input.limit ?? 12)));
   const query = input.query?.trim().slice(0, 300) || null;
   const entityRef = input.entityRef?.trim().slice(0, 300) || null;

@@ -356,7 +356,48 @@ describeIfDb('auth + admin approval flow', () => {
     expect(await db.verification.count({ where: { identifier: target.email } })).toBe(0);
   });
 
-  it('admin pode copiar prompt MCP com URL atual e token ativo', async () => {
+  it('token creation defaults to expiring READ access and preserves explicit grants', async () => {
+    await signUp('safe-admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('safe-admin@voxen.local', 'senha-super-segura-123'));
+    const owner = await db.user.findUniqueOrThrow({ where: { email: 'safe-admin@voxen.local' } });
+    async function create(path: string, body: Record<string, unknown>) {
+      const response = await app.fetch(
+        new Request(`http://localhost${path}`, {
+          method: 'POST',
+          headers: { cookie, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      );
+      expect(response.status).toBe(201);
+      return (await response.json()) as {
+        metadata: { id: string; scopes: string[]; expiresAt: string | null };
+      };
+    }
+    const explicit = await create('/api/mcp/tokens', {
+      label: 'Explicit',
+      scopes: ['READ', 'WRITE'],
+      expiresAt: null,
+    });
+    expect(explicit.metadata.scopes).toEqual(['READ', 'WRITE']);
+    expect(explicit.metadata.expiresAt).toBeNull();
+    for (const [path, body] of [
+      ['/api/mcp/tokens', { label: 'Default' }],
+      ['/api/admin/mcp/tokens', { userId: owner.id, label: 'Delegated default' }],
+      ['/api/admin/mcp/rotate', {}],
+    ] as const) {
+      const created = await create(path, body);
+      expect(created.metadata.scopes).toEqual(['READ']);
+      const remaining = new Date(created.metadata.expiresAt!).getTime() - Date.now();
+      expect(remaining).toBeGreaterThan(89 * 86400_000);
+      expect(remaining).toBeLessThanOrEqual(90 * 86400_000);
+    }
+    const preserved = await db.mcpToken.findUniqueOrThrow({ where: { id: explicit.metadata.id } });
+    expect(preserved.revokedAt).toBeNull();
+    expect(preserved.expiresAt).toBeNull();
+    expect(preserved.scopes).toBe('READ,WRITE');
+  });
+
+  it('admin copies MCP guidance without exposing an active bearer secret', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -385,13 +426,15 @@ describeIfDb('auth + admin approval flow', () => {
     const body = (await promptRes.json()) as { prompt: string };
     expect(body.prompt).toContain('https://voxen.local');
     expect(body.prompt).toContain('https://voxen.local/mcp');
-    expect(body.prompt).toContain(rotated.token);
+    expect(body.prompt).not.toContain(rotated.token);
+    expect(body.prompt).toContain('${VOXEN_MCP_TOKEN}');
     expect(body.prompt).toContain('Voxen');
     const metadata = await app.fetch(
       new Request('http://localhost/api/admin/mcp', { headers: { cookie } }),
     );
     const adminMcp = (await metadata.json()) as { tokens: { id: string; token?: string }[] };
     expect(adminMcp.tokens[0]).not.toHaveProperty('token');
+    expect(adminMcp.tokens[0]).not.toHaveProperty('tokenHash');
     const revoke = await app.fetch(
       new Request(`http://localhost/api/admin/mcp/tokens/${adminMcp.tokens[0]!.id}`, {
         method: 'DELETE',
@@ -480,6 +523,7 @@ describeIfDb('auth + admin approval flow', () => {
     };
     expect(listBody.allowCreate).toBe(true);
     expect(listBody.tokens[0]).not.toHaveProperty('token');
+    expect(listBody.tokens[0]).not.toHaveProperty('tokenHash');
     const tools = await app.fetch(
       new Request('http://localhost/mcp', {
         method: 'POST',

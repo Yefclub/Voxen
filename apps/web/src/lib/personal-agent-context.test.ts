@@ -6,6 +6,8 @@ import type {
 } from './personal-interest-projections';
 import {
   PERSONAL_AGENT_CONTEXT_MAX_CHARS,
+  enforcePersonalAgentContextBudget,
+  type PersonalAgentContext,
   buildPersonalAgentContext,
   buildPersonalAgentInstructions,
   serializePersonalAgentContext,
@@ -324,4 +326,43 @@ describe('personal agent context', () => {
     expect(context.recommendations).toEqual([]);
     expect(context.metadata.empty).toBe(true);
   });
+});
+
+test('MCP context remains within its wire budget even with large Unicode labels', () => {
+  const context: PersonalAgentContext = {
+    metadata: {
+      algorithmVersion: 'personal-agent-context-v1',
+      generatedAt: '2026-01-01T00:00:00Z',
+      projectionAlgorithmVersions: ['interest-v1'],
+      projectionWatermark: null,
+      guideAlgorithmVersion: 'guide-v1',
+      rankingAlgorithmVersion: 'rank-v1',
+      personalizationMode: 'durable-interest',
+      graphTruncated: false,
+      contextTruncated: false,
+      empty: false,
+    },
+    preferences: [
+      {
+        dimension: 'TOPIC',
+        key: 'topic',
+        label: '漢'.repeat(20_000),
+        brainNodeId: null,
+        stance: 'MORE',
+        provenance: 'DECLARED',
+        score: 1,
+        declaredScore: 1,
+        inferredScore: 0,
+        horizonScores: { short: 1, medium: 1, long: 1 },
+        evidenceCounts: { explicitTranscripts: 1, observedEvents: 0 },
+        evidence: [],
+        lastEventAt: '2026-01-01T00:00:00Z',
+      },
+    ],
+    trends: [],
+    recommendations: [],
+  };
+  const bounded = enforcePersonalAgentContextBudget(context, JSON.stringify, 8000);
+  expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(8000);
+  expect(bounded.metadata.contextTruncated).toBe(true);
 });

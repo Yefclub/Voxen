@@ -1,0 +1,48 @@
+import { z } from 'zod';
+const enrichment = z.object({
+  id: z.string(),
+  transcriptId: z.string(),
+  type: z.string(),
+  status: z.string(),
+  reviewState: z.string(),
+  trigger: z.string(),
+  title: z.string(),
+  content: z.string(),
+  citations: z.array(z.object({ url: z.string(), title: z.string(), excerpt: z.string() })),
+  queries: z.array(z.string()),
+  rationale: z.string().nullable(),
+  noResearchReason: z.string().nullable(),
+  sourceVersion: z.number().int(),
+  sourceChecksum: z.string().nullable(),
+  model: z.string().nullable(),
+  costUsd: z.string().nullable(),
+  staleReason: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  href: z.string(),
+});
+export const MCP_ENRICHMENT_OUTPUT_SHAPES = {
+  voxen_list_transcript_enrichments: { enrichments: z.array(enrichment) },
+  voxen_read_transcript_enrichment: { enrichment },
+  voxen_request_transcript_research: {
+    id: z.string(),
+    transcriptId: z.string(),
+    status: z.string(),
+    reviewState: z.string(),
+  },
+  voxen_review_transcript_enrichment: {
+    id: z.string(),
+    status: z.string(),
+    cancelRequested: z.boolean().optional(),
+    reviewState: z.string().optional(),
+  },
+  voxen_edit_transcript_enrichment: { id: z.string(), title: z.string(), reviewState: z.string() },
+  voxen_delete_transcript_enrichment: {
+    id: z.string(),
+    title: z.string(),
+    jobId: z.string(),
+    status: z.string(),
+    queued: z.boolean(),
+    reused: z.boolean(),
+  },
+};

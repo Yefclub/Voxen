@@ -1,7 +1,7 @@
+import { withMcpReadDeadline } from './mcp-read-deadline';
 import { Prisma } from '../../prisma-generated/client';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { db } from '../lib/db';
 import { currentBrainNodeSourceCondition } from '../lib/brain-source-visibility';
 import { fail, ok, READ_ONLY } from './mcp-tool-helpers';
 
@@ -45,10 +45,8 @@ export function registerBrainPathTool(server: McpServer, userId: string): void {
       if (!fromRef || !toRef) return fail('from_node_id e to_node_id são obrigatórios.');
       const maxDepth = args.max_depth ?? 3;
       try {
-        const paths = await db.$transaction(
-          async (tx) => {
-            await tx.$executeRaw`SET LOCAL statement_timeout = '3s'`;
-            return tx.$queryRaw<PathRow[]>`
+        const paths = await withMcpReadDeadline(async (tx) => {
+          return tx.$queryRaw<PathRow[]>`
           WITH RECURSIVE visible_nodes AS (
             SELECT n.* FROM "BrainNode" n
             WHERE n."userId" = ${userId} AND n.status = 'ACTIVE'::"ContentStatus"
@@ -91,9 +89,7 @@ export function registerBrainPathTool(server: McpServer, userId: string): void {
           FROM walk w JOIN endpoints ep ON w.current_id = ep.to_id
           WHERE w.depth > 0 ORDER BY w.depth, id LIMIT 15
         `;
-          },
-          { maxWait: 2000, timeout: 5000 },
-        );
+        });
         return ok({ paths, maxDepth });
       } catch (error) {
         if (

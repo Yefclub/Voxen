@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { queryBrainTimeline } from '../lib/brain-temporal';
+import { BrainTimelineInputError, queryBrainTimeline } from '../lib/brain-temporal';
 import { fail, ok, READ_ONLY } from './mcp-tool-helpers';
 
 export function registerBrainTimelineTool(server: McpServer, userId: string): void {
@@ -35,7 +35,8 @@ export function registerBrainTimelineTool(server: McpServer, userId: string): vo
         });
         return ok({ facts });
       } catch (error) {
-        return fail(error instanceof Error ? error.message : 'Consulta temporal inválida.');
+        if (error instanceof BrainTimelineInputError) return fail(error.message);
+        throw error;
       }
     },
   );

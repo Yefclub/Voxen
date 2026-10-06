@@ -888,7 +888,7 @@ const ptBRMessages = {
     'Configure no client MCP apontando para {url} com header {header}.',
   'admin.integrations.mcp.promptTitle': 'Prompt pronto para agente',
   'admin.integrations.mcp.promptDescription':
-    'Copia URL atual, endpoint MCP, token ativo e instruções de uso seguro para colar em um agente externo.',
+    'Copia a URL e instruções de conexão por OAuth ou variável de ambiente. O prompt não contém credenciais.',
   'admin.integrations.mcp.promptDisabled':
     'Gere um token MCP antes de copiar o prompt para agentes externos.',
   'admin.integrations.mcp.copyAgentPrompt': 'Copiar prompt',
@@ -2268,7 +2268,7 @@ const enMessages: Record<I18nKey, string> = {
     'Configure the MCP client to point to {url} with header {header}.',
   'admin.integrations.mcp.promptTitle': 'Agent-ready prompt',
   'admin.integrations.mcp.promptDescription':
-    'Copies the current URL, MCP endpoint, active token, and safe usage instructions for an external agent.',
+    'Copies the URL and connection instructions using OAuth or an environment variable. The prompt contains no credentials.',
   'admin.integrations.mcp.promptDisabled':
     'Generate an MCP token before copying the prompt for external agents.',
   'admin.integrations.mcp.copyAgentPrompt': 'Copy prompt',

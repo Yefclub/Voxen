@@ -1,6 +1,17 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { db } from './db';
 
+export const DEFAULT_MCP_TOKEN_LIFETIME_DAYS = 90;
+
+export function parseMcpExpiry(value: unknown): Date | null | undefined {
+  if (value === undefined)
+    return new Date(Date.now() + DEFAULT_MCP_TOKEN_LIFETIME_DAYS * 86400_000);
+  if (value === null) return null;
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date <= new Date() ? undefined : date;
+}
+
 export const MCP_SCOPES = ['READ', 'WRITE'] as const;
 export type McpScope = (typeof MCP_SCOPES)[number];
 
@@ -50,7 +61,16 @@ export function toMcpTokenMetadata(token: {
   lastUsedAt: Date | null;
   revokedAt: Date | null;
 }): McpTokenMetadata {
-  return { ...token, scopes: deserializeMcpScopes(token.scopes) };
+  return {
+    id: token.id,
+    userId: token.userId,
+    label: token.label,
+    scopes: deserializeMcpScopes(token.scopes),
+    createdAt: token.createdAt,
+    expiresAt: token.expiresAt,
+    lastUsedAt: token.lastUsedAt,
+    revokedAt: token.revokedAt,
+  };
 }
 
 export async function createMcpToken(input: {
