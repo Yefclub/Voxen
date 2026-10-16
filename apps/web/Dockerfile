@@ -59,7 +59,7 @@ COPY prisma ./prisma
 COPY apps/web ./apps/web
 COPY packages ./packages
 
-FROM oven/bun:1.3-alpine AS runtime
+FROM oven/bun:1.4-alpine AS runtime
 WORKDIR /app
 
 # Build args injetados pelo CI/Compose pra mostrar versão no /api/version e
