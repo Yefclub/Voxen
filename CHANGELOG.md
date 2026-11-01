@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793537841 — 2026-11-01 · Dev
+
+### ✨ Bounded version-aware reads with explicit errors
+
+### Added
+- Narrow transcript reads use a version-aware bounded cache (owner + document + revision, LRU 50 entries/8 MiB) instead of always re-reading storage.
+- Explicit read failures: NOT_FOUND, UNAVAILABLE_SOURCE, STALE_REVISION (with current revision); no fabricated fallback content.
+
 ## v0.15.1-dev.1793536125 — 2026-11-01 · Dev
 
 ### ✨ Validated search filters with deterministic ordering
