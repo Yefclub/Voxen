@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1793554421 — 2026-11-01 · Dev
+
+### 🐛 Patch Node.js and Bun Brotli runtimes (CVE-2026-111497)
+
+### Fixed
+- Pinned Node.js to 22.23.4 and Bun to 1.4.4 across Docker build/runtime stages, CI jobs, and supported-version floors.
+- Web image now copies Node.js from the pinned builder stage instead of the floating Alpine package.
+- Added a static regression test so older runtime lines fail fast.
+
 ## v0.15.1-dev.1793543382 — 2026-11-01 · Dev
 
 ### ✨ Generic prepared-document metadata on notes
