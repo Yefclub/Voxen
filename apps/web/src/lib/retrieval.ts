@@ -167,6 +167,33 @@ export function parseOutline(md: string): Outline {
 }
 
 /**
+ * Seção que contém a linha informada (1-indexed), ou null quando o documento
+ * não tem headings ou a linha precede o primeiro heading. É contexto
+ * estrutural apenas: as linhas citáveis continuam vindo dos leitores
+ * estreitos sem alteração, e a navegação usa o índice em voxen_read_section
+ * (índice vizinho = bloco vizinho).
+ */
+export function findEnclosingSection(
+  md: string,
+  lineNo: number,
+): { index: number; heading: string; level: number; startLine: number } | null {
+  const { sections } = parseOutline(md);
+  if (sections.length === 0) return null;
+  let enclosing: OutlineSection | null = null;
+  for (const section of sections) {
+    if (section.startLine > lineNo) break;
+    enclosing = section;
+  }
+  if (!enclosing) return null;
+  return {
+    index: enclosing.index,
+    heading: enclosing.heading,
+    level: enclosing.level,
+    startLine: enclosing.startLine,
+  };
+}
+
+/**
  * Lê um intervalo de linhas [from, to] (1-indexed, inclusivo), com cap de
  * MAX_READ_LINES. `truncated` indica que o intervalo pedido foi cortado pelo cap.
  */
