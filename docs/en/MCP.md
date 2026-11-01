@@ -48,8 +48,7 @@ identifiers to 256, arrays to 100 items and nested arguments to 10 levels;
 individual tools can impose tighter limits. RPC IDs use strings up to 128
 characters or safe integers; RPC methods/tool names are also limited to 128 characters.
 JSON-RPC batches are rejected before authentication or execution. Send individual
-RPC requests; `voxen_request_transcriptions` still accepts multiple links in one
-tool call. This follows the [2025-06-18 MCP change](https://modelcontextprotocol.io/specification/2025-06-18/changelog).
+RPC requests. This follows the [2025-06-18 MCP change](https://modelcontextprotocol.io/specification/2025-06-18/changelog).
 A request has a 30-second deadline from body reading
 through authentication and execution. Heavy graph SQL reads have a 3-second
 statement budget.

@@ -413,7 +413,7 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 ### Troubleshooting LXC
 
 - **Docker não inicia**: confira `nesting=1` nas features do CT. Se for unprivileged, talvez precise habilitar `keyctl=1` também.
-- **Storage não persiste**: cheque se o volume `storage_data` está no rootfs do CT e montado em `/data/storage` nos dois serviços.
+- **Storage não persiste**: cheque se o volume `storage_data` está no rootfs do CT e montado em `/data/storage` no serviço web.
 
 ---
 

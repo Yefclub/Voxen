@@ -41,9 +41,6 @@ MASTER_KEY=...
 STORAGE_DRIVER=local
 STORAGE_LOCAL_PATH=/data/storage
 
-# Optional yt-dlp bgutil HTTP provider for PO tokens.
-# Use only a provider you control. Empty = default yt-dlp mode.
-YTDLP_BGUTIL_BASE_URL=
 ```
 
 `MASTER_KEY` encrypts application secrets stored in the database. Generate it with:
