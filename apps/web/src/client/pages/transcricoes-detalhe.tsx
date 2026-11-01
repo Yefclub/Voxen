@@ -566,7 +566,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                     mono
                   />
                 )}
-                {/* Mostra apenas se houve custo de fato (>0). totalCostUsd reflete o custo armazenado. */} 
+                {/* Mostra apenas se houve custo de fato (>0). totalCostUsd reflete o custo armazenado. */}
                 {parseFloat(t.totalCostUsd ?? '0') > 0 && (
                   <MetaRow
                     Icon={FileText}
