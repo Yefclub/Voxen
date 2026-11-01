@@ -102,7 +102,8 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       title: 'Listar notas',
       description:
         'Lista notas e pastas do usuário por data de criação (mais recentes primeiro), com paginação por cursor. ' +
-        '`kind` indica se é NOTE ou FOLDER; `parentId` dá a hierarquia.',
+        '`kind` indica se é NOTE ou FOLDER; `parentId` dá a hierarquia. `hasMore=false` (com `nextCursor` ' +
+        'null) significa enumeração completa do conjunto.',
       inputSchema: {
         limit: z
           .number()
@@ -147,6 +148,11 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
           }),
         ),
         nextCursor: z.string().nullable(),
+        hasMore: z
+          .boolean()
+          .describe(
+            'true quando há mais itens após esta página; false (com nextCursor null) indica enumeração completa do conjunto.',
+          ),
       },
     },
     async (args) => {
@@ -192,6 +198,7 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
         },
       });
       const selected = rows.slice(0, limit);
+      const hasMore = rows.length > limit;
       const notes = selected.map((note) => ({
         id: note.id,
         parentId: note.parentId,
@@ -212,10 +219,10 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       }));
       return ok({
         notes,
-        nextCursor:
-          rows.length > limit
-            ? encodeMcpPageCursor(selected[selected.length - 1]!, pageContext)
-            : null,
+        nextCursor: hasMore
+          ? encodeMcpPageCursor(selected[selected.length - 1]!, pageContext)
+          : null,
+        hasMore,
       });
     },
   );

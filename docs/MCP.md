@@ -79,7 +79,9 @@ Listagens de notas/transcrições usam cursores assinados em `nextCursor`, por d
 de criação decrescente e depois ID decrescente. Excluir o limite de uma página ou
 editar um item não desloca as páginas seguintes; novos itens mais recentes
 aparecem ao reiniciar a listagem. Preserve o filtro original. Cursores antigos de
-offset são rejeitados com instruções de reinício.
+offset são rejeitados com instruções de reinício. Listagens e históricos de
+revisões retornam `hasMore`: `false` (com cursor nulo) significa enumeração
+completa do conjunto definido.
 
 Buscas ranqueadas (`voxen_search_knowledge`, `voxen_search_transcripts`,
 `voxen_search_notes`) retornam `truncated`: `true` quando há mais candidatos

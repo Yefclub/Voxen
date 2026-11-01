@@ -269,7 +269,8 @@ export function registerTranscriptTools(
         'Lista as transcrições do usuário (mais recentes primeiro), com paginação por cursor. ' +
         'Use para navegar a Base de conhecimento quando não há um termo de busca específico. Prefira ' +
         'voxen_search_transcripts quando souber o que procura. Passe `cursor` (vindo de ' +
-        '`nextCursor`) para a próxima página.',
+        '`nextCursor`) para a próxima página. `hasMore=false` (com `nextCursor` null) significa ' +
+        'enumeração completa do conjunto.',
       inputSchema: {
         limit: z
           .number()
@@ -299,6 +300,11 @@ export function registerTranscriptTools(
           }),
         ),
         nextCursor: z.string().nullable(),
+        hasMore: z
+          .boolean()
+          .describe(
+            'true quando há mais itens após esta página; false (com nextCursor null) indica enumeração completa do conjunto.',
+          ),
       },
     },
     async (args) => {
@@ -323,6 +329,7 @@ export function registerTranscriptTools(
         },
       });
       const selected = rows.slice(0, limit);
+      const hasMore = rows.length > limit;
       const transcripts = selected.map((t) => ({
         id: t.id,
         source: t.source,
@@ -336,10 +343,10 @@ export function registerTranscriptTools(
       }));
       return ok({
         transcripts,
-        nextCursor:
-          rows.length > limit
-            ? encodeMcpPageCursor(selected[selected.length - 1]!, pageContext)
-            : null,
+        nextCursor: hasMore
+          ? encodeMcpPageCursor(selected[selected.length - 1]!, pageContext)
+          : null,
+        hasMore,
       });
     },
   );

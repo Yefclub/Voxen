@@ -66,7 +66,9 @@ export function registerMcpTranscriptCorrectionReadTools(server: McpServer, user
     'voxen_list_transcript_corrections',
     {
       title: 'Listar revisões de correção',
-      description: 'Lista o histórico imutável de correções.',
+      description:
+        'Lista o histórico imutável de correções. `hasMore=false` (com `nextBefore` null) ' +
+        'significa histórico completo.',
       inputSchema: {
         transcript_id: z.string().min(1),
         before_revision: z.number().int().min(1).optional(),
@@ -95,9 +97,11 @@ export function registerMcpTranscriptCorrectionReadTools(server: McpServer, user
         },
       });
       const page = rows.slice(0, limit);
+      const hasMore = rows.length > limit;
       return ok({
         revisions: page.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
-        nextBefore: rows.length > limit ? (page.at(-1)?.revision ?? null) : null,
+        nextBefore: hasMore ? (page.at(-1)?.revision ?? null) : null,
+        hasMore,
       });
     },
   );

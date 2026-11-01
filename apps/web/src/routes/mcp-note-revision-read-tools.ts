@@ -72,7 +72,8 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
       title: 'Listar revisões de uma nota',
       description:
         'Lista snapshots imutáveis de título/conteúdo em páginas. Passe nextBefore como ' +
-        'before_revision para continuar e use revision com voxen_read_note_revision para inspecionar.',
+        'before_revision para continuar e use revision com voxen_read_note_revision para inspecionar. ' +
+        '`hasMore=false` (com `nextBefore` null) significa histórico completo.',
       inputSchema: {
         note_id: z.string().min(1),
         limit: z.number().int().min(1).max(100).optional(),
@@ -90,6 +91,11 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
           }),
         ),
         nextBefore: z.number().nullable(),
+        hasMore: z
+          .boolean()
+          .describe(
+            'true quando há revisões mais antigas; false (com nextBefore null) indica histórico completo.',
+          ),
       },
       annotations: { ...READ_ONLY, title: 'Listar revisões de uma nota' },
     },
@@ -122,6 +128,7 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
       return ok({
         revisions: page.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
         nextBefore: hasMore ? (page.at(-1)?.revision ?? null) : null,
+        hasMore,
       });
     },
   );
