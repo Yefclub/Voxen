@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793568077",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Adopted security-audit workflow",
+    "body": "### Added\n- Native `security-audit` skill with explicit scope/coverage contract, sanitized findings, and independent verification, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.",
+    "pr": 977,
+    "author": "Kalyel",
+    "date": "2026-11-01T18:20:56-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/977"
+  },
+  {
     "version": "0.15.1-dev.1793567198",
     "channel": "dev",
     "type": "feat",
