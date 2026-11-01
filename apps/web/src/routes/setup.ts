@@ -55,15 +55,16 @@ setupRoutes.use('*', async (c, next) => {
 });
 
 setupRoutes.get('/', async (c) => {
-  const [onboardingDone, language, timezone] = await Promise.all([
+  const [onboardingDone, apiKey, language, timezone] = await Promise.all([
     getSetting('onboarding_done').catch(() => null),
+    getSetting('openrouter_api_key').catch(() => null),
     getAppLanguage(),
     getAppTimezone(),
   ]);
   const complete = onboardingDone === 'true';
   return c.json({
     complete,
-    hasApiKey: complete,
+    hasApiKey: Boolean(apiKey),
     language,
     timezone,
   });
@@ -178,5 +179,5 @@ setupRoutes.post('/', async (c) => {
     metadata,
   );
 
-  return c.json({ complete: true });
+  return c.json({ complete: await isSetupComplete() });
 });
