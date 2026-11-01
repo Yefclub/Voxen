@@ -1054,14 +1054,8 @@ async def _enrich_persisted_transcript(
             user_id=user_id,
             transcript_id=transcript_id,
             log=log,
-            refresh_embedding=False,
         )
         await events.publish_graph_invalidation(user_id)
-        await _maybe_store_embedding(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            log=log,
-        )
     except Exception as exc:  # noqa: BLE001 — preserva o conteúdo e expõe a pendência
         warnings.append("Uma etapa de enriquecimento falhou temporariamente.")
         log.warning(
@@ -1106,57 +1100,6 @@ async def _complete_persisted_job(
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=transcript_id
     )
-
-
-async def _maybe_store_embedding(
-    *,
-    user_id: str,
-    transcript_id: str,
-    log: Any,  # noqa: ANN401
-) -> None:
-    """Embedding opt-in no metadata do nó CONTENT (sem pgvector)."""
-    try:
-        if not await voxen_settings.get_embeddings_enabled():
-            return
-        from . import embeddings
-
-        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
-        if not row:
-            return
-        title, content, _folder, correction_revision, source_version, source_checksum = row
-        config = await voxen_settings.get_openrouter_model_config(("embedding_model",))
-        if not config.api_key:
-            return
-        api_key = config.api_key
-        model = config.model or "openai/text-embedding-3-small"
-        vector = await embeddings.embed_text(
-            text=f"{title}\n\n{content}",
-            api_key=api_key,
-            model=model,
-        )
-        if not vector:
-            return
-        ok = await db.store_content_embedding(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            model=model,
-            vector=vector,
-            correction_revision=correction_revision,
-            source_version=source_version,
-            source_checksum=source_checksum,
-        )
-        log.info(
-            "embedding-stored" if ok else "embedding-store-skipped",
-            transcript_id=transcript_id,
-            dims=len(vector),
-            model=model,
-        )
-    except Exception as e:  # noqa: BLE001
-        log.warning(
-            "embedding-failed",
-            transcript_id=transcript_id,
-            **_error_diagnostic(e, "EMBEDDING_FAILED"),
-        )
 
 
 async def _maybe_generate_tags(

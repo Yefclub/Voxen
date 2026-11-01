@@ -1,4 +1,3 @@
-import { fuseHybridScores, rankSemanticCandidates } from './hybrid-search';
 import type { FtsResult } from './retrieval';
 
 export type BenchmarkEvidence = { quote: string; timestamp: number | null };
@@ -34,11 +33,6 @@ export type BenchmarkReport = {
   averageLatencyMs: number;
   totalCostUsd: number;
 };
-
-function overlap(left: readonly string[], right: readonly string[]): number {
-  const terms = new Set(left);
-  return right.filter((term) => terms.has(term)).length;
-}
 
 function fromSources(
   item: BenchmarkCase,
@@ -78,37 +72,6 @@ export async function runFtsBenchmark(
       );
     }),
   );
-}
-
-/** Exercita a fusão vetorial real usada pela recuperação híbrida, sem rede. */
-export function runHybridBenchmark(
-  cases: readonly BenchmarkCase[],
-  documents: readonly BenchmarkDocument[],
-) {
-  return cases.map((item) => {
-    const lexical = documents.filter(
-      (document) => overlap(item.lexicalTerms, document.lexicalTerms) >= 2,
-    );
-    const semantic = rankSemanticCandidates(item.vector, documents, { minScore: 0.75, limit: 8 });
-    const scores = new Map(semantic.map((hit) => [hit.id, hit.vectorScore]));
-    const ranked = fuseHybridScores(
-      documents
-        .filter((document) => lexical.includes(document) || scores.has(document.id))
-        .map((document) => ({
-          id: document.id,
-          lexicalScore: overlap(item.lexicalTerms, document.lexicalTerms),
-          vectorScore: scores.get(document.id) ?? null,
-        })),
-      { alpha: 0.75, missingVector: 'zero' },
-    );
-    return fromSources(
-      item,
-      ranked.map((hit) => hit.id),
-      documents,
-      28,
-      0.00001,
-    );
-  });
 }
 
 /** Brain determinístico: aliases e relações explícitas do fixture expandem FTS. */

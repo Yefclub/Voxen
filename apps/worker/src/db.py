@@ -1594,68 +1594,6 @@ async def upsert_grounded_brain_items(
     return created
 
 
-async def store_content_embedding(
-    *,
-    user_id: str,
-    transcript_id: str,
-    model: str,
-    vector: list[float],
-    correction_revision: int,
-    source_version: int,
-    source_checksum: str | None,
-) -> bool:
-    """Persiste embedding no metadata do nó CONTENT (opt-in, sem pgvector)."""
-    if not vector:
-        return False
-    lease = await acquire_graph_index_lease(user_id)
-    if lease is None:
-        return False
-    payload = {
-        "embedding": {
-            "model": model,
-            "dims": len(vector),
-            "vector": vector,
-            "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "correctionRevision": correction_revision,
-            "sourceVersion": source_version,
-            "sourceChecksum": source_checksum,
-        }
-    }
-    try:
-        async with lease.heartbeat():
-            if not await lease.renew():
-                return False
-            async with connection() as conn:
-                if not lease.locally_owned():
-                    return False
-                result = await conn.execute(
-                    """
-                    UPDATE "BrainNode"
-                    SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
-                        "updatedAt" = NOW()
-                    WHERE "userId" = $1
-                      AND key = $2
-                      AND EXISTS (
-                        SELECT 1 FROM "Transcript" transcript
-                        WHERE transcript.id = $4 AND transcript."userId" = $1
-                          AND transcript."correctionRevision" = $5
-                          AND transcript."sourceVersion" = $6
-                          AND transcript."sourceChecksum" IS NOT DISTINCT FROM $7
-                      )
-                    """,
-                    user_id,
-                    f"TRANSCRIPT:{transcript_id}",
-                    json.dumps(payload),
-                    transcript_id,
-                    correction_revision,
-                    source_version,
-                    source_checksum,
-                )
-            return str(result) == "UPDATE 1"
-    finally:
-        await lease.release()
-
-
 def _extract_topics(value: str) -> list[dict[str, Any]]:
     text = value or ""
     normalized = _normalize_topic_text(text)
