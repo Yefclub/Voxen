@@ -253,6 +253,13 @@ describeIfDb('generic prepared-document metadata (spec 216 §2)', () => {
       metadata: { language: 'xx!' },
     });
     expect(badHttp.status).toBe(400);
+
+    const folderMeta = await httpRequest('/api/notes', cookie, 'POST', {
+      kind: 'FOLDER',
+      title: 'Pasta',
+      metadata: { language: 'pt' },
+    });
+    expect(folderMeta.status).toBe(400);
     expect(await db.note.count({ where: { userId } })).toBe(before);
   });
 });
