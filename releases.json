@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.15.1-dev.1793556179",
+    "channel": "dev",
+    "type": "chore",
+    "title": "EARS spec for native agent setup and Impeccable",
+    "body": "### Added\n- Spec 218 defining unified policy, native Codex/Claude configuration, Impeccable installation, adopted workflows, and verifiable roles.",
+    "pr": 951,
+    "author": "Kalyel",
+    "date": "2026-11-01T14:55:47-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/951"
+  },
+  {
+    "version": "0.15.1-dev.1793556179",
+    "channel": "dev",
+    "type": "chore",
+    "title": "EARS spec for atomic publication and reusable results",
+    "body": "### Added\n- Spec 217 defining atomic publication, reusable continuation, ranked/enumeration coverage, discovery catalog, and structural-context work for retrieval.",
+    "pr": 950,
+    "author": "Kalyel",
+    "date": "2026-11-01T14:46:50-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/950"
+  },
+  {
     "version": "0.15.1-dev.1793554421",
     "channel": "dev",
     "type": "fix",
