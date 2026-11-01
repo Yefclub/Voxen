@@ -77,7 +77,9 @@ Note/transcript listing uses signed keyset cursors in `nextCursor`. Order is
 creation time descending, then ID descending. Deleting a page boundary or editing
 an item does not shift subsequent pages; newly inserted newer items appear when
 listing starts again. Keep the original filter unchanged. Old offset cursors are
-rejected with restart guidance.
+rejected with restart guidance. Listings and revision histories return
+`hasMore`: `false` (with a null cursor) means complete enumeration of the
+defined set.
 
 Ranked search (`voxen_search_knowledge`, `voxen_search_transcripts`,
 `voxen_search_notes`) returns `truncated`: `true` when more candidates exist

@@ -52,6 +52,11 @@ export const MCP_CORRECTION_OUTPUT_SHAPES = {
   voxen_list_transcript_corrections: {
     revisions: z.array(revision),
     nextBefore: z.number().int().nullable(),
+    hasMore: z
+      .boolean()
+      .describe(
+        'true quando há revisões mais antigas; false (com nextBefore null) indica histórico completo.',
+      ),
   },
   voxen_read_transcript_correction: {
     ...revision.shape,
