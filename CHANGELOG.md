@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793569075 — 2026-11-01 · Dev
+
+### ✨ Folder-weighted transcript search
+
+### Fixed
+
+- Transcript FTS now indexes parent folder names with weight B, like tags and body; collection renames and moves refresh the index. Folder-only terms retrieve their documents first.
+
 ## v0.15.1-dev.1793568077 — 2026-11-01 · Dev
 
 ### 🧹 Adopted security-audit workflow
