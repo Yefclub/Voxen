@@ -73,7 +73,9 @@ automática para identidades confiáveis.
    Títulos têm peso A e corpo/tags/pasta peso B em transcrições (nomes de tags
    e da pasta entram via subconsultas, atualizados na vinculação, movimentação
    e renomeação); notas seguem título A e corpo B, com ordenação por score e
-   identidade; trechos destacados não usam pesos.
+   identidade; trechos destacados não usam pesos. Cabeçalhos do `.md` entram no
+   índice como texto corrido (peso B), sem coluna nova: um boost tipo título
+   para headings segue adiado sem benefício medido.
 2. Leituras progressivas retornam estrutura (outline) e depois trechos
    estreitos (linhas/seção/intervalo), com cursores assinados e orçamentos
    de resposta.

@@ -69,7 +69,9 @@ and choose whether trusted SSO users are approved automatically.
    Titles carry weight A and body/tags/folder weight B in transcripts (tag and
    folder names enter through subqueries, refreshed on link/move/rename);
    notes use title A and body B; ordered by score then identity; highlighted
-   snippets ignore weights.
+   snippets ignore weights. Markdown headings enter the index as body text
+   (weight B) with no new column; a title-like boost for headings stays
+   deferred without a measured benefit.
 2. Progressive reads return structure (outline) first, then narrow passages
    (lines/section/time range), with signed cursors and response budgets.
 3. Graph relations complement text search with anchored evidence.
