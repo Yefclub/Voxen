@@ -5,7 +5,6 @@ import {
   ListVideo,
   Network,
   Notebook,
-  Puzzle,
   ShieldCheck,
   User as UserIcon,
 } from '@/components/ui/icons';
@@ -25,7 +24,6 @@ export const NAV: NavItem[] = [
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
   { to: '/guia', labelKey: 'shell.nav.guide', Icon: LineChart, scope: 'workspace' },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
-  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle, scope: 'workspace' },
   { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },
   { to: '/conta/mcp', labelKey: 'shell.nav.mcpAccess', Icon: KeyRound, scope: 'personal' },
   {
