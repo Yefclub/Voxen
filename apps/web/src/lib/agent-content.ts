@@ -41,7 +41,7 @@ export async function getTranscriptBrief(
   const effectivePlainText = effectiveTranscriptPlainText(transcript);
 
   let summary = transcript.summaryMd;
-  if (options.enrichMissing !== false && !summary && effectivePlainText.trim()) {
+  if (options.enrichMissing === true && !summary && effectivePlainText.trim()) {
     try {
       summary = await generateAndPersistTranscriptSummary({
         userId,
@@ -60,7 +60,7 @@ export async function getTranscriptBrief(
   }
 
   let tags = transcript.tags.map((item) => item.tag.name);
-  if (options.enrichMissing !== false && tags.length === 0 && effectivePlainText.trim()) {
+  if (options.enrichMissing === true && tags.length === 0 && effectivePlainText.trim()) {
     const existingTags = (
       await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
     ).map((item) => item.name);

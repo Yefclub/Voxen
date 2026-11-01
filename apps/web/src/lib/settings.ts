@@ -4,7 +4,8 @@
 // API:
 //   getSetting('openrouter_api_key')      → string | null (decifrado)
 //   setSetting('openrouter_api_key', val) → void          (cifra + upsert)
-//   isSetupComplete()                     → boolean
+//   isSetupComplete()                     → boolean (knowledge-base readiness,
+//     based on onboarding_done; never requires a model-provider key)
 //
 // Convenção: chaves GLOBAL não levam userId. Postgres trata múltiplos NULLs
 // como distintos em UNIQUE — então usamos `findFirst` + transação em vez de
@@ -391,10 +392,15 @@ export async function deleteDefaultXAnalysisModel(): Promise<void> {
 
 export async function isSetupComplete(): Promise<boolean> {
   const row = await db.setting.findFirst({
-    where: { scope: 'GLOBAL', userId: null, key: 'openrouter_api_key' },
-    select: { id: true },
+    where: { scope: 'GLOBAL', userId: null, key: 'onboarding_done', valueEnc: { not: '' } },
+    select: { id: true, valueEnc: true },
   });
-  return row !== null;
+  if (!row) return false;
+  try {
+    return decrypt(row.valueEnc, getMasterKey()) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
