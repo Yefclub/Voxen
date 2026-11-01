@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793533246 — 2026-11-01 · Dev
+
+### 🧹 Prepared-content contract docs and MCP guidance
+
+### Added
+- Documented prepared-content contract v1 in MCP docs (PT/EN): idempotency, batch import, HTTP 200/201 parity, budgets/bulk path.
+- Fixed MCP tool catalog counts (37 tools: 29 READ, 8 WRITE).
+
 ## v0.15.1-dev.1793532355 — 2026-11-01 · Dev
 
 ### 🧹 Remove proxy-agent tunnel service and admin surface
