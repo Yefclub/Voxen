@@ -1,10 +1,8 @@
 // ============================================================================
-// Anexos vinculados à mensagem do usuário (spec 126)
-// ----------------------------------------------------------------------------
-// O anexo do composer sempre foi um upload independente para a Base de conhecimento (job de
-// ingestão) e nada ligava aquele arquivo à mensagem enviada: depois do reload
-// o usuário perdia o rastro do que mandou. Agora a mensagem do usuário guarda
-// um vínculo leve (`{jobId, name, kind}`) em `ChatMessage.attachments`.
+// Anexos vinculados à mensagem do usuário (spec 126, legado do chat removido
+// na spec 215). O anexo do composer era um upload independente para a base de
+// conhecimento e um vínculo leve (`{jobId, name, kind}`) era guardado na
+// mensagem. Mantido para leitura de dados históricos.
 //
 // Regras de confiança: o cliente só manda IDS de job. Nome e tipo vêm SEMPRE
 // do job resolvido no servidor com escopo `userId` — nunca do payload. Este

@@ -19,7 +19,6 @@ async function wipeDb(): Promise<void> {
   await db.brainSource.deleteMany();
   await db.brainEdge.deleteMany();
   await db.brainNode.deleteMany();
-  await db.costEvent.deleteMany();
   await db.job.deleteMany();
   await db.transcript.deleteMany();
   await db.libraryFolder.deleteMany();

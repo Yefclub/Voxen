@@ -5,7 +5,7 @@ import { getTranscriptEnrichmentStaleReason } from './transcript-enrichments';
 type SourceReference = { sourceType: BrainSourceType; sourceId: string };
 export type BrainSourceVisibilityDb = Pick<
   typeof db,
-  'transcript' | 'note' | 'libraryFolder' | 'job' | 'conversation' | 'transcriptEnrichment'
+  'transcript' | 'note' | 'libraryFolder' | 'job' | 'transcriptEnrichment'
 >;
 
 /** Evidence visibility must not depend on whether projection repair has run. */
@@ -77,21 +77,6 @@ export async function filterCurrentOwnedBrainSources<T extends SourceReference>(
             userId,
             id: { in: requested },
             status: { in: ['DONE', 'COMPLETED_WITH_WARNINGS'] },
-          },
-          select: { id: true },
-        }),
-      );
-    })(),
-    (async () => {
-      const requested = ids('CHAT');
-      if (!requested.length) return;
-      retain(
-        'CHAT',
-        await client.conversation.findMany({
-          where: {
-            userId,
-            id: { in: requested },
-            ...(includeArchived ? {} : { archivedAt: null }),
           },
           select: { id: true },
         }),
@@ -217,9 +202,6 @@ export function currentBrainNodeSourceCondition(alias: 'n' | 'f' | 't'): Prisma.
     OR (${node}."sourceType" = 'JOB'::"BrainSourceType" AND EXISTS (
       SELECT 1 FROM "Job" source_job WHERE source_job.id = ${node}."sourceId"
         AND source_job."userId" = ${node}."userId" AND source_job.status IN ('DONE', 'COMPLETED_WITH_WARNINGS')))
-    OR (${node}."sourceType" = 'CHAT'::"BrainSourceType" AND EXISTS (
-      SELECT 1 FROM "Conversation" source_chat WHERE source_chat.id = ${node}."sourceId"
-        AND source_chat."userId" = ${node}."userId" AND source_chat."archivedAt" IS NULL))
     OR (${node}."sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType" AND EXISTS (
       SELECT 1 FROM "TranscriptEnrichment" source_enrichment
       JOIN "Transcript" source_transcript ON source_transcript.id = source_enrichment."transcriptId"
