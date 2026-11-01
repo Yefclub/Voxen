@@ -137,7 +137,8 @@ test('timed-out tool work retains capacity until its callback actually settles',
         markStarted();
         await held;
       }
-      return ok({ hubs: [] });
+      // Stub honra o contrato público da tool (truncated é obrigatório).
+      return ok({ hubs: [], truncated: false });
     });
     return server;
   };

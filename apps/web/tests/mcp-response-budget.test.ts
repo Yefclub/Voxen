@@ -48,7 +48,9 @@ test.each([false, true])('SDK errors remain bounded for modern=%s', async (moder
           userId: 'response-budget-owner',
           requestId: 'response-budget-correlation',
         });
-        server.registerTool('voxen_brain_hubs', { inputSchema: {} }, async () => ok({ hubs: [] }));
+        server.registerTool('voxen_brain_hubs', { inputSchema: {} }, async () =>
+          ok({ hubs: [], truncated: false }),
+        );
         return server;
       },
     );
