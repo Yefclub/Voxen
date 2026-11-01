@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1793517628 — 2026-11-01 · Dev
+
+### 🧹 Remove model-provider layer, model config and cost UI
+
+### Removed
+- The model-provider layer is gone: no OpenRouter client, model defaults, capability probes, admin model catalog, or cost dashboard.
+- Setup and onboarding complete with instance preferences only; no provider key, model selection, or compatibility checks.
+- Model settings keys stay readable for existing installs until the ingestion cleanup drops them.
+
 ## v0.15.1-dev.1793515974 — 2026-11-01 · Dev
 
 ### 🧹 Remove server-side agentic chat runtime and API
