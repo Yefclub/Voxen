@@ -140,10 +140,11 @@ export function SetupPage(): React.ReactElement {
       };
       if (apiKey.trim()) body.openrouter_api_key = apiKey.trim();
       if (Object.keys(modelReplacements).length > 0) body.model_replacements = modelReplacements;
-      const result = await apiPost<{ complete: boolean }>('/api/setup', body);
+      const result = await apiPost<{ complete: boolean; hasApiKey?: boolean }>('/api/setup', body);
       setStatus({
         complete: result.complete,
-        hasApiKey: result.complete || Boolean(status?.hasApiKey),
+        hasApiKey:
+          result.hasApiKey ?? (apiKey.trim().length > 0 || Boolean(status?.hasApiKey)),
         language: appLanguage,
         timezone: appTimezone,
       });

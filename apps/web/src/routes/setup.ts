@@ -108,7 +108,11 @@ setupRoutes.post('/', async (c) => {
       return c.json({ error: 'Substituições de modelo exigem uma nova chave da OpenRouter.' }, 400);
     }
     await setSettings(preferences, metadata);
-    return c.json({ complete: await isSetupComplete() });
+    const [complete, apiKey] = await Promise.all([
+      isSetupComplete(),
+      getSetting('openrouter_api_key').catch(() => null),
+    ]);
+    return c.json({ complete, hasApiKey: Boolean(apiKey) });
   }
 
   if (
@@ -179,5 +183,5 @@ setupRoutes.post('/', async (c) => {
     metadata,
   );
 
-  return c.json({ complete: await isSetupComplete() });
+  return c.json({ complete: await isSetupComplete(), hasApiKey: true });
 });
