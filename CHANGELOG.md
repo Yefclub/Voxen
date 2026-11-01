@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793570309 — 2026-11-01 · Dev
+
+### ✨ Explicit enumeration completion on list tools
+
+### Added
+- List tools (`voxen_list_transcripts`, `voxen_list_notes`, `voxen_list_note_revisions`, `voxen_list_transcript_corrections`) return an explicit `hasMore`; `false` with a null cursor means complete enumeration of the defined set.
+
 ## v0.15.1-dev.1793569075 — 2026-11-01 · Dev
 
 ### ✨ Folder-weighted transcript search
