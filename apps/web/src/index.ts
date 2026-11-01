@@ -392,11 +392,9 @@ export default {
   // 255s é o máximo da API; streams longos desabilitam o timeout por request.
   idleTimeout: 255,
   // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
-  // `app.fetch(req)` direto (sem server) — por isso é opcional: sem server não há
-  // como fazer `server.upgrade`, então pulamos o proxy e seguimos pro Hono.
+  // `app.fetch(req)` direto (sem server) — por isso é opcional.
   // Tipamos o retorno como `Response | Promise<Response>` pra não poluir os
-  // callers de teste (que fazem `const res = await app.fetch(req)`); no upgrade
-  // bem-sucedido o Bun aceita `undefined` em runtime — encapsulamos com cast.
+  // callers de teste (que fazem `const res = await app.fetch(req)`).
   fetch(req: Request, server?: Server<unknown>): Response | Promise<Response> {
     if (server) {
       if (isLongLivedStreamRequest(req)) {

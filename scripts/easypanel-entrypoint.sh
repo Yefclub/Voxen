@@ -254,7 +254,6 @@ prisma generate --schema=/app/prisma/schema.prisma
 echo "[easypanel] applying migrations..."
 /prisma-migrate-deploy.sh /app/prisma/schema.prisma
 
-
 terminate() {
   trap - TERM INT
   echo "[easypanel] stopping services..."

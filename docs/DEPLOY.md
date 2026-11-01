@@ -476,11 +476,8 @@ Trate logs de build desse modo como sensíveis. Não cole logs públicos sem
 redigir `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`, `REDIS_URL` e
 `S3_*`.
 
-Em home-lab, este App único já reúne toda a aplicação Voxen. Em VPS ou
-datacenter, o `ghcr.io/yefclub/voxen-proxy-agent` é **opcional** e roda em outro
-host com IP residencial apenas quando plataformas de mídia bloquearem o IP da
-VPS. Ele encaminha o tráfego de extração e não substitui nem duplica o App
-Voxen.
+Em home-lab, este App único já reúne toda a aplicação Voxen. O mesmo vale
+para VPS ou datacenter: não há agente ou túnel separado.
 
 ### 3. Variáveis de ambiente
 
