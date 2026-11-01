@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793561323 — 2026-11-01 · Dev
+
+### ✨ Deterministic discovery catalog
+
+### Added
+- New `voxen_discover` MCP tool: name/topic/collection lookup over indexed metadata with deterministic ordering, producer provenance, and explicit truncation (catalog now 38 tools: 30 READ + 8 WRITE).
+
 ## v0.15.1-dev.1793560612 — 2026-11-01 · Dev
 
 ### ✨ Section context in narrow reads
