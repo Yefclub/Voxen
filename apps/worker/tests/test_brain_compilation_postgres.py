@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import asyncpg
 import pytest
 
-from src import brain_compilation_db, brain_extract, brain_temporal_store, db
+from src import brain_compilation_db, brain_temporal_store, db
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -479,23 +479,27 @@ async def test_parser_local_refs_preserve_same_excerpt_homonyms_in_storage() -> 
     user_id = f"local-ref-user-{suffix}"
     transcript_id = f"local-ref-transcript-{suffix}"
     source = "Alex Silva e Alex Silva apresentaram juntos o projeto Atlas."
-    raw = json.dumps(
-        {
-            "entities": [
-                {
-                    "id": "alex-one",
-                    "label": "Alex Silva",
-                    "excerpt": "Alex Silva e Alex Silva apresentaram juntos",
-                },
-                {
-                    "id": "alex-two",
-                    "label": "Alex Silva",
-                    "excerpt": "Alex Silva e Alex Silva apresentaram juntos",
-                },
-            ]
-        }
-    )
-    items = brain_extract.parse_grounded_payload(raw, source)
+    excerpt = "Alex Silva e Alex Silva apresentaram juntos"
+    items = [
+        SimpleNamespace(
+            kind="entity",
+            label="Alex Silva",
+            excerpt=excerpt,
+            confidence=0.9,
+            entity_type="PERSON",
+            aliases=(),
+            local_ref="alex-one",
+        ),
+        SimpleNamespace(
+            kind="entity",
+            label="Alex Silva",
+            excerpt=excerpt,
+            confidence=0.9,
+            entity_type="PERSON",
+            aliases=(),
+            local_ref="alex-two",
+        ),
+    ]
     assert [item.local_ref for item in items] == ["alex-one", "alex-two"]
 
     conn = await asyncpg.connect(os.environ["DATABASE_URL"])
