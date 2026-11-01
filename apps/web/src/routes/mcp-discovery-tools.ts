@@ -72,10 +72,12 @@ export function registerDiscoveryTools(
             href: z.string(),
           }),
         ),
-        topics: z.array(z.string()).describe('Tags que casam com a consulta (ordem alfabética).'),
+        topics: z
+          .array(z.string())
+          .describe('Tags que casam com a consulta (ordem alfabética, até 20).'),
         collections: z
           .array(z.string())
-          .describe('Pastas que casam com a consulta (ordem alfabética).'),
+          .describe('Pastas que casam com a consulta (ordem alfabética, até 20).'),
         truncated: z
           .boolean()
           .describe(
@@ -153,13 +155,13 @@ export function registerDiscoveryTools(
           SELECT name FROM "Tag"
           WHERE "userId" = ${userId} AND name ILIKE ${pattern} ESCAPE '\\'
           ORDER BY name ASC
-          LIMIT 20
+          LIMIT 21
         `,
         db.$queryRaw<NameRow[]>`
           SELECT name FROM "LibraryFolder"
           WHERE "userId" = ${userId} AND name ILIKE ${pattern} ESCAPE '\\'
           ORDER BY name ASC
-          LIMIT 20
+          LIMIT 21
         `,
       ]);
 
@@ -226,9 +228,9 @@ export function registerDiscoveryTools(
       });
       return ok({
         cards: scored.slice(0, take).map((item) => item.card),
-        topics: tagRows.map((row) => row.name),
-        collections: folderRows.map((row) => row.name),
-        truncated: scored.length > take,
+        topics: tagRows.slice(0, 20).map((row) => row.name),
+        collections: folderRows.slice(0, 20).map((row) => row.name),
+        truncated: scored.length > take || tagRows.length > 20 || folderRows.length > 20,
       });
     },
   );

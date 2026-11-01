@@ -85,8 +85,8 @@ than the limit, `false` when the page is complete. A full page without
 truncation does not imply complete enumeration of the collection: refine terms
 or filters instead of assuming every procedure was enumerated.
 
-Name discovery (`voxen_discover`) locates documents by title, topics (tags),
-and collections (folders) from indexed metadata, without reading body text
+Name discovery (`voxen_discover`) locates documents by title, topics (up to 20 tag names),
+and collections (up to 20 folder names) from indexed metadata, without reading body text
 and without requiring models or enrichment. Cards carry a short description,
 topics, collection, identifiers, and producer provenance when the ingestion
 contract supplied it. A missing card never excludes the original document:

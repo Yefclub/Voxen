@@ -162,6 +162,21 @@ describeIfDb('discovery catalog contract (spec 217)', () => {
     })) as DiscoverOut;
     expect(folders.collections).toContain('Oficina Atlas');
     expect(folders.cards).toEqual([]);
+    expect(folders.truncated).toBe(false);
+  });
+
+  it('flags truncation when facets overflow their cap', async () => {
+    for (let i = 0; i < 21; i++) {
+      await db.tag.create({
+        data: { userId, name: `FacetaOverflow${i}`, slug: `faceta-overflow-${i}` },
+      });
+    }
+    const out = (await callTool(TOKEN, 'voxen_discover', {
+      query: 'facetaoverflow',
+      limit: 25,
+    })) as DiscoverOut;
+    expect(out.topics).toHaveLength(20);
+    expect(out.truncated).toBe(true);
   });
 
   it('includes documents without enrichment and carries tag/folder context', async () => {

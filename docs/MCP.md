@@ -88,7 +88,7 @@ truncamento não implica enumeração completa da coleção: refine os termos ou
 filtros em vez de presumir que todos os procedimentos foram enumerados.
 
 Descoberta por nome (`voxen_discover`) localiza documentos por título,
-tópicos (tags) e coleções (pastas) a partir de metadados indexados, sem ler
+tópicos (tags, até 20 nomes) e coleções (pastas, até 20 nomes) a partir de metadados indexados, sem ler
 o texto corrido e sem modelo ou enriquecimento obrigatório. Cartões trazem
 descrição curta, tópicos, coleção, identificadores e proveniência do produtor
 quando o contrato de ingestão a forneceu. Um cartão ausente nunca exclui o
