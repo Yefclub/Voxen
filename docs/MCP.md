@@ -93,6 +93,11 @@ Buscas dentro de um documento (`voxen_search_note_content`,
 `voxen_search_transcript_content`) seguem a mesma regra: retornam `truncated`
 quando há mais ocorrências que o limite.
 
+Navegação no grafo (`voxen_brain_search`, `voxen_brain_neighbors`,
+`voxen_brain_sources`, `voxen_brain_hubs`, `voxen_brain_timeline`) também
+retorna `truncated`: `true` indica mais candidatos que o limite; `false`
+significa enumeração completa do conjunto consultado.
+
 Documentos relacionados (`voxen_related`) também retornam `truncated` sobre o
 conjunto fundido (vizinhança do Brain + FTS por título/tópico).
 
