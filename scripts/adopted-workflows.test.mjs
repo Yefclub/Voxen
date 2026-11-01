@@ -20,7 +20,13 @@ function frontmatter(text) {
   return fields;
 }
 
-for (const name of ["test-audit", "anti-slop", "issue-plan", "debug"]) {
+for (const name of [
+  "test-audit",
+  "anti-slop",
+  "issue-plan",
+  "debug",
+  "security-audit",
+]) {
   test(`adopted workflow ${name} is discoverable with explicit contract`, () => {
     const path = `.claude/skills/${name}/SKILL.md`;
     assert.ok(existsSync(resolve(root, path)), `${path} is missing`);
@@ -63,4 +69,10 @@ test("adopted workflows complement review without duplicating it", () => {
   const debug = read(".claude/skills/debug/SKILL.md");
   assert.match(debug, /N[aã]o conclui por analogia|nunca com relato/i);
   assert.match(debug, /reproduzir|reproduz/i);
+  const secaudit = read(".claude/skills/security-audit/SKILL.md");
+  assert.match(secaudit, /confirmado|refutado/i);
+  assert.match(
+    secaudit,
+    /N[aã]o declara "seguro"|nunca com relato|sem segredos/i,
+  );
 });
