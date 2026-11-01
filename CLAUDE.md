@@ -57,7 +57,7 @@ Antes de implementar qualquer coisa, confirme seu entendimento do pedido em 1-2 
 
 ## Visão Geral do Projeto
 
-Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** alimentada por transcrição de vídeos (YouTube/Instagram/TikTok) e scraping de páginas web, com chat-agente que navega a Base de conhecimento via ferramentas (sem embeddings — abordagem harness/Karpathy).
+Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** para conteúdo preparado: produtores externos publicam documentos via contratos versionados HTTP/MCP e clientes MCP recuperam com busca full-text determinística e leituras progressivas (sem embeddings, sem execução de modelos).
 
 **Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (chaves, modelos, usuários aprovados via better-auth).
 
@@ -168,7 +168,7 @@ Este projeto **proíbe qualquer marca de autoria de IA**, em qualquer lugar:
   - `APP_BASE_URL` e `NODE_ENV`
 - **TUDO O MAIS** vai em DB (tabela `settings`), cifrado com a master key
 - A **master key** vem de `MASTER_KEY` em todos os modos documentados; formato `openssl rand -base64 32`.
-- Secrets cifrados em DB incluem: OpenRouter API key, modelos default, config SMTP (futuro)
+- Secrets cifrados em DB incluem: tokens MCP/OAuth, config SMTP (futuro)
 - Se você precisa adicionar config nova: pergunta-se "muda em runtime?" — se sim, vai pra DB; se é infra, vai pra `.env` na raiz
 
 ### Isolamento de Workspaces (CRÍTICO)
@@ -227,7 +227,6 @@ Projeto open source do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen`. Owner/m
 - **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: MinIO/S3-compatible (sem dependência obrigatória de cloud externa)
-- **LLM**: OpenRouter como agregador único (1 chave, billing unificado)
 - **CI/CD**: GitHub Actions (workflows em `.github/workflows/`)
 
 Decisões técnicas devem considerar: segurança self-hosted, soberania de dados, escalabilidade horizontal modesta (poucos users, muitos vídeos), e fácil deploy num único container/host.

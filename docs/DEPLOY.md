@@ -806,17 +806,6 @@ ressalva acima.
 > A captura e extração de mídia saíram do produto; conteúdo chega como
 > material preparado via contratos versionados HTTP/MCP.
 
-## Troubleshooting do agente
-
-| Sintoma                               | Causa provável                                                   | Fix                                                                                                     |
-| ------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| UI fica "Desconectado" após subir     | URL/token errados, ou path `/_tunnel` bloqueado no reverse proxy | Confira `docker logs voxen-proxy-agent`; valide a URL da UI; libere upgrade de WebSocket em `/_tunnel`  |
-| Agente recusa iniciar com erro de URL | `VOXEN_TUNNEL_URL` sem `https://` (TLS obrigatório)              | Use a URL `https://` da UI; o agente normaliza `wss://`→`https://`, mas rejeita `ws://`/`http://`       |
-| Aviso âmbar "múltiplos agentes"       | Mais de um agente discando ao mesmo tempo                        | Mantenha **um só** agente rodando (single-connection); derrube os extras                                |
-| Downloads ainda bloqueados com agente | Worker não está usando o SOCKS, ou token expirado                | Confira a linha `proxy-active` nos logs do worker; rotacione o token; confirme status "Conectado" na UI |
-
----
-
 ## Troubleshooting
 
 | Sintoma                              | Causa                                      | Fix                                                                                                                                                                  |

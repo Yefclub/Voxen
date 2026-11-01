@@ -84,9 +84,9 @@ Optional fields:
 - Instagram and TikTok do not have reliable timestamp deep links, so the original URL is used.
 - Segments should represent natural speech chunks, usually around 10 to 30 seconds.
 
-## Transcription Methods
+## Transcription Methods (stored values — the capture pipeline was removed under spec 215)
 
-`subtitles` means the source had official captions. `api` means audio was downloaded, segmented, and sent to OpenRouter transcription. `scrape` is used for web pages.
+`subtitles` means the source had official captions. `api` means audio was downloaded, segmented, and sent to OpenRouter transcription (historical). `scrape` is used for web pages.
 
 ## Postgres Mirror
 
@@ -97,7 +97,7 @@ The `Transcript` table stores:
 - `frontmatter`: JSON mirror of YAML metadata
 - `mdPath`: provider-neutral storage key (local volume or S3)
 
-The chat agent searches the mirrored text, then reads the canonical Markdown file when it needs the full source.
+MCP clients search the mirrored text, then read the canonical Markdown file when they need the full source.
 
 ## Versioning
 
