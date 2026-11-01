@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793565038",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Tag-weighted transcript search",
+    "body": "### Fixed\n\n- Transcript FTS now indexes tag names with body weight, so tag-only terms retrieve their documents; linking/unlinking a tag refreshes the parent row. Ranking of existing title/body matches is preserved.",
+    "pr": 971,
+    "author": "Kalyel",
+    "date": "2026-11-01T17:30:27-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/971"
+  },
+  {
     "version": "0.15.1-dev.1793563813",
     "channel": "dev",
     "type": "feat",

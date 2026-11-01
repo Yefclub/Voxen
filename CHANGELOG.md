@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793565038 — 2026-11-01 · Dev
+
+### ✨ Tag-weighted transcript search
+
+### Fixed
+
+- Transcript FTS now indexes tag names with body weight, so tag-only terms retrieve their documents; linking/unlinking a tag refreshes the parent row. Ranking of existing title/body matches is preserved.
+
 ## v0.15.1-dev.1793563813 — 2026-11-01 · Dev
 
 ### ✨ Title-weighted transcript search
