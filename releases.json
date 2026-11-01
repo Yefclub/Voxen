@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793554421",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Patch Node.js and Bun Brotli runtimes (CVE-2026-111497)",
+    "body": "### Fixed\n- Pinned Node.js to 22.23.4 and Bun to 1.4.4 across Docker build/runtime stages, CI jobs, and supported-version floors.\n- Web image now copies Node.js from the pinned builder stage instead of the floating Alpine package.\n- Added a static regression test so older runtime lines fail fast.",
+    "pr": 948,
+    "author": "Kalyel",
+    "date": "2026-11-01T14:33:30-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/948"
+  },
+  {
     "version": "0.15.1-dev.1793543382",
     "channel": "dev",
     "type": "feat",
