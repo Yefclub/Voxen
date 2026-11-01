@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793534368",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove dead Product 2 i18n strings",
+    "body": "### Removed\n- Deleted ~162 dead PT/EN copy keys for removed Product 2 surfaces (provider setup, model selection, chat UI, cost dashboard, transcription requests, proxy agent).\n- Kept `chat.status.*` keys still used by shared chat-status mapping.",
+    "pr": 932,
+    "author": "Kalyel",
+    "date": "2026-11-01T08:59:17-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/932"
+  },
+  {
     "version": "0.15.1-dev.1793533246",
     "channel": "dev",
     "type": "chore",
