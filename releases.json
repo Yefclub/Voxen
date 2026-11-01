@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793512349",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Knowledge deletions finish in the web app without the worker",
+    "body": "### Changed\n- Permanent deletions of transcripts, notes, saved media, folders, and research now execute inside the web app and recover after restart; the analysis worker is no longer required for maintenance.\n- Retired leases are reclaimed automatically with the same three-attempt budget, and cancelled deletions keep prior behavior.",
+    "pr": 903,
+    "author": "Kalyel",
+    "date": "2026-11-01T02:52:16-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/903"
+  },
+  {
     "version": "0.15.1-dev.1793509652",
     "channel": "dev",
     "type": "feat",
