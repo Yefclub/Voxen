@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793532355",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove proxy-agent tunnel service and admin surface",
+    "body": "### Removed\n- The residential proxy-agent tunnel service is gone: dedicated image, chisel server, WebSocket tunnel proxy, admin token/status UI, and request settings.\n- Orphan proxy settings are cleaned by forward migration; removed admin routes fail closed with 404.",
+    "pr": 928,
+    "author": "Kalyel",
+    "date": "2026-11-01T08:25:42-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/928"
+  },
+  {
     "version": "0.15.1-dev.1793531042",
     "channel": "dev",
     "type": "feat",
