@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793518603",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove worker Brain model extraction and compilation scheduling",
+    "body": "### Removed\n- The worker no longer runs model-based Brain extraction: no grounded entity/claim extraction, no compilation dispatch, no brain queue in the enrichment round-robin.\n- Deterministic graph indexing, reindex repair, and stored evidence are untouched.",
+    "pr": 913,
+    "author": "Kalyel",
+    "date": "2026-11-01T04:35:33-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/913"
+  },
+  {
     "version": "0.15.1-dev.1793517628",
     "channel": "dev",
     "type": "chore",

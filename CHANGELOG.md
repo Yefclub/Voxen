@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793518603 — 2026-11-01 · Dev
+
+### 🧹 Remove worker Brain model extraction and compilation scheduling
+
+### Removed
+- The worker no longer runs model-based Brain extraction: no grounded entity/claim extraction, no compilation dispatch, no brain queue in the enrichment round-robin.
+- Deterministic graph indexing, reindex repair, and stored evidence are untouched.
+
 ## v0.15.1-dev.1793517628 — 2026-11-01 · Dev
 
 ### 🧹 Remove model-provider layer, model config and cost UI
