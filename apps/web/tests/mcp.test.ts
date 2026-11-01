@@ -405,6 +405,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_read_note_revision');
     expect(names).toContain('voxen_get_job_status');
     expect(names).toContain('voxen_delete_knowledge');
+    expect(names).toContain('voxen_import_notes');
     expect(names).not.toContain('voxen_request_transcription');
     expect(names).not.toContain('voxen_request_transcriptions');
     expect(names).not.toContain('voxen_list_transcript_enrichments');

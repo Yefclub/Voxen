@@ -23,6 +23,11 @@ import {
 } from '../lib/note-anchors';
 import { noteContentChecksum } from '../lib/note-revisions';
 import {
+  createPreparedNote,
+  PreparedIngestContractError,
+  type PreparedNoteResult,
+} from '../lib/prepared-note-ingest';
+import {
   NoteNotFoundError,
   NoteRevisionConflictError,
   commitNoteVersion,
@@ -177,6 +182,12 @@ const CreateBody = z.object({
   kind: z.enum(['NOTE', 'FOLDER']).default('NOTE'),
   title: z.string().min(1).max(200),
   content: z.string().max(200_000).optional(),
+  // Contrato de ingestão v1 (spec 216): retentativas com a mesma chave
+  // devolvem a nota original em vez de duplicar. Válido só para NOTE.
+  contract_version: z.string().max(16).optional(),
+  idempotency_key: z.string().max(128).optional(),
+  producer_id: z.string().max(128).optional(),
+  external_id: z.string().max(256).optional(),
 });
 
 notesRoutes.post('/', async (c) => {
@@ -192,6 +203,10 @@ notesRoutes.post('/', async (c) => {
     kind,
     title,
     content,
+    contract_version,
+    idempotency_key,
+    producer_id,
+    external_id,
   } = parsed.data;
 
   // Validar parentId — só permite filhar de pasta do mesmo user
@@ -204,6 +219,9 @@ notesRoutes.post('/', async (c) => {
     if (parent.kind !== 'FOLDER') {
       return c.json({ error: 'Só é possível aninhar dentro de pastas.' }, 400);
     }
+  }
+  if (kind !== 'NOTE' && (contract_version ?? idempotency_key ?? producer_id ?? external_id)) {
+    return c.json({ error: 'Contrato de ingestão vale só para notas (kind NOTE).' }, 400);
   }
 
   if (sourceType || sourceId) {
@@ -233,6 +251,43 @@ notesRoutes.post('/', async (c) => {
     throw error;
   }
 
+  if (kind === 'NOTE') {
+    let result: PreparedNoteResult;
+    try {
+      result = await createPreparedNote(userId, {
+        title,
+        content,
+        parentId: parentId ?? null,
+        transcriptIds,
+        anchors,
+        actor: 'USER',
+        idempotencyKey: idempotency_key,
+        producerId: producer_id,
+        externalId: external_id,
+        contractVersion: contract_version,
+      });
+    } catch (error) {
+      if (error instanceof PreparedIngestContractError) {
+        return c.json({ error: error.message }, 400);
+      }
+      throw error;
+    }
+    const graphSync = result.duplicate ? 'DUPLICATE' : await syncNoteGraph(userId, result.id);
+    const full = await db.note.findFirst({
+      where: { id: result.id, userId },
+    });
+    if (!full) return c.json({ error: 'Nota não encontrada.' }, 404);
+    return c.json(
+      {
+        note: full,
+        checksum: result.checksum,
+        graphSync,
+        duplicate: result.duplicate,
+      },
+      result.duplicate ? 200 : 201,
+    );
+  }
+
   const note = await db.$transaction(async (tx) => {
     const created = await tx.note.create({
       data: {
@@ -242,7 +297,7 @@ notesRoutes.post('/', async (c) => {
         sourceId: transcriptIds[0] ?? null,
         kind,
         title: title.trim(),
-        content: kind === 'NOTE' ? (content ?? '') : '',
+        content: '',
         ...(transcriptIds.length > 0
           ? {
               transcriptSources: {

@@ -33,6 +33,7 @@ export const MCP_TOOL_SCOPES = {
   voxen_verify_citations: 'READ',
   voxen_create_note: 'WRITE',
   voxen_update_note: 'WRITE',
+  voxen_import_notes: 'WRITE',
   voxen_patch_note: 'WRITE',
   voxen_restore_note_revision: 'WRITE',
   voxen_patch_transcript: 'WRITE',
@@ -44,6 +45,7 @@ type WriteEffects = { destructiveHint: boolean; idempotentHint: boolean; openWor
 const WRITE_EFFECTS = {
   voxen_create_note: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
   voxen_update_note: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  voxen_import_notes: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
   voxen_patch_note: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
   voxen_restore_note_revision: {
     destructiveHint: true,

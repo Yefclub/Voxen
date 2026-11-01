@@ -84,6 +84,7 @@ model User {
   telegramLink                  TelegramLink?
   tags                          Tag[]
   mcpTokens                     McpToken[]
+  preparedIngestKeys            PreparedIngestKey[]
   oauthClients                  OauthClient[]
   oauthRefreshTokens            OauthRefreshToken[]
   oauthAccessTokens             OauthAccessToken[]
@@ -1152,6 +1153,25 @@ model NoteRevision {
 
   @@unique([noteId, revision])
   @@index([userId, noteId, createdAt(sort: Desc)])
+}
+
+// Workspace-scoped idempotency for prepared-content ingestion (spec 216).
+// The same producer retry (same user + key) resolves to the original target
+// instead of creating a duplicate document or revision.
+model PreparedIngestKey {
+  id              String   @id @default(cuid())
+  userId          String
+  key             String
+  targetType      String
+  targetId        String
+  producerId      String?
+  externalId      String?
+  contractVersion String   @default("1")
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, targetType, targetId])
 }
 
 // Fontes explícitas de uma nota. A coluna Note.sourceType/sourceId permanece
