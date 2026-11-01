@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793509652",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Setup completes without a model-provider key; reads use stored values",
+    "body": "### Changed\n- Fresh installations complete onboarding and enable the knowledge base with no model-provider account, key, or model configuration.\n- Setup status now reflects onboarding readiness; provider-key presence is reported separately.\n- Transcript briefs return already-stored summaries and tags; missing values no longer trigger inference.",
+    "pr": 899,
+    "author": "Kalyel",
+    "date": "2026-11-01T02:07:21-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/899"
+  },
+  {
     "version": "0.15.1-dev.1791278414",
     "channel": "dev",
     "type": "security",
