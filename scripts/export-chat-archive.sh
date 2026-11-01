@@ -3,10 +3,12 @@
 # Voxen — chat-history archive before the Product 2 table-drop migration
 # (spec 215, issue #894).
 #
-# Dumps the retired conversational tables to a timestamped directory so chat
-# history survives the migration that drops them. Automation runs, cost
-# events, and AI capability probes are telemetry, not user content, and are
-# intentionally NOT archived.
+# Dumps the retired conversational tables plus their cost ledger to a
+# timestamped directory so chat history survives the migration that drops
+# them. Cost events are per-user spend records attached to transcripts, so
+# they are archived with the chat history they explain. Automation runs,
+# MemoryShadow rows, and AI capability checks are derived/operational data,
+# not user content, and are intentionally NOT archived.
 #
 # Usage: DATABASE_URL=... ./scripts/export-chat-archive.sh [output-dir]
 # Output: <output-dir>/chat-archive-<UTC-timestamp>/{TABLE}.json (one JSON
