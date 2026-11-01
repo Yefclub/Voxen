@@ -63,6 +63,26 @@ Mudanças de migration também passam pelo gate Prisma. Mudanças visuais exigem
 verificação local dos estados afetados e layouts responsivos. Documentação
 pública deve manter links relativos válidos e as trilhas em inglês e pt-BR.
 
+## Benchmark real de retrieval (spec 216)
+
+`apps/web/tests/retrieval-performance.test.ts` exercita o caminho de produção
+(Postgres FTS + storage + MCP) contra um corpus determinístico em português:
+sinônimo, registro informal, documento longo, múltiplas fontes, material
+conflitante e caso sem evidência.
+
+```bash
+DATABASE_URL=postgresql://voxen:dev@localhost:5433/voxen_test \
+REDIS_URL=redis://localhost:6379 \
+BETTER_AUTH_SECRET=<segredo-de-teste> MASTER_KEY=<chave-de-teste> NODE_ENV=test \
+bun test apps/web/tests/retrieval-performance.test.ts
+```
+
+O teste mede recall, ordenação determinística, latência p50/p95/p99 de busca,
+outline, leitura estreita e round trips MCP, além do tamanho da saída, com
+limites generosos anti-flake (p95 de segundos, não metas). Métricas simuladas
+do harness unitário (`retrieval-quality-benchmark.test.ts`) são reportadas em
+separado e nunca como evidência de performance.
+
 ## Git e releases
 
 - `main`: releases estáveis protegidas
