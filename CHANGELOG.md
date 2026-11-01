@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793526326 — 2026-11-01 · Dev
+
+### 🧹 Drop unused AI, provider, and 3D packages
+
+### Removed
+- Unused runtime dependencies are gone: the `ai` SDK, the OpenRouter AI SDK provider, and `three` (kept only as a transitive dependency of the graph renderer).
+
 ## v0.15.1-dev.1793525429 — 2026-11-01 · Dev
 
 ### 🧹 Drop retired Product 2 tables with chat archive policy

@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793526326",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Drop unused AI, provider, and 3D packages",
+    "body": "### Removed\n- Unused runtime dependencies are gone: the `ai` SDK, the OpenRouter AI SDK provider, and `three` (kept only as a transitive dependency of the graph renderer).",
+    "pr": 921,
+    "author": "Kalyel",
+    "date": "2026-11-01T06:45:11-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/921"
+  },
+  {
     "version": "0.15.1-dev.1793525429",
     "channel": "dev",
     "type": "chore",
