@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793575738",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Security-audit verdict fixtures",
+    "body": "### Added\n- Sanitized `security-audit` fixtures for confirmed, refuted, missing-evidence, partial-inventory, and zero-findings-unverified classes, mirrored to `.agents/` and covered by `scripts/security-audit-fixtures.test.mjs`.",
+    "pr": 991,
+    "author": "Kalyel",
+    "date": "2026-11-01T20:28:46-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/991"
+  },
+  {
     "version": "0.15.1-dev.1793574808",
     "channel": "dev",
     "type": "chore",
