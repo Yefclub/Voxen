@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793576623",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Heading recall without schema change",
+    "body": "### Fixed\n- Proved heading-only terms are retrievable at body weight through the real plain-text path; a title-like boost for headings stays explicitly deferred without a measured benefit and without a new column.",
+    "pr": 993,
+    "author": "Kalyel",
+    "date": "2026-11-01T20:43:09-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/993"
+  },
+  {
     "version": "0.15.1-dev.1793575738",
     "channel": "dev",
     "type": "chore",
