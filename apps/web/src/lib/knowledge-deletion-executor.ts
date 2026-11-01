@@ -13,16 +13,41 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { db } from './db';
 import type { Prisma } from '../../prisma-generated/client';
+import { db } from './db';
 import { runWithBrainIndexLease } from './brain-index-lease';
+import { invalidateGraphCache } from './graph-cache';
 import { publishJobEvent } from './job-events';
 import { storageDelete } from './storage/index';
 import type { KnowledgeDeletionTargetType } from './knowledge-deletion';
 
+type DbClient = Prisma.TransactionClient;
+
 const LEASE_TTL_MS = 90_000;
+const HEARTBEAT_MS = 20_000;
 const MAX_ATTEMPTS = 3;
+const GRAPH_LEASE_ATTEMPTS = 5;
 const WORKER_ID_PREFIX = 'web-executor';
+const INTERRUPTED_MESSAGE = 'Knowledge deletion was interrupted and will be retried.';
+
+const GRAPH_SOURCE_TYPE: Partial<Record<KnowledgeDeletionTargetType, string>> = {
+  TRANSCRIPT: 'TRANSCRIPT',
+  NOTE: 'NOTE',
+  LIBRARY_FOLDER: 'FOLDER',
+  TRANSCRIPT_ENRICHMENT: 'EXTERNAL_ENRICHMENT',
+};
+
+class LeaseUnavailableError extends Error {
+  constructor() {
+    super('Knowledge graph lease is temporarily unavailable.');
+  }
+}
+
+class LeaseLostError extends Error {
+  constructor() {
+    super('Knowledge deletion lease was lost.');
+  }
+}
 
 type ClaimedDeletionJob = {
   id: string;
@@ -33,17 +58,50 @@ type ClaimedDeletionJob = {
   workerId: string;
 };
 
+function fence(job: ClaimedDeletionJob) {
+  return {
+    id: job.id,
+    userId: job.userId,
+    status: 'RUNNING' as const,
+    workerId: job.workerId,
+    attempt: job.attempt,
+    leaseExpiresAt: { gte: new Date() },
+  };
+}
+
 async function claimDeletionJob(jobId: string, owner: string): Promise<ClaimedDeletionJob | null> {
   return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: string; userId: string }>>`
-      SELECT id, "userId"
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; userId: string; attempt: number }>
+    >`
+      SELECT id, "userId", attempt
       FROM "Job"
       WHERE id = ${jobId}
         AND type = 'DELETE_KNOWLEDGE'
         AND (status = 'QUEUED' OR (status = 'RUNNING' AND "leaseExpiresAt" < NOW()))
       FOR UPDATE SKIP LOCKED
     `;
-    if (rows.length === 0) return null;
+    const row = rows[0];
+    if (!row) return null;
+    // Over-budget expired leases fail directly without re-executing,
+    // mirroring the worker's recover_expired_jobs.
+    if (row.attempt >= MAX_ATTEMPTS) {
+      const now = new Date();
+      await tx.job.updateMany({
+        where: { id: jobId },
+        data: {
+          status: 'FAILED',
+          workerId: null,
+          heartbeatAt: null,
+          leaseExpiresAt: null,
+          progressStage: 'failed',
+          progressedAt: now,
+          finishedAt: now,
+          errorMsg: INTERRUPTED_MESSAGE,
+        },
+      });
+      return null;
+    }
     const now = new Date();
     const updated = await tx.job.updateMany({
       where: { id: jobId },
@@ -52,7 +110,6 @@ async function claimDeletionJob(jobId: string, owner: string): Promise<ClaimedDe
         finishedAt: null,
         errorMsg: null,
         workerId: owner,
-        attempt: { increment: 1 },
         heartbeatAt: now,
         leaseExpiresAt: new Date(now.getTime() + LEASE_TTL_MS),
         progressStage: 'running',
@@ -83,20 +140,32 @@ async function claimDeletionJob(jobId: string, owner: string): Promise<ClaimedDe
   });
 }
 
-type DbClient = Prisma.TransactionClient;
+function startHeartbeat(job: ClaimedDeletionJob): { stop: () => void; isLost: () => boolean } {
+  let lost = false;
+  const beat = async (): Promise<void> => {
+    if (lost) return;
+    const now = new Date();
+    try {
+      const updated = await db.job.updateMany({
+        where: fence(job),
+        data: { heartbeatAt: now, leaseExpiresAt: new Date(now.getTime() + LEASE_TTL_MS) },
+      });
+      if (updated.count !== 1) lost = true;
+    } catch {
+      // A failed heartbeat must not crash the drain; the ownership fence in
+      // the canonical writes still rejects stale executors.
+    }
+  };
+  const timer = setInterval(() => void beat(), HEARTBEAT_MS);
+  return { stop: () => clearInterval(timer), isLost: () => lost };
+}
 
 async function assertOwnership(tx: DbClient, job: ClaimedDeletionJob): Promise<void> {
   const owner = await tx.job.findFirst({
-    where: {
-      id: job.id,
-      userId: job.userId,
-      status: 'RUNNING',
-      workerId: job.workerId,
-      attempt: job.attempt,
-    },
+    where: fence(job),
     select: { id: true },
   });
-  if (!owner) throw new Error('Knowledge deletion lease was lost.');
+  if (!owner) throw new LeaseLostError();
 }
 
 async function deleteGraphSources(
@@ -218,88 +287,104 @@ async function deleteStorageKeys(keys: Array<string | null | undefined>): Promis
   }
 }
 
-async function executeTranscriptDeletion(job: ClaimedDeletionJob): Promise<void> {
-  const lockKey = `voxen:source-refresh:${job.deletionTargetId}`;
-  await db.$executeRaw`SELECT pg_advisory_lock(hashtext(${lockKey}))`;
-  try {
-    const leased = await runWithBrainIndexLease(job.userId, async (assertLeaseOwnership) => {
-      await db.$transaction(async (tx) => {
-        await assertOwnership(tx, job);
-        await assertLeaseOwnership();
-        const locked = await tx.$queryRaw<
-          Array<{
-            id: string;
-            status: string;
-            mdPath: string | null;
-            originalObjectKey: string | null;
-            previewObjectKey: string | null;
-            savedMediaId: string | null;
-            savedMediaObjectKey: string | null;
-          }>
-        >`
-          SELECT transcript.id, transcript.status, transcript."mdPath",
-                 transcript."originalObjectKey", transcript."previewObjectKey",
-                 media.id AS "savedMediaId",
-                 media."objectKey" AS "savedMediaObjectKey"
-          FROM "Transcript" transcript
-          LEFT JOIN "SavedMedia" media ON media."transcriptId" = transcript.id
-          WHERE transcript.id = ${job.deletionTargetId} AND transcript."userId" = ${job.userId}
-          FOR UPDATE OF transcript
-        `;
-        const row = locked[0];
-        if (row && String(row.status) !== 'TRASH') {
-          throw new Error('Transcript must remain in trash until deletion completes.');
-        }
-        const versions = row
-          ? await tx.$queryRaw<Array<{ mdPath: string | null }>>`
-              SELECT "mdPath" FROM "SourceContentVersion"
-              WHERE "transcriptId" = ${job.deletionTargetId} AND "userId" = ${job.userId}
-            `
-          : [];
-        if (row) {
-          await deleteStorageKeys([
-            row.mdPath,
-            row.previewObjectKey,
-            row.originalObjectKey === row.savedMediaObjectKey ? null : row.originalObjectKey,
-            ...versions.map((version) => version.mdPath),
-          ]);
-        }
-        if (row?.savedMediaId) {
-          if (row.savedMediaObjectKey) {
-            await tx.$executeRaw`
-              UPDATE "SavedMedia"
-              SET status = 'READY'::"SavedMediaStatus", "transcriptId" = NULL,
-                  "processedAt" = NULL, "errorMsg" = NULL, "updatedAt" = NOW()
-              WHERE id = ${row.savedMediaId} AND "userId" = ${job.userId}
-            `;
-          } else {
-            await tx.$executeRaw`
-              UPDATE "SavedMedia"
-              SET status = 'FAILED'::"SavedMediaStatus", "transcriptId" = NULL,
-                  "processedAt" = NULL,
-                  "errorMsg" = 'O arquivo original não está mais disponível.',
-                  "updatedAt" = NOW()
-              WHERE id = ${row.savedMediaId} AND "userId" = ${job.userId}
-            `;
-          }
-        }
-        await deleteGraphSources(tx, job.userId, 'TRANSCRIPT', [job.deletionTargetId]);
-        await tx.$executeRaw`
-          DELETE FROM "Transcript" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
-        `;
-      });
+async function withGraphLease<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+  let delayMs = 250;
+  for (let attempt = 1; ; attempt += 1) {
+    let executed = false;
+    let result: T | undefined;
+    const leased = await runWithBrainIndexLease(userId, async () => {
+      executed = true;
+      result = await operation();
     });
-    if (!leased) throw new Error('Knowledge graph lease is temporarily unavailable.');
-  } finally {
-    await db.$executeRaw`SELECT pg_advisory_unlock(hashtext(${lockKey}))`;
+    if (leased) return result as T;
+    if (!executed) {
+      // Lease contention without running the operation: back off and retry
+      // instead of burning the job attempt budget.
+      if (attempt >= GRAPH_LEASE_ATTEMPTS) throw new LeaseUnavailableError();
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs = Math.min(delayMs * 2, 1000);
+      continue;
+    }
+    throw new LeaseUnavailableError();
   }
 }
 
+async function executeTranscriptDeletion(job: ClaimedDeletionJob): Promise<void> {
+  const lockKey = `voxen:source-refresh:${job.deletionTargetId}`;
+  await withGraphLease(job.userId, async () => {
+    await db.$transaction(async (tx) => {
+      // Transaction-scoped advisory lock: same connection, auto-released.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      await assertOwnership(tx, job);
+      const locked = await tx.$queryRaw<
+        Array<{
+          id: string;
+          status: string;
+          mdPath: string | null;
+          originalObjectKey: string | null;
+          previewObjectKey: string | null;
+          savedMediaId: string | null;
+          savedMediaObjectKey: string | null;
+        }>
+      >`
+        SELECT transcript.id, transcript.status, transcript."mdPath",
+               transcript."originalObjectKey", transcript."previewObjectKey",
+               media.id AS "savedMediaId",
+               media."objectKey" AS "savedMediaObjectKey"
+        FROM "Transcript" transcript
+        LEFT JOIN "SavedMedia" media ON media."transcriptId" = transcript.id
+        WHERE transcript.id = ${job.deletionTargetId} AND transcript."userId" = ${job.userId}
+        FOR UPDATE OF transcript
+      `;
+      const row = locked[0];
+      if (row && String(row.status) !== 'TRASH') {
+        throw new Error('Transcript must remain in trash until deletion completes.');
+      }
+      const versions = row
+        ? await tx.$queryRaw<Array<{ mdPath: string | null }>>`
+            SELECT "mdPath" FROM "SourceContentVersion"
+            WHERE "transcriptId" = ${job.deletionTargetId} AND "userId" = ${job.userId}
+          `
+        : [];
+      if (row) {
+        await deleteStorageKeys([
+          row.mdPath,
+          row.previewObjectKey,
+          row.originalObjectKey === row.savedMediaObjectKey ? null : row.originalObjectKey,
+          ...versions.map((version) => version.mdPath),
+        ]);
+      }
+      if (row?.savedMediaId) {
+        if (row.savedMediaObjectKey) {
+          await tx.$executeRaw`
+            UPDATE "SavedMedia"
+            SET status = 'READY'::"SavedMediaStatus", "transcriptId" = NULL,
+                "processedAt" = NULL, "errorMsg" = NULL, "updatedAt" = NOW()
+            WHERE id = ${row.savedMediaId} AND "userId" = ${job.userId}
+          `;
+        } else {
+          await tx.$executeRaw`
+            UPDATE "SavedMedia"
+            SET status = 'FAILED'::"SavedMediaStatus", "transcriptId" = NULL,
+                "processedAt" = NULL,
+                "errorMsg" = 'O arquivo original não está mais disponível.',
+                "updatedAt" = NOW()
+            WHERE id = ${row.savedMediaId} AND "userId" = ${job.userId}
+          `;
+        }
+      }
+      await deleteGraphSources(tx, job.userId, 'TRANSCRIPT', [job.deletionTargetId]);
+      await tx.$executeRaw`
+        DELETE FROM "Transcript" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
+      `;
+    });
+  });
+}
+
 async function executeNoteDeletion(job: ClaimedDeletionJob): Promise<void> {
-  const leased = await runWithBrainIndexLease(job.userId, async (assertLeaseOwnership) => {
+  await withGraphLease(job.userId, async () => {
     await db.$transaction(async (tx) => {
       await assertOwnership(tx, job);
-      await assertLeaseOwnership();
       const ids = await ownedTreeIds(tx, 'Note', job.userId, job.deletionTargetId);
       await deleteGraphSources(tx, job.userId, 'NOTE', ids.length > 0 ? ids : [job.deletionTargetId]);
       await tx.$executeRaw`
@@ -307,7 +392,6 @@ async function executeNoteDeletion(job: ClaimedDeletionJob): Promise<void> {
       `;
     });
   });
-  if (!leased) throw new Error('Knowledge graph lease is temporarily unavailable.');
 }
 
 async function executeSavedMediaDeletion(job: ClaimedDeletionJob): Promise<void> {
@@ -337,10 +421,9 @@ async function executeSavedMediaDeletion(job: ClaimedDeletionJob): Promise<void>
 }
 
 async function executeLibraryFolderDeletion(job: ClaimedDeletionJob): Promise<void> {
-  const leased = await runWithBrainIndexLease(job.userId, async (assertLeaseOwnership) => {
+  await withGraphLease(job.userId, async () => {
     await db.$transaction(async (tx) => {
       await assertOwnership(tx, job);
-      await assertLeaseOwnership();
       let ids: string[];
       if (job.deletionTargetId === '*') {
         const forest = await tx.$queryRaw<Array<{ id: string; userId: string }>>`
@@ -357,55 +440,43 @@ async function executeLibraryFolderDeletion(job: ClaimedDeletionJob): Promise<vo
           throw new Error('Cross-workspace folder relation rejected.');
         }
         ids = forest.map((row) => String(row.id));
-        const transcripts = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
-          AND "folderId" = ANY(${ids}::text[])
-        `;
         await deleteGraphSources(tx, job.userId, 'FOLDER', ids);
         await tx.$executeRaw`DELETE FROM "LibraryFolder" WHERE "userId" = ${job.userId}`;
-        const transcriptIds = transcripts.map((row) => String(row.id));
-        if (transcriptIds.length > 0) {
-          await tx.$executeRaw`
-            UPDATE "BrainNode"
-            SET metadata = COALESCE(metadata, '{}'::jsonb) - 'folderId',
-                "updatedAt" = NOW()
-            WHERE "userId" = ${job.userId}
-              AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-              AND "sourceId" = ANY(${transcriptIds}::text[])
-          `;
-        }
       } else {
         ids = await ownedTreeIds(tx, 'LibraryFolder', job.userId, job.deletionTargetId);
-        const transcripts = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
-          AND "folderId" = ANY(${ids}::text[])
-        `;
-        await deleteGraphSources(tx, job.userId, 'FOLDER', ids.length > 0 ? ids : [job.deletionTargetId]);
+        await deleteGraphSources(
+          tx,
+          job.userId,
+          'FOLDER',
+          ids.length > 0 ? ids : [job.deletionTargetId],
+        );
         await tx.$executeRaw`
           DELETE FROM "LibraryFolder" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
         `;
-        const transcriptIds = transcripts.map((row) => String(row.id));
-        if (transcriptIds.length > 0) {
-          await tx.$executeRaw`
-            UPDATE "BrainNode"
-            SET metadata = COALESCE(metadata, '{}'::jsonb) - 'folderId',
-                "updatedAt" = NOW()
-            WHERE "userId" = ${job.userId}
-              AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-              AND "sourceId" = ANY(${transcriptIds}::text[])
-          `;
-        }
+      }
+      const transcripts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
+        AND "folderId" = ANY(${ids}::text[])
+      `;
+      const transcriptIds = transcripts.map((row) => String(row.id));
+      if (transcriptIds.length > 0) {
+        await tx.$executeRaw`
+          UPDATE "BrainNode"
+          SET metadata = COALESCE(metadata, '{}'::jsonb) - 'folderId',
+              "updatedAt" = NOW()
+          WHERE "userId" = ${job.userId}
+            AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+            AND "sourceId" = ANY(${transcriptIds}::text[])
+        `;
       }
     });
   });
-  if (!leased) throw new Error('Knowledge graph lease is temporarily unavailable.');
 }
 
 async function executeTranscriptEnrichmentDeletion(job: ClaimedDeletionJob): Promise<void> {
-  const leased = await runWithBrainIndexLease(job.userId, async (assertLeaseOwnership) => {
+  await withGraphLease(job.userId, async () => {
     await db.$transaction(async (tx) => {
       await assertOwnership(tx, job);
-      await assertLeaseOwnership();
       await deleteGraphSources(tx, job.userId, 'EXTERNAL_ENRICHMENT', [job.deletionTargetId]);
       await tx.$executeRaw`
         DELETE FROM "TranscriptEnrichment"
@@ -413,15 +484,37 @@ async function executeTranscriptEnrichmentDeletion(job: ClaimedDeletionJob): Pro
       `;
     });
   });
-  if (!leased) throw new Error('Knowledge graph lease is temporarily unavailable.');
 }
 
-async function finishJob(job: ClaimedDeletionJob, outcome: 'done' | 'failed', errorMsg?: string): Promise<void> {
+async function revertDeletingSavedMedia(job: ClaimedDeletionJob): Promise<void> {
+  if (job.deletionTargetType !== 'SAVED_MEDIA') return;
+  const media = await db.savedMedia.findFirst({
+    where: { id: job.deletionTargetId, userId: job.userId, status: 'DELETING' },
+    select: { objectKey: true },
+  });
+  if (!media) return;
+  await db.savedMedia.update({
+    where: { id: job.deletionTargetId },
+    data: media.objectKey
+      ? { status: 'READY', errorMsg: null }
+      : { status: 'FAILED', errorMsg: 'O arquivo não está disponível.' },
+  });
+}
+
+async function finishJob(
+  job: ClaimedDeletionJob,
+  outcome: 'done' | 'failed',
+  heartbeat: { isLost: () => boolean },
+  errorMsg?: string,
+): Promise<void> {
+  if (heartbeat.isLost()) return;
   const now = new Date();
   if (outcome === 'done') {
-    await publishJobEvent(job.userId, { jobId: job.id, stage: 'done', percent: 100 }).catch(() => {});
+    if (GRAPH_SOURCE_TYPE[job.deletionTargetType]) {
+      await invalidateGraphCache(job.userId).catch(() => {});
+    }
     await db.job.updateMany({
-      where: { id: job.id, userId: job.userId, status: 'RUNNING' },
+      where: fence(job),
       data: {
         status: 'DONE',
         workerId: null,
@@ -434,9 +527,15 @@ async function finishJob(job: ClaimedDeletionJob, outcome: 'done' | 'failed', er
         errorMsg: null,
       },
     });
-  } else if (job.attempt >= MAX_ATTEMPTS) {
-    await db.job.updateMany({
-      where: { id: job.id, userId: job.userId },
+    await publishJobEvent(job.userId, { jobId: job.id, stage: 'done', percent: 100 }).catch(
+      () => {},
+    );
+    return;
+  }
+  const attempt = job.attempt + 1;
+  if (attempt >= MAX_ATTEMPTS) {
+    const updated = await db.job.updateMany({
+      where: fence(job),
       data: {
         status: 'FAILED',
         workerId: null,
@@ -448,45 +547,70 @@ async function finishJob(job: ClaimedDeletionJob, outcome: 'done' | 'failed', er
         errorMsg: (errorMsg ?? 'Knowledge deletion failed.').slice(0, 2000),
       },
     });
-  } else {
-    await db.job.updateMany({
-      where: { id: job.id, userId: job.userId },
-      data: {
-        status: 'QUEUED',
-        workerId: null,
-        heartbeatAt: null,
-        leaseExpiresAt: null,
-        progressStage: 'queued',
-        progressPercent: 0,
-        progressedAt: now,
-        errorMsg: (errorMsg ?? 'Knowledge deletion will be retried.').slice(0, 2000),
-      },
-    });
+    if (updated.count === 1) await revertDeletingSavedMedia(job);
+    return;
   }
+  await db.job.updateMany({
+    where: fence(job),
+    data: {
+      status: 'QUEUED',
+      workerId: null,
+      heartbeatAt: null,
+      leaseExpiresAt: null,
+      attempt,
+      progressStage: 'queued',
+      progressPercent: 0,
+      progressedAt: now,
+      errorMsg: (errorMsg ?? INTERRUPTED_MESSAGE).slice(0, 2000),
+    },
+  });
+}
+
+async function releaseClaim(job: ClaimedDeletionJob): Promise<void> {
+  const now = new Date();
+  await db.job.updateMany({
+    where: fence(job),
+    data: {
+      status: 'QUEUED',
+      workerId: null,
+      heartbeatAt: null,
+      leaseExpiresAt: null,
+      progressStage: 'queued',
+      progressPercent: 0,
+      progressedAt: now,
+    },
+  });
 }
 
 export async function runKnowledgeDeletionJob(jobId: string): Promise<boolean> {
   const owner = `${WORKER_ID_PREFIX}:${randomUUID()}`;
   const job = await claimDeletionJob(jobId, owner);
   if (!job) return false;
+  const heartbeat = startHeartbeat(job);
   try {
-    await publishJobEvent(job.userId, { jobId: job.id, stage: 'deleting_content', percent: 15 }).catch(
-      () => {},
-    );
+    await publishJobEvent(job.userId, {
+      jobId: job.id,
+      stage: 'deleting_content',
+      percent: 15,
+    }).catch(() => {});
     switch (job.deletionTargetType) {
       case 'TRANSCRIPT':
-        await publishJobEvent(job.userId, { jobId: job.id, stage: 'deleting_storage', percent: 30 }).catch(
-          () => {},
-        );
+        await publishJobEvent(job.userId, {
+          jobId: job.id,
+          stage: 'deleting_storage',
+          percent: 30,
+        }).catch(() => {});
         await executeTranscriptDeletion(job);
         break;
       case 'NOTE':
         await executeNoteDeletion(job);
         break;
       case 'SAVED_MEDIA':
-        await publishJobEvent(job.userId, { jobId: job.id, stage: 'deleting_storage', percent: 30 }).catch(
-          () => {},
-        );
+        await publishJobEvent(job.userId, {
+          jobId: job.id,
+          stage: 'deleting_storage',
+          percent: 30,
+        }).catch(() => {});
         await executeSavedMediaDeletion(job);
         break;
       case 'LIBRARY_FOLDER':
@@ -498,14 +622,25 @@ export async function runKnowledgeDeletionJob(jobId: string): Promise<boolean> {
       default:
         throw new Error('Unsupported knowledge deletion target.');
     }
-    await publishJobEvent(job.userId, { jobId: job.id, stage: 'updating_graph', percent: 85 }).catch(
-      () => {},
-    );
-    await finishJob(job, 'done');
+    if (GRAPH_SOURCE_TYPE[job.deletionTargetType]) {
+      await publishJobEvent(job.userId, {
+        jobId: job.id,
+        stage: 'updating_graph',
+        percent: 85,
+      }).catch(() => {});
+    }
+    await finishJob(job, 'done', heartbeat);
     return true;
   } catch (error) {
-    await finishJob(job, 'failed', error instanceof Error ? error.message : String(error));
+    if (heartbeat.isLost() || error instanceof LeaseLostError) return true;
+    if (error instanceof LeaseUnavailableError) {
+      await releaseClaim(job);
+      return true;
+    }
+    await finishJob(job, 'failed', heartbeat, error instanceof Error ? error.message : String(error));
     return true;
+  } finally {
+    heartbeat.stop();
   }
 }
 
