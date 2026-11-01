@@ -71,9 +71,9 @@ automática para identidades confiáveis.
 
 1. O cliente MCP ou a biblioteca consultam a base com FTS determinístico.
    Títulos têm peso A e corpo/tags/pasta peso B em transcrições (nomes de tags
-   e da pasta entram via subconsulta, atualizados na vinculação e no rename);
-   notas seguem título A e corpo B; ordenação por score e identidade; trechos
-   destacados não usam pesos.
+   e da pasta entram via subconsultas, atualizados na vinculação, movimentação
+   e renomeação); notas seguem título A e corpo B, com ordenação por score e
+   identidade; trechos destacados não usam pesos.
 2. Leituras progressivas retornam estrutura (outline) e depois trechos
    estreitos (linhas/seção/intervalo), com cursores assinados e orçamentos
    de resposta.
