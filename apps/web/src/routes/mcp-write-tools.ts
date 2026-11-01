@@ -11,7 +11,6 @@ import { noteContentChecksum } from '../lib/note-revisions';
 import {
   NoteRevisionConflictError,
   commitNoteVersion,
-  recordInitialNoteRevision,
   syncNoteGraph,
 } from '../lib/note-versioning';
 import { fail, ok } from './mcp-tool-helpers';
@@ -19,6 +18,12 @@ import { registerMcpNoteRevisionWriteTools } from './mcp-note-revision-write-too
 import { noteWriteFailure } from './mcp-note-write-errors';
 import { registerMcpTranscriptCorrectionWriteTools } from './mcp-transcript-correction-tools';
 import { registerMcpKnowledgeDeletionTool } from './mcp-knowledge-deletion-tool';
+import {
+  createPreparedNote,
+  PreparedIngestContractError,
+  type PreparedNoteResult,
+} from '../lib/prepared-note-ingest';
+import { PREPARED_CONTRACT_VERSION } from '../lib/prepared-ingest';
 
 const MCP_NOTE_ANCHOR_SCHEMA = z.object({
   transcript_id: z.string().min(1),
@@ -55,7 +60,9 @@ export function registerWriteTools(server: McpServer, userId: string): void {
       title: 'Criar nota',
       description:
         'Cria uma nota (markdown) na KB do usuário. Use para salvar/ingerir informação que ' +
-        'o usuário pediu para guardar. Retorna o id da nota criada.',
+        'o usuário pediu para guardar. Retorna o id da nota criada. ' +
+        'Contrato de ingestão v1: informe idempotency_key para que retentativas ' +
+        'devolvam a nota original em vez de duplicar (resposta inclui duplicate=true).',
       inputSchema: {
         title: z.string().min(1).max(200).describe('Título da nota.'),
         content: z.string().max(200_000).optional().describe('Conteúdo markdown.'),
@@ -69,6 +76,20 @@ export function registerWriteTools(server: McpServer, userId: string): void {
           .max(100)
           .optional()
           .describe('Passagens verificadas por linhas e/ou timestamps que sustentam a nota.'),
+        contract_version: z
+          .string()
+          .max(16)
+          .optional()
+          .describe('Versão do contrato de ingestão; atualmente somente "1".'),
+        idempotency_key: z
+          .string()
+          .max(128)
+          .optional()
+          .describe(
+            'Chave de idempotência do produtor (letras, dígitos, ":", "_", "-"; escopo do workspace).',
+          ),
+        producer_id: z.string().max(128).optional().describe('Identidade do produtor externo.'),
+        external_id: z.string().max(256).optional().describe('ID do documento no produtor.'),
       },
       outputSchema: {
         id: z.string(),
@@ -76,6 +97,7 @@ export function registerWriteTools(server: McpServer, userId: string): void {
         revision: z.number(),
         checksum: z.string(),
         graphSync: z.string(),
+        duplicate: z.boolean(),
       },
       annotations: {
         readOnlyHint: false,
@@ -102,34 +124,31 @@ export function registerWriteTools(server: McpServer, userId: string): void {
         if (error instanceof NoteAnchorValidationError) return fail(error.message);
         throw error;
       }
-      const note = await db.$transaction(async (tx) => {
-        const created = await tx.note.create({
-          data: {
-            userId,
-            kind: 'NOTE',
-            title,
-            content: args.content ?? '',
-            sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-            sourceId: transcriptIds[0] ?? null,
-            ...(transcriptIds.length > 0
-              ? {
-                  transcriptSources: {
-                    create: noteSourceCreateData(userId, transcriptIds, anchors),
-                  },
-                }
-              : {}),
-          },
+      let result: PreparedNoteResult;
+      try {
+        result = await createPreparedNote(userId, {
+          title,
+          content: args.content,
+          transcriptIds,
+          anchors,
+          actor: 'MCP',
+          idempotencyKey: args.idempotency_key,
+          producerId: args.producer_id,
+          externalId: args.external_id,
+          contractVersion: args.contract_version,
         });
-        await recordInitialNoteRevision(tx, created, 'MCP');
-        return created;
-      });
-      const graphSync = await syncNoteGraph(userId, note.id);
+      } catch (error) {
+        if (error instanceof PreparedIngestContractError) return fail(error.message);
+        throw error;
+      }
+      const graphSync = result.duplicate ? 'DUPLICATE' : await syncNoteGraph(userId, result.id);
       return ok({
-        id: note.id,
-        title: note.title,
-        revision: note.revision,
-        checksum: noteContentChecksum(note.title, note.content),
+        id: result.id,
+        title: result.title,
+        revision: result.revision,
+        checksum: result.checksum,
         graphSync,
+        duplicate: result.duplicate,
       });
     },
   );
@@ -297,6 +316,161 @@ export function registerWriteTools(server: McpServer, userId: string): void {
   );
 
   registerMcpKnowledgeDeletionTool(server, userId);
+
+  server.registerTool(
+    'voxen_import_notes',
+    {
+      title: 'Importar notas em lote',
+      description:
+        'Importa até 20 notas preparadas de uma vez, com resultado independente por item ' +
+        `(criada, duplicada ou erro). Mesma semântica de idempotência de voxen_create_note. ` +
+        `Contrato de ingestão v${PREPARED_CONTRACT_VERSION}. Para cargas maiores que o orçamento ` +
+        'da chamada, divida em vários lotes.',
+      inputSchema: {
+        items: z
+          .array(
+            z.object({
+              // Sem min(): título vazio vira outcome error do item, sem abortar o lote.
+              title: z.string().max(200).describe('Título da nota.'),
+              content: z.string().max(200_000).optional().describe('Conteúdo markdown.'),
+              source_transcript_ids: z.array(z.string().min(1)).max(50).optional(),
+              source_anchors: z.array(MCP_NOTE_ANCHOR_SCHEMA).max(100).optional(),
+              idempotency_key: z.string().max(128).optional(),
+              producer_id: z.string().max(128).optional(),
+              external_id: z.string().max(256).optional(),
+            }),
+          )
+          .min(1)
+          .max(20),
+        contract_version: z.string().max(16).optional(),
+        producer_id: z.string().max(128).optional(),
+      },
+      outputSchema: {
+        total: z.number(),
+        created: z.number(),
+        duplicated: z.number(),
+        items: z.array(
+          z.object({
+            index: z.number(),
+            outcome: z.string(),
+            noteId: z.string().nullable(),
+            title: z.string().nullable(),
+            revision: z.number().nullable(),
+            error: z.string().nullable(),
+          }),
+        ),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        title: 'Importar notas em lote',
+      },
+    },
+    async (args) => {
+      const items: Array<{
+        index: number;
+        outcome: 'created' | 'duplicate' | 'error';
+        noteId: string | null;
+        title: string | null;
+        revision: number | null;
+        error: string | null;
+      }> = [];
+      for (const [index, item] of args.items.entries()) {
+        const title = item.title.trim();
+        if (!title) {
+          items.push({
+            index,
+            outcome: 'error',
+            noteId: null,
+            title: null,
+            revision: null,
+            error: 'Título obrigatório.',
+          });
+          continue;
+        }
+        let transcriptIds: string[];
+        try {
+          const anchorInputs = toNoteAnchorInputs(item.source_anchors);
+          const resolved = await resolveMcpTranscriptSourceIds(userId, [
+            ...(item.source_transcript_ids ?? []),
+            ...anchorInputs.map((anchor) => anchor.transcriptId),
+          ]);
+          if (resolved === null) {
+            items.push({
+              index,
+              outcome: 'error',
+              noteId: null,
+              title: null,
+              revision: null,
+              error: 'Uma ou mais transcrições de origem não existem na sua Base de conhecimento.',
+            });
+            continue;
+          }
+          transcriptIds = resolved;
+          const anchors = await validateNoteAnchors(userId, anchorInputs);
+          let result: PreparedNoteResult;
+          try {
+            result = await createPreparedNote(userId, {
+              title,
+              content: item.content,
+              transcriptIds,
+              anchors,
+              actor: 'MCP',
+              idempotencyKey: item.idempotency_key,
+              producerId: item.producer_id ?? args.producer_id,
+              externalId: item.external_id,
+              contractVersion: args.contract_version,
+            });
+          } catch (error) {
+            if (error instanceof PreparedIngestContractError) {
+              items.push({
+                index,
+                outcome: 'error',
+                noteId: null,
+                title: null,
+                revision: null,
+                error: error.message,
+              });
+              continue;
+            }
+            throw error;
+          }
+          if (!result.duplicate) {
+            await syncNoteGraph(userId, result.id).catch(() => undefined);
+          }
+          items.push({
+            index,
+            outcome: result.duplicate ? 'duplicate' : 'created',
+            noteId: result.id,
+            title: result.title,
+            revision: result.revision,
+            error: null,
+          });
+        } catch (error) {
+          if (error instanceof NoteAnchorValidationError) {
+            items.push({
+              index,
+              outcome: 'error',
+              noteId: null,
+              title: null,
+              revision: null,
+              error: error.message,
+            });
+            continue;
+          }
+          throw error;
+        }
+      }
+      return ok({
+        total: items.length,
+        created: items.filter((item) => item.outcome === 'created').length,
+        duplicated: items.filter((item) => item.outcome === 'duplicate').length,
+        items,
+      });
+    },
+  );
 }
 
 async function resolveMcpTranscriptSourceIds(
