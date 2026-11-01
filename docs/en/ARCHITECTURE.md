@@ -66,6 +66,9 @@ and choose whether trusted SSO users are approved automatically.
 ### Retrieval (no integrated chat)
 
 1. MCP clients or the library query the base with deterministic FTS.
+   Titles carry weight A and body weight B (same scheme for notes and
+   transcripts), ordered by score then identity; highlighted snippets ignore
+   weights.
 2. Progressive reads return structure (outline) first, then narrow passages
    (lines/section/time range), with signed cursors and response budgets.
 3. Graph relations complement text search with anchored evidence.

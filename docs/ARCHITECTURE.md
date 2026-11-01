@@ -70,6 +70,8 @@ automática para identidades confiáveis.
 ### Recuperação (sem chat integrado)
 
 1. O cliente MCP ou a biblioteca consultam a base com FTS determinístico.
+   Títulos têm peso A e corpo peso B (mesmo esquema em notas e transcrições),
+   com ordenação por score e identidade; trechos destacados não usam pesos.
 2. Leituras progressivas retornam estrutura (outline) e depois trechos
    estreitos (linhas/seção/intervalo), com cursores assinados e orçamentos
    de resposta.
