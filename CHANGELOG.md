@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793540056 — 2026-11-01 · Dev
+
+### ✨ Real Postgres/storage/MCP retrieval benchmark
+
+### Added
+- Reproducible retrieval benchmark against Postgres FTS + storage + MCP round trips (synonym, informal, long, multi-source, conflicting, no-evidence cases) with p50/p95/p99 latency and output-size budgets.
+
 ## v0.15.1-dev.1793538810 — 2026-11-01 · Dev
 
 ### 🧹 Remove dead chat-status module and stale product-2 docs

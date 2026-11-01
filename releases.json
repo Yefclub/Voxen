@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793540056",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Real Postgres/storage/MCP retrieval benchmark",
+    "body": "### Added\n- Reproducible retrieval benchmark against Postgres FTS + storage + MCP round trips (synonym, informal, long, multi-source, conflicting, no-evidence cases) with p50/p95/p99 latency and output-size budgets.",
+    "pr": 940,
+    "author": "Kalyel",
+    "date": "2026-11-01T10:34:02-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/940"
+  },
+  {
     "version": "0.15.1-dev.1793538810",
     "channel": "dev",
     "type": "chore",
