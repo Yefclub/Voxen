@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793537841",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Bounded version-aware reads with explicit errors",
+    "body": "### Added\n- Narrow transcript reads use a version-aware bounded cache (owner + document + revision, LRU 50 entries/8 MiB) instead of always re-reading storage.\n- Explicit read failures: NOT_FOUND, UNAVAILABLE_SOURCE, STALE_REVISION (with current revision); no fabricated fallback content.",
+    "pr": 936,
+    "author": "Kalyel",
+    "date": "2026-11-01T09:57:11-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/936"
+  },
+  {
     "version": "0.15.1-dev.1793536125",
     "channel": "dev",
     "type": "feat",
