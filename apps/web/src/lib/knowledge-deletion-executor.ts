@@ -72,9 +72,15 @@ function fence(job: ClaimedDeletionJob) {
 async function claimDeletionJob(jobId: string, owner: string): Promise<ClaimedDeletionJob | null> {
   return db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<
-      Array<{ id: string; userId: string; attempt: number }>
+      Array<{
+        id: string;
+        userId: string;
+        attempt: number;
+        deletionTargetType: KnowledgeDeletionTargetType | null;
+        deletionTargetId: string | null;
+      }>
     >`
-      SELECT id, "userId", attempt
+      SELECT id, "userId", attempt, "deletionTargetType", "deletionTargetId"
       FROM "Job"
       WHERE id = ${jobId}
         AND type = 'DELETE_KNOWLEDGE'
@@ -100,6 +106,12 @@ async function claimDeletionJob(jobId: string, owner: string): Promise<ClaimedDe
           errorMsg: INTERRUPTED_MESSAGE,
         },
       });
+      if (row.deletionTargetType === 'SAVED_MEDIA' && row.deletionTargetId) {
+        await tx.savedMedia.updateMany({
+          where: { id: row.deletionTargetId, userId: row.userId, status: 'DELETING' },
+          data: { status: 'FAILED', errorMsg: 'O arquivo não está disponível.' },
+        });
+      }
       return null;
     }
     const now = new Date();
@@ -493,8 +505,8 @@ async function revertDeletingSavedMedia(job: ClaimedDeletionJob): Promise<void> 
     select: { objectKey: true },
   });
   if (!media) return;
-  await db.savedMedia.update({
-    where: { id: job.deletionTargetId },
+  await db.savedMedia.updateMany({
+    where: { id: job.deletionTargetId, userId: job.userId },
     data: media.objectKey
       ? { status: 'READY', errorMsg: null }
       : { status: 'FAILED', errorMsg: 'O arquivo não está disponível.' },
@@ -513,7 +525,7 @@ async function finishJob(
     if (GRAPH_SOURCE_TYPE[job.deletionTargetType]) {
       await invalidateGraphCache(job.userId).catch(() => {});
     }
-    await db.job.updateMany({
+    const updated = await db.job.updateMany({
       where: fence(job),
       data: {
         status: 'DONE',
@@ -527,6 +539,7 @@ async function finishJob(
         errorMsg: null,
       },
     });
+    if (updated.count !== 1) return;
     await publishJobEvent(job.userId, { jobId: job.id, stage: 'done', percent: 100 }).catch(
       () => {},
     );
