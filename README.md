@@ -2,10 +2,13 @@
 
 English | [Português (Brasil)](docs/README.md)
 
-Voxen is a self-hosted **multimodal knowledge base** with transcription,
-document and image analysis, agentic search, and a knowledge graph. External
-agents can access the library through **MCP**. Retrieval is evidence-first and
-does not require vector embeddings.
+Voxen is a self-hosted knowledge base for prepared content. External
+producers publish documents, notes, and assets with provenance through
+versioned HTTP/MCP contracts, and MCP clients retrieve them fast and
+precisely with deterministic full-text search, progressive reads, and a
+knowledge graph. Retrieval is evidence-first and
+does not require vector embeddings. Voxen itself runs no models,
+transcription, or scraping.
 
 > [!IMPORTANT]
 > **Project status: beta / active validation.** Voxen is already useful in the
@@ -13,22 +16,16 @@ does not require vector embeddings.
 > Bugs, rough edges, integration regressions, and breaking changes should be
 > expected. Back up instance data and review the release notes before upgrading.
 
-![Voxen Library with graph-aware search, folders, tags, and multimodal ingestion](docs/assets/voxen-library.png)
-
-![Voxen agentic chat workspace](docs/assets/voxen-chat.png)
+![Voxen Library with graph-aware search, folders, tags, and prepared-content import](docs/assets/voxen-library.png)
 
 ## What is already validated
 
-The maintainer currently uses Voxen to collect and process supported YouTube
-and TikTok links, selected public web pages, and especially posts from X. The
-practical goal is already being met: useful material can live in one searchable
-knowledge library instead of becoming a trail of links scattered across social
-feeds, bookmarks, and personal notes.
-
-This validation does not mean that every source or workflow is equally mature.
-External platforms can change layouts, access policies, rate limits, and
-anti-bot behavior without notice, so an integration that works today may need
-maintenance after an upstream change.
+The maintainer currently uses Voxen to keep prepared documents, notes, and
+assets in one searchable knowledge library instead of a trail of links
+scattered across social feeds, bookmarks, and personal notes. Ingestion
+happens through the versioned HTTP/MCP prepared-content contract (with
+workspace-scoped idempotency), and retrieval combines deterministic
+full-text search, progressive reads, and graph navigation.
 
 Community experience is especially valuable during this phase. Share use cases,
 deployment lessons, and product ideas in [GitHub Discussions](https://github.com/Yefclub/Voxen/discussions),
@@ -38,18 +35,16 @@ credentials, private content, or unredacted logs in a public report.
 
 ## What it does
 
-1. Paste a URL or upload audio, video, image, or document files.
-2. Voxen extracts the content, transcribes or chunks it when necessary, and
-   sends only the required analysis to the configured models.
+1. An external producer publishes a prepared document, note, or asset through
+   the versioned HTTP/MCP ingestion contract (idempotent retries return the
+   original instead of duplicating).
+2. Voxen validates, stores, and deterministically indexes it — no model calls,
+   transcription, or scraping.
 3. It stores structured Markdown with source metadata, timestamps, canonical
-   links, and an AI-generated summary.
-4. It organizes the library into folders and exposes it through chat, MCP, and
-   the Brain knowledge graph.
+   links, and producer-supplied summaries.
+4. It organizes the library into folders and exposes it through MCP and
+   the Brain knowledge graph, with deterministic search and progressive reads.
 5. Notes can preserve verified transcript passages by line and timestamp.
-   Optional post-summary research stays in a separate cited review queue and
-   enters retrieval only after explicit acceptance. Tool-free planning is
-   isolated from bounded web-search turns so raw source text never accompanies
-   a search tool.
 
 ## Stack
 

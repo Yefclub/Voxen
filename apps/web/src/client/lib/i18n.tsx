@@ -574,8 +574,6 @@ const ptBRMessages = {
     'Cole um link ou envie um arquivo para o Voxen transcrever e indexar. Tudo fica disponível para conversar com o agente depois.',
   'dashboard.emptyCta': 'Transcrever primeiro vídeo',
 
-  'chat.status.preparingResponse': 'Preparando resposta…',
-  'chat.status.connectingModel': 'Conectando ao modelo…',
   'tools.web_search': 'Pesquisa na web',
   'tools.scrape_url': 'Leitura de página',
   'tools.search_transcripts': 'Busca na biblioteca',
@@ -1740,8 +1738,6 @@ const enMessages: Record<I18nKey, string> = {
     'Paste a link or upload a file for Voxen to transcribe and index. Everything becomes available for chatting with the agent later.',
   'dashboard.emptyCta': 'Transcribe first video',
 
-  'chat.status.preparingResponse': 'Preparing response…',
-  'chat.status.connectingModel': 'Connecting to the model…',
   'tools.web_search': 'Web search',
   'tools.scrape_url': 'Page read',
   'tools.search_transcripts': 'Library search',

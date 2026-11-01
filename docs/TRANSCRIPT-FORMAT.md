@@ -107,12 +107,16 @@ Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_i
 - Frontmatter: `transcription_method: subtitles`, `model: <plataforma> auto-generated` ou `<plataforma> manual` se for closed caption manual
 - `cost_usd` não se aplica (omitir ou 0)
 
-### Quando vem de transcrição via API (`transcription_method=api`)
+### Quando veio de transcrição via API (`transcription_method=api`, legado)
 
-- o extrator de mídia baixa áudio
-- ffmpeg segmenta em chunks (~5min com overlap 5s pra não cortar palavras)
-- Cada chunk vai pra OpenRouter `/audio/transcriptions` com `response_format=verbose_json` (retorna segments com timestamps)
-- Worker concatena segments, ajusta offsets por chunk, deduplica regiões de overlap
+> Histórico (spec 215): o pipeline de captura/transcrição foi removido. Os
+> passos abaixo descrevem como os documentos já armazenados foram produzidos;
+> novos documentos chegam como conteúdo preparado.
+
+- o extrator de mídia baixava áudio
+- ffmpeg segmentava em chunks (~5min com overlap 5s pra não cortar palavras)
+- Cada chunk ia pra OpenRouter `/audio/transcriptions` com `response_format=verbose_json` (retornava segments com timestamps)
+- O worker concatenava segments, ajustava offsets por chunk, deduplicava regiões de overlap
 - Frontmatter: `transcription_method: api`, `model: x-ai/grok-stt-1.0`
 - `cost_usd` somado dos chunks
 
