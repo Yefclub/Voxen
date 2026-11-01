@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1793528658 — 2026-11-01 · Dev
+
+### 🧹 Remove browser extension capture surface
+
+### Removed
+- The Chromium extension (platform cookie capture, job submission and tracking) is gone, with its tests, packaging, and CI/docs references.
+- The extension download page, version endpoint, and bundled ZIP are removed; remaining references redirect to the library.
+
+## v0.15.1-dev.1793528658 — 2026-11-01 · Dev
+
+### 🧹 Drop unused AI, provider, and 3D packages
+
+### Removed
+- Unused runtime dependencies are gone: the `ai` SDK, the OpenRouter AI SDK provider, and `three` (kept only as a transitive dependency of the graph renderer).
+
 ## v0.15.1-dev.1793525429 — 2026-11-01 · Dev
 
 ### 🧹 Drop retired Product 2 tables with chat archive policy
