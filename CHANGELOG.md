@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793562324 — 2026-11-01 · Dev
+
+### 🧹 Adopted test-audit and anti-slop workflows
+
+### Added
+- Native `test-audit` and `anti-slop` skills with explicit triggers, boundaries, and evidence rules, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.
+
 ## v0.15.1-dev.1793561323 — 2026-11-01 · Dev
 
 ### ✨ Deterministic discovery catalog

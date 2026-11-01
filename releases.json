@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793562324",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Adopted test-audit and anti-slop workflows",
+    "body": "### Added\n- Native `test-audit` and `anti-slop` skills with explicit triggers, boundaries, and evidence rules, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.",
+    "pr": 967,
+    "author": "Kalyel",
+    "date": "2026-11-01T16:45:06-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/967"
+  },
+  {
     "version": "0.15.1-dev.1793561323",
     "channel": "dev",
     "type": "feat",
