@@ -40,17 +40,14 @@ export function contentCursor(
   ).toString('base64url');
   return value + '.' + signature(value, context).toString('base64url');
 }
-export function contentOffset(
-  context: McpResultContext,
-  digest: string,
-  totalChars: number,
-  now: number,
-): number {
-  const cursor = context.cursor;
-  if (cursor === undefined) return 0;
+export type VerifiedResultCursor = { offset: number; digest: string };
+
+export function verifyResultCursor(context: McpResultContext, now: number): VerifiedResultCursor {
   const invalid = () => {
     throw new McpResultBudgetError('MCP_INVALID_CONTENT_CURSOR');
   };
+  const cursor = context.cursor;
+  if (cursor === undefined) return invalid();
   if (cursor.length > 2048 || !/^[-_A-Za-z0-9]+\.[-_A-Za-z0-9]{43}$/.test(cursor)) return invalid();
   const [value, mac] = cursor.split('.') as [string, string];
   const signed = Buffer.from(mac, 'base64url');
@@ -74,7 +71,21 @@ export function contentOffset(
   )
     return invalid();
   if (data.expiresAt <= now) throw new McpResultBudgetError('MCP_CONTENT_CURSOR_EXPIRED');
-  if (data.digest !== digest) throw new McpResultBudgetError('MCP_CONTENT_CHANGED');
-  if (data.offset >= totalChars) return invalid();
-  return data.offset;
+  return { offset: data.offset, digest: data.digest };
+}
+
+export function contentOffset(
+  context: McpResultContext,
+  digest: string,
+  totalChars: number,
+  now: number,
+): number {
+  if (context.cursor === undefined) return 0;
+  const invalid = () => {
+    throw new McpResultBudgetError('MCP_INVALID_CONTENT_CURSOR');
+  };
+  const verified = verifyResultCursor(context, now);
+  if (verified.digest !== digest) throw new McpResultBudgetError('MCP_CONTENT_CHANGED');
+  if (verified.offset >= totalChars) return invalid();
+  return verified.offset;
 }

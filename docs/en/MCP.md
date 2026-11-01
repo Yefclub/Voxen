@@ -61,7 +61,10 @@ original arguments with `content_cursor: nextCursor`, concatenate `dataChunk`
 values in order and parse JSON only after `nextCursor` becomes null. Each page
 rechecks ownership and content lifecycle. Changed content, a different owner/tool/
 argument set or an expired cursor requires restarting without `content_cursor`.
-A cursor lasts five minutes; each next page receives a fresh expiry. Full read
+A cursor lasts five minutes; each next page receives a fresh expiry. Ranked
+search pages reuse the prepared result within TTL, entry/byte limits, and
+per-document version revalidation; any relevant change answers
+`MCP_CONTENT_CHANGED` with restart guidance instead of stale content. Full read
 results above 16 MiB require a smaller page or progressive excerpt.
 
 Large WRITE replies contain a bounded `summary` and `_mcp.followUp` READ

@@ -4,6 +4,7 @@ import { structuredLog } from '../lib/structured-log';
 import { MCP_TOOL_SCOPES, mcpToolAnnotations } from './mcp-tool-policy';
 import { type McpConcurrencyLimiter, mcpToolConcurrency } from './mcp-request-protection';
 import { budgetMcpResult, McpResultBudgetError } from './mcp-result-budget';
+import { serveReusedResult, storeReusableResult } from './mcp-result-reuse';
 import { MCP_READ_PAGE_SCHEMA, MCP_WRITE_SUMMARY_SCHEMA } from './mcp-result-schemas';
 import { boundedMcpInputShape, validMcpArgumentBudget, MCP_INPUT_LIMITS } from './mcp-input-budget';
 import { mcpNormalOutputSchema } from './mcp-output-contracts';
@@ -71,6 +72,7 @@ export function installMcpToolExecution(
       async (args, context) => {
         const started = performance.now();
         let code = 'MCP_TOOL_OK';
+        let cache: 'hit' | 'miss' | 'bypass' = 'bypass';
         const release = limiter.acquire(identity.userId);
         try {
           if (!release) {
@@ -95,6 +97,23 @@ export function installMcpToolExecution(
               }),
             );
           }
+          const reuseContext = {
+            userId: identity.userId,
+            tool: name,
+            args: originalArgs,
+            requestId: identity.requestId,
+            cursor: typeof content_cursor === 'string' ? content_cursor : undefined,
+          };
+          // Bounded reuse (spec 217 §2): serve a later page from the prepared
+          // result when it is still bound and fresh. A miss transparently
+          // falls back to the recompute path below; binding or freshness
+          // violations throw the same budget errors as a divergent recompute.
+          const reused = await serveReusedResult(reuseContext);
+          if (reused !== null) {
+            cache = 'hit';
+            return ok(reused);
+          }
+          if (reuseContext.cursor) cache = 'miss';
           const result = await callback(originalArgs, context);
           if ('isError' in result && result.isError) {
             code = 'MCP_TOOL_REJECTED';
@@ -140,19 +159,29 @@ export function installMcpToolExecution(
                 }),
               );
             }
-            return ok(
-              budgetMcpResult(
-                normalized,
-                {
-                  userId: identity.userId,
-                  tool: name,
-                  args: originalArgs,
-                  requestId: identity.requestId,
-                  cursor: typeof content_cursor === 'string' ? content_cursor : undefined,
-                },
-                scope,
-              ),
+            const paged = budgetMcpResult(
+              normalized,
+              {
+                userId: identity.userId,
+                tool: name,
+                args: originalArgs,
+                requestId: identity.requestId,
+                cursor: typeof content_cursor === 'string' ? content_cursor : undefined,
+              },
+              scope,
             );
+            // Best-effort: prepare later pages from this result. Failures and
+            // non-reusable tools skip silently; freshness is rechecked on read.
+            await storeReusableResult(
+              {
+                userId: identity.userId,
+                tool: name,
+                args: originalArgs,
+                requestId: identity.requestId,
+              },
+              normalized,
+            );
+            return ok(paged);
           }
           return result;
         } catch (error) {
@@ -186,6 +215,7 @@ export function installMcpToolExecution(
             required_scope: scope,
             error_code: code,
             duration_ms: Math.round(performance.now() - started),
+            cache,
           });
         }
       },
