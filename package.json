@@ -4,8 +4,8 @@
   "private": true,
   "description": "Voxen — a self-hosted multimodal knowledge base with agentic search",
   "engines": {
-    "bun": ">=1.2.0",
-    "node": ">=22.0.0",
+    "bun": ">=1.4.4",
+    "node": ">=22.23.4",
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.15.0",
