@@ -367,7 +367,7 @@ ingestão” de entidades/claims.
 ## ADR-012 — Compile grounded + clusters + embeddings opt-in
 
 **Data**: 2026-07-19
-**Status**: Aceita
+**Status**: Aceita (item 3 substituído pela spec 215 — execução de embeddings removida na issue #894)
 
 ### Decisão
 

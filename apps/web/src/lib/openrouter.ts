@@ -11,13 +11,7 @@ const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 const OPENROUTER_SETUP_TIMEOUT_MS = 15_000;
 
 export type OpenRouterProbePurpose =
-  | 'chat'
-  | 'transcription'
-  | 'webSearch'
-  | 'vision'
-  | 'document'
-  | 'xAnalysis'
-  | 'embeddings';
+  'chat' | 'transcription' | 'webSearch' | 'vision' | 'document' | 'xAnalysis';
 
 export interface OrModel {
   id: string;
@@ -35,47 +29,6 @@ export class OpenrouterError extends Error {
     super(message);
     this.name = 'OpenrouterError';
   }
-}
-
-/** Gera um embedding de consulta sem expor a chave nem detalhes do provedor. */
-export async function createEmbedding(
-  key: string,
-  model: string,
-  input: string,
-  fetcher: Fetcher = fetch,
-): Promise<number[]> {
-  const clean = input.trim().replace(/\0/g, ' ').slice(0, 8_000);
-  if (!key.trim() || !model.trim() || clean.length < 2) return [];
-  let response: Response;
-  try {
-    response = await fetcher(`${OR_BASE_URL}/embeddings`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${key}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ model, input: clean }),
-      signal: openrouterRequestSignal(),
-    });
-  } catch (error) {
-    throw openrouterNetworkError(error);
-  }
-  if (!response.ok) throw new OpenrouterError(`OpenRouter retornou status ${response.status}`);
-  let body: { data?: Array<{ embedding?: unknown }> };
-  try {
-    body = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
-  } catch {
-    throw new OpenrouterError('OpenRouter retornou um embedding inválido.');
-  }
-  const embedding = body.data?.[0]?.embedding;
-  if (!Array.isArray(embedding) || embedding.length < 8) {
-    throw new OpenrouterError('OpenRouter retornou um embedding inválido.');
-  }
-  const vector = embedding.map((value) => Number(value));
-  if (vector.some((value) => !Number.isFinite(value))) {
-    throw new OpenrouterError('OpenRouter retornou um embedding inválido.');
-  }
-  return vector;
 }
 
 function openrouterRequestSignal(signal?: AbortSignal): AbortSignal {
@@ -182,20 +135,14 @@ export async function probeOpenRouterCapability(
   purpose: OpenRouterProbePurpose,
   fetcher: Fetcher = fetch,
 ): Promise<void> {
-  const isEmbedding = purpose === 'embeddings';
   const isTranscription = purpose === 'transcription';
-  const url = isEmbedding
-    ? `${OR_BASE_URL}/embeddings`
-    : isTranscription
-      ? `${OR_BASE_URL}/audio/transcriptions`
-      : `${OR_BASE_URL}/chat/completions`;
+  const url = isTranscription
+    ? `${OR_BASE_URL}/audio/transcriptions`
+    : `${OR_BASE_URL}/chat/completions`;
   let body: BodyInit;
   const headers: Record<string, string> = { authorization: `Bearer ${key}` };
 
-  if (isEmbedding) {
-    headers['content-type'] = 'application/json';
-    body = JSON.stringify({ model, input: 'Voxen health check' });
-  } else if (isTranscription) {
+  if (isTranscription) {
     const form = new FormData();
     // WAV PCM válido e silencioso; é descartado após a requisição.
     const wav = Uint8Array.from(

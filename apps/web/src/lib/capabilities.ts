@@ -14,8 +14,7 @@ type CapabilityDefinition = {
     | 'default_web_search_model'
     | 'default_vision_model'
     | 'default_document_model'
-    | 'default_x_analysis_model'
-    | 'embedding_model';
+    | 'default_x_analysis_model';
   purpose: ModelPurpose | null;
 };
 
@@ -30,7 +29,6 @@ const CAPABILITIES: readonly CapabilityDefinition[] = [
   { id: 'vision', setting: 'default_vision_model', purpose: 'default_vision_model' },
   { id: 'document', setting: 'default_document_model', purpose: 'default_document_model' },
   { id: 'xAnalysis', setting: 'default_x_analysis_model', purpose: 'default_x_analysis_model' },
-  { id: 'embeddings', setting: 'embedding_model', purpose: null },
 ];
 
 const INPUT_KEYS = [
@@ -41,8 +39,6 @@ const INPUT_KEYS = [
   'default_vision_model',
   'default_document_model',
   'default_x_analysis_model',
-  'embeddings_enabled',
-  'embedding_model',
 ] as const;
 
 const PUBLIC_CAPABILITIES_TTL_MS = 60_000;
@@ -52,10 +48,8 @@ let inFlight: Promise<{ active: OpenRouterProbePurpose[] }> | null = null;
 function isActive(
   capability: CapabilityDefinition,
   modelId: string | null,
-  embeddingsEnabled: boolean,
   models: readonly OrModel[],
 ): boolean {
-  if (capability.id === 'embeddings' && !embeddingsEnabled) return false;
   if (!modelId) return false;
   const model = models.find((candidate) => candidate.id === modelId);
   return Boolean(
@@ -76,13 +70,9 @@ export async function getPublicActiveCapabilities(): Promise<{ active: OpenRoute
     } catch {
       return { active: [] };
     }
-    const embeddingsEnabled = settings.embeddings_enabled?.trim().toLowerCase() === 'true';
     const active = CAPABILITIES.flatMap((capability) => {
-      const modelId =
-        capability.id === 'embeddings'
-          ? (settings.embedding_model ?? 'openai/text-embedding-3-small')
-          : settings[capability.setting];
-      return isActive(capability, modelId, embeddingsEnabled, models) ? [capability.id] : [];
+      const modelId = settings[capability.setting];
+      return isActive(capability, modelId, models) ? [capability.id] : [];
     });
     return { active };
   })()

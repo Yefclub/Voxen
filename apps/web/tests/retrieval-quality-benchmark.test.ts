@@ -5,7 +5,6 @@ import {
   evaluateRetrievalBenchmark,
   runBrainBenchmark,
   runFtsBenchmark,
-  runHybridBenchmark,
   type BenchmarkCase,
 } from '../src/lib/retrieval-benchmark';
 import { queryTranscriptFts } from '../src/lib/retrieval';
@@ -70,37 +69,44 @@ describe('benchmark de qualidade de retrieval em PT-BR', () => {
     expect(JSON.stringify(corpus)).not.toMatch(/sk-|password|secret/i);
   });
 
-  test('compara FTS, híbrido e Brain com métricas reproduzíveis', async () => {
+  test('compara FTS e Brain com métricas reproduzíveis', async () => {
     const fts = evaluateRetrievalBenchmark(
       cases,
       await runFtsBenchmark(cases, documents, productionFts),
     );
-    const hybrid = evaluateRetrievalBenchmark(cases, runHybridBenchmark(cases, documents));
     const brain = evaluateRetrievalBenchmark(
       cases,
       await runBrainBenchmark(cases, documents, productionBrain),
     );
 
-    expect(hybrid.sourceRecall).toBeGreaterThan(fts.sourceRecall);
     expect(brain.citationCoverage).toBe(1);
-    expect(hybrid.totalCostUsd).toBeGreaterThan(0);
     expect(fts.unsupportedRate).toBe(0);
-    assertNoQualityRegression(fts, hybrid);
+    expect(fts.totalCostUsd).toBe(0);
+    expect(brain.totalCostUsd).toBe(0);
     assertNoQualityRegression(fts, brain);
   });
 
-  test('gate falha quando uma estratégia regride recuperação ou citação', () => {
-    const baseline = evaluateRetrievalBenchmark(cases, runHybridBenchmark(cases, documents));
+  test('gate falha quando uma estratégia regride recuperação ou citação', async () => {
+    const baseline = evaluateRetrievalBenchmark(
+      cases,
+      await runFtsBenchmark(cases, documents, productionFts),
+    );
     const regressed = evaluateRetrievalBenchmark(cases, [
-      ...runHybridBenchmark(cases, documents).filter((item) => item.caseId !== 'conteudo-longo'),
+      ...(await runFtsBenchmark(cases, documents, productionFts)).filter(
+        (item) => item.caseId !== 'conteudo-longo',
+      ),
     ]);
     expect(() => assertNoQualityRegression(baseline, regressed)).toThrow('Regressão');
   });
 
-  test('precisão penaliza citação inventada e o gate bloqueia resposta sem suporte', () => {
-    const baseline = evaluateRetrievalBenchmark(cases, runHybridBenchmark(cases, documents));
+  test('precisão penaliza citação inventada e o gate bloqueia resposta sem suporte', async () => {
+    const baseline = evaluateRetrievalBenchmark(
+      cases,
+      await runFtsBenchmark(cases, documents, productionFts),
+    );
+    const fts = await runFtsBenchmark(cases, documents, productionFts);
     const invalidCitation = evaluateRetrievalBenchmark(cases, [
-      ...runHybridBenchmark(cases, documents).map((item) =>
+      ...fts.map((item) =>
         item.caseId === 'conteudo-longo'
           ? { ...item, citations: [{ quote: 'trecho errado', timestamp: 1 }] }
           : item,
