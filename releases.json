@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793531042",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Versioned prepared-content ingestion with idempotency",
+    "body": "### Added\n- Prepared-content contract v1 for notes over MCP (`voxen_create_note` + `voxen_import_notes` batch max 20, per-item outcomes) and HTTP `POST /api/notes` (duplicate returns original with `duplicate:true`; HTTP 200 vs 201).\n- Workspace-scoped idempotency via `PreparedIngestKey` with contract version validation and race-safe claim.",
+    "pr": 926,
+    "author": "Kalyel",
+    "date": "2026-11-01T08:03:49-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/926"
+  },
+  {
     "version": "0.15.1-dev.1793528658",
     "channel": "dev",
     "type": "chore",
