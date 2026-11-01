@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793536125",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Validated search filters with deterministic ordering",
+    "body": "### Added\n- Validated search filters (source, language, dates, tags, folder, documents, source types, archived) over HTTP/MCP with explicit failures.\n- Deterministic ordering (score DESC, identity ASC) and owner/status isolation; trash never included.",
+    "pr": 934,
+    "author": "Kalyel",
+    "date": "2026-11-01T09:28:32-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/934"
+  },
+  {
     "version": "0.15.1-dev.1793534368",
     "channel": "dev",
     "type": "chore",

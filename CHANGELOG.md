@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793536125 — 2026-11-01 · Dev
+
+### ✨ Validated search filters with deterministic ordering
+
+### Added
+- Validated search filters (source, language, dates, tags, folder, documents, source types, archived) over HTTP/MCP with explicit failures.
+- Deterministic ordering (score DESC, identity ASC) and owner/status isolation; trash never included.
+
 ## v0.15.1-dev.1793534368 — 2026-11-01 · Dev
 
 ### 🧹 Remove dead Product 2 i18n strings
