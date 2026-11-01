@@ -3,7 +3,6 @@ import {
   KeyRound,
   LineChart,
   ListVideo,
-  MessageCircle,
   Network,
   Notebook,
   Puzzle,
@@ -22,7 +21,6 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { to: '/', labelKey: 'shell.nav.home', Icon: House, scope: 'workspace' },
-  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle, scope: 'workspace' },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo, scope: 'workspace' },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
   { to: '/guia', labelKey: 'shell.nav.guide', Icon: LineChart, scope: 'workspace' },

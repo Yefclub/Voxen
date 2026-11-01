@@ -9,7 +9,7 @@ describe('carregamento progressivo de rotas', () => {
   test('declara telas roteáveis como imports dinâmicos em vez de incluí-las no bundle inicial', () => {
     const source = readClientSource('App.tsx');
 
-    expect(source).toContain("const ChatPage = lazy(() => import('./pages/chat')");
+    expect(source).not.toContain("const ChatPage = lazy(() => import('./pages/chat')");
     expect(source).toContain('const GrafoPage = lazy(() =>');
     expect(source).toContain("import('./pages/grafo')");
     expect(source).toContain("import('./pages/notas')");
@@ -19,15 +19,6 @@ describe('carregamento progressivo de rotas', () => {
     expect(source).not.toContain("import('./pages/saved-media')");
     expect(source).not.toContain("import { GrafoPage } from './pages/grafo';");
     expect(source).not.toContain("import { ChatPage } from './pages/chat';");
-  });
-
-  test('mantém a entrada inicial do chat e share target sem importar chat estaticamente', () => {
-    const source = readClientSource('pages/root-entry.tsx');
-
-    expect(source).toContain('ChatPage: ComponentType;');
-    expect(source).toContain('return <ChatPage />;');
-    expect(source).toContain("params.get('shared') === '1'");
-    expect(source).not.toContain("from './chat'");
   });
 
   test('mantém o shell autenticado e o fallback de rota acessível durante o carregamento', () => {

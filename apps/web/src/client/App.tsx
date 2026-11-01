@@ -5,7 +5,6 @@ import { Spinner } from './components/ui/spinner';
 import { AppLayout } from './components/layout/app-layout';
 import { AdminLayout } from './components/layout/admin-layout';
 import { AuthLayout } from './components/layout/auth-layout';
-import { RootEntry } from './pages/root-entry';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { ThemeProvider } from './lib/theme-provider';
 import { InterfaceModeProvider } from './lib/interface-mode-provider';
@@ -78,7 +77,6 @@ const NovidadesPage = lazy(() =>
 const ExtensaoPage = lazy(() =>
   import('./pages/extensao').then(({ ExtensaoPage }) => ({ default: ExtensaoPage })),
 );
-const ChatPage = lazy(() => import('./pages/chat').then(({ ChatPage }) => ({ default: ChatPage })));
 
 export function App(): React.ReactElement {
   return (
@@ -168,10 +166,10 @@ function AppRoutes(): React.ReactElement {
 
       {/* App autenticado */}
       <Route element={<AppLayout />}>
-        <Route path="/" element={<RootEntry ChatPage={ChatPage} />} />
-        <Route path="/dashboard" element={<RedirectPreserveSearch to="/" />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/chat/:id" element={<RedirectPreserveSearch to="/chat" />} />
+        <Route path="/" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/chat" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/chat/:id" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/setup" element={<RedirectPreserveSearch to="/admin/configuracao" />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Navigate to="configuracao" replace />} />
