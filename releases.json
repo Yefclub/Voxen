@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793533246",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Prepared-content contract docs and MCP guidance",
+    "body": "### Added\n- Documented prepared-content contract v1 in MCP docs (PT/EN): idempotency, batch import, HTTP 200/201 parity, budgets/bulk path.\n- Fixed MCP tool catalog counts (37 tools: 29 READ, 8 WRITE).",
+    "pr": 930,
+    "author": "Kalyel",
+    "date": "2026-11-01T08:40:06-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/930"
+  },
+  {
     "version": "0.15.1-dev.1793532355",
     "channel": "dev",
     "type": "chore",
