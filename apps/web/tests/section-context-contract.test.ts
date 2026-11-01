@@ -152,6 +152,36 @@ describeIfDb('section context in narrow reads (spec 217)', () => {
     expect(section.section.heading).toBe('Travamento');
   });
 
+  it('voxen_read_timespan reports the section of the matched span', async () => {
+    const timed = await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: 'https://example.com/prensa-tempo',
+        title: 'Manual com tempo',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/prensa-tempo.md`,
+        plainText: 'Manual com tempo.',
+        frontmatter: {},
+      },
+    });
+    const { storagePut } = await import('../src/lib/storage');
+    await storagePut({
+      key: `workspaces/${userId}/transcripts/prensa-tempo.md`,
+      body: '# Manual com tempo\n\n## Aquecimento\n\n[00:00:05](https://example.com/v#t=5) aqueça a prensa\n\n## Resfriamento\n\n[00:01:00](https://example.com/v#t=60) resfrie a prensa',
+      contentType: 'text/markdown',
+    });
+    const out = (await callTool(TOKEN, 'voxen_read_timespan', {
+      transcript_id: timed.id,
+      from_sec: 0,
+      to_sec: 30,
+    })) as { lines: Array<{ n: number }>; section: { index: number; heading: string } | null };
+    expect(out.lines.length).toBeGreaterThan(0);
+    expect(out.section).toMatchObject({ index: 1, heading: 'Aquecimento' });
+  });
+
   it('reports null section for documents without headings', async () => {
     const plain = await db.transcript.create({
       data: {
