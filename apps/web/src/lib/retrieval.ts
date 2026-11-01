@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { db } from './db';
-import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
+import { ftsSearchTranscripts as ftsSearchTranscriptsInternal } from './search';
 export { loadEffectiveTranscriptMarkdown as loadTranscriptMd } from './transcript-content';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
@@ -321,207 +321,17 @@ export function verifyClaimAgainstMd(md: string, claim: Omit<Claim, 'transcriptI
  * from the selected storage driver (Transcript.mdPath), with a Postgres plainText
  * fallback on storage errors. Returns null when the transcript is absent or not owned.
  */
-export type FtsResult = {
-  id: string;
-  title: string;
-  snippet: string;
-  rank: number;
-  summary: string | null;
-  tags: string[];
-  folder: string | null;
-  createdAt: Date;
-  /** Diagnóstico interno: origem do candidato antes da apresentação ao agente. */
-  retrievalSource?: 'lexical' | 'semantic' | 'hybrid';
-};
-
-export type KnowledgeSearchResult = FtsResult & {
-  sourceType: 'transcript' | 'note' | 'external_enrichment';
-  href: string;
-};
-
-const CURATED_NOTE_BOOST = 0.15;
-
-const PROMPT_STOP_WORDS = new Set([
-  'para',
-  'com',
-  'uma',
-  'que',
-  'como',
-  'por',
-  'dos',
-  'das',
-  'isso',
-  'esta',
-  'esse',
-  'sobre',
-  'the',
-  'and',
-  'from',
-  'this',
-  'that',
-  'what',
-]);
-
-/** Converte um prompt livre numa consulta OR curta e segura para websearch_to_tsquery. */
-export function promptSearchQuery(prompt: string): string {
-  const words = prompt
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/https?:\/\/\S+/g, ' ')
-    .match(/[a-z0-9]{3,}/g);
-  if (!words) return '';
-  const unique = [...new Set(words.filter((word) => !PROMPT_STOP_WORDS.has(word)))].slice(0, 8);
-  return unique.join(' OR ');
-}
-
-/**
- * Busca full-text forte nas transcrições do usuário (Postgres FTS, dicionário
- * português): ts_headline (trecho destacado) + ts_rank (relevância). Retorna
- * trechos curtos, NUNCA o texto completo. Espelha voxen_search_transcripts.
- */
-export async function queryTranscriptFts(
-  userId: string,
-  query: string,
-  limit: number,
-  client: Pick<typeof db, '$queryRaw'> = db,
-): Promise<FtsResult[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const take = clampInt(limit, 8, 1, 25);
-  return client.$queryRaw<FtsResult[]>`
-    SELECT t.id, t.title,
-      ts_headline('portuguese', concat_ws(E'\n\n', t.title, CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), websearch_to_tsquery('portuguese', ${q}),
-        'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
-      ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
-      LEFT(t."summaryMd", 800) AS summary,
-      folder.name AS folder,
-      t."createdAt",
-      COALESCE((
-        SELECT array_agg(tag.name ORDER BY tag.name)
-        FROM "TranscriptTag" tt
-        JOIN "Tag" tag ON tag.id = tt."tagId" AND tag."userId" = t."userId"
-        WHERE tt."transcriptId" = t.id
-      ), ARRAY[]::text[]) AS tags
-    FROM "Transcript" t
-    LEFT JOIN "LibraryFolder" folder ON folder.id = t."folderId" AND folder."userId" = t."userId"
-    WHERE t."userId" = ${userId}
-      AND t.status = 'ACTIVE'::"ContentStatus"
-      AND t."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
-    ORDER BY rank DESC, t."createdAt" DESC
-    LIMIT ${take}
-  `;
-}
-
-export async function ftsSearchTranscripts(
-  userId: string,
-  query: string,
-  limit: number,
-): Promise<FtsResult[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const take = clampInt(limit, 8, 1, 25);
-  // Lexical FTS only (spec 215): no built-in embedding inference or
-  // semantic-rescue execution.
-  return queryTranscriptFts(userId, q, take);
-}
-
-/** Busca FTS nas notas manuais do workspace com o mesmo parser usado nas transcrições. */
-export async function ftsSearchNotes(
-  userId: string,
-  query: string,
-  limit: number,
-): Promise<KnowledgeSearchResult[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const take = clampInt(limit, 8, 1, 25);
-  type NoteRow = {
-    id: string;
-    title: string;
-    snippet: string;
-    rank: number;
-    createdAt: Date;
-  };
-  const rows = await db.$queryRaw<NoteRow[]>`
-    SELECT n.id, n.title,
-      ts_headline('portuguese', concat_ws(E'\n\n', n.title, n.content), websearch_to_tsquery('portuguese', ${q}),
-        'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
-      ts_rank(n."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
-      n."createdAt"
-    FROM "Note" n
-    WHERE n."userId" = ${userId}
-      AND n.kind = 'NOTE'::"NoteKind"
-      AND n."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
-    ORDER BY rank DESC, n."updatedAt" DESC
-    LIMIT ${take}
-  `;
-  return rows.map((row) => ({
-    ...row,
-    sourceType: 'note' as const,
-    href: `/notas/${row.id}`,
-    summary: null,
-    tags: [],
-    folder: null,
-  }));
-}
-
-/**
- * Junta resultados da Base de conhecimento. Notas são curadoria humana e recebem
- * um bônus pequeno, calculado sobre o melhor score da consulta, para vencer só
- * resultados de transcrição comparáveis — nunca uma fonte muito mais precisa.
- */
-export function mergeKnowledgeResults(
-  items: readonly KnowledgeSearchResult[],
-  limit = 8,
-): KnowledgeSearchResult[] {
-  const take = clampInt(limit, 8, 1, 25);
-  const bestRank = Math.max(0, ...items.map((item) => Number(item.rank) || 0));
-  return [...items]
-    .sort((a, b) => {
-      const aScore = a.rank + (a.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
-      const bScore = b.rank + (b.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
-      if (bScore !== aScore) return bScore - aScore;
-      return b.createdAt.getTime() - a.createdAt.getTime();
-    })
-    .slice(0, take);
-}
-
-/** Busca unificada da Base de conhecimento, escopada por workspace. */
-export async function searchKnowledgeBase(
-  userId: string,
-  query: string,
-  limit = 8,
-): Promise<KnowledgeSearchResult[]> {
-  const take = clampInt(limit, 8, 1, 25);
-  const [transcripts, notes, enrichments] = await Promise.all([
-    ftsSearchTranscripts(userId, query, take),
-    ftsSearchNotes(userId, query, take),
-    ftsSearchTranscriptEnrichments(userId, query, take),
-  ]);
-  return mergeKnowledgeResults(
-    [
-      ...transcripts.map((item) => ({
-        ...item,
-        sourceType: 'transcript' as const,
-        href: `/transcricoes/${item.id}`,
-      })),
-      ...notes,
-      ...enrichments,
-    ],
-    take,
-  );
-}
-
-/** Pré-busca best-effort usada pelo harness antes do primeiro step do modelo. */
-export async function preloadRelevantContent(
-  userId: string,
-  prompt: string,
-  limit = 5,
-): Promise<KnowledgeSearchResult[]> {
-  const query = promptSearchQuery(prompt);
-  if (!query) return [];
-  return searchKnowledgeBase(userId, query, limit);
-}
+export {
+  queryTranscriptFts,
+  ftsSearchTranscripts,
+  ftsSearchNotes,
+  mergeKnowledgeResults,
+  searchKnowledgeBase,
+  preloadRelevantContent,
+  promptSearchQuery,
+  type FtsResult,
+  type KnowledgeSearchResult,
+} from './search';
 
 export type RelatedItem = {
   id: string;
@@ -643,7 +453,7 @@ export async function findRelated(
 
   // 2) FTS por título/tópico.
   if (ftsTerm) {
-    const hits = await ftsSearchTranscripts(userId, ftsTerm, Math.min(limit, 10));
+    const hits = await ftsSearchTranscriptsInternal(userId, ftsTerm, Math.min(limit, 10));
     for (const h of hits) {
       push({ id: h.id, title: h.title, kind: 'transcript', reason: 'Relevância textual (FTS)' });
     }

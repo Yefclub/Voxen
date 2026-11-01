@@ -53,13 +53,13 @@ describe('mergeKnowledgeResults', () => {
     expect(merged.map((item) => item.id)).toEqual(['video-especifico', 'nota-vaga']);
   });
 
-  it('desempata por recência sem misturar fontes de workspaces diferentes', () => {
+  it('desempata por identidade do documento (ordem determinística)', () => {
     const old = result('transcript', 'antigo', 0.4);
     old.createdAt = new Date('2026-08-01T12:00:00.000Z');
     const fresh = result('transcript', 'novo', 0.4);
     const merged = mergeKnowledgeResults([old, fresh]);
 
-    expect(merged.map((item) => item.id)).toEqual(['novo', 'antigo']);
+    expect(merged.map((item) => item.id)).toEqual(['antigo', 'novo']);
   });
 });
 
