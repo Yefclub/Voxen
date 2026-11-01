@@ -225,7 +225,12 @@ describe('metadata TLS identity with real sockets', () => {
               callback,
             );
             connection.on('error', (error) => {
-              tlsError = error.message;
+              // Runtime-version robust: newer runtimes moved the
+              // ERR_TLS_CERT_ALTNAME_INVALID marker from the message to
+              // error.code. Record both so the assertion below holds across
+              // patched runtimes (CVE-2026-111497 floor and later).
+              const code = (error as { code?: unknown }).code;
+              tlsError = `${typeof code === 'string' ? code : ''} ${error.message}`;
             });
             return connection;
           },

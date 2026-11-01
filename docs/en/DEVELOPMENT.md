@@ -10,8 +10,8 @@ safely.
 
 Optional for running tooling outside containers:
 
-- Bun 1.2+
-- Node.js 22 and pnpm 9+
+- Bun 1.4.4+
+- Node.js 22.23.4+ and pnpm 9+
 
 ## Initial Setup
 
