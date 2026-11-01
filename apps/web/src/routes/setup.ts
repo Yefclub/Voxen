@@ -61,7 +61,7 @@ setupRoutes.get('/', async (c) => {
     getAppLanguage(),
     getAppTimezone(),
   ]);
-  const complete = onboardingDone === 'true';
+  const complete = onboardingDone === 'true' || Boolean(apiKey);
   return c.json({
     complete,
     hasApiKey: Boolean(apiKey),
