@@ -419,7 +419,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
   });
 
   it('voxen_request_transcriptions devolve um resultado independente por URL', async () => {
-    await setSetting('openrouter_api_key', 'sk-or-v1-' + 'm'.repeat(40));
+    await setSetting('onboarding_done', 'true');
     try {
       const res = await call(
         {
@@ -455,7 +455,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       expect(batch?.items[2]?.jobId).toBe(batch?.items[0]?.jobId);
     } finally {
       await db.job.deleteMany({ where: { userId, sourceUrl: 'https://youtu.be/mcpBatch001' } });
-      await deleteSetting('openrouter_api_key').catch(() => {});
+      await deleteSetting('onboarding_done').catch(() => {});
     }
   });
 
