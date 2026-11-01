@@ -35,7 +35,7 @@ make update        # rebuild and recreate without removing data
 make logs          # follow service logs
 make ps            # show service status
 
-make test          # scripts, web, and extension tests
+make test          # scripts and web tests
 make test-ts       # web tests only
 make lint          # ESLint
 make format-check  # Prettier formatting checks
@@ -61,7 +61,6 @@ migration gate.
 ## Validation Expectations
 
 - `apps/web`: lint, typecheck, tests, and formatting checks
-- extension changes: extension tests and packaging
 - Docker/runtime changes: `docker compose config -q` and image builds
 - UI changes: local browser verification of affected states and responsive
   layouts

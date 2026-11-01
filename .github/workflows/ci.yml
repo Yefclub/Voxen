@@ -35,13 +35,6 @@ jobs:
       - name: Format check
         run: bun run format:check
         working-directory: apps/web
-      # A extensão é irmã de apps/web, não filha: o eslint/prettier rodando
-      # com cwd em apps/web nunca a alcançou, e ela ficou sem nenhum gate de
-      # estilo desde que existe. `test:extension` era o único check sobre
-      # esses arquivos.
-      - name: Format check (apps/extension)
-        run: pnpm exec prettier --check ../extension
-        working-directory: apps/web
 
   typecheck-ts:
     name: Typecheck TS (apps/web)
@@ -102,11 +95,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Test release automation
         run: node --test scripts/*.test.mjs
-      # Testes da extensão MV3 (apps/extension/tests) — não dependem de DB nem
-      # de Prisma, então rodam antes e falham rápido.
-      - name: Test extension
-        run: bun run test:extension
-        working-directory: apps/web
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web

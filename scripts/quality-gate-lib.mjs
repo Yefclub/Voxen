@@ -117,10 +117,7 @@ export function isProductionSource(path) {
   ) {
     return false;
   }
-  if (
-    normalized.startsWith("apps/web/src/") ||
-    normalized.startsWith("apps/extension/")
-  ) {
+  if (normalized.startsWith("apps/web/src/")) {
     return (
       /\.(?:[cm]?[jt]sx?|css)$/.test(normalized) &&
       !normalized.endsWith(".d.ts")

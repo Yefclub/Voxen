@@ -74,9 +74,6 @@ const GuiaPage = lazy(() => import('./pages/guia').then(({ GuiaPage }) => ({ def
 const NovidadesPage = lazy(() =>
   import('./pages/novidades').then(({ NovidadesPage }) => ({ default: NovidadesPage })),
 );
-const ExtensaoPage = lazy(() =>
-  import('./pages/extensao').then(({ ExtensaoPage }) => ({ default: ExtensaoPage })),
-);
 
 export function App(): React.ReactElement {
   return (
@@ -194,7 +191,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/guia" element={<GuiaPage />} />
         <Route path="/grafo" element={<GrafoPage />} />
         <Route path="/novidades" element={<NovidadesPage />} />
-        <Route path="/extensao" element={<ExtensaoPage />} />
+        <Route path="/extensao" element={<Navigate to="/transcricoes" replace />} />
       </Route>
 
       {/* Fallback */}

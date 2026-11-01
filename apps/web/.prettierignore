@@ -6,5 +6,3 @@ dist/
 node_modules/
 coverage/
 
-# Cópia da extensão gerada por apps/extension/package.sh (a fonte é apps/extension/)
-public/extension/unpacked/

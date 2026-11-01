@@ -20,10 +20,6 @@ describe('page presentation contracts', () => {
     expect(scrollRegion).toContain('focus-visible:shadow');
   });
 
-  test('uses the wide operational shell for the extension page', () => {
-    expect(source('pages/extensao.tsx')).toContain('<PageShell width="wide"');
-  });
-
   test('page headers own an animated colored eyebrow icon', () => {
     const pageShell = source('components/ui/page-shell.tsx');
 

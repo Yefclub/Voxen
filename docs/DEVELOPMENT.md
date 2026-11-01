@@ -29,7 +29,7 @@ make update        # rebuild sem remover dados
 make logs          # acompanha logs
 make ps            # mostra serviços
 
-make test          # scripts, web e extensão
+make test          # scripts e web
 make test-ts       # testes do web
 make lint          # ESLint
 make format-check  # Prettier

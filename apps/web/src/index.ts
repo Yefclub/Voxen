@@ -23,7 +23,6 @@ import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
 import { guideRoutes } from './routes/guide';
 import { createReleasesRoutes } from './routes/releases';
-import { extensionMetaRoutes } from './routes/extension-meta';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -177,8 +176,6 @@ app.route('/api/guide', guideRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
 // PWA Web Share Target (Android/Chrome instalado)
-// Extensão browser — version.json (update check)
-app.route('/extension', extensionMetaRoutes);
 
 // Authenticated avatar proxy for the selected storage driver.
 app.get('/api/avatar/:userId', async (c) => {
