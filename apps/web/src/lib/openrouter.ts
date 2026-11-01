@@ -11,7 +11,12 @@ const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 const OPENROUTER_SETUP_TIMEOUT_MS = 15_000;
 
 export type OpenRouterProbePurpose =
-  'chat' | 'transcription' | 'webSearch' | 'vision' | 'document' | 'xAnalysis';
+  | 'chat'
+  | 'transcription'
+  | 'webSearch'
+  | 'vision'
+  | 'document'
+  | 'xAnalysis';
 
 export interface OrModel {
   id: string;
