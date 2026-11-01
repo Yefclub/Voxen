@@ -115,7 +115,11 @@ describeIfDb('knowledge deletion web executor', () => {
     const child = await db.note.create({
       data: { userId: user.id, parentId: parent.id, title: 'Filha', content: 'filha' },
     });
-    const { job } = await enqueueKnowledgeDeletion({ userId: user.id, type: 'NOTE', id: parent.id });
+    const { job } = await enqueueKnowledgeDeletion({
+      userId: user.id,
+      type: 'NOTE',
+      id: parent.id,
+    });
     expect(await runKnowledgeDeletionJob(job.id)).toBe(true);
     expect(await db.note.findUnique({ where: { id: parent.id } })).toBeNull();
     expect(await db.note.findUnique({ where: { id: child.id } })).toBeNull();

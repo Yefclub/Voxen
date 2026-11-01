@@ -398,7 +398,12 @@ async function executeNoteDeletion(job: ClaimedDeletionJob): Promise<void> {
     await db.$transaction(async (tx) => {
       await assertOwnership(tx, job);
       const ids = await ownedTreeIds(tx, 'Note', job.userId, job.deletionTargetId);
-      await deleteGraphSources(tx, job.userId, 'NOTE', ids.length > 0 ? ids : [job.deletionTargetId]);
+      await deleteGraphSources(
+        tx,
+        job.userId,
+        'NOTE',
+        ids.length > 0 ? ids : [job.deletionTargetId],
+      );
       await tx.$executeRaw`
         DELETE FROM "Note" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
       `;
@@ -650,7 +655,12 @@ export async function runKnowledgeDeletionJob(jobId: string): Promise<boolean> {
       await releaseClaim(job);
       return true;
     }
-    await finishJob(job, 'failed', heartbeat, error instanceof Error ? error.message : String(error));
+    await finishJob(
+      job,
+      'failed',
+      heartbeat,
+      error instanceof Error ? error.message : String(error),
+    );
     return true;
   } finally {
     heartbeat.stop();
