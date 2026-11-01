@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793513605",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove Mem0 conversational-memory integration",
+    "body": "### Removed\n- The optional Mem0 shadow integration is gone: no memory provider, shadow coordinator, evaluation CLI, account-deletion fence, or memory env vars.\n- Chat turns no longer record anything to external memory; docs point to stored knowledge and the deterministic graph instead.",
+    "pr": 905,
+    "author": "Kalyel",
+    "date": "2026-11-01T03:13:12-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/905"
+  },
+  {
     "version": "0.15.1-dev.1793512349",
     "channel": "dev",
     "type": "feat",
