@@ -77,6 +77,26 @@ docker compose config -q
 docker compose build
 ```
 
+## Real retrieval benchmark (spec 216)
+
+`apps/web/tests/retrieval-performance.test.ts` exercises the production path
+(Postgres FTS + storage + MCP) against a deterministic Portuguese corpus:
+synonym, informal register, long document, multiple sources, conflicting
+material, and a no-evidence case.
+
+```bash
+DATABASE_URL=postgresql://voxen:dev@localhost:5433/voxen_test \
+REDIS_URL=redis://localhost:6379 \
+BETTER_AUTH_SECRET=<test-secret> MASTER_KEY=<test-key> NODE_ENV=test \
+bun test apps/web/tests/retrieval-performance.test.ts
+```
+
+The test measures recall, deterministic ordering, p50/p95/p99 latency for
+search, outline, narrow reads, and MCP round trips, plus output sizes, with
+generous anti-flake budgets (p95 in seconds, not goals). Simulated unit-harness
+metrics (`retrieval-quality-benchmark.test.ts`) are reported separately and
+never as performance evidence.
+
 ## Git Workflow
 
 - `main`: protected stable releases
