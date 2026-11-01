@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793522341",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove capture, auto-generation, research and saved-media paths",
+    "body": "### Removed\n- Capture and ingestion entrypoints are gone: jobs and upload routes, saved media, web share target, platform cookies, automations, research artifacts, and enrichment CRUD, on REST and MCP.\n- No more automatic titles, summaries, tags, flows, folders, or research: generation endpoints, background enrichment, and provider-backed helpers are removed. Stored content, revisions, and graph evidence stay untouched.\n- Capture and chat UI is gone too: queue, job detail, downloads, automations, artifacts, platform accounts, and chat pages now redirect to the library; unknown /api/* paths fail closed with 404 instead of serving the SPA shell.",
+    "pr": 915,
+    "author": "Kalyel",
+    "date": "2026-11-01T05:38:50-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/915"
+  },
+  {
     "version": "0.15.1-dev.1793518603",
     "channel": "dev",
     "type": "chore",
