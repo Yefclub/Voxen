@@ -202,38 +202,38 @@ export function registerBrainTools(server: McpServer, userId: string): void {
         where: { userId, id: ref, kind: 'CONTRADICTS', status: 'ACTIVE' },
         select: { fromNodeId: true, toNodeId: true },
       });
-      const conflictingSources = contradiction
-        ? (
-            await Promise.all(
-              [contradiction.fromNodeId, contradiction.toNodeId].map((claimNodeId) =>
-                db.brainSource.findMany({
-                  where: {
-                    userId,
-                    invalidatedAt: null,
-                    AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
-                    edge: {
-                      method: 'llm-grounded',
-                      kind: 'SUPPORTS',
-                      toNodeId: claimNodeId,
-                    },
+      const conflictingSides = contradiction
+        ? await Promise.all(
+            [contradiction.fromNodeId, contradiction.toNodeId].map((claimNodeId) =>
+              db.brainSource.findMany({
+                where: {
+                  userId,
+                  invalidatedAt: null,
+                  AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
+                  edge: {
+                    method: 'llm-grounded',
+                    kind: 'SUPPORTS',
+                    toNodeId: claimNodeId,
                   },
-                  orderBy: { createdAt: 'desc' },
-                  take: 10,
-                  select: {
-                    edgeId: true,
-                    sourceType: true,
-                    sourceId: true,
-                    startLine: true,
-                    endLine: true,
-                    startSec: true,
-                    endSec: true,
-                    excerpt: true,
-                  },
-                }),
-              ),
-            )
-          ).flat()
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 11,
+                select: {
+                  edgeId: true,
+                  sourceType: true,
+                  sourceId: true,
+                  startLine: true,
+                  endLine: true,
+                  startSec: true,
+                  endSec: true,
+                  excerpt: true,
+                },
+              }),
+            ),
+          )
         : [];
+      const conflictingOverflow = conflictingSides.some((side) => side.length > 10);
+      const conflictingSources = conflictingSides.flatMap((side) => side.slice(0, 10));
       const [currentSources, currentConflicts] = await Promise.all([
         keepCurrentOwnedSources(userId, sources.slice(0, limit)),
         keepCurrentOwnedSources(userId, conflictingSources),
@@ -244,7 +244,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
           fact: source.fact ? { ...source.fact, confidence: Number(source.fact.confidence) } : null,
         })),
         conflicting_sources: currentConflicts,
-        truncated: sources.length > limit,
+        truncated: sources.length > limit || conflictingOverflow,
       });
     },
   );

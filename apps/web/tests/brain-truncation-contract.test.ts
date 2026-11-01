@@ -146,4 +146,48 @@ describeIfDb('brain traversal truncation contract (spec 217)', () => {
     expect(empty.facts).toEqual([]);
     expect(empty.truncated).toBe(false);
   });
+
+  it('flags truncation on timeline facts', async () => {
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: 'https://example.com/cronologia',
+        title: 'Cronologia',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/cronologia.md`,
+        plainText: 'Cronologia.',
+        frontmatter: {},
+      },
+    });
+    const subject = await db.brainNode.create({
+      data: { userId, key: 'ENTITY:crono-s', type: 'ENTITY', label: 'Crono S' },
+    });
+    const object = await db.brainNode.create({
+      data: { userId, key: 'ENTITY:crono-o', type: 'ENTITY', label: 'Crono O' },
+    });
+    const edge = await db.brainEdge.create({
+      data: { userId, fromNodeId: subject.id, toNodeId: object.id, kind: 'LINKS_TO' },
+    });
+    for (let i = 0; i < 3; i++) {
+      const fact = await db.brainFact.create({
+        data: { userId, edgeId: edge.id, factKey: `crono-fact-${i}`, predicate: 'relaciona' },
+      });
+      await db.brainSource.create({
+        data: { userId, factId: fact.id, sourceType: 'TRANSCRIPT', sourceId: transcript.id },
+      });
+    }
+    const page = (await callTool(TOKEN, 'voxen_brain_timeline', { limit: 2 })) as {
+      facts: Array<{ id: string }>;
+      truncated: boolean;
+    };
+    expect(page.facts).toHaveLength(2);
+    expect(page.truncated).toBe(true);
+
+    const full = (await callTool(TOKEN, 'voxen_brain_timeline', { limit: 10 })) as typeof page;
+    expect(full.facts).toHaveLength(3);
+    expect(full.truncated).toBe(false);
+  });
 });
