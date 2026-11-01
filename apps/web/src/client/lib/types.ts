@@ -39,7 +39,6 @@ export interface VersionResponse {
   builtAt: string;
 }
 
-
 export interface JobProgressEvent {
   id: string;
   jobId: string;
