@@ -330,6 +330,7 @@ export {
   ftsSearchNotes,
   mergeKnowledgeResults,
   searchKnowledgeBase,
+  searchKnowledgeBasePage,
   preloadRelevantContent,
   promptSearchQuery,
   type FtsResult,

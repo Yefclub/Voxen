@@ -77,6 +77,12 @@ editar um item não desloca as páginas seguintes; novos itens mais recentes
 aparecem ao reiniciar a listagem. Preserve o filtro original. Cursores antigos de
 offset são rejeitados com instruções de reinício.
 
+Buscas ranqueadas (`voxen_search_knowledge`, `voxen_search_transcripts`,
+`voxen_search_notes`) retornam `truncated`: `true` quando há mais candidatos
+que o limite, `false` quando a página está completa. Uma página cheia sem
+truncamento não implica enumeração completa da coleção: refine os termos ou
+filtros em vez de presumir que todos os procedimentos foram enumerados.
+
 A proteção permite 600 chamadas/minuto por usuário, 1.200 por conexão e 6.000 no
 servidor. Ela usa o endereço TCP observado, sem confiar em headers encaminhados
 pelo cliente. Há quatro ferramentas ativas por usuário e dezesseis no servidor;

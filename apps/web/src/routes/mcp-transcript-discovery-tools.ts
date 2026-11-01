@@ -2,7 +2,7 @@ import { registerProgressiveTools } from './mcp-transcript-reading-tools';
 import { z } from 'zod';
 import { type McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
-import { ftsSearchTranscripts, searchKnowledgeBase } from '../lib/retrieval';
+import { ftsSearchTranscripts, searchKnowledgeBasePage } from '../lib/retrieval';
 import {
   assertKnowledgeSearchFilters,
   SearchFilterError,
@@ -118,7 +118,9 @@ export function registerTranscriptTools(
         'transcrições e contexto externo revisado e aceito. Use como primeiro passo para ' +
         'perguntas temáticas ou factuais. Retorna trechos, tipo da fonte e link de citação; ' +
         'uma nota só recebe preferência quando sua relevância é comparável à de uma transcrição. ' +
-        'Filtros opcionais: origem, idioma, datas, tags, pasta, documentos.',
+        'Filtros opcionais: origem, idioma, datas, tags, pasta, documentos. ' +
+        'A resposta indica truncated=true quando há mais candidatos que o limite: ' +
+        'uma página cheia sem truncated não implica enumeração completa — refine a busca.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
@@ -152,6 +154,11 @@ export function registerTranscriptTools(
             retrievalSource: z.enum(['lexical', 'semantic', 'hybrid']).optional(),
           }),
         ),
+        truncated: z
+          .boolean()
+          .describe(
+            'true quando há mais candidatos que o limite; refine a busca em vez de presumir enumeração completa.',
+          ),
       },
       annotations: { ...READ_ONLY, title: 'Buscar na Base de conhecimento' },
     },
@@ -165,19 +172,20 @@ export function registerTranscriptTools(
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;
       }
-      let rows: Awaited<ReturnType<typeof searchKnowledgeBase>>;
+      let page: Awaited<ReturnType<typeof searchKnowledgeBasePage>>;
       try {
-        rows = await searchKnowledgeBase(userId, query, bounded(args.limit, 8, 1, 25), filters);
+        page = await searchKnowledgeBasePage(userId, query, bounded(args.limit, 8, 1, 25), filters);
       } catch (error) {
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;
       }
       return ok({
-        results: rows.map((item) => ({
+        results: page.results.map((item) => ({
           ...item,
           href: toMcpContentUrl(publicOrigin, item.href),
           createdAt: item.createdAt.toISOString(),
         })),
+        truncated: page.truncated,
       });
     },
   );
@@ -195,7 +203,8 @@ export function registerTranscriptTools(
         'voxen_read_transcript se resumo e trechos não bastarem. ' +
         'Passe palavras-chave do tema (não precisa de operadores). ' +
         'Ex.: query="política monetária juros". ' +
-        'Filtros opcionais: origem, idioma, datas, tags, pasta, documentos.',
+        'Filtros opcionais: origem, idioma, datas, tags, pasta, documentos. ' +
+        'truncated=true indica mais candidatos que o limite.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
@@ -215,6 +224,11 @@ export function registerTranscriptTools(
             retrievalSource: z.enum(['lexical', 'semantic', 'hybrid']).optional(),
           }),
         ),
+        truncated: z
+          .boolean()
+          .describe(
+            'true quando há mais candidatos que o limite; refine a busca em vez de presumir enumeração completa.',
+          ),
       },
       annotations: { ...READ_ONLY, title: 'Buscar nas transcrições' },
     },
@@ -228,9 +242,10 @@ export function registerTranscriptTools(
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;
       }
+      const take = bounded(args.limit, 8, 1, 25);
       let rows: Awaited<ReturnType<typeof ftsSearchTranscripts>>;
       try {
-        rows = await ftsSearchTranscripts(userId, query, bounded(args.limit, 8, 1, 25), filters);
+        rows = await ftsSearchTranscripts(userId, query, take + 1, filters);
       } catch (error) {
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;
@@ -238,7 +253,10 @@ export function registerTranscriptTools(
       // FtsResult.createdAt é Date (vem de $queryRaw) — serializa antes de
       // devolver, mesmo padrão do tool de chat equivalente.
       return ok({
-        results: rows.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        results: rows
+          .slice(0, take)
+          .map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        truncated: rows.length > take,
       });
     },
   );

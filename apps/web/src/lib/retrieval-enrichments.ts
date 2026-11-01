@@ -23,7 +23,8 @@ export async function ftsSearchTranscriptEnrichments(
 ): Promise<KnowledgeSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const take = Math.max(1, Math.min(25, Math.trunc(Number.isFinite(limit) ? limit : 8)));
+  // Max 26: sonda take+1 da página (ver search.ts searchKnowledgeBasePage).
+  const take = Math.max(1, Math.min(26, Math.trunc(Number.isFinite(limit) ? limit : 8)));
   assertTranscriptSearchFilters(filters);
   const tconds: Prisma.Sql[] = [];
   if (filters.sources?.length) {
