@@ -150,7 +150,7 @@ describeIfDb('setup flow', () => {
     await db.$disconnect();
   });
 
-  it('admin com key válida persiste settings cifradas e retorna complete=true', async () => {
+  it('admin com key válida persiste settings cifradas; complete segue o onboarding', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -165,6 +165,8 @@ describeIfDb('setup flow', () => {
       }),
     );
     expect(res.status).toBe(200);
+    // Legacy provider key still counts as complete until provider settings
+    // are removed (spec 215 migration); onboarding_done also completes.
     const body = (await res.json()) as { complete: boolean };
     expect(body.complete).toBe(true);
 
@@ -186,6 +188,13 @@ describeIfDb('setup flow', () => {
       complete: boolean;
     };
     expect(status.complete).toBe(true);
+
+    await setSettings({ onboarding_done: 'true' });
+    const doneRes = await app.fetch(
+      new Request('http://localhost/api/setup', { headers: { cookie } }),
+    );
+    const done = (await doneRes.json()) as { complete: boolean };
+    expect(done.complete).toBe(true);
   });
 
   it('onboarding com somente a key persiste automaticamente os modelos recomendados', async () => {
@@ -356,7 +365,7 @@ describeIfDb('setup flow', () => {
     expect(status).toMatchObject({ language: 'en', timezone: 'UTC' });
   });
 
-  it('não persiste preferências antes da primeira chave válida', async () => {
+  it('persiste preferências sem chave; setup segue incompleto até o onboarding', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -372,10 +381,18 @@ describeIfDb('setup flow', () => {
       }),
     );
 
-    expect(res.status).toBe(400);
-    await expect(getSetting('app_language')).resolves.toBeNull();
-    await expect(getSetting('app_timezone')).resolves.toBeNull();
+    // Knowledge-base readiness no longer requires a provider key (spec 215).
+    expect(res.status).toBe(200);
+    await expect(getSetting('app_language')).resolves.toBe('en');
+    await expect(getSetting('app_timezone')).resolves.toBe('UTC');
     await expect(getSetting('openrouter_api_key')).resolves.toBeNull();
+
+    const statusRes = await app.fetch(
+      new Request('http://localhost/api/setup', { headers: { cookie } }),
+    );
+    const status = (await statusRes.json()) as { complete: boolean; hasApiKey: boolean };
+    expect(status.complete).toBe(false);
+    expect(status.hasApiKey).toBe(false);
   });
 
   it('trocar a chave mantém os modelos canônicos quando não havia override', async () => {
@@ -787,5 +804,16 @@ describeIfDb('setup flow', () => {
     const r2 = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
     const b2 = (await r2.json()) as { setupComplete: boolean };
     expect(b2.setupComplete).toBe(true);
+
+    // Onboarding also completes setup with no provider key (spec 215).
+    await db.setting.deleteMany({ where: { scope: 'GLOBAL', key: 'openrouter_api_key' } });
+    const r2b = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
+    const b2b = (await r2b.json()) as { setupComplete: boolean };
+    expect(b2b.setupComplete).toBe(false);
+
+    await setSettings({ onboarding_done: 'true' });
+    const r3 = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
+    const b3 = (await r3.json()) as { setupComplete: boolean };
+    expect(b3.setupComplete).toBe(true);
   });
 });

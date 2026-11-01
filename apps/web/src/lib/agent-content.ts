@@ -1,9 +1,5 @@
 import { db } from './db';
 import { findRelated } from './retrieval';
-import { generateTagsForContent } from './tags-generate';
-import { applyTagsToTranscript } from './tags';
-import { generateAndPersistTranscriptSummary } from './transcript-summary';
-import { effectiveTranscriptPlainText } from './transcript-content';
 
 export type TranscriptBrief = {
   transcriptId: string;
@@ -18,7 +14,7 @@ export type TranscriptBrief = {
 export async function getTranscriptBrief(
   userId: string,
   transcriptId: string,
-  options: { enrichMissing?: boolean; abortSignal?: AbortSignal } = {},
+  _options: { abortSignal?: AbortSignal } = {},
 ): Promise<TranscriptBrief> {
   const transcript = await db.transcript.findFirst({
     where: { id: transcriptId, userId, status: 'ACTIVE' },
@@ -26,85 +22,16 @@ export async function getTranscriptBrief(
       id: true,
       title: true,
       url: true,
-      plainText: true,
-      correctedPlainText: true,
-      correctionState: true,
-      correctionRevision: true,
-      sourceVersion: true,
-      sourceChecksum: true,
       summaryMd: true,
-      folderId: true,
       tags: { select: { tag: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
     },
   });
   if (!transcript) throw new Error('Transcrição não encontrada.');
-  const effectivePlainText = effectiveTranscriptPlainText(transcript);
 
-  let summary = transcript.summaryMd;
-  if (options.enrichMissing !== false && !summary && effectivePlainText.trim()) {
-    try {
-      summary = await generateAndPersistTranscriptSummary({
-        userId,
-        transcriptId: transcript.id,
-        title: transcript.title,
-        plainText: effectivePlainText,
-        correctionRevision: transcript.correctionRevision,
-        sourceVersion: transcript.sourceVersion,
-        sourceChecksum: transcript.sourceChecksum,
-        abortSignal: options.abortSignal,
-      });
-    } catch (error) {
-      if (options.abortSignal?.aborted) throw error;
-      summary = null;
-    }
-  }
-
-  let tags = transcript.tags.map((item) => item.tag.name);
-  if (options.enrichMissing !== false && tags.length === 0 && effectivePlainText.trim()) {
-    const existingTags = (
-      await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
-    ).map((item) => item.name);
-    let generated = null;
-    try {
-      generated = await generateTagsForContent({
-        title: transcript.title,
-        content: summary || effectivePlainText,
-        existingTags,
-        abortSignal: options.abortSignal,
-      });
-    } catch (error) {
-      if (options.abortSignal?.aborted) throw error;
-    }
-    if (generated?.tags.length) {
-      const applied = await applyTagsToTranscript(
-        userId,
-        {
-          id: transcript.id,
-          folderId: transcript.folderId,
-          correctionRevision: transcript.correctionRevision,
-          sourceVersion: transcript.sourceVersion,
-          sourceChecksum: transcript.sourceChecksum,
-        },
-        generated.tags,
-      );
-      tags = applied.map((item) => item.name);
-      await db.costEvent.create({
-        data: {
-          userId,
-          kind: 'CHAT',
-          model: generated.model,
-          tokensIn: generated.tokensIn,
-          tokensOut: generated.tokensOut,
-          costUsd: generated.costUsd,
-          meta: {
-            source: 'agent_transcript_tags',
-            transcript_id: transcript.id,
-            generated_count: tags.length,
-          },
-        },
-      });
-    }
-  }
+  // Stored values only (spec 215): reads never trigger inference. Missing
+  // summaries/tags stay missing until an external producer supplies them.
+  const summary = transcript.summaryMd;
+  const tags = transcript.tags.map((item) => item.tag.name);
 
   const related = await findRelated(userId, { transcriptId: transcript.id, limit: 5 }).catch(
     () => [],

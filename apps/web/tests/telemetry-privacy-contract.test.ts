@@ -24,15 +24,16 @@ describe('privacidade da telemetria de enriquecimento', () => {
       read('src/routes/library.ts'),
       "source: 'tag_generation_backfill'",
     );
-    const agentTags = metadataWindow(
-      read('src/lib/agent-content.ts'),
-      "source: 'agent_transcript_tags'",
-    );
 
-    for (const metadata of [transcriptTags, backfillTags, agentTags]) {
+    for (const metadata of [transcriptTags, backfillTags]) {
       expect(metadata).toContain('generated_count');
       expect(metadata).not.toMatch(/\btags\s*:/);
     }
+  });
+
+  test('briefs de leitura não geram telemetria de enriquecimento (somente valores armazenados)', () => {
+    const agentSource = read('src/lib/agent-content.ts');
+    expect(agentSource).not.toContain("source: 'agent_transcript_tags'");
   });
 
   test('classificação registra somente o resultado, não o nome da pasta', () => {

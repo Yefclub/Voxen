@@ -40,7 +40,7 @@ export function registerMcpJobStatusTool(server: McpServer, userId: string): voi
       if (!job) return fail('Job não encontrado.');
       const brief =
         (job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') && job.transcriptId
-          ? await getTranscriptBrief(userId, job.transcriptId, { enrichMissing: false })
+          ? await getTranscriptBrief(userId, job.transcriptId)
           : null;
       return ok({
         id: job.id,

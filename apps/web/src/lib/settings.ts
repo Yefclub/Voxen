@@ -4,7 +4,8 @@
 // API:
 //   getSetting('openrouter_api_key')      → string | null (decifrado)
 //   setSetting('openrouter_api_key', val) → void          (cifra + upsert)
-//   isSetupComplete()                     → boolean
+//   isSetupComplete()                     → boolean (knowledge-base readiness,
+//     based on onboarding_done; never requires a model-provider key)
 //
 // Convenção: chaves GLOBAL não levam userId. Postgres trata múltiplos NULLs
 // como distintos em UNIQUE — então usamos `findFirst` + transação em vez de
@@ -390,11 +391,29 @@ export async function deleteDefaultXAnalysisModel(): Promise<void> {
 }
 
 export async function isSetupComplete(): Promise<boolean> {
-  const row = await db.setting.findFirst({
-    where: { scope: 'GLOBAL', userId: null, key: 'openrouter_api_key' },
-    select: { id: true },
+  const rows = await db.setting.findMany({
+    where: {
+      scope: 'GLOBAL',
+      userId: null,
+      key: { in: ['onboarding_done', 'openrouter_api_key'] },
+    },
+    select: { key: true, valueEnc: true },
   });
-  return row !== null;
+  // Knowledge-base readiness comes from onboarding_done. A stored provider key
+  // still counts as complete for existing installs until provider settings
+  // are removed (spec 215 migration); fresh installs never need a key.
+  for (const row of rows) {
+    if (row.key === 'onboarding_done') {
+      try {
+        if (decrypt(row.valueEnc, getMasterKey()) === 'true') return true;
+      } catch {
+        continue;
+      }
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

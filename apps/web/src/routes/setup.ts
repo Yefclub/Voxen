@@ -29,6 +29,7 @@ import {
   getAppTimezone,
   getSetting,
   getSettings,
+  isSetupComplete,
   setSettings,
 } from '../lib/settings';
 
@@ -54,15 +55,16 @@ setupRoutes.use('*', async (c, next) => {
 });
 
 setupRoutes.get('/', async (c) => {
-  const [apiKey, language, timezone] = await Promise.all([
-    getSetting('openrouter_api_key'),
+  const [onboardingDone, apiKey, language, timezone] = await Promise.all([
+    getSetting('onboarding_done').catch(() => null),
+    getSetting('openrouter_api_key').catch(() => null),
     getAppLanguage(),
     getAppTimezone(),
   ]);
-  const complete = Boolean(apiKey);
+  const complete = onboardingDone === 'true' || Boolean(apiKey);
   return c.json({
     complete,
-    hasApiKey: complete,
+    hasApiKey: Boolean(apiKey),
     language,
     timezone,
   });
@@ -105,14 +107,12 @@ setupRoutes.post('/', async (c) => {
     if (model_replacements !== undefined) {
       return c.json({ error: 'Substituições de modelo exigem uma nova chave da OpenRouter.' }, 400);
     }
-    if (!(await getSetting('openrouter_api_key'))) {
-      return c.json(
-        { error: 'Informe uma chave da OpenRouter para concluir a configuração.' },
-        400,
-      );
-    }
     await setSettings(preferences, metadata);
-    return c.json({ complete: true });
+    const [complete, apiKey] = await Promise.all([
+      isSetupComplete(),
+      getSetting('openrouter_api_key').catch(() => null),
+    ]);
+    return c.json({ complete, hasApiKey: Boolean(apiKey) });
   }
 
   if (
@@ -183,5 +183,5 @@ setupRoutes.post('/', async (c) => {
     metadata,
   );
 
-  return c.json({ complete: true });
+  return c.json({ complete: await isSetupComplete(), hasApiKey: true });
 });
