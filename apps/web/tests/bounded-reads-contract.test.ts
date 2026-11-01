@@ -147,6 +147,41 @@ describeIfDb('bounded progressive reads contract (spec 216)', () => {
       code: 'NOT_FOUND',
     });
 
+    for (const status of ['ARCHIVED', 'TRASH'] as const) {
+      const hidden = await db.transcript.create({
+        data: {
+          userId,
+          source: 'WEB',
+          url: `https://example.com/hidden-${status}`,
+          title: `Oculto ${status}`,
+          durationSec: 0,
+          language: 'pt',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: `workspaces/${userId}/transcripts/hidden-${status}.md`,
+          plainText: 'Oculto.',
+          frontmatter: {},
+          status,
+        },
+      });
+      await expect(loadEffectiveTranscriptMarkdown(userId, hidden.id)).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      const hiddenRes = await mcpCall(
+        {
+          jsonrpc: '2.0',
+          id: status === 'ARCHIVED' ? 13 : 14,
+          method: 'tools/call',
+          params: { name: 'voxen_outline', arguments: { transcript_id: hidden.id } },
+        },
+        TOKEN,
+      );
+      const hiddenBody = (await hiddenRes.json()) as {
+        result?: { isError?: boolean; content?: Array<{ text?: string }> };
+      };
+      expect(hiddenBody.result?.isError).toBe(true);
+      expect(JSON.stringify(hiddenBody.result?.content)).toContain('NOT_FOUND');
+    }
+
     const ghost = await db.transcript.create({
       data: {
         userId,
