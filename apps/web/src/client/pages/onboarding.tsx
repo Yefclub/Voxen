@@ -5,8 +5,6 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ExternalLink,
-  KeyRound,
   Sparkles,
   Upload,
   Users,
@@ -26,7 +24,7 @@ import { Spinner as Spin } from '../components/ui/spinner';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
 
-type Step = 'idioma' | 'fuso' | 'key' | 'modo' | 'perfil' | 'pronto';
+type Step = 'idioma' | 'fuso' | 'modo' | 'perfil' | 'pronto';
 
 export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
@@ -66,7 +64,6 @@ function OnboardingContent({
   const [step, setStep] = useState<Step>('idioma');
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
   const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
-  const [apiKey, setApiKey] = useState('');
   const [allowSignups, setAllowSignups] = useState<boolean>(true);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,24 +77,6 @@ function OnboardingContent({
     setAppLanguage(next);
     setLocale(next);
     setStep('fuso');
-  }
-
-  async function submitKey(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      await apiPost('/api/setup', {
-        openrouter_api_key: apiKey.trim(),
-        app_language: appLanguage,
-        app_timezone: appTimezone,
-      });
-      setStep('modo');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('onboarding.error.key'));
-    } finally {
-      setLoading(false);
-    }
   }
 
   function chooseModo(allow: boolean): void {
@@ -149,7 +128,7 @@ function OnboardingContent({
     }
   }
 
-  const stepOrder: Step[] = ['idioma', 'fuso', 'key', 'modo', 'perfil'];
+  const stepOrder: Step[] = ['idioma', 'fuso', 'modo', 'perfil'];
   const currentIdx = stepOrder.indexOf(step);
 
   if (step === 'pronto') {
@@ -258,61 +237,12 @@ function OnboardingContent({
                     <ArrowLeft className="h-3.5 w-3.5" />
                     {t('common.back')}
                   </GhostButton>
-                  <PrimaryButton type="button" onClick={() => setStep('key')}>
+                  <PrimaryButton type="button" onClick={() => setStep('modo')}>
                     {t('common.continue')}
                     <ArrowRight className="h-4 w-4" />
                   </PrimaryButton>
                 </div>
               </div>
-            </Slide>
-          )}
-
-          {step === 'key' && (
-            <Slide key="key">
-              <Heading
-                eyebrow={t('onboarding.connection.eyebrow')}
-                title={t('onboarding.connection.title')}
-                sub={t('onboarding.connection.sub')}
-              />
-              <form onSubmit={submitKey} className="space-y-5">
-                <FieldLabel htmlFor="key">OpenRouter API key</FieldLabel>
-                <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] backdrop-blur-sm focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06]">
-                  <div className="relative">
-                    <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
-                    <input
-                      id="key"
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="sk-or-v1-..."
-                      autoComplete="off"
-                      spellCheck={false}
-                      required
-                      minLength={20}
-                      className="w-full bg-transparent text-sm pl-10 pr-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono"
-                    />
-                  </div>
-                </div>
-                <a
-                  href="https://openrouter.ai/keys"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
-                >
-                  {t('onboarding.keyCta')}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-                <div className="flex justify-between pt-2">
-                  <GhostButton type="button" onClick={() => setStep('fuso')}>
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    {t('common.back')}
-                  </GhostButton>
-                  <PrimaryButton type="submit" disabled={loading || apiKey.length < 20}>
-                    {loading ? <Spinner /> : t('onboarding.validateContinue')}
-                    {!loading && <ArrowRight className="h-4 w-4" />}
-                  </PrimaryButton>
-                </div>
-              </form>
             </Slide>
           )}
 
@@ -340,7 +270,7 @@ function OnboardingContent({
                 />
               </div>
               <div className="flex justify-between pt-2 mt-6">
-                <GhostButton type="button" onClick={() => setStep('key')}>
+                <GhostButton type="button" onClick={() => setStep('fuso')}>
                   <ArrowLeft className="h-3.5 w-3.5" />
                   {t('common.back')}
                 </GhostButton>
@@ -460,23 +390,6 @@ function Heading({
       <h2 className="font-display text-3xl font-semibold tracking-[-0.03em]">{title}</h2>
       <p className="text-[14px] text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
     </div>
-  );
-}
-
-function FieldLabel({
-  htmlFor,
-  children,
-}: {
-  htmlFor: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <label
-      htmlFor={htmlFor}
-      className="block text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--color-app-muted)]"
-    >
-      {children}
-    </label>
   );
 }
 
