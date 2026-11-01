@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1793560001 — 2026-11-01 · Dev
+
+### 🧹 Native Codex config and roles
+
+### Added
+- Project `.codex/config.toml` (concurrency bounds only; no provider/auth/telemetry) plus explicit `implementer` and read-only `code-reviewer` native roles with pinned model/effort.
+- `scripts/native-agent-config.test.mjs` validates the native contract; `AGENTS.md` distinguishes native config from the `.agents` mirror; setup docs cover `.codex/`.
+
+## v0.15.1-dev.1793560001 — 2026-11-01 · Dev
+
+### ✨ Bounded reuse of expensive search results
+
+### Added
+- Continuation pages of ranked search reuse the prepared result within TTL/entry/byte limits with per-document version revalidation; cross-owner, altered-argument, expired, or changed content fails closed with restart guidance. No contract migration: same cursors and envelopes.
+
 ## v0.15.1-dev.1793557951 — 2026-11-01 · Dev
 
 ### 🧹 Unify agent policy and read-only reviewer role

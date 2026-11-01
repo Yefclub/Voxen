@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.15.1-dev.1793560001",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Native Codex config and roles",
+    "body": "### Added\n- Project `.codex/config.toml` (concurrency bounds only; no provider/auth/telemetry) plus explicit `implementer` and read-only `code-reviewer` native roles with pinned model/effort.\n- `scripts/native-agent-config.test.mjs` validates the native contract; `AGENTS.md` distinguishes native config from the `.agents` mirror; setup docs cover `.codex/`.",
+    "pr": 960,
+    "author": "Kalyel",
+    "date": "2026-11-01T15:59:19-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/960"
+  },
+  {
+    "version": "0.15.1-dev.1793560001",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Bounded reuse of expensive search results",
+    "body": "### Added\n- Continuation pages of ranked search reuse the prepared result within TTL/entry/byte limits with per-document version revalidation; cross-owner, altered-argument, expired, or changed content fails closed with restart guidance. No contract migration: same cursors and envelopes.",
+    "pr": 959,
+    "author": "Kalyel",
+    "date": "2026-11-01T15:54:52-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/959"
+  },
+  {
     "version": "0.15.1-dev.1793557951",
     "channel": "dev",
     "type": "chore",
