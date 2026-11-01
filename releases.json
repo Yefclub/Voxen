@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793515130",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove built-in embedding inference and semantic rescue",
+    "body": "### Removed\n- Built-in embedding inference and semantic-rescue reranking are gone: retrieval is deterministic full-text search, and no model calls happen on reads.\n- Removed the embedding settings, capability probe, hybrid benchmark path, and the worker embedding writer. Stored vectors from earlier versions are ignored and cleaned by existing metadata maintenance.",
+    "pr": 907,
+    "author": "Kalyel",
+    "date": "2026-11-01T03:38:40-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/907"
+  },
+  {
     "version": "0.15.1-dev.1793513605",
     "channel": "dev",
     "type": "chore",
