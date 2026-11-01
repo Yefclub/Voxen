@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1793509652 — 2026-11-01 · Dev
+
+### ✨ Setup completes without a model-provider key; reads use stored values
+
+### Changed
+- Fresh installations complete onboarding and enable the knowledge base with no model-provider account, key, or model configuration.
+- Setup status now reflects onboarding readiness; provider-key presence is reported separately.
+- Transcript briefs return already-stored summaries and tags; missing values no longer trigger inference.
+
 ## v0.15.1-dev.1791278414 — 2026-10-06 · Dev
 
 ### 🔒 OAuth MCP atualizado com clientes por metadados e concessões preservadas
