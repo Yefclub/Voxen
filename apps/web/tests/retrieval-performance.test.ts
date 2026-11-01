@@ -155,6 +155,11 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
     await put('conflito-b', '# Versão revisada\n\nO Atlas foi fundado em 2021 no Porto.', {
       title: 'Conflito B',
     });
+    await put(
+      'titulo-distintivo',
+      '# Caldeira industrial\n\nProcedimentos operacionais padrão para equipamentos térmicos.',
+      { title: 'Caldeira industrial Atlas' },
+    );
   });
 
   afterAll(async () => {
@@ -186,6 +191,12 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
 
     const informal = await searchKnowledgeBase(userId, 'link repo zap Atlas', 8);
     expect(informal.map((item) => item.id)).toContain(ids['informal']!);
+
+    // Title-only terms (absent from every body) must still retrieve the
+    // owning document first: titles are indexed with weight A (spec 217 §5).
+    const titleOnly = await searchKnowledgeBase(userId, 'caldeira', 8);
+    expect(titleOnly.map((item) => item.id)).toContain(ids['titulo-distintivo']!);
+    expect(titleOnly[0]?.id).toBe(ids['titulo-distintivo']);
 
     const none = await searchKnowledgeBase(userId, 'xqzt jogo de tabuleiro inexistente', 8);
     expect(none).toEqual([]);
