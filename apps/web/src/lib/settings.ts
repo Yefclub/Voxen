@@ -391,16 +391,25 @@ export async function deleteDefaultXAnalysisModel(): Promise<void> {
 }
 
 export async function isSetupComplete(): Promise<boolean> {
-  const row = await db.setting.findFirst({
-    where: { scope: 'GLOBAL', userId: null, key: 'onboarding_done', valueEnc: { not: '' } },
-    select: { id: true, valueEnc: true },
+  const rows = await db.setting.findMany({
+    where: { scope: 'GLOBAL', userId: null, key: { in: ['onboarding_done', 'openrouter_api_key'] } },
+    select: { key: true, valueEnc: true },
   });
-  if (!row) return false;
-  try {
-    return decrypt(row.valueEnc, getMasterKey()) === 'true';
-  } catch {
-    return false;
+  // Knowledge-base readiness comes from onboarding_done. A stored provider key
+  // still counts as complete for existing installs until provider settings
+  // are removed (spec 215 migration); fresh installs never need a key.
+  for (const row of rows) {
+    if (row.key === 'onboarding_done') {
+      try {
+        if (decrypt(row.valueEnc, getMasterKey()) === 'true') return true;
+      } catch {
+        continue;
+      }
+    } else {
+      return true;
+    }
   }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

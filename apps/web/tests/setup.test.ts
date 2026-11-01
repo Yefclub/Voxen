@@ -165,10 +165,10 @@ describeIfDb('setup flow', () => {
       }),
     );
     expect(res.status).toBe(200);
-    // Provider key alone no longer completes setup (spec 215): readiness
-    // comes from onboarding_done, not from a model-provider account.
+    // Legacy provider key still counts as complete until provider settings
+    // are removed (spec 215 migration); onboarding_done also completes.
     const body = (await res.json()) as { complete: boolean };
-    expect(body.complete).toBe(false);
+    expect(body.complete).toBe(true);
 
     // Settings persistidas, cifradas (valueEnc não vazio, no formato iv.ct.tag).
     const stored = await db.setting.findMany({
@@ -187,7 +187,7 @@ describeIfDb('setup flow', () => {
     const status = (await statusRes.json()) as {
       complete: boolean;
     };
-    expect(status.complete).toBe(false);
+    expect(status.complete).toBe(true);
 
     await setSettings({ onboarding_done: 'true' }, { actorUserId: 'test' });
     const doneRes = await app.fetch(
@@ -803,7 +803,13 @@ describeIfDb('setup flow', () => {
 
     const r2 = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
     const b2 = (await r2.json()) as { setupComplete: boolean };
-    expect(b2.setupComplete).toBe(false);
+    expect(b2.setupComplete).toBe(true);
+
+    // Onboarding also completes setup with no provider key (spec 215).
+    await db.setting.deleteMany({ where: { scope: 'GLOBAL', key: 'openrouter_api_key' } });
+    const r2b = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
+    const b2b = (await r2b.json()) as { setupComplete: boolean };
+    expect(b2b.setupComplete).toBe(false);
 
     await setSettings({ onboarding_done: 'true' }, { actorUserId: 'test' });
     const r3 = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
