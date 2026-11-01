@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793525429",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Drop retired Product 2 tables with chat archive policy",
+    "body": "### Removed\n- Forward migration drops retired Product 2 tables and enums: conversations, chat turns/messages/approvals/leases, cost events, AI capability checks, automations, research artifacts, and memory shadow state.\n- Chat history and cost records are archived first via scripts/export-chat-archive.sh (documented policy; derived/operational rows are intentionally not archived).",
+    "pr": 919,
+    "author": "Kalyel",
+    "date": "2026-11-01T06:30:15-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/919"
+  },
+  {
     "version": "0.15.1-dev.1793524116",
     "channel": "dev",
     "type": "chore",
