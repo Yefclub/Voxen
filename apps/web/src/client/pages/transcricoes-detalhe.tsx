@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -10,10 +10,8 @@ import {
   Folder,
   Globe,
   Languages,
-  Loader2,
   MessageSquare,
   RotateCcw,
-  RefreshCw,
   Sparkles,
   Tags,
   Trash2,
@@ -25,7 +23,7 @@ import { Badge } from '../components/ui/badge';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
-import { apiDelete, apiPatch, apiPost, ApiError } from '../lib/api';
+import { apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { PageShell } from '../components/ui/page-shell';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
@@ -40,21 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
-import { cn } from '../lib/utils';
-import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
+import { useI18n, type TranslateFn } from '../lib/i18n';
 import { stripMarkdownFrontmatter, transcriptRenderMode } from '../lib/transcript-render';
-import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
 import {
   LinkedNotesCard,
   type LinkedNote,
   type LinkedNoteAnchorDraft,
   type LinkedNotesResponse,
 } from '../components/library/linked-notes-card';
-import {
-  AdditionalContextBlock,
-  type TranscriptEnrichmentsResponse,
-} from '../components/library/additional-context-block';
 import {
   TranscriptFlowBlock,
   TranscriptSummaryBlock,
@@ -149,215 +140,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   } = useFetch<LinkedNotesResponse>(
     id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/notes` : null,
   );
-  const {
-    data: enrichmentsData,
-    loading: enrichmentsLoading,
-    refresh: refreshEnrichments,
-  } = useFetch<TranscriptEnrichmentsResponse>(
-    id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/enrichments` : null,
-  );
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
-  const [generating, setGenerating] = useState(false);
-  const [generatingFlow, setGeneratingFlow] = useState(false);
   const [organizing, setOrganizing] = useState(false);
-  const [taggingLoading, setTaggingLoading] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
-  const [confirmRegen, setConfirmRegen] = useState(false);
-  const [confirmFlowRegen, setConfirmFlowRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [chatDraft, setChatDraft] = useState('');
-  const [refreshingSource, setRefreshingSource] = useState(false);
-
-  useEffect(() => {
-    if (data?.transcript.sourceRefreshStatus !== 'CHECKING') return;
-    const timer = window.setInterval(() => void refresh(), 7_500);
-    return () => window.clearInterval(timer);
-  }, [data?.transcript.sourceRefreshStatus, refresh]);
-
-  useEffect(() => {
-    const active = enrichmentsData?.enrichments.some(
-      (item) =>
-        ['PENDING', 'RUNNING', 'RETRY'].includes(item.status) ||
-        item.projection.state === 'PENDING',
-    );
-    if (!active) return;
-    const timer = window.setInterval(() => void refreshEnrichments(), 5_000);
-    return () => window.clearInterval(timer);
-  }, [enrichmentsData?.enrichments, refreshEnrichments]);
-
-  async function queueResearch(): Promise<void> {
-    if (!id) return;
-    try {
-      await apiPost(`/api/transcripts/${id}/enrichments`, {});
-      toast.success(translate('library.additionalContextQueued'));
-      await refreshEnrichments();
-    } catch (error) {
-      toast.error(
-        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
-      );
-    }
-  }
-
-  async function updateEnrichment(
-    enrichmentId: string,
-    body: Record<string, unknown>,
-  ): Promise<void> {
-    if (!id) return;
-    try {
-      await apiPatch(`/api/transcripts/${id}/enrichments/${enrichmentId}`, body);
-      await refreshEnrichments();
-    } catch (error) {
-      toast.error(
-        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
-      );
-      if (error instanceof ApiError && error.status === 409) await refreshEnrichments();
-      throw error;
-    }
-  }
-
-  async function deleteEnrichment(enrichmentId: string): Promise<void> {
-    if (!id) return;
-    try {
-      await apiDelete(`/api/transcripts/${id}/enrichments/${enrichmentId}`);
-      await refreshEnrichments();
-    } catch (error) {
-      toast.error(
-        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
-      );
-      throw error;
-    }
-  }
-
-  async function refreshSource(): Promise<void> {
-    if (!id || refreshingSource) return;
-    const reprocess = data?.transcript.source === 'X';
-    setRefreshingSource(true);
-    try {
-      await apiPost(`/api/transcripts/${id}/refresh`, {});
-      toast.success(
-        translate(reprocess ? 'library.reprocessQueued' : 'library.sourceRefreshQueued'),
-      );
-      await refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError
-          ? err.message
-          : translate(reprocess ? 'library.reprocessError' : 'library.sourceRefreshError'),
-      );
-    } finally {
-      setRefreshingSource(false);
-    }
-  }
-
-  async function generateSummary(force: boolean): Promise<void> {
-    if (!id) return;
-    setGenerating(true);
-    try {
-      const res = await fetch(`/api/transcripts/${id}/summary`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force }),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        existing?: boolean;
-      };
-      if (res.status === 409 && body.existing) {
-        // Já tem resumo → abre confirm modal pra regen
-        setConfirmRegen(true);
-        return;
-      }
-      if (!res.ok) {
-        toast.error(body.error ?? translate('library.summaryError'));
-        return;
-      }
-      toast.success(
-        force ? translate('library.summaryRegenerated') : translate('library.summaryGenerated'),
-      );
-      refresh();
-    } catch (e) {
-      toast.error(translate('library.summaryUnexpectedError'), {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function generateFlow(force: boolean): Promise<void> {
-    if (!id || generatingFlow) return;
-    setGeneratingFlow(true);
-    try {
-      const res = await fetch(`/api/transcripts/${id}/flow`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force }),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        existing?: boolean;
-      };
-      if (res.status === 409 && body.existing) {
-        setConfirmFlowRegen(true);
-        return;
-      }
-      if (!res.ok) {
-        toast.error(body.error ?? translate('library.flowError'));
-        return;
-      }
-      toast.success(
-        force ? translate('library.flowRegenerated') : translate('library.flowGenerated'),
-      );
-      await refresh();
-    } catch {
-      toast.error(translate('library.flowError'));
-    } finally {
-      setGeneratingFlow(false);
-    }
-  }
-
-  async function generateTags(): Promise<void> {
-    if (!id || taggingLoading) return;
-    setTaggingLoading(true);
-    try {
-      const res = await fetch(`/api/transcripts/${id}/generate-tags`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        tags?: { id: string; name: string; slug: string }[];
-        generated?: number;
-      };
-      if (!res.ok) {
-        toast.error(body.error ?? translate('library.tagsError'));
-        return;
-      }
-      if ((body.generated ?? 0) === 0) {
-        toast.message(translate('library.tagsNoneGenerated'));
-      } else {
-        toast.success(translate('library.tagsGenerated', { count: body.generated ?? 0 }));
-      }
-      refresh();
-      refreshFolders();
-    } catch (e) {
-      toast.error(translate('library.tagsError'), {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setTaggingLoading(false);
-    }
-  }
 
   async function moveToFolder(folderId: string | null): Promise<void> {
     if (!id) return;
@@ -468,18 +260,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     } finally {
       setDeleting(false);
     }
-  }
-
-  function sendToChat(transcript: TranscriptDetail): void {
-    const text = chatDraft.trim();
-    if (!text) return;
-    const autoSend = buildTranscriptChatMessage({
-      userText: text,
-      transcriptId: transcript.id,
-      title: transcript.title,
-    });
-    const state: ChatHandoffState = { autoSend };
-    navigate('/', { state });
   }
 
   async function createLinkedNote(transcript: TranscriptDetail): Promise<void> {
@@ -666,30 +446,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
           <article className="min-w-0 space-y-7 sm:space-y-8">
-            <TranscriptSummaryBlock
-              summary={t.summaryMd}
-              generating={generating}
-              onGenerate={() => void generateSummary(false)}
-              t={translate}
-            />
+            <TranscriptSummaryBlock summary={t.summaryMd} generating={false} t={translate} />
             <TranscriptFlowBlock
               flowchart={t.flowchartMd}
-              generating={generatingFlow}
-              onGenerate={() => void generateFlow(false)}
+              generating={false}
               readOnly={!canUseContextualActions}
               t={translate}
             />
             {canUseContextualActions && <TranscriptKnowledgeGraph transcriptId={t.id} />}
-            <AdditionalContextBlock
-              enrichments={enrichmentsData?.enrichments ?? []}
-              researchMode={enrichmentsData?.researchMode ?? 'OFF'}
-              loading={enrichmentsLoading}
-              locale={locale}
-              onQueue={() => void queueResearch()}
-              onUpdate={updateEnrichment}
-              onDelete={deleteEnrichment}
-              t={translate}
-            />
             <TranscriptCorrectionsCard
               transcriptId={t.id}
               revision={t.correctionRevision}
@@ -765,13 +529,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                   onCreate={createFolder}
                   t={translate}
                 />
-                <TagsControl
-                  tags={t.tags}
-                  loading={taggingLoading}
-                  onGenerate={generateTags}
-                  disabled={t.status === 'TRASH'}
-                  translate={translate}
-                />
+                <TagsControl tags={t.tags} translate={translate} />
                 {/* Duração só faz sentido pra vídeos */}
                 {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
                   <MetaRow
@@ -798,16 +556,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                     Icon={Calendar}
                     label={translate('library.published')}
                     value={formatDateTime(published, locale)}
-                  />
-                )}
-                {(t.source === 'WEB' || t.source === 'X') && (
-                  <SourceFreshness
-                    transcript={t}
-                    locale={locale}
-                    translate={translate}
-                    refreshing={refreshingSource}
-                    onRefresh={() => void refreshSource()}
-                    variant={t.source === 'X' ? 'x' : 'web'}
                   />
                 )}
                 {t.model && (
@@ -933,36 +681,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         </div>
       </PageShell>
 
-      {canUseContextualActions && (
-        <TranscriptChatDock
-          value={chatDraft}
-          onChange={setChatDraft}
-          onSend={() => sendToChat(t)}
-          title={t.title}
-          t={translate}
-        />
-      )}
-
-      <ConfirmDialog
-        open={confirmRegen}
-        onOpenChange={setConfirmRegen}
-        title={translate('library.regenerateTitle')}
-        description={translate('library.regenerateDescription')}
-        confirmLabel={translate('library.regenerateSummary')}
-        cancelLabel={translate('common.cancel')}
-        onConfirm={() => generateSummary(true)}
-        loading={generating}
-      />
-      <ConfirmDialog
-        open={confirmFlowRegen}
-        onOpenChange={setConfirmFlowRegen}
-        title={translate('library.regenerateFlowTitle')}
-        description={translate('library.regenerateFlowDescription')}
-        confirmLabel={translate('library.regenerateFlow')}
-        cancelLabel={translate('common.cancel')}
-        onConfirm={() => generateFlow(true)}
-        loading={generatingFlow}
-      />
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
@@ -1055,15 +773,9 @@ function LibraryFolderControl({
 
 function TagsControl({
   tags,
-  loading,
-  onGenerate,
-  disabled,
   translate,
 }: {
   tags: { id: string; name: string; slug: string }[];
-  loading: boolean;
-  onGenerate: () => Promise<void>;
-  disabled: boolean;
   translate: TranslateFn;
 }): React.ReactElement {
   return (
@@ -1073,22 +785,6 @@ function TagsControl({
           <Tags className="h-3.5 w-3.5 text-violet-400" />
           {translate('library.tagsLabel')}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-[11px]"
-          disabled={loading || disabled}
-          onClick={() => void onGenerate()}
-          title={translate('library.tagsHint')}
-        >
-          {loading ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Sparkles className="h-3 w-3 text-violet-400" />
-          )}
-          {loading ? translate('library.tagsRunning') : translate('library.tagsAction')}
-        </Button>
       </div>
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -1103,75 +799,6 @@ function TagsControl({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function SourceFreshness({
-  transcript,
-  locale,
-  translate,
-  refreshing,
-  onRefresh,
-  variant = 'web',
-}: {
-  transcript: Pick<
-    TranscriptDetail,
-    | 'sourceCollectedAt'
-    | 'sourceVersion'
-    | 'sourceRefreshStatus'
-    | 'sourceRefreshError'
-    | 'sourceVersions'
-  >;
-  locale: Locale;
-  translate: TranslateFn;
-  refreshing: boolean;
-  onRefresh: () => void;
-  variant?: 'web' | 'x';
-}): React.ReactElement {
-  const checking = transcript.sourceRefreshStatus === 'CHECKING';
-  const failed = transcript.sourceRefreshStatus === 'FAILED';
-  const reprocess = variant === 'x';
-  const status = checking
-    ? translate('library.sourceChecking')
-    : failed
-      ? translate(reprocess ? 'library.reprocessFailed' : 'library.sourceRefreshFailed')
-      : translate('library.sourceCurrent');
-  const statusClass = checking ? 'text-amber-300' : failed ? 'text-red-300' : 'text-emerald-400';
-  return (
-    <div className="space-y-2 border-t border-[var(--color-app-border)] pt-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-          <RefreshCw className={cn('h-3.5 w-3.5', checking && 'animate-spin')} />
-          {translate('library.sourceVersion', { version: transcript.sourceVersion || 1 })}
-        </div>
-        <span className={cn('text-[11px]', statusClass)}>{status}</span>
-      </div>
-      {transcript.sourceCollectedAt && (
-        <p className="text-[11px] text-[var(--color-app-muted)]">
-          {translate('library.sourceCollected')}:{' '}
-          {formatDateTime(new Date(transcript.sourceCollectedAt), locale)}
-        </p>
-      )}
-      {transcript.sourceVersions.length > 1 && (
-        <p className="text-[11px] text-[var(--color-app-muted)]">
-          {translate('library.sourceVersionHistory', { count: transcript.sourceVersions.length })}
-        </p>
-      )}
-      {failed && transcript.sourceRefreshError && (
-        <p className="text-[11px] leading-relaxed text-red-300">{transcript.sourceRefreshError}</p>
-      )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8 w-full text-[11px]"
-        disabled={checking || refreshing}
-        onClick={onRefresh}
-      >
-        <RefreshCw className={cn('h-3 w-3', (checking || refreshing) && 'animate-spin')} />
-        {translate(reprocess ? 'library.reprocessContent' : 'library.sourceRefresh')}
-      </Button>
     </div>
   );
 }

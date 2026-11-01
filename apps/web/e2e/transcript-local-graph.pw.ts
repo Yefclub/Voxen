@@ -17,7 +17,6 @@ test('explores grounded transcript knowledge and connected library content', asy
   const user = await db.user.update({ where: { email }, data: { status: 'APPROVED' } });
 
   try {
-    await setSetting('openrouter_api_key', 'sk-test-not-real');
     await setSetting('onboarding_done', 'true');
     const signin = await page.request.post('/api/auth/sign-in/email', {
       data: { email, password },

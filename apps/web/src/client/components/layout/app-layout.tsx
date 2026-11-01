@@ -1,5 +1,5 @@
-import { Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { Suspense, useLayoutEffect, useRef, useState } from 'react';
+import { Navigate, useLocation, useOutlet } from 'react-router-dom';
 import { useMotionValue } from 'motion/react';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
@@ -7,7 +7,6 @@ import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
-import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { UpdateModal } from '../update-modal';
 import { useIsDesktop } from '../../lib/use-media-query';
@@ -29,7 +28,6 @@ export function AppLayout(): React.ReactElement {
   const { data, loading, error, refresh } = useMe();
   const { interfaceMode } = useInterfaceMode();
   const location = useLocation();
-  const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
   // Navegação mobile (<md): o Topbar flutuante não hospeda navegação — quem
   // faz isso é a bottom-nav (abas + menu do Perfil com os destinos únicos) +
@@ -40,7 +38,6 @@ export function AppLayout(): React.ReactElement {
   const [mobileNavPresent, setMobileNavPresent] = useState(false);
   const mobileNavProgress = useMotionValue(0);
   const isDesktop = useIsDesktop();
-  const navigateFromNotification = useCallback((path: string) => navigate(path), [navigate]);
   // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
   // ativo no mobile (no desktop a navegação é a sidebar). Hooks sempre rodam
   // (regras de hooks) — `enabled` controla o anexo dos listeners.
@@ -51,11 +48,6 @@ export function AppLayout(): React.ReactElement {
     onClose: () => setMobileNavOpen(false),
     onProgress: (progress) => mobileNavProgress.set(progress),
   });
-  // Watcher global de jobs do user logado (toast em qualquer página)
-  useJobsWatcher(
-    !!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone),
-    navigateFromNotification,
-  );
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);
   const sectionKey = getSectionKey(location.pathname);

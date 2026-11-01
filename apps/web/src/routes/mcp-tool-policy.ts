@@ -14,7 +14,6 @@ export const MCP_TOOL_SCOPES = {
   voxen_list_note_revisions: 'READ',
   voxen_list_notes: 'READ',
   voxen_list_transcript_corrections: 'READ',
-  voxen_list_transcript_enrichments: 'READ',
   voxen_list_transcripts: 'READ',
   voxen_outline: 'READ',
   voxen_personal_context: 'READ',
@@ -25,7 +24,6 @@ export const MCP_TOOL_SCOPES = {
   voxen_read_timespan: 'READ',
   voxen_read_transcript: 'READ',
   voxen_read_transcript_correction: 'READ',
-  voxen_read_transcript_enrichment: 'READ',
   voxen_related: 'READ',
   voxen_search_knowledge: 'READ',
   voxen_search_note_content: 'READ',
@@ -39,12 +37,6 @@ export const MCP_TOOL_SCOPES = {
   voxen_restore_note_revision: 'WRITE',
   voxen_patch_transcript: 'WRITE',
   voxen_restore_transcript_correction: 'WRITE',
-  voxen_request_transcription: 'WRITE',
-  voxen_request_transcriptions: 'WRITE',
-  voxen_request_transcript_research: 'WRITE',
-  voxen_review_transcript_enrichment: 'WRITE',
-  voxen_edit_transcript_enrichment: 'WRITE',
-  voxen_delete_transcript_enrichment: 'WRITE',
   voxen_delete_knowledge: 'WRITE',
 } as const satisfies Record<string, McpScope>;
 
@@ -64,36 +56,7 @@ const WRITE_EFFECTS = {
     idempotentHint: false,
     openWorldHint: false,
   },
-  voxen_request_transcription: {
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  voxen_request_transcriptions: {
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  voxen_request_transcript_research: {
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  voxen_review_transcript_enrichment: {
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-  voxen_edit_transcript_enrichment: {
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-  voxen_delete_transcript_enrichment: {
-    destructiveHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+
   voxen_delete_knowledge: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
 } satisfies Record<string, WriteEffects>;
 

@@ -1,17 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { Prisma } from '../../prisma-generated/client';
+import type { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
-import { getSettingByKey } from './settings';
-
-export class TranscriptResearchQueueError extends Error {
-  constructor(
-    public readonly code: 'DISABLED' | 'NOT_FOUND',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'TranscriptResearchQueueError';
-  }
-}
 
 type EnrichmentFreshnessInput = {
   staleReason: string | null;
@@ -128,78 +116,5 @@ export async function cancelTranscriptEnrichmentsForInactiveParent(
       cancelRequestedAt: now,
       staleReason: 'parent-inactive',
     },
-  });
-}
-
-export async function queueTranscriptResearch(input: {
-  userId: string;
-  transcriptId: string;
-  trigger: 'AUTO' | 'MANUAL' | 'MCP';
-  requestId?: string;
-}) {
-  const mode = (await getSettingByKey('summary_research_mode').catch(() => null))?.toUpperCase();
-  if (
-    (input.trigger === 'AUTO' && mode !== 'AUTO') ||
-    (input.trigger !== 'AUTO' && mode !== 'MANUAL' && mode !== 'AUTO')
-  ) {
-    throw new TranscriptResearchQueueError(
-      'DISABLED',
-      'A pesquisa adicional está desativada pelo administrador.',
-    );
-  }
-  return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<
-      Array<{ id: string; sourceVersion: number; sourceChecksum: string | null }>
-    >(Prisma.sql`
-      SELECT t.id, t."sourceVersion", t."sourceChecksum"
-      FROM "Transcript" t
-      WHERE t.id = ${input.transcriptId} AND t."userId" = ${input.userId}
-        AND t.status = 'ACTIVE'::"ContentStatus"
-      FOR UPDATE OF t
-    `);
-    const transcript = rows[0];
-    if (!transcript) {
-      throw new TranscriptResearchQueueError('NOT_FOUND', 'Transcrição não encontrada.');
-    }
-    const revision = await tx.configRevision.findFirst({
-      orderBy: { number: 'desc' },
-      select: { id: true },
-    });
-    const requestId = input.trigger === 'AUTO' ? '' : (input.requestId ?? randomUUID());
-    const runKey = createHash('sha256')
-      .update(
-        [
-          input.trigger.toLowerCase(),
-          transcript.id,
-          transcript.sourceVersion,
-          transcript.sourceChecksum ?? '',
-          revision?.id ?? '',
-          requestId,
-        ].join(':'),
-      )
-      .digest('hex');
-    return tx.transcriptEnrichment.upsert({
-      where: {
-        userId_transcriptId_runKey: {
-          userId: input.userId,
-          transcriptId: transcript.id,
-          runKey,
-        },
-      },
-      update: {},
-      create: {
-        userId: input.userId,
-        transcriptId: transcript.id,
-        configRevisionId: revision?.id ?? null,
-        runKey,
-        trigger: input.trigger,
-        sourceVersion: transcript.sourceVersion,
-        sourceChecksum: transcript.sourceChecksum,
-        title: '',
-        content: '',
-        status: 'PENDING',
-        reviewState: 'SUGGESTED',
-      },
-    });
   });
 }

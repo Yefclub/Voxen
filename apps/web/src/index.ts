@@ -12,25 +12,18 @@ import { db } from './lib/db';
 import { getAppLanguage, getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { adminConfigRevisionRoutes } from './routes/admin-config-revisions';
-import { integrationCookieRoutes } from './routes/integration-cookies';
-import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
 import { transcriptsRoutes } from './routes/transcripts';
-import { savedMediaRoutes } from './routes/saved-media';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { notesRoutes } from './routes/notes';
-import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
 import { guideRoutes } from './routes/guide';
 import { createReleasesRoutes } from './routes/releases';
-import { shareTargetRoutes } from './routes/share-target';
 import { extensionMetaRoutes } from './routes/extension-meta';
-import { researchArtifactsRoutes } from './routes/research-artifacts';
-import { transcriptEnrichmentRoutes } from './routes/transcript-enrichments';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -156,20 +149,12 @@ app.route('/api/setup', setupRoutes);
 // Admin endpoints (protegidos por middleware no próprio router)
 app.route('/api/admin', adminRoutes);
 
-// Seleção manual de modelos por finalidade (spec 123, admin only)
+// Config revisions (admin only)
 
 app.route('/api/admin/config-revisions', adminConfigRevisionRoutes);
 
-// Cookies de plataforma capturados pela extensão, dedicados ao usuário da sessão.
-app.route('/api/integrations/cookies', integrationCookieRoutes);
-
-// Jobs endpoints (download + transcrição — spec 002)
-app.route('/api/jobs', jobsRoutes);
-
 // Transcripts endpoints (list + canonical Markdown from selected storage)
 app.route('/api/transcripts', transcriptsRoutes);
-app.route('/api/saved-media', savedMediaRoutes);
-app.route('/api/transcripts', transcriptEnrichmentRoutes);
 
 // Onboarding (admin first-run) + avatar upload
 app.route('/api/onboarding', onboardingRoutes);
@@ -179,11 +164,8 @@ app.route('/api/account', accountRoutes);
 
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
-app.route('/api/research-artifacts', researchArtifactsRoutes);
 // Organização compartilhada da biblioteca
 app.route('/api/library', libraryRoutes);
-// Automações (jobs periódicos com continuidade — spec 008)
-app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
@@ -195,7 +177,6 @@ app.route('/api/guide', guideRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
 // PWA Web Share Target (Android/Chrome instalado)
-app.route('/share-target', shareTargetRoutes);
 // Extensão browser — version.json (update check)
 app.route('/extension', extensionMetaRoutes);
 
@@ -270,6 +251,11 @@ app.get('*', async (c) => {
     );
   }
   const url = new URL(c.req.url);
+  // Removed Product 2 API surface must fail explicitly (spec 215): unknown
+  // /api/* paths never fall through to the SPA shell.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+    return c.json({ error: 'Endpoint não encontrado.' }, 404);
+  }
   const reqPath = url.pathname === '/' ? '/index.html' : url.pathname;
   const filePath = join(distDir, reqPath);
   // SPA fallback: qualquer rota desconhecida vira index.html (React Router)
@@ -328,9 +314,6 @@ if (process.env.NODE_ENV === 'production') {
   const { ensureMcpOauthResourceUpgrade } = await import('./lib/mcp-oauth-upgrade');
   const { resolveMcpOAuthResource } = await import('./lib/auth');
   await ensureMcpOauthResourceUpgrade(resolveMcpOAuthResource());
-  void import('./lib/enrichment-projection').then(({ startEnrichmentProjectionMaintenance }) =>
-    startEnrichmentProjectionMaintenance(),
-  );
   void import('./lib/mcp-audit-retention')
     .then(({ maintainMcpOAuthAudit }) => {
       void maintainMcpOAuthAudit();
@@ -412,8 +395,8 @@ import type { Server } from 'bun';
 function isLongLivedStreamRequest(req: Request): boolean {
   if (req.method === 'GET') {
     const path = new URL(req.url).pathname;
-    // Jobs SSE: heartbeat a cada 10s, mas idle do Bun ainda pode matar a conexão.
-    return /\/api\/jobs\/[^/]+\/events$/.test(path) || path.endsWith('/api/graph/events');
+    // Graph SSE: idle do Bun ainda pode matar a conexão.
+    return path.endsWith('/api/graph/events');
   }
   return false;
 }

@@ -1,11 +1,10 @@
-import { KeyRound, Link2, User as UserIcon } from '@/components/ui/icons';
+import { KeyRound, User as UserIcon } from '@/components/ui/icons';
 import { NavLink } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 
 const accountSections = [
   { to: '/conta', label: 'account.title', icon: UserIcon, end: true },
-  { to: '/conta/plataformas', label: 'account.platforms.title', icon: Link2, end: false },
   { to: '/conta/mcp', label: 'account.mcp.title', icon: KeyRound, end: false },
 ] as const;
 

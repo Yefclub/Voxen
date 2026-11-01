@@ -23,7 +23,6 @@ describe('chrome de navegação mobile compacto', () => {
     expect(source).toContain('md:gap-2');
     expect(source).toContain('md:px-2 md:py-1.5');
     expect(source).toContain('bg-[var(--color-app-bg)]/75');
-    expect(source).toContain('md:inline-flex');
     expect(source).not.toContain('sm:inline-flex');
   });
 

@@ -41,7 +41,6 @@ import {
   type LibraryPeriod,
 } from '../lib/library-organization';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
-import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { LibrarySearch } from '../components/library/library-search';
 import { TagFilterMenu } from '../components/library/tag-filter-menu';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
@@ -803,8 +802,6 @@ export function TranscricoesPage(): React.ReactElement {
           )}
         </div>
       </section>
-
-      <ContentIngestCard />
 
       <div id="library-results" className="scroll-mt-6" />
 

@@ -21,7 +21,7 @@ import {
 } from './chat-reference-canvas-i18n';
 import * as featureMessages from './feature-messages';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
-import { enResearchPolicyMessages, ptBrResearchPolicyMessages } from './research-policy-i18n';
+import { enJobStageMessages, ptBrJobStageMessages } from './job-stage-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 import {
   enTranscriptAnnotationMessages,
@@ -38,9 +38,9 @@ const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
+  ...ptBrJobStageMessages,
   ...ptBrTranscriptAnnotationMessages,
   ...featureMessages.ptBrFeatureMessages,
-  ...ptBrResearchPolicyMessages,
   ...ptBrChatReferenceCanvasMessages,
   ...ptBrTranscriptFlowMessages,
   ...ptBrNoteVersioningMessages,
@@ -1427,10 +1427,10 @@ const enMessages: Record<I18nKey, string> = {
   ...enMermaidCanvasMessages,
   ...enNoteVersioningMessages,
   ...enReleaseUpdateMessages,
+  ...enJobStageMessages,
   ...enTranscriptAnnotationMessages,
   ...featureMessages.enFeatureMessages,
   ...enKnowledgeDeletionMessages,
-  ...enResearchPolicyMessages,
   ...enChatReferenceCanvasMessages,
   ...enTranscriptFlowMessages,
   'common.back': 'Back',

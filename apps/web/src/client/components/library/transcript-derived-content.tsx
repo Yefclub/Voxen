@@ -15,7 +15,7 @@ export function TranscriptSummaryBlock({
 }: {
   summary: string | null;
   generating: boolean;
-  onGenerate: () => void;
+  onGenerate?: () => void;
   t: TranslateFn;
 }): React.ReactElement {
   const [copied, setCopied] = useState(false);
@@ -56,25 +56,27 @@ export function TranscriptSummaryBlock({
                 {t('library.summaryDescription')}
               </p>
             </div>
-            <Button
-              onClick={onGenerate}
-              disabled={generating}
-              variant="primary"
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t('library.generating')}
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {t('library.generateSummary')}
-                </>
-              )}
-            </Button>
+            {onGenerate && (
+              <Button
+                onClick={onGenerate}
+                disabled={generating}
+                variant="primary"
+                size="sm"
+                className="w-full sm:w-auto"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {t('library.generating')}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {t('library.generateSummary')}
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -108,25 +110,27 @@ export function TranscriptSummaryBlock({
             )}
             <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
           </Button>
-          <Button
-            onClick={onGenerate}
-            disabled={generating}
-            variant="ghost"
-            size="sm"
-            className="h-8"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t('library.regenerating')}
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3 w-3" />
-                {t('library.regenerateSummary')}
-              </>
-            )}
-          </Button>
+          {onGenerate && (
+            <Button
+              onClick={onGenerate}
+              disabled={generating}
+              variant="ghost"
+              size="sm"
+              className="h-8"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t('library.regenerating')}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3 w-3" />
+                  {t('library.regenerateSummary')}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
       <Card
@@ -153,7 +157,7 @@ export function TranscriptFlowBlock({
 }: {
   flowchart: string | null;
   generating: boolean;
-  onGenerate: () => void;
+  onGenerate?: () => void;
   readOnly?: boolean;
   t: TranslateFn;
 }): React.ReactElement | null {
@@ -195,24 +199,26 @@ export function TranscriptFlowBlock({
               {t('library.flowDescription')}
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={onGenerate}
-            disabled={generating}
-            variant="outline"
-            size="sm"
-            className="w-full sm:w-auto"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('library.generatingFlow')}
-              </>
-            ) : (
-              <>
-                <Workflow className="h-3.5 w-3.5" /> {t('library.generateFlow')}
-              </>
-            )}
-          </Button>
+          {onGenerate && (
+            <Button
+              type="button"
+              onClick={onGenerate}
+              disabled={generating}
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('library.generatingFlow')}
+                </>
+              ) : (
+                <>
+                  <Workflow className="h-3.5 w-3.5" /> {t('library.generateFlow')}
+                </>
+              )}
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -243,20 +249,22 @@ export function TranscriptFlowBlock({
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
             </Button>
-            <Button
-              type="button"
-              onClick={onGenerate}
-              disabled={generating}
-              variant="ghost"
-              size="sm"
-            >
-              {generating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Workflow className="h-3.5 w-3.5" />
-              )}
-              {t('library.regenerateFlow')}
-            </Button>
+            {onGenerate && (
+              <Button
+                type="button"
+                onClick={onGenerate}
+                disabled={generating}
+                variant="ghost"
+                size="sm"
+              >
+                {generating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Workflow className="h-3.5 w-3.5" />
+                )}
+                {t('library.regenerateFlow')}
+              </Button>
+            )}
           </div>
         )}
       </div>

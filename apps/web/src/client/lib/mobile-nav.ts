@@ -13,7 +13,7 @@ export const BOTTOM_NAV_TABS = ['/', '/transcricoes', '/notas', '/grafo'] as con
 /**
  * `true` quando o pathname é exatamente uma aba do bottom-nav ou um alias
  * canônico dela. `/chat` compartilha a semântica da home `/`; detalhes como
- * `/jobs/:id` e `/transcricoes/:id` continuam sendo sub-páginas.
+ * `/transcricoes/:id` e outras páginas de detalhe continuam sendo sub-páginas.
  */
 export function isBottomNavTab(pathname: string): boolean {
   return isChatRoute(pathname) || (BOTTOM_NAV_TABS as readonly string[]).includes(pathname);

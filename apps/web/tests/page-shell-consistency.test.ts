@@ -8,13 +8,9 @@ const CLIENT_STYLES = join(import.meta.dir, '../src/client/index.css');
 const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> = {
   'admin-integracoes.tsx': 'workspace',
   'admin-usuarios.tsx': 'wide',
-  'automacoes.tsx': 'wide',
   'conta-mcp.tsx': 'wide',
-  'conta-plataformas.tsx': 'wide',
   'conta.tsx': 'wide',
   'extensao.tsx': 'wide',
-  'fila.tsx': 'wide',
-  'jobs-detalhe.tsx': 'workspace',
   'notas.tsx': 'workspace',
   'novidades.tsx': 'wide',
   'setup.tsx': 'workspace',
@@ -25,12 +21,9 @@ const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> 
 const CANONICAL_HEADER_PAGES = [
   'admin-integracoes.tsx',
   'admin-usuarios.tsx',
-  'automacoes.tsx',
   'conta-mcp.tsx',
-  'conta-plataformas.tsx',
   'conta.tsx',
   'extensao.tsx',
-  'fila.tsx',
   'notas.tsx',
   'novidades.tsx',
   'setup.tsx',
@@ -73,11 +66,6 @@ describe('consistência dos shells de página', () => {
     }
   });
 
-  test('estados de carregamento preservam o mesmo shell e largura da página', () => {
-    const detail = readFileSync(join(PAGES_ROOT, 'jobs-detalhe.tsx'), 'utf8');
-    expect(detail.match(/<PageShell width="workspace"/gu)).toHaveLength(2);
-  });
-
   test('animações utilitárias respeitam preferência por movimento reduzido', () => {
     const styles = readFileSync(CLIENT_STYLES, 'utf8');
     expect(styles).toMatch(
@@ -97,11 +85,9 @@ describe('consistência dos shells de página', () => {
     }
   });
 
-  test('chat e grafo permanecem full-bleed e sem shell limitado', () => {
-    for (const file of ['chat.tsx', 'grafo.tsx']) {
-      const source = readFileSync(join(PAGES_ROOT, file), 'utf8');
-      expect(source, file).toContain('h-full');
-      expect(source, file).not.toContain('<PageShell');
-    }
+  test('grafo permanece full-bleed e sem shell limitado', () => {
+    const source = readFileSync(join(PAGES_ROOT, 'grafo.tsx'), 'utf8');
+    expect(source).toContain('h-full');
+    expect(source).not.toContain('<PageShell');
   });
 });

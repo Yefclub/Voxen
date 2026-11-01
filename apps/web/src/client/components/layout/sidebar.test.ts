@@ -11,7 +11,6 @@ describe('application navigation domains', () => {
   it('exposes user-owned account destinations independently', () => {
     expect(NAV.filter((item) => item.scope === 'personal').map((item) => item.to)).toEqual([
       '/conta',
-      '/conta/plataformas',
       '/conta/mcp',
     ]);
   });

@@ -25,7 +25,6 @@ import { Switch } from '../components/ui/switch';
 import { api, ApiError, apiGet, apiPost } from '../lib/api';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
-import { ResearchPolicySection } from '../components/admin/research-policy-section';
 import { McpTokenAdminSection } from '../components/admin/mcp-token-admin-section';
 import { writeClipboardText } from '../lib/clipboard';
 import { useI18n } from '../lib/i18n';
@@ -85,7 +84,6 @@ export function AdminIntegracoesPage(): React.ReactElement {
           description={t('admin.integrations.description')}
         />
 
-        <ResearchPolicySection />
         <ConfigRevisionSection />
         <McpTokenAdminSection />
         <ProxyAgentSection />

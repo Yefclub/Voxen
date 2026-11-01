@@ -5,7 +5,6 @@ import { mcpAuthenticationStore } from '../src/routes/mcp-authentication';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
 import { MCP_TOOL_SCOPES } from '../src/routes/mcp-tool-policy';
 import { PERSONAL_AGENT_CONTEXT_MAX_CHARS } from '../src/lib/personal-agent-context';
-import { deleteSetting, setSetting } from '../src/lib/settings';
 import {
   transcriptCorrectionChecksum,
   transcriptMarkdownToPlainText,
@@ -169,8 +168,6 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_brain_search');
     expect(names).toContain('voxen_brain_timeline');
     expect(names).toContain('voxen_personal_context');
-    expect(names).toContain('voxen_list_transcript_enrichments');
-    expect(names).toContain('voxen_read_transcript_enrichment');
     const search = tools.find((t) => t.name === 'voxen_search_transcripts');
     expect(search?.annotations?.readOnlyHint).toBe(true);
   });
@@ -406,57 +403,18 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_search_note_content');
     expect(names).toContain('voxen_list_note_revisions');
     expect(names).toContain('voxen_read_note_revision');
-    expect(names).toContain('voxen_request_transcription');
-    expect(names).toContain('voxen_request_transcriptions');
     expect(names).toContain('voxen_get_job_status');
-    expect(names).toContain('voxen_request_transcript_research');
-    expect(names).toContain('voxen_review_transcript_enrichment');
-    expect(names).toContain('voxen_edit_transcript_enrichment');
-    expect(names).toContain('voxen_delete_transcript_enrichment');
     expect(names).toContain('voxen_delete_knowledge');
+    expect(names).not.toContain('voxen_request_transcription');
+    expect(names).not.toContain('voxen_request_transcriptions');
+    expect(names).not.toContain('voxen_list_transcript_enrichments');
+    expect(names).not.toContain('voxen_read_transcript_enrichment');
+    expect(names).not.toContain('voxen_request_transcript_research');
+    expect(names).not.toContain('voxen_review_transcript_enrichment');
+    expect(names).not.toContain('voxen_edit_transcript_enrichment');
+    expect(names).not.toContain('voxen_delete_transcript_enrichment');
     const createNote = tools.find((t) => t.name === 'voxen_create_note');
     expect(createNote?.annotations?.readOnlyHint).toBe(false);
-  });
-
-  it('voxen_request_transcriptions devolve um resultado independente por URL', async () => {
-    await setSetting('onboarding_done', 'true');
-    try {
-      const res = await call(
-        {
-          jsonrpc: '2.0',
-          id: 53,
-          method: 'tools/call',
-          params: {
-            name: 'voxen_request_transcriptions',
-            arguments: {
-              urls: [
-                'https://www.youtube.com/watch?v=mcpBatch001',
-                'inválida',
-                'https://youtu.be/mcpBatch001',
-              ],
-            },
-          },
-        },
-        WRITE_TOKEN,
-      );
-      const body = (await res.json()) as {
-        result?: {
-          structuredContent?: {
-            total: number;
-            created: number;
-            items: Array<{ outcome: string; jobId: string | null }>;
-          };
-        };
-      };
-      const batch = body.result?.structuredContent;
-      expect(batch?.total).toBe(3);
-      expect(batch?.created).toBe(1);
-      expect(batch?.items.map((item) => item.outcome)).toEqual(['created', 'invalid', 'inflight']);
-      expect(batch?.items[2]?.jobId).toBe(batch?.items[0]?.jobId);
-    } finally {
-      await db.job.deleteMany({ where: { userId, sourceUrl: 'https://youtu.be/mcpBatch001' } });
-      await deleteSetting('onboarding_done').catch(() => {});
-    }
   });
 
   it('keyset note pages remain stable across inserts, edits and deleted boundary rows', async () => {
@@ -631,12 +589,10 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     };
     const readNames = (readBody.result?.tools ?? []).map((tool) => tool.name);
     expect(readNames).toContain('voxen_read_transcript');
-    expect(readNames).toContain('voxen_read_transcript_enrichment');
     expect(readNames).toContain('voxen_search_transcript_content');
     expect(readNames).toContain('voxen_list_transcript_corrections');
     expect(readNames).toContain('voxen_personal_context');
     expect(readNames).not.toContain('voxen_create_note');
-    expect(readNames).not.toContain('voxen_review_transcript_enrichment');
     expect(readNames).not.toContain('voxen_patch_transcript');
 
     const writeResponse = await call({ jsonrpc: '2.0', id: 52, method: 'tools/list' }, WRITE_TOKEN);
@@ -645,7 +601,6 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     };
     const writeNames = (writeBody.result?.tools ?? []).map((tool) => tool.name);
     expect(writeNames).toContain('voxen_create_note');
-    expect(writeNames).toContain('voxen_review_transcript_enrichment');
     expect(writeNames).toContain('voxen_patch_transcript');
     expect(writeNames).toContain('voxen_restore_transcript_correction');
     expect(writeNames).toContain('voxen_delete_knowledge');

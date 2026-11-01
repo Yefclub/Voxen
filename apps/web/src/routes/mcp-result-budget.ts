@@ -78,8 +78,6 @@ function writeFollowUp(tool: string, summary: Record<string, unknown>): Record<s
       tool: 'voxen_read_transcript_correction',
       arguments: { transcript_id: correction.transcriptId, revision: correction.revision },
     };
-  if (tool.includes('enrichment'))
-    return { tool: 'voxen_read_transcript_enrichment', arguments: { enrichment_id: summary.id } };
   if (tool.includes('note'))
     return { tool: 'voxen_read_note', arguments: { note_id: summary.noteId ?? summary.id } };
   if (summary.transcriptId)

@@ -18,7 +18,6 @@ import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/p
 import { storageDeletePrefix } from '../lib/storage';
 import { adminAuthenticationRoutes } from './admin-authentication';
 import { adminMcpRoutes } from './admin-mcp';
-import { adminResearchPolicyRoutes } from './admin-research-policy';
 import { requireApprovedAdmin, type AdminVariables } from './admin-guard';
 
 export const adminRoutes = new Hono<{ Variables: AdminVariables }>();
@@ -64,7 +63,6 @@ adminRoutes.use('*', requireApprovedAdmin);
 
 adminRoutes.route('/authentication', adminAuthenticationRoutes);
 adminRoutes.route('/mcp', adminMcpRoutes);
-adminRoutes.route('/research-policy', adminResearchPolicyRoutes);
 
 // GET /api/admin/usuarios — lista todos
 adminRoutes.get('/usuarios', async (c) => {

@@ -9,7 +9,7 @@ import { db } from './db';
 import type { Prisma } from '../../prisma-generated/client';
 import { reindexLibraryFolderBrain, reindexTranscriptsBrain } from './brain';
 import { invalidateGraphCache } from './graph-cache';
-import { orderUniqueTagNames, pickFolderId, slugifyTag } from './tags-generate';
+import { orderUniqueTagNames, pickFolderId, slugifyTag } from './tag-slug';
 
 export interface AppliedTag {
   id: string;
