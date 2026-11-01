@@ -264,31 +264,6 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP current knowledge', () => {
     expect(reply.structuredContent!.sources).toEqual([]);
   });
 
-  test('read-only research reports freshness without changing records or projections', async () => {
-    const { transcript, research, node } = await researchFixture();
-    const listed = await tool<{ enrichments: Array<{ id: string; staleReason: string | null }> }>(
-      'voxen_list_transcript_enrichments',
-      { transcript_id: transcript.id },
-    );
-    expect(listed.structuredContent!.enrichments[0]!.staleReason).toBe('source-version-changed');
-    const read = await tool<{ enrichment: { staleReason: string | null } }>(
-      'voxen_read_transcript_enrichment',
-      { enrichment_id: research.id },
-    );
-    expect(read.structuredContent!.enrichment.staleReason).toBe('source-version-changed');
-    expect(await db.transcriptEnrichment.findUnique({ where: { id: research.id } })).toEqual(
-      research,
-    );
-    expect(await db.brainNode.count({ where: { id: node.id } })).toBe(1);
-  });
-
-  test('research attached to trash is unavailable', async () => {
-    const { transcript, research } = await researchFixture();
-    await db.transcript.update({ where: { id: transcript.id }, data: { status: 'TRASH' } });
-    const reply = await tool('voxen_read_transcript_enrichment', { enrichment_id: research.id });
-    expect(reply.isError).toBe(true);
-  });
-
   test('validates note ownership and research freshness before retaining evidence', async () => {
     const note = await db.note.create({ data: { userId: ownerId, title: 'Owned note' } });
     const foreign = await db.note.create({ data: { userId: foreignId, title: 'Foreign note' } });

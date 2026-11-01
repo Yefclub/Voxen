@@ -40,7 +40,9 @@ describe('carregamento progressivo de rotas', () => {
   test('mantém rota de artefatos pausada sem carregar página removida', () => {
     const source = readClientSource('App.tsx');
 
-    expect(source).toContain('<Route path="/artefatos" element={<Navigate to="/transcricoes" replace />} />');
+    expect(source).toContain(
+      '<Route path="/artefatos" element={<Navigate to="/transcricoes" replace />} />',
+    );
     expect(source).not.toContain("import('./pages/artefatos')");
   });
 });
