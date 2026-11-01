@@ -2,7 +2,8 @@
 
 > Este arquivo é o equivalente do `CLAUDE.md` para o **Codex/OpenAI**. Conteúdo idêntico, apenas com paths `.agents/` ao invés de `.claude/`. Em projetos novos, mantenha os dois sincronizados.
 
-As skills, agentes e configurações do Codex vivem em `.agents/`, espelhadas a partir de `.claude/`.
+As skills e agentes compartilhados do Codex vivem em `.agents/`, espelhados a partir de `.claude/`.
+A configuração **nativa** do Codex (lida pelo próprio cliente) vive em `.codex/` e **não** é espelhada: `config.toml` do projeto, papéis em `.codex/agents/` e hooks do cliente têm formato e descoberta próprios — copiar arquivos `.claude/` para lá não equivale a configuração nativa.
 O arquivo `.claude/settings.local.json` não é espelhado por ser configuração local.
 
 **`.claude/` é a fonte; `.agents/` é gerado.** Editou um arquivo em `.claude/`? Regenere e commite o espelho junto, no mesmo PR:

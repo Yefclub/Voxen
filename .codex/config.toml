@@ -1,0 +1,14 @@
+# Voxen — project-scoped Codex configuration (spec 218).
+# Loaded only when the project is trusted.
+#
+# Deliberately absent: provider, auth, notification, profile, and telemetry
+# keys. Project scope cannot set them, and this repository must never silently
+# change the user's model or account. Role model/effort pins live in
+# `.codex/agents/*.toml`, where the selected values stay explicit and
+# reviewable; the orchestrator keeps its session-selected model.
+
+[agents]
+# Bound concurrent writers: matches the repo's per-owner execution bound and
+# keeps parallel work reviewable. The orchestrator still serializes edits to
+# the same snapshot.
+max_concurrent_threads_per_session = 4
