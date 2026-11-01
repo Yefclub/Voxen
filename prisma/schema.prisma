@@ -1121,6 +1121,12 @@ model Note {
   // Conteúdo markdown. FOLDER ignora este campo.
   content           String                   @default("") @db.Text
   revision          Int                      @default(1)
+  // Generic prepared-document metadata (spec 216 §2): provenance of the
+  // external document. Nullable — unknown for existing rows; folders ignore.
+  language          String?
+  author            String?
+  sourceUrl         String?
+  publishedAt       DateTime?
   // tsvector mantido por trigger SQL (sync com title+content).
   searchVector      Unsupported("tsvector")?
   createdAt         DateTime                 @default(now())

@@ -11,12 +11,10 @@
 // ============================================================================
 
 import { Hono } from 'hono';
-import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
-  NoteAnchorInputSchema,
   NoteAnchorValidationError,
   noteSourceCreateData,
   validateNoteAnchors,
@@ -25,6 +23,7 @@ import { noteContentChecksum } from '../lib/note-revisions';
 import {
   createPreparedNoteForHttp,
   PreparedIngestContractError,
+  toPreparedNoteMetadata,
 } from '../lib/prepared-note-ingest';
 import {
   NoteNotFoundError,
@@ -34,6 +33,7 @@ import {
   syncNoteGraph,
 } from '../lib/note-versioning';
 import { noteVersionRoutes } from './note-version-routes';
+import { CreateBody, PatchBody } from '../lib/note-input';
 
 type Vars = { userId: string };
 
@@ -142,6 +142,10 @@ notesRoutes.get('/:id', async (c) => {
       title: true,
       content: true,
       revision: true,
+      language: true,
+      author: true,
+      sourceUrl: true,
+      publishedAt: true,
       createdAt: true,
       updatedAt: true,
       transcriptSources: {
@@ -172,23 +176,6 @@ notesRoutes.get('/:id', async (c) => {
   return c.json({ note: { ...note, checksum: noteContentChecksum(note.title, note.content) } });
 });
 
-const CreateBody = z.object({
-  parentId: z.string().nullable().optional(),
-  sourceType: z.enum(['TRANSCRIPT']).optional(),
-  sourceId: z.string().optional(),
-  sourceTranscriptIds: z.array(z.string().min(1)).max(50).optional(),
-  sourceAnchors: z.array(NoteAnchorInputSchema).max(100).optional(),
-  kind: z.enum(['NOTE', 'FOLDER']).default('NOTE'),
-  title: z.string().min(1).max(200),
-  content: z.string().max(200_000).optional(),
-  // Contrato de ingestão v1 (spec 216): retentativas com a mesma chave
-  // devolvem a nota original em vez de duplicar. Válido só para NOTE.
-  contract_version: z.string().max(16).optional(),
-  idempotency_key: z.string().max(128).optional(),
-  producer_id: z.string().max(128).optional(),
-  external_id: z.string().max(256).optional(),
-});
-
 notesRoutes.post('/', async (c) => {
   const userId = c.get('userId');
   const parsed = CreateBody.safeParse(await c.req.json().catch(() => null));
@@ -206,6 +193,7 @@ notesRoutes.post('/', async (c) => {
     idempotency_key,
     producer_id,
     external_id,
+    metadata,
   } = parsed.data;
 
   // Validar parentId — só permite filhar de pasta do mesmo user
@@ -219,7 +207,10 @@ notesRoutes.post('/', async (c) => {
       return c.json({ error: 'Só é possível aninhar dentro de pastas.' }, 400);
     }
   }
-  if (kind !== 'NOTE' && (contract_version ?? idempotency_key ?? producer_id ?? external_id)) {
+  if (
+    kind !== 'NOTE' &&
+    (contract_version ?? idempotency_key ?? producer_id ?? external_id ?? metadata)
+  ) {
     return c.json({ error: 'Contrato de ingestão vale só para notas (kind NOTE).' }, 400);
   }
 
@@ -251,6 +242,20 @@ notesRoutes.post('/', async (c) => {
   }
 
   if (kind === 'NOTE') {
+    let metadataParsed;
+    try {
+      metadataParsed = toPreparedNoteMetadata({
+        language: metadata?.language,
+        author: metadata?.author,
+        source_url: metadata?.source_url,
+        published_at: metadata?.published_at,
+      });
+    } catch (error) {
+      if (error instanceof PreparedIngestContractError) {
+        return c.json({ error: error.message }, 400);
+      }
+      throw error;
+    }
     let created;
     try {
       created = await createPreparedNoteForHttp(userId, {
@@ -264,6 +269,7 @@ notesRoutes.post('/', async (c) => {
         producerId: producer_id,
         externalId: external_id,
         contractVersion: contract_version,
+        metadata: metadataParsed,
       });
     } catch (error) {
       if (error instanceof PreparedIngestContractError) {
@@ -299,24 +305,6 @@ notesRoutes.post('/', async (c) => {
   const graphSync = await syncNoteGraph(userId, note.id);
   return c.json({ note, graphSync }, 201);
 });
-
-const PatchBody = z
-  .object({
-    expectedRevision: z.number().int().min(1),
-    parentId: z.string().nullable().optional(),
-    title: z.string().min(1).max(200).optional(),
-    content: z.string().max(200_000).optional(),
-    sourceTranscriptIds: z.array(z.string().min(1)).max(50).optional(),
-    sourceAnchors: z.array(NoteAnchorInputSchema).max(100).optional(),
-  })
-  .refine(
-    (value) =>
-      value.parentId !== undefined ||
-      value.title !== undefined ||
-      value.content !== undefined ||
-      value.sourceTranscriptIds !== undefined ||
-      value.sourceAnchors !== undefined,
-  );
 
 notesRoutes.patch('/:id', async (c) => {
   const userId = c.get('userId');

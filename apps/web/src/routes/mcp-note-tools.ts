@@ -228,6 +228,10 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
         revision: z.number(),
         checksum: z.string(),
         href: z.string(),
+        language: z.string().nullable(),
+        author: z.string().nullable(),
+        sourceUrl: z.string().nullable(),
+        publishedAt: z.string().nullable(),
         sources: z.array(
           z.object({
             id: z.string(),
@@ -263,6 +267,10 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
           content: true,
           kind: true,
           revision: true,
+          language: true,
+          author: true,
+          sourceUrl: true,
+          publishedAt: true,
           transcriptSources: {
             orderBy: { createdAt: 'asc' },
             select: {
@@ -296,6 +304,10 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
         revision: note.revision,
         checksum: noteContentChecksum(note.title, note.content),
         href: toMcpContentUrl(publicOrigin, `/notas/${note.id}`),
+        language: note.language,
+        author: note.author,
+        sourceUrl: note.sourceUrl,
+        publishedAt: note.publishedAt?.toISOString() ?? null,
         sources: note.transcriptSources.map((source) => ({
           id: source.transcriptId,
           title: source.transcript.title,
