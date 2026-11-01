@@ -58,6 +58,16 @@ Use a failing test or gate to reproduce behavior before implementation when a
 deterministic test is practical. Migration changes must also pass the Prisma
 migration gate.
 
+## Native agent configuration
+
+Shared skills live in `.claude/skills` (mirrored to `.agents/`). Native Codex
+configuration lives in `.codex/` and is not mirrored: project `config.toml`
+(concurrency bounds; no provider, auth, or telemetry keys, which project
+scope cannot set) and roles in `.codex/agents/` (`implementer` to build,
+read-only `code-reviewer` with explicit verdicts). Role model/effort pins stay
+explicit in the role files; the orchestrator keeps its own model. Changes to
+`.codex/` are covered by `scripts/native-agent-config.test.mjs`.
+
 ## Validation Expectations
 
 - `apps/web`: lint, typecheck, tests, and formatting checks

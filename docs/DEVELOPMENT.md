@@ -48,6 +48,17 @@ deve registrar escopo, não objetivos, requisitos, critérios de aceite,
 validação e rollout. Quando possível, reproduza o problema com um teste ou gate
 falhando antes da implementação.
 
+## Configuração nativa de agentes
+
+Skills compartilhadas vivem em `.claude/skills` (espelhadas em `.agents/`).
+A configuração **nativa** do Codex vive em `.codex/` e não é espelhada:
+`config.toml` do projeto (limites de concorrência; sem provider, auth ou
+telemetria, que o escopo de projeto não define) e papéis em
+`.codex/agents/` (`implementer` para construir, `code-reviewer` somente
+leitura com vereditos). Modelo/esforço dos papéis ficam pinados e explícitos
+nos arquivos do papel; o orquestrador mantém seu próprio modelo. Mudanças em
+`.codex/` passam pelos testes `scripts/native-agent-config.test.mjs`.
+
 ## Gate completo
 
 ```bash
