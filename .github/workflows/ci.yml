@@ -35,7 +35,6 @@ jobs:
       - name: Format check
         run: bun run format:check
         working-directory: apps/web
-        working-directory: apps/web
 
   typecheck-ts:
     name: Typecheck TS (apps/web)
