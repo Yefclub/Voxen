@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.1-dev.1793556179 — 2026-11-01 · Dev
+
+### 🧹 EARS spec for native agent setup and Impeccable
+
+### Added
+- Spec 218 defining unified policy, native Codex/Claude configuration, Impeccable installation, adopted workflows, and verifiable roles.
+
+## v0.15.1-dev.1793556179 — 2026-11-01 · Dev
+
+### 🧹 EARS spec for atomic publication and reusable results
+
+### Added
+- Spec 217 defining atomic publication, reusable continuation, ranked/enumeration coverage, discovery catalog, and structural-context work for retrieval.
+
 ## v0.15.1-dev.1793554421 — 2026-11-01 · Dev
 
 ### 🐛 Patch Node.js and Bun Brotli runtimes (CVE-2026-111497)
