@@ -76,6 +76,12 @@ an item does not shift subsequent pages; newly inserted newer items appear when
 listing starts again. Keep the original filter unchanged. Old offset cursors are
 rejected with restart guidance.
 
+Ranked search (`voxen_search_knowledge`, `voxen_search_transcripts`,
+`voxen_search_notes`) returns `truncated`: `true` when more candidates exist
+than the limit, `false` when the page is complete. A full page without
+truncation does not imply complete enumeration of the collection: refine terms
+or filters instead of assuming every procedure was enumerated.
+
 Self-hosted safeguards allow 600 requests/minute per owner, 1,200 per connection
 peer and 6,000 globally. They use the observed TCP peer, not caller-controlled
 forwarding headers. Execution allows four active tools per owner and sixteen

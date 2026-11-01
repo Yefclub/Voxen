@@ -15,7 +15,8 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       title: 'Buscar nas notas',
       description:
         'Busca full-text nas notas manuais do usuário (a KB escrita à mão, separada das ' +
-        'transcrições). Retorna trechos curtos + id. Depois use voxen_read_note para ler.',
+        'transcrições). Retorna trechos curtos + id. Depois use voxen_read_note para ler. ' +
+        'truncated=true indica mais candidatos que o limite.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português.'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
@@ -38,6 +39,11 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
             revision: z.number(),
           }),
         ),
+        truncated: z
+          .boolean()
+          .describe(
+            'true quando há mais candidatos que o limite; refine a busca em vez de presumir enumeração completa.',
+          ),
       },
       annotations: { ...READ_ONLY, title: 'Buscar nas notas' },
     },
@@ -84,9 +90,9 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
           AND "searchVector" @@ websearch_to_tsquery('portuguese', ${query})
           ${extra}
         ORDER BY rank DESC, id ASC
-        LIMIT ${limit}
+        LIMIT ${limit + 1}
       `;
-      return ok({ results: rows });
+      return ok({ results: rows.slice(0, limit), truncated: rows.length > limit });
     },
   );
 
