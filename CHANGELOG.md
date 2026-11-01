@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793563813 — 2026-11-01 · Dev
+
+### ✨ Title-weighted transcript search
+
+### Fixed
+
+- Transcript FTS now indexes titles with weight A (body weight B, same as notes), so title-only terms retrieve their document first; snippets and deterministic ordering unchanged.
+
 ## v0.15.1-dev.1793562324 — 2026-11-01 · Dev
 
 ### 🧹 Adopted test-audit and anti-slop workflows
