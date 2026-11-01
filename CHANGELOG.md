@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793568077 — 2026-11-01 · Dev
+
+### 🧹 Adopted security-audit workflow
+
+### Added
+- Native `security-audit` skill with explicit scope/coverage contract, sanitized findings, and independent verification, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.
+
 ## v0.15.1-dev.1793567198 — 2026-11-01 · Dev
 
 ### ✨ Explicit truncation on within-document search
