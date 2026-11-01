@@ -38,7 +38,7 @@ and an environment placeholder, never a bearer secret.
 
 ## Execution and result contracts
 
-The catalog contains **37 tools: 29 READ and 8 WRITE**, with required scopes,
+The catalog contains **38 tools: 30 READ and 8 WRITE**, with required scopes,
 explicit effect annotations and validated output schemas. `voxen_get_job_status`
 is READ, including jobs submitted by a WRITE-capable client. Server metadata
 reports the actual running Voxen version.
@@ -84,6 +84,13 @@ Ranked search (`voxen_search_knowledge`, `voxen_search_transcripts`,
 than the limit, `false` when the page is complete. A full page without
 truncation does not imply complete enumeration of the collection: refine terms
 or filters instead of assuming every procedure was enumerated.
+
+Name discovery (`voxen_discover`) locates documents by title, topics (tags),
+and collections (folders) from indexed metadata, without reading body text
+and without requiring models or enrichment. Cards carry a short description,
+topics, collection, identifiers, and producer provenance when the ingestion
+contract supplied it. A missing card never excludes the original document:
+use ranked search for body-text passages.
 
 Self-hosted safeguards allow 600 requests/minute per owner, 1,200 per connection
 peer and 6,000 globally. They use the observed TCP peer, not caller-controlled
