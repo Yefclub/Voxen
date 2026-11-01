@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793538810",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove dead chat-status module and stale product-2 docs",
+    "body": "### Removed\n- Deleted the unused chat-status key mapper and its test, plus the retired chat screenshot asset.\n- Rewrote stale product descriptions (README, CLAUDE.md, transcript-format docs) to the knowledge-base-only boundary; removed the proxy-agent troubleshooting section leftovers.",
+    "pr": 938,
+    "author": "Kalyel",
+    "date": "2026-11-01T10:13:19-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/938"
+  },
+  {
     "version": "0.15.1-dev.1793537841",
     "channel": "dev",
     "type": "feat",

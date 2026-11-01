@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793538810 — 2026-11-01 · Dev
+
+### 🧹 Remove dead chat-status module and stale product-2 docs
+
+### Removed
+- Deleted the unused chat-status key mapper and its test, plus the retired chat screenshot asset.
+- Rewrote stale product descriptions (README, CLAUDE.md, transcript-format docs) to the knowledge-base-only boundary; removed the proxy-agent troubleshooting section leftovers.
+
 ## v0.15.1-dev.1793537841 — 2026-11-01 · Dev
 
 ### ✨ Bounded version-aware reads with explicit errors
