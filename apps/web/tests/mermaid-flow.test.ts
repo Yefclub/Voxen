@@ -4,7 +4,6 @@ import {
   MAX_MERMAID_FLOW_NODES,
   validateMermaidFlow,
 } from '../src/shared/mermaid-flow';
-import { buildTranscriptFlowPrompt, hasValidMermaidSyntax } from '../src/lib/transcript-flow';
 
 describe('Mermaid transcript flow contract', () => {
   it('accepts and normalizes a bounded flowchart fence', () => {
@@ -83,14 +82,6 @@ describe('Mermaid transcript flow contract', () => {
     });
   });
 
-  it.each([
-    ['reserved end token', 'flowchart TD\nend'],
-    ['incomplete subgraph', 'flowchart TD\nsubgraph'],
-    ['invalid nested square shape', 'flowchart TD\nA[foo[bar]]'],
-  ])('uses an isolated official parser before persistence: %s', async (_label, source) => {
-    expect(await hasValidMermaidSyntax(source)).toBe(false);
-  });
-
   it('rejects diagrams above the node bound', () => {
     const nodes = Array.from(
       { length: MAX_MERMAID_FLOW_NODES + 1 },
@@ -100,15 +91,6 @@ describe('Mermaid transcript flow contract', () => {
       ok: false,
       error: 'MERMAID_FLOW_TOO_MANY_NODES',
     });
-  });
-
-  it('keeps prompt labels localized and forbids active content', () => {
-    expect(buildTranscriptFlowPrompt('en')).toContain('English labels');
-    expect(buildTranscriptFlowPrompt('pt-BR')).toContain('português brasileiro');
-    for (const prompt of [buildTranscriptFlowPrompt('en'), buildTranscriptFlowPrompt('pt-BR')]) {
-      expect(prompt).toContain('Do not use click');
-      expect(prompt).toContain('external resources');
-    }
   });
 
   it('wires a lazy strict renderer, transcript UI, and read tools', async () => {

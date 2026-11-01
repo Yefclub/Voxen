@@ -23,7 +23,6 @@ export const MCP_WRITE_SUMMARY_SCHEMA = z.object({
         'voxen_read_note',
         'voxen_read_transcript',
         'voxen_read_transcript_correction',
-        'voxen_read_transcript_enrichment',
         'voxen_get_job_status',
       ]),
       arguments: z.record(z.string(), z.json()).optional(),

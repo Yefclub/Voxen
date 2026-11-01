@@ -4,11 +4,10 @@ import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { reindexTranscriptBrain } from '../lib/brain';
 import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
+import type { AppliedTag } from '../lib/tags';
 import { applyTranscriptLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
-import { notifyNewJob, publishJobEvent } from '../lib/job-events';
-import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
@@ -19,19 +18,12 @@ import {
 } from '../lib/note-anchors';
 import { recordInitialNoteRevision, syncNoteGraph } from '../lib/note-versioning';
 import { storageGet, storageHead, storagePut } from '../lib/storage';
-import { isSetupComplete } from '../lib/settings';
 import {
   buildOriginalResponseInit,
   inlineSafeMime,
   parseSingleByteRange,
 } from '../lib/transcript-media-range';
-import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
-import { applyTagsToTranscript, type AppliedTag } from '../lib/tags';
-import {
-  generateAndPersistTranscriptSummary,
-  TranscriptSummaryError,
-} from '../lib/transcript-summary';
-import { generateTranscriptFlowRoute } from './transcript-flow-route';
+import { slugifyTag } from '../lib/tag-slug';
 import {
   transcriptGraphMatchSql,
   TRANSCRIPT_GRAPH_RANK_BOOST,
@@ -46,14 +38,11 @@ import { TRANSCRIPT_LIST_SELECT } from '../lib/transcript-list-select';
 import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
 import { registerTranscriptInterestRoutes } from './transcript-interest';
 import {
-  effectiveTranscriptPlainText,
   loadTranscriptSourceVersions,
   resolveTranscriptMarkdownViews,
   TRANSCRIPT_CORRECTION_DETAIL_SELECT,
 } from '../lib/transcript-content';
 
-// Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
-const SUMMARY_MIN_INTERVAL_SEC = 60;
 type Vars = { userId: string };
 
 export const transcriptsRoutes = new Hono<{ Variables: Vars }>();
@@ -523,82 +512,6 @@ transcriptsRoutes.get('/:id', async (c) => {
   });
 });
 
-transcriptsRoutes.post('/:id/refresh', async (c) => {
-  const userId = c.get('userId');
-  const transcriptId = c.req.param('id');
-  if (!(await isSetupComplete())) {
-    return c.json(
-      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
-      412,
-    );
-  }
-
-  const queued = await db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:source-refresh:${transcriptId}`}))`;
-    const transcript = await tx.transcript.findFirst({
-      where: { id: transcriptId, userId, source: { in: ['WEB', 'X'] }, status: { not: 'TRASH' } },
-      select: { id: true, url: true, source: true },
-    });
-    if (!transcript) return { kind: 'missing' as const };
-    const inflight = await tx.job.findFirst({
-      where: {
-        userId,
-        refreshTranscriptId: transcript.id,
-        status: { in: ['QUEUED', 'RUNNING'] },
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
-    if (inflight) return { kind: 'inflight' as const, job: inflight };
-
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
-    const revision = await tx.configRevision.findFirst({
-      orderBy: { number: 'desc' },
-      select: { id: true },
-    });
-    const job = await tx.job.create({
-      data: {
-        userId,
-        type: transcript.source === 'X' ? 'ANALYZE_X' : 'SCRAPE_WEB',
-        status: 'QUEUED',
-        sourceUrl: transcript.url,
-        refreshTranscriptId: transcript.id,
-        configRevisionId: revision?.id,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
-    await tx.transcript.update({
-      where: { id: transcript.id },
-      data: { sourceRefreshStatus: 'CHECKING', sourceRefreshError: null },
-    });
-    return { kind: 'created' as const, job };
-  });
-
-  if (queued.kind === 'missing')
-    return c.json({ error: 'Fonte não encontrada para atualização.' }, 404);
-  if (queued.kind === 'inflight') {
-    return c.json(
-      {
-        error: 'Esta fonte já está sendo atualizada.',
-        jobId: queued.job.id,
-        status: queued.job.status,
-        sourceUrl: queued.job.sourceUrl,
-      },
-      409,
-    );
-  }
-  await notifyNewJob(queued.job.id).catch((err) => {
-    console.error(
-      '[transcripts] notify source refresh failed',
-      safeErrorDiagnostic('JOB_NOTIFY_FAILED', err),
-    );
-  });
-  await publishJobEvent(userId, { jobId: queued.job.id, stage: 'queued' }).catch(() => undefined);
-  return c.json(
-    { jobId: queued.job.id, status: queued.job.status, sourceUrl: queued.job.sourceUrl },
-    201,
-  );
-});
-
 transcriptsRoutes.get('/:id/original', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -738,69 +651,7 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
   });
 });
 
-/** POST /:id/refresh-thumbnail — tenta espelhar de novo a capa (URL remota ou re-probe leve). */
-transcriptsRoutes.post('/:id/refresh-thumbnail', async (c) => {
-  const userId = c.get('userId');
-  const id = c.req.param('id');
-  const transcript = await db.transcript.findFirst({
-    where: { id, userId, status: { not: 'TRASH' } },
-    select: {
-      id: true,
-      url: true,
-      thumbnailUrl: true,
-      previewObjectKey: true,
-    },
-  });
-  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-
-  const remote =
-    isHttpUrl(transcript.thumbnailUrl) && transcript.thumbnailUrl ? transcript.thumbnailUrl : null;
-  if (!remote) {
-    // Já está no path interno / sem URL remota: limpa broken e usa placeholder.
-    await db.transcript.update({
-      where: { id },
-      data: {
-        thumbnailUrl: `/api/transcripts/${id}/preview`,
-      },
-    });
-    return c.json({
-      ok: true,
-      mirrored: false,
-      thumbnailUrl: `/api/transcripts/${id}/preview`,
-      hint: 'Sem URL remota para rebaixar; capa usa placeholder interno.',
-    });
-  }
-
-  const mirrored = await tryMirrorRemoteThumbnail({
-    userId,
-    transcriptId: id,
-    remoteUrl: remote,
-    referer: transcript.url,
-  });
-  if (!mirrored) {
-    await db.transcript.update({
-      where: { id },
-      data: { thumbnailUrl: `/api/transcripts/${id}/preview` },
-    });
-    return c.json(
-      {
-        ok: false,
-        mirrored: false,
-        thumbnailUrl: `/api/transcripts/${id}/preview`,
-        error:
-          'Não foi possível baixar a capa remota (URL expirada ou bloqueada). Usando placeholder.',
-      },
-      422,
-    );
-  }
-  return c.json({
-    ok: true,
-    mirrored: true,
-    thumbnailUrl: `/api/transcripts/${id}/preview`,
-    previewObjectKey: mirrored.key,
-  });
-});
-
+/** GET /:id/notes — notas vinculadas à transcrição. */
 const LinkedNoteBody = z.object({
   title: z.string().min(1).max(200),
   content: z.string().max(200_000).default(''),
@@ -954,98 +805,6 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
   return c.json({ transcript });
 });
 
-transcriptsRoutes.post('/:id/generate-tags', async (c) => {
-  const userId = c.get('userId');
-  const id = c.req.param('id');
-  if (!(await isSetupComplete())) {
-    return c.json({ error: 'Setup incompleto.' }, 412);
-  }
-
-  const rl = await rateLimit(`voxen:rl:tags:${id}`, 1, 60);
-  if (!rl.allowed) {
-    return c.json(
-      { error: `Aguarde ${rl.resetIn}s antes de gerar tags novamente.`, retryAfter: rl.resetIn },
-      429,
-    );
-  }
-
-  const transcript = await db.transcript.findFirst({
-    where: { id, userId },
-    select: {
-      id: true,
-      title: true,
-      plainText: true,
-      correctedPlainText: true,
-      correctionState: true,
-      summaryMd: true,
-      folderId: true,
-      correctionRevision: true,
-      sourceVersion: true,
-      sourceChecksum: true,
-    },
-  });
-  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-
-  const effectivePlainText = effectiveTranscriptPlainText(transcript);
-  const content = ((transcript.summaryMd ?? '') || effectivePlainText).trim();
-  if (content.length < 40 && transcript.title.trim().length < 3) {
-    return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
-  }
-
-  const existingTags = (
-    await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
-  ).map((t) => t.name);
-
-  let result: Awaited<ReturnType<typeof generateTagsForContent>>;
-  try {
-    result = await generateTagsForContent({
-      title: transcript.title,
-      content: content || transcript.title,
-      existingTags,
-    });
-  } catch (err) {
-    console.error(
-      '[transcripts] falha ao gerar tags',
-      safeErrorDiagnostic('TRANSCRIPT_TAG_GENERATION_FAILED', err),
-    );
-    return c.json({ error: 'Falha ao gerar tags. Tente novamente.' }, 502);
-  }
-
-  await db.costEvent.create({
-    data: {
-      userId,
-      kind: 'CHAT',
-      model: result.model,
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      costUsd: result.costUsd,
-      meta: {
-        source: 'tag_generation',
-        transcript_id: transcript.id,
-        generated_count: result.tags.length,
-      },
-    },
-  });
-
-  if (result.tags.length === 0) {
-    return c.json({ tags: [] as AppliedTag[], generated: 0 });
-  }
-
-  const applied = await applyTagsToTranscript(
-    userId,
-    {
-      id: transcript.id,
-      folderId: transcript.folderId,
-      correctionRevision: transcript.correctionRevision,
-      sourceVersion: transcript.sourceVersion,
-      sourceChecksum: transcript.sourceChecksum,
-    },
-    result.tags,
-  );
-  const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
-  return c.json({ tags, generated: applied.length });
-});
-
 const LifecycleBody = z.object({
   status: z.enum(['ACTIVE', 'ARCHIVED', 'TRASH']),
 });
@@ -1100,78 +859,6 @@ transcriptsRoutes.delete('/:id', async (c) => {
 // POST /api/transcripts/:id/summary — gerar / regenerar resumo via OpenRouter.
 // Anti-abuso: throttle 1/min por transcript + se já tem summary, exige
 // { force: true } pra não queimar tokens da OR num clique acidental.
-transcriptsRoutes.post('/:id/summary', async (c) => {
-  const userId = c.get('userId');
-  const id = c.req.param('id');
-  const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
-  const force = body.force === true;
-
-  const rl = await rateLimit(`voxen:rl:summary:${id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
-  if (!rl.allowed) {
-    return c.json(
-      {
-        error: `Aguarde ${rl.resetIn}s antes de regenerar este resumo.`,
-        retryAfter: rl.resetIn,
-      },
-      429,
-    );
-  }
-
-  const transcript = await db.transcript.findFirst({
-    where: { id, userId, status: { not: 'TRASH' } },
-    select: {
-      id: true,
-      title: true,
-      plainText: true,
-      correctedPlainText: true,
-      correctionState: true,
-      summaryMd: true,
-      correctionRevision: true,
-      sourceVersion: true,
-      sourceChecksum: true,
-    },
-  });
-  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  const effectivePlainText = effectiveTranscriptPlainText(transcript);
-  if (!effectivePlainText.trim()) {
-    return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
-  }
-
-  if (transcript.summaryMd && !force) {
-    return c.json(
-      {
-        error: 'Resumo já existe. Use { "force": true } pra regenerar.',
-        existing: true,
-      },
-      409,
-    );
-  }
-
-  try {
-    const summaryMd = await generateAndPersistTranscriptSummary({
-      userId,
-      transcriptId: transcript.id,
-      title: transcript.title,
-      plainText: effectivePlainText,
-      correctionRevision: transcript.correctionRevision,
-      sourceVersion: transcript.sourceVersion,
-      sourceChecksum: transcript.sourceChecksum,
-    });
-    return c.json({ summaryMd });
-  } catch (err) {
-    if (err instanceof TranscriptSummaryError) {
-      return c.json({ error: err.message }, err.status as 400);
-    }
-    console.error(
-      '[transcripts] summary failed',
-      safeErrorDiagnostic('TRANSCRIPT_SUMMARY_FAILED', err),
-    );
-    return c.json({ error: 'Falha ao gerar resumo.' }, 502);
-  }
-});
-
-transcriptsRoutes.post('/:id/flow', generateTranscriptFlowRoute);
-
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
   if (value === 'archived') return 'ARCHIVED';
   if (value === 'trash') return 'TRASH';

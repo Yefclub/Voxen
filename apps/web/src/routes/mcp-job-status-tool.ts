@@ -11,11 +11,11 @@ export function registerMcpJobStatusTool(server: McpServer, userId: string): voi
     {
       title: 'Status de um job',
       description:
-        'Consulta o status de um job de transcrição/indexação: QUEUED, RUNNING, DONE, FAILED ' +
+        'Consulta o status de um job de manutenção: QUEUED, RUNNING, DONE, FAILED ' +
         'ou CANCELLED. Quando DONE, retorna transcript_id e um brief read-only com resumo, tags e ' +
         'relacionados já armazenados; quando FAILED, retorna o erro.',
       inputSchema: {
-        job_id: z.string().min(1).describe('ID do job retornado por request_transcription.'),
+        job_id: z.string().min(1).describe('ID do job retornado por voxen_delete_knowledge.'),
       },
       outputSchema: {
         id: z.string(),

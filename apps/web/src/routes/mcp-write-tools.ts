@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
-import { getTranscriptBrief } from '../lib/agent-content';
 import {
   NoteAnchorValidationError,
   noteSourceCreateData,
@@ -15,10 +14,8 @@ import {
   recordInitialNoteRevision,
   syncNoteGraph,
 } from '../lib/note-versioning';
-import { createAutoJobForUser, createAutoJobsForUser } from './jobs';
 import { fail, ok } from './mcp-tool-helpers';
 import { registerMcpNoteRevisionWriteTools } from './mcp-note-revision-write-tools';
-import { TRANSCRIPT_BRIEF_SCHEMA } from './mcp-transcription-schemas';
 import { noteWriteFailure } from './mcp-note-write-errors';
 import { registerMcpTranscriptCorrectionWriteTools } from './mcp-transcript-correction-tools';
 import { registerMcpKnowledgeDeletionTool } from './mcp-knowledge-deletion-tool';
@@ -300,117 +297,6 @@ export function registerWriteTools(server: McpServer, userId: string): void {
   );
 
   registerMcpKnowledgeDeletionTool(server, userId);
-
-  server.registerTool(
-    'voxen_request_transcription',
-    {
-      title: 'Solicitar transcrição',
-      description:
-        'Enfileira a transcrição/indexação de uma URL (vídeo YouTube/Instagram/TikTok/X ou ' +
-        'página web). Retorna um job_id; acompanhe com voxen_get_job_status(job_id) até ' +
-        'status=DONE para receber um brief com resumo, tags e relacionados. Se a URL já foi ' +
-        'transcrita, devolve o brief imediatamente. Leia o documento completo só como último recurso.',
-      inputSchema: {
-        url: z.string().min(1).max(2048).describe('URL do vídeo ou página a transcrever/indexar.'),
-      },
-      outputSchema: {
-        outcome: z.string(),
-        jobId: z.string().nullable(),
-        transcriptId: z.string().nullable(),
-        message: z.string(),
-        brief: TRANSCRIPT_BRIEF_SCHEMA.nullable(),
-      },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: true,
-        title: 'Solicitar transcrição',
-      },
-    },
-    async (args) => {
-      const result = await createAutoJobForUser(userId, args.url);
-      switch (result.outcome) {
-        case 'created':
-          return ok({
-            outcome: 'created',
-            jobId: result.jobId,
-            transcriptId: null,
-            message: 'Job enfileirado. Use voxen_get_job_status(job_id) até status=DONE.',
-            brief: null,
-          });
-        case 'existing_transcript':
-          return ok({
-            outcome: 'existing_transcript',
-            jobId: null,
-            transcriptId: result.transcriptId,
-            message: 'URL já transcrita. Use o brief e leia trechos só se necessário.',
-            brief: await getTranscriptBrief(userId, result.transcriptId),
-          });
-        case 'inflight':
-          return ok({
-            outcome: 'inflight',
-            jobId: result.jobId ?? null,
-            transcriptId: null,
-            message: 'URL já está sendo processada. Acompanhe com voxen_get_job_status.',
-            brief: null,
-          });
-        default:
-          return fail(result.error);
-      }
-    },
-  );
-
-  server.registerTool(
-    'voxen_request_transcriptions',
-    {
-      title: 'Solicitar várias transcrições',
-      description:
-        'Enfileira de 1 a 20 URLs de uma só vez. Cada entrada tem resultado e job independentes; ' +
-        'uma URL inválida ou já existente não desfaz as demais.',
-      inputSchema: {
-        urls: z
-          .array(z.string().min(1).max(2048))
-          .min(1)
-          .max(20)
-          .describe('URLs de vídeos, posts ou páginas a transcrever/indexar.'),
-      },
-      outputSchema: {
-        total: z.number(),
-        created: z.number(),
-        items: z.array(
-          z.object({
-            index: z.number(),
-            url: z.string(),
-            outcome: z.string(),
-            jobId: z.string().nullable(),
-            transcriptId: z.string().nullable(),
-            error: z.string().nullable(),
-          }),
-        ),
-      },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: true,
-        title: 'Solicitar várias transcrições',
-      },
-    },
-    async (args) => {
-      const items = await createAutoJobsForUser(userId, args.urls);
-      return ok({
-        total: items.length,
-        created: items.filter((item) => item.result.outcome === 'created').length,
-        items: items.map((item) => ({
-          index: item.index,
-          url: item.input,
-          outcome: item.result.outcome,
-          jobId: 'jobId' in item.result ? (item.result.jobId ?? null) : null,
-          transcriptId: 'transcriptId' in item.result ? (item.result.transcriptId ?? null) : null,
-          error: 'error' in item.result ? item.result.error : null,
-        })),
-      });
-    },
-  );
 }
 
 async function resolveMcpTranscriptSourceIds(

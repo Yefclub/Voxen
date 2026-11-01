@@ -18,51 +18,13 @@ import { getMasterKey } from './master-key';
 import { DEFAULT_APP_TIMEZONE, normalizeAppTimezone } from './app-timezone';
 
 export type GlobalSettingKey =
-  | 'openrouter_api_key'
   | 'app_language'
+  // Proxy opcional usado pelo túnel residencial do agente de proxy.
+  | 'yt_dlp_proxy_urls'
   /** IANA timezone da instância (spec 095). Default America/Sao_Paulo. */
   | 'app_timezone'
-  | 'default_chat_model'
-  | 'default_transcription_model'
-  // Modelo dedicado a pesquisa na web. A tool `web_search` usa a server tool
-  // OpenRouter `openrouter:web_search`; não depende do sufixo deprecated :online.
-  | 'default_web_search_model'
-  // Modelo multimodal pra entender imagens (upload de mídia).
-  // Filtrado por modalities=['image'] no /api/openrouter/models.
-  | 'default_vision_model'
-  // Modelo multimodal/documental pra PDF nativo e análise de documentos.
-  // Filtrado por architecture.input_modalities=['file'] na OpenRouter.
-  | 'default_document_model'
-  // Modelo Grok/xAI dedicado a análise de posts e threads do X via OpenRouter.
-  | 'default_x_analysis_model'
-  | 'fallback_chat_model'
-  | 'fallback_transcription_model'
-  | 'fallback_web_search_model'
-  | 'fallback_vision_model'
-  | 'fallback_document_model'
-  | 'fallback_x_analysis_model'
-  // Proxy opcional usado pelo extrator de mídia. Em deploys home-lab (IP
-  // residencial) normalmente desnecessário; em VPS pode ajudar quando o
-  // YouTube bloqueia downloads de datacenter (proxy residencial controlado
-  // pelo operador).
-  | 'yt_dlp_proxy_urls'
-  // Conteúdo do cookies.txt (formato Netscape) para extração autenticada via
-  // yt-dlp (Instagram serve rendition só-vídeo sem login; YouTube anti-bot).
-  // Secret cifrado — espelha yt_dlp_proxy_urls. NUNCA retornado em texto por
-  // endpoint nem logado; worker materializa em arquivo temp 600. Ver spec 063.
-  | 'yt_dlp_cookies'
-  // Metadado (NÃO-secret) das capturas de cookie feitas pela extensão:
-  // JSON {"<plataforma>": {"capturedAt": "<ISO>"}}. Fica separado do valor
-  // porque o formato de `yt_dlp_cookies` é contrato com o yt-dlp — envelope
-  // ali quebraria o worker e qualquer cookies.txt colado à mão. Ver spec 121.
-  | 'platform_cookies_meta'
   | 'allow_signups'
   | 'onboarding_done'
-  // Opcional: timeout (segundos) da chamada de resumo via OpenRouter.
-  // Default 120s. Útil pra textos muito longos ou modelos lentos.
-  | 'summary_timeout_sec'
-  // Política separada da pesquisa posterior ao resumo. OFF é fail-closed.
-  | 'summary_research_mode'
   // MCP server token (formato `<userId>:<token>`). Endpoint /mcp aceita
   // Bearer <token> e mapeia pro userId. Legado: não é mais aceito pelo MCP;
   // permanece só para que o administrador possa revogá-lo explicitamente.
@@ -85,14 +47,7 @@ export type GlobalSettingKey =
  * instância. Manter esta lista pequena evita que uma configuração operacional
  * seja gravada acidentalmente no workspace de um usuário.
  */
-export type UserSettingKey = 'yt_dlp_cookies' | 'platform_cookies_meta';
-
-const X_ANALYSIS_SETTING_KEYS = [
-  'default_x_analysis_model',
-  'default_grok_model',
-  'default_x_model',
-  'x_analysis_model',
-] as const;
+export type UserSettingKey = never;
 
 export type AppLanguage = 'pt-BR' | 'en';
 
@@ -187,19 +142,6 @@ export async function getAppLanguage(): Promise<AppLanguage> {
 export async function getAppTimezone(): Promise<string> {
   const raw = await getSetting('app_timezone').catch(() => null);
   return normalizeAppTimezone(raw ?? DEFAULT_APP_TIMEZONE);
-}
-
-export async function getFirstSettingByKey(keys: readonly string[]): Promise<string | null> {
-  const values = await getSettingsByKeys(keys);
-  for (const key of keys) {
-    const value = values[key];
-    if (value) return value;
-  }
-  return null;
-}
-
-export async function getDefaultXAnalysisModel(): Promise<string | null> {
-  return getFirstSettingByKey(X_ANALYSIS_SETTING_KEYS);
 }
 
 export async function setSetting(
@@ -371,19 +313,6 @@ export async function deleteSettingByKey(
   metadata?: GlobalConfigChangeMetadata,
 ): Promise<void> {
   await applyGlobalSettings({ [key]: null }, metadata);
-}
-
-export async function setDefaultXAnalysisModel(value: string): Promise<void> {
-  for (const key of X_ANALYSIS_SETTING_KEYS) {
-    if (key !== 'default_x_analysis_model') await deleteSettingByKey(key);
-  }
-  await setSetting('default_x_analysis_model', value);
-}
-
-export async function deleteDefaultXAnalysisModel(): Promise<void> {
-  for (const key of X_ANALYSIS_SETTING_KEYS) {
-    await deleteSettingByKey(key);
-  }
 }
 
 export async function isSetupComplete(): Promise<boolean> {
