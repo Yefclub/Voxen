@@ -118,9 +118,9 @@ describe('Mermaid transcript flow contract', () => {
     expect(markdown).toContain('validateMermaidFlow(source)');
     expect(markdown).toContain('script, foreignObject, iframe, image, a, object, embed');
     expect(markdown).toContain('touch-pan-x touch-pan-y');
-    expect(page).toContain('/flow`');
     expect(page).toContain('<TranscriptFlowBlock');
     expect(page).toContain('readOnly={!canUseContextualActions}');
+    expect(page).not.toContain('/api/transcripts/${id}/flow');
     expect(blocks).toContain('\\`\\`\\`mermaid');
     expect(mcp).toContain('flowchart: t.flowchartMd ?? null');
     expect(schema).toContain('flowchartMd');
