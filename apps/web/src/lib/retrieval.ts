@@ -10,7 +10,9 @@
 // As funções de PARSING são PURAS: recebem o texto do `.md` como argumento e não
 // tocam DB/S3 — testáveis isoladamente. As funções de acesso (loadTranscriptMd,
 // ftsSearchTranscripts, findRelated) escopam TUDO por userId (isolamento de
-// workspace) e são read-only.
+// workspace) e são read-only. Leitura de `.md` usa cache versionado com erros
+// explícitos (NOT_FOUND / UNAVAILABLE_SOURCE / STALE_REVISION), sem fallback
+// fabricado.
 //
 // Structure/timestamps come from canonical Markdown in the selected storage driver.
 // O `Transcript.plainText` do Postgres é só texto corrido pra FTS — NÃO tem

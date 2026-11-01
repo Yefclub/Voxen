@@ -10,7 +10,6 @@ import {
   getTranscriptReadCacheStats,
   invalidateTranscriptReadCache,
   loadEffectiveTranscriptMarkdown,
-  TranscriptReadError,
 } from '../src/lib/transcript-content';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -114,6 +113,11 @@ describeIfDb('bounded progressive reads contract (spec 216)', () => {
         expectedCorrectionRevision: doc.correctionRevision + 99,
       }),
     ).rejects.toMatchObject({ name: 'TranscriptReadError', code: 'STALE_REVISION' });
+    await expect(
+      loadEffectiveTranscriptMarkdown(userId, transcriptId, {
+        expectedSourceVersion: doc.sourceVersion + 99,
+      }),
+    ).rejects.toMatchObject({ name: 'TranscriptReadError', code: 'STALE_REVISION' });
 
     const res = await mcpCall(
       {
@@ -160,7 +164,6 @@ describeIfDb('bounded progressive reads contract (spec 216)', () => {
     await expect(loadEffectiveTranscriptMarkdown(userId, ghost.id)).rejects.toMatchObject({
       code: 'UNAVAILABLE_SOURCE',
     });
-    expect(TranscriptReadError).toBeDefined();
 
     const res = await mcpCall(
       {
@@ -179,6 +182,49 @@ describeIfDb('bounded progressive reads contract (spec 216)', () => {
     };
     expect(body.result?.isError).toBe(true);
     expect(JSON.stringify(body.result?.content)).toContain('UNAVAILABLE_SOURCE');
+  });
+
+  it('HTTP detalhe sem fonte canônica responde 404 explícito', async () => {
+    const email = `httphmiss-${Date.now()}@voxen.local`;
+    const signup = await app.fetch(
+      new Request('http://localhost/api/auth/sign-up/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password: 'senha-super-segura-123', name: 'H' }),
+      }),
+    );
+    expect(signup.status).toBe(200);
+    await db.user.update({ where: { email }, data: { status: 'APPROVED' } });
+    const signin = await app.fetch(
+      new Request('http://localhost/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password: 'senha-super-segura-123' }),
+      }),
+    );
+    expect(signin.status).toBe(200);
+    const cookie = (signin.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    const httpUser = await db.user.findUniqueOrThrow({ where: { email } });
+    const missing = await db.transcript.create({
+      data: {
+        userId: httpUser.id,
+        source: 'WEB',
+        url: 'https://example.com/http-missing',
+        title: 'HTTP sem fonte',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${httpUser.id}/transcripts/http-missing.md`,
+        plainText: 'HTTP sem fonte.',
+        frontmatter: {},
+      },
+    });
+    const res = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${missing.id}`, { headers: { cookie } }),
+    );
+    expect(res.status).toBe(404);
+    const detail = (await res.json()) as { code?: string };
+    expect(detail.code).toBe('UNAVAILABLE_SOURCE');
   });
 
   it('leituras MCP estreitas funcionam sobre o cache', async () => {

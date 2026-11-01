@@ -30,13 +30,17 @@ const REVISION_FILTERS = {
 
 function readError(error: unknown): { error: string; code?: string; current?: unknown } | null {
   if (error instanceof TranscriptReadError) {
+    const suffix =
+      error.code === 'STALE_REVISION' && error.current
+        ? ` (atual: correction_revision=${error.current.correctionRevision}, source_version=${error.current.sourceVersion})`
+        : '';
     return {
       error:
-        error.code === 'NOT_FOUND'
+        (error.code === 'NOT_FOUND'
           ? 'Transcrição não encontrada (ou fora do escopo do token).'
           : error.code === 'STALE_REVISION'
             ? 'Revisão desatualizada: releia outline/trechos.'
-            : 'Fonte canônica indisponível no storage.',
+            : 'Fonte canônica indisponível no storage.') + suffix,
       code: error.code,
       ...(error.current ? { current: error.current } : {}),
     };
@@ -81,7 +85,13 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         throw error;
       }
       const outline = parseOutline(doc.md);
-      return ok({ id: doc.id, title: doc.title, ...outline });
+      return ok({
+        id: doc.id,
+        title: doc.title,
+        correctionRevision: doc.correctionRevision,
+        sourceVersion: doc.sourceVersion,
+        ...outline,
+      });
     },
   );
 
@@ -109,7 +119,14 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
         throw error;
       }
-      return ok({ id: doc.id, title: doc.title, ...readLinesFromMd(doc.md, args.from, args.to) });
+      const lines = readLinesFromMd(doc.md, args.from, args.to);
+      return ok({
+        id: doc.id,
+        title: doc.title,
+        correctionRevision: doc.correctionRevision,
+        sourceVersion: doc.sourceVersion,
+        ...lines,
+      });
     },
   );
 
@@ -142,7 +159,13 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       }
       const result = readSectionFromMd(doc.md, { heading: args.heading, index: args.index });
       if (!result) return fail('Seção não encontrada.');
-      return ok({ id: doc.id, title: doc.title, ...result });
+      return ok({
+        id: doc.id,
+        title: doc.title,
+        correctionRevision: doc.correctionRevision,
+        sourceVersion: doc.sourceVersion,
+        ...result,
+      });
     },
   );
 
@@ -170,10 +193,13 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
         throw error;
       }
+      const span = readTimespanFromMd(doc.md, args.from_sec, args.to_sec);
       return ok({
         id: doc.id,
         title: doc.title,
-        ...readTimespanFromMd(doc.md, args.from_sec, args.to_sec),
+        correctionRevision: doc.correctionRevision,
+        sourceVersion: doc.sourceVersion,
+        ...span,
       });
     },
   );
@@ -214,7 +240,13 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       }
       const result = expandContextFromMd(doc.md, { line: args.line, sec: args.sec }, args.radius);
       if (!result) return fail('Âncora não encontrada.');
-      return ok({ id: doc.id, title: doc.title, ...result });
+      return ok({
+        id: doc.id,
+        title: doc.title,
+        correctionRevision: doc.correctionRevision,
+        sourceVersion: doc.sourceVersion,
+        ...result,
+      });
     },
   );
 
@@ -277,6 +309,8 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       annotations: { ...READ_ONLY, title: 'Verificar citações' },
     },
     async (args) => {
+      // Verificação sempre lê o conteúdo atual (sem REVISION_FILTERS): o objetivo
+      // é validar a citação contra o que está armazenado agora.
       const cache = new Map<string, string | null>();
       const results = [];
       for (const claim of args.claims) {
@@ -284,9 +318,17 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         let md = cache.get(tid);
         if (md === undefined) {
           try {
-            md = (await loadTranscriptMd(userId, tid)).md;
-          } catch {
+            md = (await loadDoc(userId, tid, {})).md;
+          } catch (error) {
+            const mapped = readError(error);
             md = null;
+            results.push({
+              transcriptId: tid,
+              supported: false,
+              error: mapped ? `${mapped.code}: ${mapped.error}` : 'Transcrição indisponível.',
+            });
+            cache.set(tid, md);
+            continue;
           }
           cache.set(tid, md);
         }
@@ -294,7 +336,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
           results.push({
             transcriptId: tid,
             supported: false,
-            error: 'Transcrição não encontrada ou fonte indisponível.',
+            error: 'NOT_FOUND: Transcrição não encontrada (ou fora do escopo do token).',
           });
           continue;
         }

@@ -9,6 +9,7 @@ import { applyTranscriptLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
+import { TranscriptReadError } from '../lib/transcript-content';
 import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
   NoteAnchorInputSchema,
@@ -498,14 +499,21 @@ transcriptsRoutes.get('/:id', async (c) => {
   let canonicalMarkdown: string | null;
   try {
     ({ markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript));
-  } catch {
-    return c.json(
-      {
-        error: 'Fonte canônica indisponível no storage.',
-        code: 'UNAVAILABLE_SOURCE',
-      },
-      404,
+  } catch (error) {
+    if (error instanceof TranscriptReadError && error.code === 'UNAVAILABLE_SOURCE') {
+      return c.json(
+        {
+          error: 'Fonte canônica indisponível no storage.',
+          code: 'UNAVAILABLE_SOURCE',
+        },
+        404,
+      );
+    }
+    console.error(
+      '[transcripts] erro inesperado ao resolver markdown',
+      safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', error),
     );
+    return c.json({ error: 'Falha interna ao ler o documento.' }, 500);
   }
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);

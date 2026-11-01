@@ -174,6 +174,9 @@ export async function loadEffectiveTranscriptMarkdown(
       sourceVersion: transcript.sourceVersion,
     });
   }
+  // The DB row is the revision authority (cheap indexed read); the cache only
+  // avoids the storage read. Corrected markdown already lives in the row, so
+  // that path needs no storage read and bypasses the cache by design.
   if (transcript.correctionState === 'ACTIVE' && transcript.correctedMarkdown) {
     return {
       id: transcript.id,
@@ -240,10 +243,13 @@ export async function resolveTranscriptMarkdownViews(input: {
   try {
     canonical = await storageReadText(input.mdPath);
   } catch {
-    throw new Error('TRANSCRIPT_MARKDOWN_UNAVAILABLE');
+    throw new TranscriptReadError('UNAVAILABLE_SOURCE', 'Fonte canônica indisponível no storage.');
   }
   if (!canonical) {
-    throw new Error('TRANSCRIPT_MARKDOWN_UNAVAILABLE');
+    throw new TranscriptReadError(
+      'UNAVAILABLE_SOURCE',
+      'Fonte canônica vazia ou ilegível no storage.',
+    );
   }
   return {
     markdown:
