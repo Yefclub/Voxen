@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { type McpServer } from '@modelcontextprotocol/server';
+import { Prisma } from '../../prisma-generated/client';
 import { db } from '../lib/db';
 import { noteContentChecksum } from '../lib/note-revisions';
+import { SearchFilterError } from '../lib/retrieval';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
 import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
 import { registerMcpNoteRevisionReadTools } from './mcp-note-revision-read-tools';
@@ -17,6 +19,13 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português.'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
+        note_ids: z
+          .array(z.string().min(1).max(64))
+          .max(50)
+          .optional()
+          .describe('Restringe aos documentos informados.'),
+        created_after: z.string().max(64).optional().describe('ISO date: criadas a partir de.'),
+        created_before: z.string().max(64).optional().describe('ISO date: criadas antes de.'),
       },
       outputSchema: {
         results: z.array(
@@ -35,6 +44,39 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
       const limit = bounded(args.limit, 8, 1, 25);
+      const parseDate = (value: string | undefined, name: string): Date | undefined => {
+        if (value === undefined) return undefined;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime()))
+          throw new SearchFilterError(`Filtro de data inválido: ${name}.`);
+        return date;
+      };
+      let createdAfter: Date | undefined;
+      let createdBefore: Date | undefined;
+      try {
+        createdAfter = parseDate(args.created_after, 'created_after');
+        createdBefore = parseDate(args.created_before, 'created_before');
+        if (createdAfter && createdBefore && createdAfter >= createdBefore) {
+          throw new SearchFilterError('created_after precisa ser anterior a created_before.');
+        }
+        if (
+          args.note_ids !== undefined &&
+          (args.note_ids.length === 0 || args.note_ids.length > 50)
+        ) {
+          throw new SearchFilterError('Filtro note_ids inválido: 1-50 valores.');
+        }
+      } catch (error) {
+        if (error instanceof SearchFilterError) return fail(error.message);
+        throw error;
+      }
+      const conditions: Prisma.Sql[] = [];
+      if (args.note_ids?.length) {
+        conditions.push(Prisma.sql`id = ANY(${[...args.note_ids]}::text[])`);
+      }
+      if (createdAfter) conditions.push(Prisma.sql`"createdAt" >= ${createdAfter}`);
+      if (createdBefore) conditions.push(Prisma.sql`"createdAt" < ${createdBefore}`);
+      const extra =
+        conditions.length > 0 ? Prisma.sql`AND ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
       type Row = { id: string; title: string; snippet: string; rank: number; revision: number };
       const rows = await db.$queryRaw<Row[]>`
         SELECT id, title, revision,
@@ -45,7 +87,8 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
         WHERE "userId" = ${userId}
           AND kind = 'NOTE'
           AND "searchVector" @@ plainto_tsquery('portuguese', ${query})
-        ORDER BY rank DESC, "updatedAt" DESC
+          ${extra}
+        ORDER BY rank DESC, id ASC
         LIMIT ${limit}
       `;
       return ok({ results: rows });

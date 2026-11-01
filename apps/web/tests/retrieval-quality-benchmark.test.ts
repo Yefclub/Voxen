@@ -18,15 +18,21 @@ function overlap(left: readonly string[], right: readonly string[]): number {
 }
 
 async function productionFts(item: BenchmarkCase) {
-  return queryTranscriptFts('benchmark-user', item.question, 8, {
-    $queryRaw: (async (_strings: TemplateStringsArray, ...values: unknown[]) => {
-      const asked = String(values.find((value) => value === item.question) ?? '');
-      expect(asked).toBe(item.question);
-      return documents
-        .filter((document) => overlap(item.lexicalTerms, document.lexicalTerms) >= 2)
-        .map((document) => ({ id: document.id })) as never;
-    }) as never,
-  });
+  return queryTranscriptFts(
+    'benchmark-user',
+    item.question,
+    8,
+    {},
+    {
+      $queryRaw: (async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+        const asked = String(values.find((value) => value === item.question) ?? '');
+        expect(asked).toBe(item.question);
+        return documents
+          .filter((document) => overlap(item.lexicalTerms, document.lexicalTerms) >= 2)
+          .map((document) => ({ id: document.id })) as never;
+      }) as never,
+    },
+  );
 }
 
 async function productionBrain(item: BenchmarkCase) {

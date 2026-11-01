@@ -18,6 +18,7 @@
 // Formato do `.md`: docs/TRANSCRIPT-FORMAT.md.
 // ============================================================================
 
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
 export { loadEffectiveTranscriptMarkdown as loadTranscriptMd } from './transcript-content';
@@ -375,6 +376,128 @@ export function promptSearchQuery(prompt: string): string {
   return unique.join(' OR ');
 }
 
+export type TranscriptSearchFilters = {
+  sources?: readonly string[];
+  language?: string;
+  publishedAfter?: Date;
+  publishedBefore?: Date;
+  createdAfter?: Date;
+  createdBefore?: Date;
+  tags?: readonly string[];
+  folderId?: string;
+  transcriptIds?: readonly string[];
+  includeArchived?: boolean;
+};
+
+export type NoteSearchFilters = {
+  noteIds?: readonly string[];
+  createdAfter?: Date;
+  createdBefore?: Date;
+};
+
+export type KnowledgeSearchFilters = TranscriptSearchFilters &
+  NoteSearchFilters & {
+    sourceTypes?: readonly ('transcript' | 'note' | 'external_enrichment')[];
+  };
+
+export class SearchFilterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SearchFilterError';
+  }
+}
+
+const TRANSCRIPT_SOURCES = ['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'X', 'WEB', 'UPLOAD'] as const;
+const MAX_FILTER_TAGS = 10;
+const MAX_FILTER_IDS = 50;
+
+function assertValidDate(value: unknown, name: string): asserts value is Date {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    throw new SearchFilterError(`Filtro de data inválido: ${name}.`);
+  }
+}
+
+export function assertTranscriptSearchFilters(filters: TranscriptSearchFilters): void {
+  if (filters.sources !== undefined) {
+    if (filters.sources.length === 0 || filters.sources.length > 6) {
+      throw new SearchFilterError('Filtro sources inválido: 1-6 valores.');
+    }
+    for (const source of filters.sources) {
+      if (!(TRANSCRIPT_SOURCES as readonly string[]).includes(source)) {
+        throw new SearchFilterError(`Fonte desconhecida: ${source}.`);
+      }
+    }
+  }
+  if (filters.language !== undefined && !/^[a-z]{2}$/i.test(filters.language)) {
+    throw new SearchFilterError('Filtro language inválido: código ISO 639-1 com 2 letras.');
+  }
+  if (filters.publishedAfter !== undefined)
+    assertValidDate(filters.publishedAfter, 'published_after');
+  if (filters.publishedBefore !== undefined)
+    assertValidDate(filters.publishedBefore, 'published_before');
+  if (filters.createdAfter !== undefined) assertValidDate(filters.createdAfter, 'created_after');
+  if (filters.createdBefore !== undefined) assertValidDate(filters.createdBefore, 'created_before');
+  if (
+    filters.publishedAfter !== undefined &&
+    filters.publishedBefore !== undefined &&
+    filters.publishedAfter >= filters.publishedBefore
+  ) {
+    throw new SearchFilterError('published_after precisa ser anterior a published_before.');
+  }
+  if (
+    filters.createdAfter !== undefined &&
+    filters.createdBefore !== undefined &&
+    filters.createdAfter >= filters.createdBefore
+  ) {
+    throw new SearchFilterError('created_after precisa ser anterior a created_before.');
+  }
+  if (filters.tags !== undefined) {
+    if (filters.tags.length === 0 || filters.tags.length > MAX_FILTER_TAGS) {
+      throw new SearchFilterError(`Filtro tags inválido: 1-${MAX_FILTER_TAGS} valores.`);
+    }
+    for (const tag of filters.tags) {
+      if (typeof tag !== 'string' || !tag.trim() || tag.trim().length > 60) {
+        throw new SearchFilterError('Filtro tags inválido: nomes com 1-60 chars.');
+      }
+    }
+  }
+  if (
+    filters.folderId !== undefined &&
+    (typeof filters.folderId !== 'string' || !filters.folderId)
+  ) {
+    throw new SearchFilterError('Filtro folder_id inválido.');
+  }
+  if (filters.transcriptIds !== undefined) {
+    if (filters.transcriptIds.length === 0 || filters.transcriptIds.length > MAX_FILTER_IDS) {
+      throw new SearchFilterError(`Filtro transcript_ids inválido: 1-${MAX_FILTER_IDS} valores.`);
+    }
+    for (const id of filters.transcriptIds) {
+      if (typeof id !== 'string' || !id)
+        throw new SearchFilterError('Filtro transcript_ids inválido.');
+    }
+  }
+}
+
+function assertNoteSearchFilters(filters: NoteSearchFilters): void {
+  if (filters.noteIds !== undefined) {
+    if (filters.noteIds.length === 0 || filters.noteIds.length > MAX_FILTER_IDS) {
+      throw new SearchFilterError(`Filtro note_ids inválido: 1-${MAX_FILTER_IDS} valores.`);
+    }
+    for (const id of filters.noteIds) {
+      if (typeof id !== 'string' || !id) throw new SearchFilterError('Filtro note_ids inválido.');
+    }
+  }
+  if (filters.createdAfter !== undefined) assertValidDate(filters.createdAfter, 'created_after');
+  if (filters.createdBefore !== undefined) assertValidDate(filters.createdBefore, 'created_before');
+  if (
+    filters.createdAfter !== undefined &&
+    filters.createdBefore !== undefined &&
+    filters.createdAfter >= filters.createdBefore
+  ) {
+    throw new SearchFilterError('created_after precisa ser anterior a created_before.');
+  }
+}
+
 /**
  * Busca full-text forte nas transcrições do usuário (Postgres FTS, dicionário
  * português): ts_headline (trecho destacado) + ts_rank (relevância). Retorna
@@ -384,11 +507,46 @@ export async function queryTranscriptFts(
   userId: string,
   query: string,
   limit: number,
+  filters: TranscriptSearchFilters = {},
   client: Pick<typeof db, '$queryRaw'> = db,
 ): Promise<FtsResult[]> {
   const q = query.trim();
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
+  assertTranscriptSearchFilters(filters);
+  const conditions: Prisma.Sql[] = [];
+  if (filters.sources?.length) {
+    conditions.push(Prisma.sql`t.source = ANY(${[...filters.sources]}::"TranscriptSource"[])`);
+  }
+  if (filters.language) {
+    conditions.push(Prisma.sql`t.language = ${filters.language.toLowerCase()}`);
+  }
+  if (filters.publishedAfter)
+    conditions.push(Prisma.sql`t."publishedAt" >= ${filters.publishedAfter}`);
+  if (filters.publishedBefore)
+    conditions.push(Prisma.sql`t."publishedAt" < ${filters.publishedBefore}`);
+  if (filters.createdAfter) conditions.push(Prisma.sql`t."createdAt" >= ${filters.createdAfter}`);
+  if (filters.createdBefore) conditions.push(Prisma.sql`t."createdAt" < ${filters.createdBefore}`);
+  if (filters.folderId) conditions.push(Prisma.sql`t."folderId" = ${filters.folderId}`);
+  if (filters.transcriptIds?.length) {
+    conditions.push(Prisma.sql`t.id = ANY(${[...filters.transcriptIds]}::text[])`);
+  }
+  if (filters.tags?.length) {
+    const names = [...new Set(filters.tags.map((tag) => tag.trim().toLowerCase()))];
+    conditions.push(Prisma.sql`
+      EXISTS (
+        SELECT 1 FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId" AND tag."userId" = t."userId"
+        WHERE tt."transcriptId" = t.id
+          AND (tag.slug = ANY(${names}::text[]) OR LOWER(tag.name) = ANY(${names}::text[]))
+      )
+    `);
+  }
+  const statusClause = filters.includeArchived
+    ? Prisma.sql`t.status IN ('ACTIVE'::"ContentStatus", 'ARCHIVED'::"ContentStatus")`
+    : Prisma.sql`t.status = 'ACTIVE'::"ContentStatus"`;
+  const extra =
+    conditions.length > 0 ? Prisma.sql`AND ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
   return client.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
       ts_headline('portuguese', concat_ws(E'\n\n', t.title, CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), websearch_to_tsquery('portuguese', ${q}),
@@ -406,9 +564,10 @@ export async function queryTranscriptFts(
     FROM "Transcript" t
     LEFT JOIN "LibraryFolder" folder ON folder.id = t."folderId" AND folder."userId" = t."userId"
     WHERE t."userId" = ${userId}
-      AND t.status = 'ACTIVE'::"ContentStatus"
+      AND ${statusClause}
       AND t."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
-    ORDER BY rank DESC, t."createdAt" DESC
+      ${extra}
+    ORDER BY rank DESC, t.id ASC
     LIMIT ${take}
   `;
 }
@@ -417,13 +576,14 @@ export async function ftsSearchTranscripts(
   userId: string,
   query: string,
   limit: number,
+  filters: TranscriptSearchFilters = {},
 ): Promise<FtsResult[]> {
   const q = query.trim();
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
   // Lexical FTS only (spec 215): no built-in embedding inference or
   // semantic-rescue execution.
-  return queryTranscriptFts(userId, q, take);
+  return queryTranscriptFts(userId, q, take, filters);
 }
 
 /** Busca FTS nas notas manuais do workspace com o mesmo parser usado nas transcrições. */
@@ -431,10 +591,20 @@ export async function ftsSearchNotes(
   userId: string,
   query: string,
   limit: number,
+  filters: NoteSearchFilters = {},
 ): Promise<KnowledgeSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
+  assertNoteSearchFilters(filters);
+  const conditions: Prisma.Sql[] = [];
+  if (filters.noteIds?.length) {
+    conditions.push(Prisma.sql`n.id = ANY(${[...filters.noteIds]}::text[])`);
+  }
+  if (filters.createdAfter) conditions.push(Prisma.sql`n."createdAt" >= ${filters.createdAfter}`);
+  if (filters.createdBefore) conditions.push(Prisma.sql`n."createdAt" < ${filters.createdBefore}`);
+  const extra =
+    conditions.length > 0 ? Prisma.sql`AND ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
   type NoteRow = {
     id: string;
     title: string;
@@ -452,7 +622,8 @@ export async function ftsSearchNotes(
     WHERE n."userId" = ${userId}
       AND n.kind = 'NOTE'::"NoteKind"
       AND n."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
-    ORDER BY rank DESC, n."updatedAt" DESC
+      ${extra}
+    ORDER BY rank DESC, n.id ASC
     LIMIT ${take}
   `;
   return rows.map((row) => ({
@@ -481,7 +652,7 @@ export function mergeKnowledgeResults(
       const aScore = a.rank + (a.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
       const bScore = b.rank + (b.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
       if (bScore !== aScore) return bScore - aScore;
-      return b.createdAt.getTime() - a.createdAt.getTime();
+      return a.id.localeCompare(b.id);
     })
     .slice(0, take);
 }
@@ -491,12 +662,30 @@ export async function searchKnowledgeBase(
   userId: string,
   query: string,
   limit = 8,
+  filters: KnowledgeSearchFilters = {},
 ): Promise<KnowledgeSearchResult[]> {
   const take = clampInt(limit, 8, 1, 25);
+  if (filters.sourceTypes !== undefined) {
+    const allowed = new Set(filters.sourceTypes);
+    if (allowed.size === 0) throw new SearchFilterError('Filtro source_types inválido: vazio.');
+    for (const sourceType of allowed) {
+      if (
+        sourceType !== 'transcript' &&
+        sourceType !== 'note' &&
+        sourceType !== 'external_enrichment'
+      ) {
+        throw new SearchFilterError(`Tipo de fonte desconhecido: ${sourceType}.`);
+      }
+    }
+  }
+  const wanted = (type: 'transcript' | 'note' | 'external_enrichment'): boolean =>
+    !filters.sourceTypes || filters.sourceTypes.includes(type);
   const [transcripts, notes, enrichments] = await Promise.all([
-    ftsSearchTranscripts(userId, query, take),
-    ftsSearchNotes(userId, query, take),
-    ftsSearchTranscriptEnrichments(userId, query, take),
+    wanted('transcript') ? ftsSearchTranscripts(userId, query, take, filters) : Promise.resolve([]),
+    wanted('note') ? ftsSearchNotes(userId, query, take, filters) : Promise.resolve([]),
+    wanted('external_enrichment')
+      ? ftsSearchTranscriptEnrichments(userId, query, take)
+      : Promise.resolve([]),
   ]);
   return mergeKnowledgeResults(
     [

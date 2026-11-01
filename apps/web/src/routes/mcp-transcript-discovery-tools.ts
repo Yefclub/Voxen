@@ -2,7 +2,12 @@ import { registerProgressiveTools } from './mcp-transcript-reading-tools';
 import { z } from 'zod';
 import { type McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
-import { ftsSearchTranscripts, searchKnowledgeBase } from '../lib/retrieval';
+import {
+  ftsSearchTranscripts,
+  searchKnowledgeBase,
+  SearchFilterError,
+  type KnowledgeSearchFilters,
+} from '../lib/retrieval';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
 import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
 import { registerMcpTranscriptCorrectionReadTools } from './mcp-transcript-correction-tools';
@@ -13,6 +18,71 @@ export function registerTranscriptTools(
   userId: string,
   publicOrigin: string,
 ): void {
+  const searchFilterShape = {
+    sources: z
+      .array(z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'X', 'WEB', 'UPLOAD']))
+      .max(6)
+      .optional()
+      .describe('Filtra por origem da transcrição.'),
+    language: z
+      .string()
+      .regex(/^[a-zA-Z]{2}$/, 'Código ISO 639-1 com 2 letras.')
+      .optional()
+      .describe('Filtra por idioma (ex.: "pt").'),
+    published_after: z.string().max(64).optional().describe('ISO date: publicados a partir de.'),
+    published_before: z.string().max(64).optional().describe('ISO date: publicados antes de.'),
+    created_after: z.string().max(64).optional().describe('ISO date: criados a partir de.'),
+    created_before: z.string().max(64).optional().describe('ISO date: criados antes de.'),
+    tags: z
+      .array(z.string().min(1).max(60))
+      .max(10)
+      .optional()
+      .describe('Filtra por tags (slug ou nome).'),
+    folder_id: z.string().min(1).max(64).optional().describe('Filtra por pasta (collection).'),
+    transcript_ids: z
+      .array(z.string().min(1).max(64))
+      .max(50)
+      .optional()
+      .describe('Restringe aos documentos informados.'),
+    include_archived: z
+      .boolean()
+      .optional()
+      .describe('Inclui arquivados (lixeira nunca entra). Padrão: só ACTIVE.'),
+  } as const;
+
+  const toTranscriptFilters = (args: {
+    sources?: readonly string[];
+    language?: string;
+    published_after?: string;
+    published_before?: string;
+    created_after?: string;
+    created_before?: string;
+    tags?: readonly string[];
+    folder_id?: string;
+    transcript_ids?: readonly string[];
+    include_archived?: boolean;
+  }): KnowledgeSearchFilters => {
+    const parseDate = (value: string | undefined, name: string): Date | undefined => {
+      if (value === undefined) return undefined;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime()))
+        throw new SearchFilterError(`Filtro de data inválido: ${name}.`);
+      return date;
+    };
+    return {
+      sources: args.sources ? [...args.sources] : undefined,
+      language: args.language,
+      publishedAfter: parseDate(args.published_after, 'published_after'),
+      publishedBefore: parseDate(args.published_before, 'published_before'),
+      createdAfter: parseDate(args.created_after, 'created_after'),
+      createdBefore: parseDate(args.created_before, 'created_before'),
+      tags: args.tags ? [...args.tags] : undefined,
+      folderId: args.folder_id,
+      transcriptIds: args.transcript_ids ? [...args.transcript_ids] : undefined,
+      includeArchived: args.include_archived,
+    };
+  };
+
   server.registerTool(
     'voxen_search_knowledge',
     {
@@ -21,10 +91,21 @@ export function registerTranscriptTools(
         'Busca full-text na Base de conhecimento inteira do usuário: notas curadas, ' +
         'transcrições e contexto externo revisado e aceito. Use como primeiro passo para ' +
         'perguntas temáticas ou factuais. Retorna trechos, tipo da fonte e link de citação; ' +
-        'uma nota só recebe preferência quando sua relevância é comparável à de uma transcrição.',
+        'uma nota só recebe preferência quando sua relevância é comparável à de uma transcrição. ' +
+        'Filtros opcionais: origem, idioma, datas, tags, pasta, documentos.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
+        ...searchFilterShape,
+        note_ids: z
+          .array(z.string().min(1).max(64))
+          .max(50)
+          .optional()
+          .describe('Restringe as notas aos documentos informados.'),
+        source_types: z
+          .array(z.enum(['transcript', 'note', 'external_enrichment']))
+          .optional()
+          .describe('Restringe os tipos de fonte pesquisados.'),
       },
       outputSchema: {
         results: z.array(
@@ -48,7 +129,24 @@ export function registerTranscriptTools(
     async (args) => {
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
-      const rows = await searchKnowledgeBase(userId, query, bounded(args.limit, 8, 1, 25));
+      let filters: KnowledgeSearchFilters;
+      try {
+        filters = {
+          ...toTranscriptFilters(args),
+          noteIds: args.note_ids ? [...args.note_ids] : undefined,
+          sourceTypes: args.source_types ? [...args.source_types] : undefined,
+        };
+      } catch (error) {
+        if (error instanceof SearchFilterError) return fail(error.message);
+        throw error;
+      }
+      let rows: Awaited<ReturnType<typeof searchKnowledgeBase>>;
+      try {
+        rows = await searchKnowledgeBase(userId, query, bounded(args.limit, 8, 1, 25), filters);
+      } catch (error) {
+        if (error instanceof SearchFilterError) return fail(error.message);
+        throw error;
+      }
       return ok({
         results: rows.map((item) => ({
           ...item,
@@ -71,10 +169,12 @@ export function registerTranscriptTools(
         'Depois use voxen_outline e leia linhas/seções específicas; só use ' +
         'voxen_read_transcript se resumo e trechos não bastarem. ' +
         'Passe palavras-chave do tema (não precisa de operadores). ' +
-        'Ex.: query="política monetária juros".',
+        'Ex.: query="política monetária juros". ' +
+        'Filtros opcionais: origem, idioma, datas, tags, pasta, documentos.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
+        ...searchFilterShape,
       },
       outputSchema: {
         results: z.array(
@@ -96,7 +196,20 @@ export function registerTranscriptTools(
     async (args) => {
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
-      const rows = await ftsSearchTranscripts(userId, query, bounded(args.limit, 8, 1, 25));
+      let filters: KnowledgeSearchFilters;
+      try {
+        filters = toTranscriptFilters(args);
+      } catch (error) {
+        if (error instanceof SearchFilterError) return fail(error.message);
+        throw error;
+      }
+      let rows: Awaited<ReturnType<typeof ftsSearchTranscripts>>;
+      try {
+        rows = await ftsSearchTranscripts(userId, query, bounded(args.limit, 8, 1, 25), filters);
+      } catch (error) {
+        if (error instanceof SearchFilterError) return fail(error.message);
+        throw error;
+      }
       // FtsResult.createdAt é Date (vem de $queryRaw) — serializa antes de
       // devolver, mesmo padrão do tool de chat equivalente.
       return ok({
