@@ -3,7 +3,7 @@
 // ============================================================================
 // Retained Product 1 maintenance that used to run in the analysis worker:
 // durable, idempotent deletion of user-owned knowledge resources. Runs in the
-// web process (startup drain + interval + post-enqueue trigger) so deletions
+// web process (startup drain + interval with cancellation window) so deletions
 // complete and recover after restart without the worker.
 //
 // Mirrors apps/worker/src/knowledge_deletion.py: same ordering (advisory
@@ -13,20 +13,24 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
-import { runWithBrainIndexLease } from './brain-index-lease';
 import { invalidateGraphCache } from './graph-cache';
 import { publishJobEvent } from './job-events';
-import { storageDelete } from './storage/index';
+import { fence, LeaseLostError, type ClaimedDeletionJob } from './knowledge-deletion-graph';
+import {
+  LeaseUnavailableError,
+  executeLibraryFolderDeletion,
+  executeNoteDeletion,
+  executeSavedMediaDeletion,
+  executeTranscriptDeletion,
+  executeTranscriptEnrichmentDeletion,
+  revertDeletingSavedMedia,
+} from './knowledge-deletion-targets';
 import type { KnowledgeDeletionTargetType } from './knowledge-deletion';
-
-type DbClient = Prisma.TransactionClient;
 
 const LEASE_TTL_MS = 90_000;
 const HEARTBEAT_MS = 20_000;
 const MAX_ATTEMPTS = 3;
-const GRAPH_LEASE_ATTEMPTS = 5;
 const WORKER_ID_PREFIX = 'web-executor';
 // Grace period before the drain picks up a fresh deletion: doubles as a
 // cancellation window and keeps enqueue-only test semantics deterministic.
@@ -39,38 +43,6 @@ const GRAPH_SOURCE_TYPE: Partial<Record<KnowledgeDeletionTargetType, string>> = 
   LIBRARY_FOLDER: 'FOLDER',
   TRANSCRIPT_ENRICHMENT: 'EXTERNAL_ENRICHMENT',
 };
-
-class LeaseUnavailableError extends Error {
-  constructor() {
-    super('Knowledge graph lease is temporarily unavailable.');
-  }
-}
-
-class LeaseLostError extends Error {
-  constructor() {
-    super('Knowledge deletion lease was lost.');
-  }
-}
-
-type ClaimedDeletionJob = {
-  id: string;
-  userId: string;
-  deletionTargetType: KnowledgeDeletionTargetType;
-  deletionTargetId: string;
-  attempt: number;
-  workerId: string;
-};
-
-function fence(job: ClaimedDeletionJob) {
-  return {
-    id: job.id,
-    userId: job.userId,
-    status: 'RUNNING' as const,
-    workerId: job.workerId,
-    attempt: job.attempt,
-    leaseExpiresAt: { gte: new Date() },
-  };
-}
 
 async function claimDeletionJob(jobId: string, owner: string): Promise<ClaimedDeletionJob | null> {
   return db.$transaction(async (tx) => {
@@ -173,362 +145,6 @@ function startHeartbeat(job: ClaimedDeletionJob): { stop: () => void; isLost: ()
   };
   const timer = setInterval(() => void beat(), HEARTBEAT_MS);
   return { stop: () => clearInterval(timer), isLost: () => lost };
-}
-
-async function assertOwnership(tx: DbClient, job: ClaimedDeletionJob): Promise<void> {
-  const owner = await tx.job.findFirst({
-    where: fence(job),
-    select: { id: true },
-  });
-  if (!owner) throw new LeaseLostError();
-}
-
-async function deleteGraphSources(
-  tx: DbClient,
-  userId: string,
-  sourceType: string,
-  sourceIds: string[],
-): Promise<void> {
-  const ids = [...new Set(sourceIds)];
-  if (ids.length === 0) return;
-  const edgeRows = await tx.$queryRaw<Array<{ edgeId: string | null }>>`
-    SELECT DISTINCT "edgeId"
-    FROM "BrainSource"
-    WHERE "userId" = ${userId}
-      AND "sourceType" = ${sourceType}::"BrainSourceType"
-      AND "sourceId" = ANY(${ids}::text[])
-      AND "edgeId" IS NOT NULL
-  `;
-  await tx.$executeRaw`
-    DELETE FROM "BrainSource"
-    WHERE "userId" = ${userId}
-      AND "sourceType" = ${sourceType}::"BrainSourceType"
-      AND "sourceId" = ANY(${ids}::text[])
-  `;
-  await tx.$executeRaw`
-    DELETE FROM "BrainEntityAlias"
-    WHERE "userId" = ${userId}
-      AND "sourceType" = ${sourceType}::"BrainSourceType"
-      AND "sourceId" = ANY(${ids}::text[])
-  `;
-  await tx.$executeRaw`
-    DELETE FROM "BrainFact" fact
-    WHERE fact."userId" = ${userId}
-      AND NOT EXISTS (
-        SELECT 1 FROM "BrainSource" source WHERE source."factId" = fact.id
-      )
-  `;
-  const affectedEdgeIds = edgeRows.map((row) => row.edgeId).filter((id): id is string => !!id);
-  if (affectedEdgeIds.length > 0) {
-    await tx.$executeRaw`
-      DELETE FROM "BrainEdge" edge
-      WHERE edge."userId" = ${userId}
-        AND edge.id = ANY(${affectedEdgeIds}::text[])
-        AND edge.method <> 'manual'
-        AND NOT EXISTS (
-          SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
-        )
-    `;
-  }
-  await tx.$executeRaw`
-    DELETE FROM "BrainNode"
-    WHERE "userId" = ${userId}
-      AND "sourceType" = ${sourceType}::"BrainSourceType"
-      AND "sourceId" = ANY(${ids}::text[])
-  `;
-  await tx.$executeRaw`
-    DELETE FROM "BrainNode" node
-    WHERE node."userId" = ${userId}
-      AND node."sourceType" IS NULL
-      AND node."updatedAt" < NOW() - INTERVAL '2 minutes'
-      AND (
-        (node.type = 'TOPIC'::"BrainNodeType" AND node.metadata->>'method' = 'keyword')
-        OR (
-          node.type = 'ENTITY'::"BrainNodeType"
-          AND node.metadata->>'method' IN ('entity-heuristic', 'llm-grounded')
-        )
-        OR (
-          node.type = 'CLAIM'::"BrainNodeType"
-          AND node.metadata->>'method' = 'llm-grounded'
-        )
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM "BrainEdge" edge
-        WHERE edge."userId" = node."userId"
-          AND (edge."fromNodeId" = node.id OR edge."toNodeId" = node.id)
-      )
-  `;
-}
-
-async function ownedTreeIds(
-  tx: DbClient,
-  table: 'Note' | 'LibraryFolder',
-  userId: string,
-  rootId: string,
-): Promise<string[]> {
-  const query =
-    table === 'Note'
-      ? `
-        WITH RECURSIVE tree AS (
-          SELECT id, "userId" FROM "Note" WHERE id = $1
-          UNION
-          SELECT child.id, child."userId"
-          FROM "Note" child
-          JOIN tree parent ON child."parentId" = parent.id
-        )
-        SELECT id, "userId" FROM tree
-        `
-      : `
-        WITH RECURSIVE tree AS (
-          SELECT id, "userId" FROM "LibraryFolder" WHERE id = $1
-          UNION
-          SELECT child.id, child."userId"
-          FROM "LibraryFolder" child
-          JOIN tree parent ON child."parentId" = parent.id
-        )
-        SELECT id, "userId" FROM tree
-        `;
-  const rows = await tx.$queryRawUnsafe<Array<{ id: string; userId: string }>>(query, rootId);
-  if (rows.length === 0) return [];
-  if (rows.some((row) => String(row.userId) !== userId)) {
-    throw new Error('Cross-workspace tree relation rejected.');
-  }
-  return rows.map((row) => String(row.id));
-}
-
-async function deleteStorageKeys(keys: Array<string | null | undefined>): Promise<void> {
-  for (const key of new Set(keys.filter((key): key is string => !!key))) {
-    await storageDelete(key);
-  }
-}
-
-async function withGraphLease<T>(userId: string, operation: () => Promise<T>): Promise<T> {
-  let delayMs = 250;
-  for (let attempt = 1; ; attempt += 1) {
-    let executed = false;
-    let result: T | undefined;
-    const leased = await runWithBrainIndexLease(userId, async () => {
-      executed = true;
-      result = await operation();
-    });
-    if (leased) return result as T;
-    if (!executed) {
-      // Lease contention without running the operation: back off and retry
-      // instead of burning the job attempt budget.
-      if (attempt >= GRAPH_LEASE_ATTEMPTS) throw new LeaseUnavailableError();
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      delayMs = Math.min(delayMs * 2, 1000);
-      continue;
-    }
-    throw new LeaseUnavailableError();
-  }
-}
-
-async function executeTranscriptDeletion(job: ClaimedDeletionJob): Promise<void> {
-  const lockKey = `voxen:source-refresh:${job.deletionTargetId}`;
-  await withGraphLease(job.userId, async () => {
-    await db.$transaction(async (tx) => {
-      // Transaction-scoped advisory lock: same connection, auto-released.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
-      await assertOwnership(tx, job);
-      const locked = await tx.$queryRaw<
-        Array<{
-          id: string;
-          status: string;
-          mdPath: string | null;
-          originalObjectKey: string | null;
-          previewObjectKey: string | null;
-          savedMediaId: string | null;
-          savedMediaObjectKey: string | null;
-        }>
-      >`
-        SELECT transcript.id, transcript.status, transcript."mdPath",
-               transcript."originalObjectKey", transcript."previewObjectKey",
-               media.id AS "savedMediaId",
-               media."objectKey" AS "savedMediaObjectKey"
-        FROM "Transcript" transcript
-        LEFT JOIN "SavedMedia" media ON media."transcriptId" = transcript.id
-        WHERE transcript.id = ${job.deletionTargetId} AND transcript."userId" = ${job.userId}
-        FOR UPDATE OF transcript
-      `;
-      const row = locked[0];
-      if (row && String(row.status) !== 'TRASH') {
-        throw new Error('Transcript must remain in trash until deletion completes.');
-      }
-      const versions = row
-        ? await tx.$queryRaw<Array<{ mdPath: string | null }>>`
-            SELECT "mdPath" FROM "SourceContentVersion"
-            WHERE "transcriptId" = ${job.deletionTargetId} AND "userId" = ${job.userId}
-          `
-        : [];
-      if (row) {
-        await deleteStorageKeys([
-          row.mdPath,
-          row.previewObjectKey,
-          row.originalObjectKey === row.savedMediaObjectKey ? null : row.originalObjectKey,
-          ...versions.map((version) => version.mdPath),
-        ]);
-      }
-      if (row?.savedMediaId) {
-        if (row.savedMediaObjectKey) {
-          await tx.$executeRaw`
-            UPDATE "SavedMedia"
-            SET status = 'READY'::"SavedMediaStatus", "transcriptId" = NULL,
-                "processedAt" = NULL, "errorMsg" = NULL, "updatedAt" = NOW()
-            WHERE id = ${row.savedMediaId} AND "userId" = ${job.userId}
-          `;
-        } else {
-          await tx.$executeRaw`
-            UPDATE "SavedMedia"
-            SET status = 'FAILED'::"SavedMediaStatus", "transcriptId" = NULL,
-                "processedAt" = NULL,
-                "errorMsg" = 'O arquivo original não está mais disponível.',
-                "updatedAt" = NOW()
-            WHERE id = ${row.savedMediaId} AND "userId" = ${job.userId}
-          `;
-        }
-      }
-      await deleteGraphSources(tx, job.userId, 'TRANSCRIPT', [job.deletionTargetId]);
-      await tx.$executeRaw`
-        DELETE FROM "Transcript" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
-      `;
-    });
-  });
-}
-
-async function executeNoteDeletion(job: ClaimedDeletionJob): Promise<void> {
-  await withGraphLease(job.userId, async () => {
-    await db.$transaction(async (tx) => {
-      await assertOwnership(tx, job);
-      const ids = await ownedTreeIds(tx, 'Note', job.userId, job.deletionTargetId);
-      await deleteGraphSources(
-        tx,
-        job.userId,
-        'NOTE',
-        ids.length > 0 ? ids : [job.deletionTargetId],
-      );
-      await tx.$executeRaw`
-        DELETE FROM "Note" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
-      `;
-    });
-  });
-}
-
-async function executeSavedMediaDeletion(job: ClaimedDeletionJob): Promise<void> {
-  const rows = await db.$queryRaw<
-    Array<{ id: string; objectKey: string | null; status: string; transcriptId: string | null }>
-  >`
-    SELECT id, "objectKey", status, "transcriptId"
-    FROM "SavedMedia" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
-  `;
-  const media = rows[0];
-  if (media) {
-    if (media.transcriptId || String(media.status) === 'PROCESSED') {
-      throw new Error('Processed saved media remains linked to its transcript.');
-    }
-    if (['QUEUED', 'DOWNLOADING', 'PROCESSING'].includes(String(media.status))) {
-      throw new Error('Saved media is still being processed.');
-    }
-    await deleteStorageKeys([media.objectKey]);
-  }
-  await db.$transaction(async (tx) => {
-    await assertOwnership(tx, job);
-    await tx.$executeRaw`
-      DELETE FROM "SavedMedia"
-      WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId} AND "transcriptId" IS NULL
-    `;
-  });
-}
-
-async function executeLibraryFolderDeletion(job: ClaimedDeletionJob): Promise<void> {
-  await withGraphLease(job.userId, async () => {
-    await db.$transaction(async (tx) => {
-      await assertOwnership(tx, job);
-      let ids: string[];
-      let transcriptIds: string[];
-      if (job.deletionTargetId === '*') {
-        const forest = await tx.$queryRaw<Array<{ id: string; userId: string }>>`
-          WITH RECURSIVE tree AS (
-            SELECT id, "userId" FROM "LibraryFolder" WHERE "userId" = ${job.userId}
-            UNION
-            SELECT child.id, child."userId"
-            FROM "LibraryFolder" child
-            JOIN tree parent ON child."parentId" = parent.id
-          )
-          SELECT id, "userId" FROM tree
-        `;
-        if (forest.some((row) => String(row.userId) !== job.userId)) {
-          throw new Error('Cross-workspace folder relation rejected.');
-        }
-        ids = forest.map((row) => String(row.id));
-        transcriptIds = (
-          await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
-            AND "folderId" = ANY(${ids}::text[])
-          `
-        ).map((row) => String(row.id));
-        await deleteGraphSources(tx, job.userId, 'FOLDER', ids);
-        await tx.$executeRaw`DELETE FROM "LibraryFolder" WHERE "userId" = ${job.userId}`;
-      } else {
-        ids = await ownedTreeIds(tx, 'LibraryFolder', job.userId, job.deletionTargetId);
-        transcriptIds = (
-          await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
-            AND "folderId" = ANY(${ids}::text[])
-          `
-        ).map((row) => String(row.id));
-        await deleteGraphSources(
-          tx,
-          job.userId,
-          'FOLDER',
-          ids.length > 0 ? ids : [job.deletionTargetId],
-        );
-        await tx.$executeRaw`
-          DELETE FROM "LibraryFolder" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
-        `;
-      }
-      // Folder deletion nulls transcript.folderId via FK, so the affected
-      // transcripts must be resolved before the folders are removed.
-      if (transcriptIds.length > 0) {
-        await tx.$executeRaw`
-          UPDATE "BrainNode"
-          SET metadata = COALESCE(metadata, '{}'::jsonb) - 'folderId',
-              "updatedAt" = NOW()
-          WHERE "userId" = ${job.userId}
-            AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-            AND "sourceId" = ANY(${transcriptIds}::text[])
-        `;
-      }
-    });
-  });
-}
-
-async function executeTranscriptEnrichmentDeletion(job: ClaimedDeletionJob): Promise<void> {
-  await withGraphLease(job.userId, async () => {
-    await db.$transaction(async (tx) => {
-      await assertOwnership(tx, job);
-      await deleteGraphSources(tx, job.userId, 'EXTERNAL_ENRICHMENT', [job.deletionTargetId]);
-      await tx.$executeRaw`
-        DELETE FROM "TranscriptEnrichment"
-        WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
-      `;
-    });
-  });
-}
-
-async function revertDeletingSavedMedia(job: ClaimedDeletionJob): Promise<void> {
-  if (job.deletionTargetType !== 'SAVED_MEDIA') return;
-  const media = await db.savedMedia.findFirst({
-    where: { id: job.deletionTargetId, userId: job.userId, status: 'DELETING' },
-    select: { objectKey: true },
-  });
-  if (!media) return;
-  await db.savedMedia.updateMany({
-    where: { id: job.deletionTargetId, userId: job.userId },
-    data: media.objectKey
-      ? { status: 'READY', errorMsg: null }
-      : { status: 'FAILED', errorMsg: 'O arquivo não está disponível.' },
-  });
 }
 
 async function finishJob(
