@@ -9,7 +9,12 @@ const section = z.object({
   startSec: z.number().nullable(),
   startTs: z.string().nullable(),
 });
-const document = { id: z.string(), title: z.string() };
+const document = {
+  id: z.string(),
+  title: z.string(),
+  correctionRevision: z.number().int(),
+  sourceVersion: z.number().int(),
+};
 export const MCP_READING_OUTPUT_SHAPES = {
   voxen_outline: { ...document, totalLines: z.number().int(), sections: z.array(section) },
   voxen_read_lines: {

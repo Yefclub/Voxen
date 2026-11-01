@@ -9,6 +9,7 @@ import { db } from './db';
 import { invalidateGraphCache } from './graph-cache';
 import { noteAnchorMatchesMarkdown } from './note-anchors';
 import { storageReadText } from './storage';
+import { invalidateTranscriptReadCache } from './transcript-content';
 import {
   applyTranscriptPatch,
   effectiveTranscriptContent,
@@ -267,6 +268,7 @@ export async function commitTranscriptCorrectionInTransaction(
     },
   });
   await deferGroundedCompilation(tx, input.userId, current.id, revision, checksum);
+  invalidateTranscriptReadCache(input.userId, input.transcriptId);
   return {
     transcriptId: current.id,
     revision,

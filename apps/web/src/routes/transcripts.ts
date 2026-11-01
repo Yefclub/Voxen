@@ -9,6 +9,7 @@ import { applyTranscriptLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
+import { transcriptMarkdownHttpError } from '../lib/transcript-content';
 import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
   NoteAnchorInputSchema,
@@ -494,7 +495,14 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = baseCost.toFixed(6);
 
-  const { markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript);
+  let resolved: { markdown: string; canonicalMarkdown: string | null };
+  try {
+    resolved = await resolveTranscriptMarkdownViews(transcript);
+  } catch (error) {
+    const mapped = transcriptMarkdownHttpError(error);
+    return c.json(mapped.body, mapped.status);
+  }
+  const { markdown, canonicalMarkdown } = resolved;
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);
   return c.json({
