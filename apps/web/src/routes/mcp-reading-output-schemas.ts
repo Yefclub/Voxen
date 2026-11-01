@@ -27,7 +27,12 @@ const enclosingSection = z
     'Seção que contém o trecho (índice navegável em voxen_read_section); null sem headings.',
   );
 export const MCP_READING_OUTPUT_SHAPES = {
-  voxen_outline: { ...document, totalLines: z.number().int(), sections: z.array(section) },
+  voxen_outline: {
+    ...document,
+    totalLines: z.number().int(),
+    sections: z.array(section),
+    truncated: z.boolean(),
+  },
   voxen_read_lines: {
     ...document,
     totalLines: z.number().int(),
@@ -51,6 +56,7 @@ export const MCP_READING_OUTPUT_SHAPES = {
     anchorLine: z.number().int(),
     from: z.number().int(),
     to: z.number().int(),
+    truncated: z.boolean(),
     lines: z.array(line),
     section: enclosingSection,
   },

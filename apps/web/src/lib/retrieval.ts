@@ -51,6 +51,7 @@ export type OutlineSection = {
 export type Outline = {
   totalLines: number;
   sections: OutlineSection[];
+  truncated: boolean;
 };
 
 export type Claim = {
@@ -138,6 +139,7 @@ export function parseOutline(md: string): Outline {
     if (m) headings.push({ line: i + 1, level: (m[1] ?? '').length, heading: m[2] ?? '' });
   }
   const sections: OutlineSection[] = [];
+  let truncated = false;
   for (let idx = 0; idx < headings.length; idx++) {
     const current = headings[idx];
     if (!current) continue;
@@ -161,9 +163,12 @@ export function parseOutline(md: string): Outline {
       startSec,
       startTs: startSec === null ? null : secondsToHms(startSec),
     });
-    if (sections.length >= MAX_OUTLINE_SECTIONS) break;
+    if (sections.length >= MAX_OUTLINE_SECTIONS) {
+      truncated = idx + 1 < headings.length;
+      break;
+    }
   }
-  return { totalLines, sections };
+  return { totalLines, sections, truncated };
 }
 
 /**
@@ -278,7 +283,13 @@ export function expandContextFromMd(
   md: string,
   anchor: { line?: number; sec?: number },
   radius: number = DEFAULT_EXPAND_RADIUS,
-): { anchorLine: number; from: number; to: number; lines: NumberedLine[] } | null {
+): {
+  anchorLine: number;
+  from: number;
+  to: number;
+  truncated: boolean;
+  lines: NumberedLine[];
+} | null {
   const all = splitLines(md);
   const totalLines = all.length;
   if (totalLines === 0) return null;
@@ -304,7 +315,7 @@ export function expandContextFromMd(
   }
   if (anchorLine === null) return null;
   const read = readLinesFromMd(md, anchorLine - r, anchorLine + r);
-  return { anchorLine, from: read.from, to: read.to, lines: read.lines };
+  return { anchorLine, from: read.from, to: read.to, truncated: read.truncated, lines: read.lines };
 }
 
 /**

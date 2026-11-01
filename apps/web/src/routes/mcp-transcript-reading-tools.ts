@@ -69,7 +69,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         'PASSO 2 do fluxo: lista a ESTRUTURA do `.md` de uma transcrição — seções (headings) ' +
         'com heading, timestamp inicial (hh:mm:ss + seg), linha inicial e nº de linhas, mais o ' +
         'total de linhas. Use após buscar e antes de abrir conteúdo, para mirar o trecho certo. ' +
-        'Sem texto pesado.',
+        'Sem texto pesado. `truncated=true` indica mais seções que o limite (300).',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         ...REVISION_FILTERS,
@@ -216,7 +216,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       description:
         'PASSO 4: dada uma âncora (`line` OU `sec`), devolve uma janela de `radius` linhas ' +
         'antes/depois. Use só quando o trecho lido não bastar. A resposta inclui a seção ' +
-        'da âncora.',
+        'da âncora. `truncated=true` indica corte pelo cap (200 linhas).',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         line: z.number().int().min(1).optional().describe('Linha-âncora (1-indexed).'),
