@@ -117,7 +117,6 @@ def test_the_scan_actually_finds_call_sites() -> None:
     """
     used = _codes_used_in_source()
     assert len(used) > 60, f"esperava dezenas de call sites, achei {len(used)}"
-    assert "BRAIN_EXTRACTION_FAILED" in used, "caminho do error_diagnostic literal"
     assert "OPENROUTER_RATE_LIMITED" in used, "caminho do PermanentError.public"
     # Só alcançável através do import aliasado de `pipeline.py`.
     assert "TIKTOK_PROBE_RETRY" in used, "caminho do error_diagnostic aliasado"
@@ -129,7 +128,6 @@ def test_the_scan_actually_finds_call_sites() -> None:
         # Chegam por `error_diagnostic(exc, "LITERAL")`.
         "RESEARCH_UPSTREAM_UNAVAILABLE",
         "RESEARCH_SEARCH_USAGE_MISSING",
-        "BRAIN_EXTRACTION_SEGMENT_FAILED",
         "SUMMARY_RECONCILIATION_FAILED",
         # Chegam por `error_diagnostic(e, e.code)` sobre um PermanentError.
         "OPENROUTER_RATE_LIMITED",

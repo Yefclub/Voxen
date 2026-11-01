@@ -35,7 +35,6 @@ from . import (
 )
 from .audio_chunking import AudioChunk, split_audio
 from .audio_probe import AudioValidationError, validate_audio_for_transcription
-from .brain_compilation import extract_grounded_brain as _maybe_grounded_brain_extract
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .job_lease import (
     JobLease,
@@ -1050,11 +1049,6 @@ async def _enrich_persisted_transcript(
         )
         if not await _reindex_brain_with_retry(user_id, transcript_id):
             warnings.append(db.BRAIN_INDEX_RETRY_MESSAGE)
-        await _maybe_grounded_brain_extract(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            log=log,
-        )
         await events.publish_graph_invalidation(user_id)
     except Exception as exc:  # noqa: BLE001 — preserva o conteúdo e expõe a pendência
         warnings.append("Uma etapa de enriquecimento falhou temporariamente.")
