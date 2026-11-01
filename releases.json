@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793573861",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explicit truncation on outline and expand context",
+    "body": "### Added\n- `voxen_outline` and `voxen_expand_context` return an explicit `truncated` flag (outline cuts at 300 sections, reads at 200 lines); `false` means a complete page with no cap cut.",
+    "pr": 987,
+    "author": "Kalyel",
+    "date": "2026-11-01T19:57:28-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/987"
+  },
+  {
     "version": "0.15.1-dev.1793572882",
     "channel": "dev",
     "type": "feat",
