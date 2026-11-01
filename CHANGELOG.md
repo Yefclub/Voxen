@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793567198 — 2026-11-01 · Dev
+
+### ✨ Explicit truncation on within-document search
+
+### Added
+- `voxen_search_note_content` and `voxen_search_transcript_content` (plus the HTTP search endpoints) return an explicit `truncated` flag computed with a limit+1 probe; a full page never implies complete enumeration of occurrences.
+
 ## v0.15.1-dev.1793565928 — 2026-11-01 · Dev
 
 ### 🧹 Adopted issue-plan and debug workflows
