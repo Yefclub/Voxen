@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793524116",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove the worker service and its pipeline",
+    "body": "### Removed\n- The Python worker is gone: no more capture pipeline, transcription, model calls, or enrichment scheduling in a separate service.\n- Retained maintenance (knowledge deletions) runs in the web process with leases and retry budget; startup drain and interval recover pending work after restart.\n- Docker Compose, the combined image, CI, quality gates, and branch protection no longer build, test, or require the worker.",
+    "pr": 917,
+    "author": "Kalyel",
+    "date": "2026-11-01T06:08:26-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/917"
+  },
+  {
     "version": "0.15.1-dev.1793522341",
     "channel": "dev",
     "type": "chore",
