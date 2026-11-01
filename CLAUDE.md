@@ -59,7 +59,7 @@ Antes de implementar qualquer coisa, confirme seu entendimento do pedido em 1-2 
 
 Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** para conteúdo preparado: produtores externos publicam documentos via contratos versionados HTTP/MCP e clientes MCP recuperam com busca full-text determinística e leituras progressivas (sem embeddings, sem execução de modelos).
 
-**Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (chaves, modelos, usuários aprovados via better-auth).
+**Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (credenciais, usuários aprovados via better-auth).
 
 **Implicações na hora de propor features:**
 
@@ -173,12 +173,12 @@ Este projeto **proíbe qualquer marca de autoria de IA**, em qualquer lugar:
 
 ### Isolamento de Workspaces (CRÍTICO)
 
-Cada user tem seu workspace. Tudo do user (transcrições, chunks, jobs, custos) é amarrado a `userId`.
+Cada user tem seu workspace. Tudo do user (transcrições, notas, jobs, grafo) é amarrado a `userId`.
 
 - **Query-time scoping**: toda query inclui `WHERE userId = :currentUser` (ou o equivalente via Prisma `where: { userId }`)
 - Em endpoints, sempre derivar `userId` da sessão (better-auth), nunca do body/query
 - Admin pode ver tudo via flag explícita no endpoint (`?scope=all`) protegida por role
-- RAG/chat: o agente integrado SÓ vê dados do `userId` corrente. As tools
+- MCP/leitura: clientes e ferramentas SÓ vêem dados do `userId` corrente. As tools
   recebem o escopo derivado da sessão e filtram no servidor.
 
 ### Código Limpo e Sem Legado

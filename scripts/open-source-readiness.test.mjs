@@ -11,10 +11,7 @@ function read(path) {
 
 test("README owns and renders both product covers", () => {
   const readme = read("README.md");
-  for (const asset of [
-    "docs/assets/voxen-library.png",
-    "docs/assets/voxen-chat.png",
-  ]) {
+  for (const asset of ["docs/assets/voxen-library.png"]) {
     assert.equal(existsSync(resolve(root, asset)), true, `${asset} is missing`);
     assert.match(readme, new RegExp(`!\\[[^\\]]+\\]\\(${asset}\\)`));
   }
@@ -186,10 +183,7 @@ test("local Markdown links resolve to versioned files", () => {
 });
 
 test("README cover assets are valid, reviewable PNG files", () => {
-  for (const asset of [
-    "docs/assets/voxen-library.png",
-    "docs/assets/voxen-chat.png",
-  ]) {
+  for (const asset of ["docs/assets/voxen-library.png"]) {
     const absolute = resolve(root, asset);
     const bytes = readFileSync(absolute);
     const { size } = statSync(absolute);
