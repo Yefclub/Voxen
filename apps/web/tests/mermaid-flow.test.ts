@@ -112,14 +112,13 @@ describe('Mermaid transcript flow contract', () => {
   });
 
   it('wires a lazy strict renderer, transcript UI, and read tools', async () => {
-    const [markdown, page, blocks, mcp, chat, schema, migration, pkg] = await Promise.all([
+    const [markdown, page, blocks, mcp, schema, migration, pkg] = await Promise.all([
       Bun.file(new URL('../src/client/components/ui/markdown.tsx', import.meta.url)).text(),
       Bun.file(new URL('../src/client/pages/transcricoes-detalhe.tsx', import.meta.url)).text(),
       Bun.file(
         new URL('../src/client/components/library/transcript-derived-content.tsx', import.meta.url),
       ).text(),
       Bun.file(new URL('../src/routes/mcp-transcript-discovery-tools.ts', import.meta.url)).text(),
-      Bun.file(new URL('../src/lib/chat/runtime.ts', import.meta.url)).text(),
       Bun.file(new URL('../../../prisma/schema.prisma', import.meta.url)).text(),
       Bun.file(
         new URL(
@@ -142,7 +141,6 @@ describe('Mermaid transcript flow contract', () => {
     expect(page).toContain('readOnly={!canUseContextualActions}');
     expect(blocks).toContain('\\`\\`\\`mermaid');
     expect(mcp).toContain('flowchart: t.flowchartMd ?? null');
-    expect(chat).toContain('flowchart: transcript.flowchartMd');
     expect(schema).toContain('flowchartMd');
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS "flowchartMd" TEXT');
   });

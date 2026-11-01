@@ -1,7 +1,7 @@
 // retrieval.ts — Harness de recuperação progressiva (FTS determinístico)
 // ============================================================================
-// Lógica compartilhada entre o agente in-app (lib/chat/runtime.ts) e o servidor
-// MCP (routes/mcp.ts). A ideia (ADR-004, harness/Karpathy) é dar ao agente
+// Lógica compartilhada pelo servidor MCP (routes/mcp.ts) e demais leitores da
+// Base de conhecimento. A ideia (ADR-004, harness/Karpathy) é dar
 // ferramentas determinísticas de leitura progressiva sobre a Base de conhecimento em vez de
 // RAG vetorial:
 //   buscar (FTS) -> ver estrutura (outline) -> ler trechos (linhas/seção/tempo)

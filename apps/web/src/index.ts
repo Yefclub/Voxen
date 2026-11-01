@@ -31,7 +31,6 @@ import { graphRoutes } from './routes/graph';
 import { guideRoutes } from './routes/guide';
 import { createReleasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
-import { chatRoutes } from './routes/chat';
 import { extensionMetaRoutes } from './routes/extension-meta';
 import { researchArtifactsRoutes } from './routes/research-artifacts';
 import { transcriptEnrichmentRoutes } from './routes/transcript-enrichments';
@@ -211,8 +210,6 @@ app.route('/api/graph', graphRoutes);
 app.route('/api/guide', guideRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
-// Conversa canônica por usuário, streaming e ferramentas da Base de conhecimento.
-app.route('/api/chat', chatRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);
 // Extensão browser — version.json (update check)
@@ -397,33 +394,6 @@ if (process.env.NODE_ENV === 'production') {
       );
     });
 
-  // Turnos do chat são duráveis: Redis impede execução duplicada e esta
-  // reconciliação retoma o que ficou pendente após restart/deploy.
-  void import('./lib/chat/turn-runtime')
-    .then(({ reconcilePendingChatTurns }) => {
-      void reconcilePendingChatTurns().catch((err) => {
-        structuredDiagnostic(
-          'warning',
-          'chat-reconciliation-failed',
-          'CHAT_RECONCILIATION_FAILED',
-          err,
-        );
-      });
-      setInterval(() => {
-        void reconcilePendingChatTurns().catch((err) => {
-          structuredDiagnostic(
-            'warning',
-            'chat-reconciliation-failed',
-            'CHAT_RECONCILIATION_FAILED',
-            err,
-          );
-        });
-      }, 30_000);
-    })
-    .catch((err) => {
-      structuredDiagnostic('warning', 'chat-runtime-unavailable', 'CHAT_RUNTIME_UNAVAILABLE', err);
-    });
-
   void import('./routes/graph')
     .then(({ reconcileGraphUsers }) => {
       const reconcile = (): void => {
@@ -456,11 +426,6 @@ import { tryUpgradeTunnel, tunnelWebSocketHandler } from './lib/tunnel-proxy';
 import type { Server } from 'bun';
 
 function isLongLivedStreamRequest(req: Request): boolean {
-  if (req.method === 'POST') {
-    const path = new URL(req.url).pathname;
-    // Chat SSE: turno pode ficar aberto minutos (request_transcription).
-    return path === '/api/chat' || path.endsWith('/api/chat');
-  }
   if (req.method === 'GET') {
     const path = new URL(req.url).pathname;
     // Jobs SSE: heartbeat a cada 10s, mas idle do Bun ainda pode matar a conexão.
