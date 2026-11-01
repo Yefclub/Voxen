@@ -3,7 +3,7 @@ import { type McpServer } from '@modelcontextprotocol/server';
 import {
   expandContextFromMd,
   findEnclosingSection,
-  findRelated,
+  findRelatedPage,
   loadTranscriptMd,
   parseOutline,
   readLinesFromMd,
@@ -264,7 +264,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       description:
         'PASSO 6: dado um `transcript_id` E/OU uma `query`, retorna transcrições/notas ' +
         'relacionadas via Brain (vizinhança no grafo) + FTS por título/tópico. Retorna ' +
-        'id, título, tipo e motivo.',
+        'id, título, tipo e motivo. `truncated=true` indica mais candidatos que o limite.',
       inputSchema: {
         transcript_id: z.string().min(1).optional().describe('ID da transcrição de origem.'),
         query: z
@@ -279,12 +279,12 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
     },
     async (args) => {
       if (!args.transcript_id && !args.query) return fail('Informe transcript_id ou query.');
-      const results = await findRelated(userId, {
+      const page = await findRelatedPage(userId, {
         transcriptId: args.transcript_id,
         query: args.query,
         limit: args.limit,
       });
-      return ok({ results });
+      return ok({ results: page.results, truncated: page.truncated });
     },
   );
 

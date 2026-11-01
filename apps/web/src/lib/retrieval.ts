@@ -382,7 +382,9 @@ export async function findRelated(
   userId: string,
   input: { transcriptId?: string; query?: string; limit?: number },
 ): Promise<RelatedItem[]> {
-  const limit = clampInt(input.limit, 10, 1, 25);
+  // Max 26: o teto público é 25, mas a sonda take+1 da página precisa de uma
+  // linha extra para sinalizar truncamento sem outra consulta.
+  const limit = clampInt(input.limit, 10, 1, 26);
   const seen = new Set<string>();
   const out: RelatedItem[] = [];
   const push = (item: RelatedItem) => {
@@ -491,4 +493,19 @@ export async function findRelated(
   }
 
   return out.slice(0, limit);
+}
+
+/**
+ * Variante paginada: sinaliza truncamento quando a fusão produz mais
+ * candidatos que o limite. Os candidatos vêm de fontes internas limitadas
+ * (vizinhança do Brain, FTS top-10); `truncated` refere-se ao conjunto
+ * fundido, sem presumir enumeração completa do grafo.
+ */
+export async function findRelatedPage(
+  userId: string,
+  input: { transcriptId?: string; query?: string; limit?: number },
+): Promise<{ results: RelatedItem[]; truncated: boolean }> {
+  const take = clampInt(input.limit, 10, 1, 25);
+  const merged = await findRelated(userId, { ...input, limit: take + 1 });
+  return { results: merged.slice(0, take), truncated: merged.length > take };
 }

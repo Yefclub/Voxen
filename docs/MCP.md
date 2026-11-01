@@ -93,6 +93,9 @@ Buscas dentro de um documento (`voxen_search_note_content`,
 `voxen_search_transcript_content`) seguem a mesma regra: retornam `truncated`
 quando há mais ocorrências que o limite.
 
+Documentos relacionados (`voxen_related`) também retornam `truncated` sobre o
+conjunto fundido (vizinhança do Brain + FTS por título/tópico).
+
 Descoberta por nome (`voxen_discover`) localiza documentos por título,
 tópicos (tags, até 20 nomes) e coleções (pastas, até 20 nomes) a partir de metadados indexados, sem ler
 o texto corrido e sem modelo ou enriquecimento obrigatório. Cartões trazem

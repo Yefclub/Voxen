@@ -91,6 +91,9 @@ Within-document search (`voxen_search_note_content`,
 `voxen_search_transcript_content`) follows the same rule: it returns
 `truncated` when more occurrences exist than the limit.
 
+Related documents (`voxen_related`) also return `truncated` over the fused set
+(graph neighborhood + title/topic FTS).
+
 Name discovery (`voxen_discover`) locates documents by title, topics (up to 20 tag names),
 and collections (up to 20 folder names) from indexed metadata, without reading body text
 and without requiring models or enrichment. Cards carry a short description,
