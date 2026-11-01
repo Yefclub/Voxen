@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793567198",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explicit truncation on within-document search",
+    "body": "### Added\n- `voxen_search_note_content` and `voxen_search_transcript_content` (plus the HTTP search endpoints) return an explicit `truncated` flag computed with a limit+1 probe; a full page never implies complete enumeration of occurrences.",
+    "pr": 975,
+    "author": "Kalyel",
+    "date": "2026-11-01T18:06:28-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/975"
+  },
+  {
     "version": "0.15.1-dev.1793565928",
     "channel": "dev",
     "type": "chore",
