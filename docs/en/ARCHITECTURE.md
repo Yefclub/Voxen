@@ -1,6 +1,6 @@
 # Architecture — Voxen
 
-Voxen is a self-hosted knowledge platform with two application services and
+Voxen is a self-hosted knowledge platform with one application service and
 two required infrastructure services. Docker Compose provides the reference
 deployment; the combined `voxen` image is the recommended Easypanel path.
 
@@ -10,16 +10,16 @@ deployment; the combined `voxen` image is the recommended Easypanel path.
 Browser
   |
   v
-apps/web (Bun + Hono + React + AI SDK)
+apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, graph data, users, jobs, settings)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  |---- shared local volume (default) or S3-compatible storage
-  `---- apps/worker (Python asyncio + durable Postgres job leases)
+  `---- shared local volume (default) or S3-compatible storage
 ```
 
-The web application is the only public edge service. The worker has no public
-HTTP port. Redis accelerates delivery, but Postgres remains the durable source
-of truth for jobs and application state.
+The web application is the only service. Retained maintenance (knowledge
+deletions) runs in the web process itself with durable Postgres leases. Redis
+accelerates delivery, but Postgres remains the durable source of truth for jobs
+and application state.
 
 ## `apps/web`
 
@@ -27,8 +27,7 @@ The Bun service serves the React SPA and the Hono API. It owns:
 
 - Better Auth email/password sessions and optional OIDC SSO;
 - first-run onboarding, user approval, and administrator controls;
-- transcript, note, graph, automation, MCP, and cost APIs;
-- integrated agentic chat with AI SDK 7 and OpenRouter;
+- library read, note, graph, MCP, and account APIs;
 - deterministic, user-scoped retrieval over Postgres FTS, graph relations,
   and provider-neutral transcript storage;
 - SSE streaming of text, reasoning, tool calls, and progress;
@@ -39,34 +38,23 @@ platform-account, and MCP controls live under `/conta/*`. Every user-owned
 query derives `userId` from the authenticated session, never from request
 input.
 
-## `apps/worker`
+## Retained maintenance (no worker)
 
-The Python worker claims durable jobs from Postgres with
-`FOR UPDATE SKIP LOCKED`. Each attempt owns a renewable lease; expired leases
-are requeued or failed after the retry limit. Redis Pub/Sub only wakes workers
-and delivers realtime progress, so a lost notification cannot lose a job.
-
-Main ingestion flow:
-
-1. Validate job metadata and the source URL.
-2. Prefer official captions when available.
-3. Extract and segment media when transcription is required.
-4. Send supported inputs to the administrator-configured OpenRouter models.
-5. Build the canonical Markdown transcript and derived metadata.
-6. Write artifacts through the selected local or S3 storage driver.
-7. Mirror searchable text, authorship, source, tags, and relationships in
-   Postgres.
-8. Mark the content ready only after all required stages have reached a
-   terminal state.
+There is no separate worker. Knowledge deletions (`DELETE_KNOWLEDGE`) run in
+the web process itself (`knowledge-deletion-executor`), with `FOR UPDATE
+SKIP LOCKED` claims, heartbeat leases, and a 3-attempt budget. Expired leases
+are reclaimed by the startup drain and the periodic interval. Prepared content
+arrives through versioned HTTP/MCP contracts; Voxen never runs models,
+transcription, or scraping.
 
 ## Main Flows
 
 ### First Setup
 
 1. The first account becomes the approved administrator.
-2. The administrator completes onboarding and configures OpenRouter.
-3. Voxen validates the account and applies the canonical model slots.
-4. Subsequent users inherit platform model configuration and retain isolated
+2. The administrator completes onboarding with instance language and timezone —
+   no provider account, key, or model.
+3. Subsequent users inherit the platform configuration and retain isolated
    personal data and account sessions.
 
 ### New User and SSO
@@ -75,18 +63,14 @@ Local accounts start pending until an administrator approves them. An
 administrator may also configure an OIDC provider, restrict allowed domains,
 and choose whether trusted SSO users are approved automatically.
 
-### Chat
+### Retrieval (no integrated chat)
 
-1. The web app persists the authenticated user's message.
-2. FTS and graph hints preload compact candidate context.
-3. The agent verifies relevant evidence with progressive retrieval tools.
-4. Current facts can use web search; configured X research uses its dedicated
-   model slot.
-5. New supported URLs can enqueue ingestion and await its final result.
-6. Text, reasoning, sources, and tool events stream over SSE and are persisted
-   as chronological segments.
-7. Reload restores the timeline; stored reasoning is not fed back into model
-   context.
+1. MCP clients or the library query the base with deterministic FTS.
+2. Progressive reads return structure (outline) first, then narrow passages
+   (lines/section/time range), with signed cursors and response budgets.
+3. Graph relations complement text search with anchored evidence.
+4. Claims are verified against stored canonical content; without evidence the
+   system reports its absence instead of synthesizing an answer.
 
 ## Data and Storage
 

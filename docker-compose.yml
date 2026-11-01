@@ -2,7 +2,7 @@
 # Voxen — docker compose (dev e prod usam o mesmo arquivo, com overrides)
 # ============================================================================
 # Pré-requisito: docker + docker compose. Nada mais.
-# Default: postgres + redis + web + worker with a shared local storage volume.
+# Default: postgres + redis + web with a shared local storage volume.
 # Optional MinIO: STORAGE_DRIVER=s3 docker compose --profile s3 up -d
 # ============================================================================
 
@@ -140,42 +140,6 @@ services:
       timeout: 5s
       retries: 5
 
-
-  worker:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
-      MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-}
-      STORAGE_LOCAL_PATH: ${STORAGE_LOCAL_PATH:-/data/storage}
-      SAVED_MEDIA_MAX_BYTES: ${SAVED_MEDIA_MAX_BYTES:-2147483648}
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
-      S3_BUCKET: ${S3_BUCKET:-}
-      S3_REGION: ${S3_REGION:-}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
-      S3_CREDS_PATH: ${S3_CREDS_PATH:-}
-      GARAGE_ENDPOINT: ${GARAGE_ENDPOINT:-}
-      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY:-}
-      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY:-}
-      GARAGE_BUCKET: ${GARAGE_BUCKET:-}
-      GARAGE_REGION: ${GARAGE_REGION:-}
-      GARAGE_CREDS_PATH: ${GARAGE_CREDS_PATH:-}
-      YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-}
-    volumes:
-      - storage_data:/data/storage
-    networks:
-      - voxen-net
 
   # ---------------------------------------------------------------------------
   # nginx — reverse proxy opcional (profile `nginx`)

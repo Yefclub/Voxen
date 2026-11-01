@@ -1,5 +1,7 @@
 # Transcript Markdown Format — Voxen
 
+> Note (spec 215/216, issues #894/#895): the capture and transcription pipeline was removed. This document describes the format of already-stored documents — new documents arrive as prepared content through versioned contracts.
+
 Each processed source becomes a Markdown file with YAML frontmatter, a readable header, and transcript content.
 
 ## Location

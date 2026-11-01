@@ -15,7 +15,6 @@ import {
   isProductionSource,
   parseJscpdReport,
   parseLcov,
-  parsePythonCoverage,
   renderSummary,
   validateBaseline,
 } from "./quality-gate-lib.mjs";
@@ -79,10 +78,6 @@ function main() {
     "--web-coverage",
     "quality-gate/input/web/lcov.info",
   );
-  const workerCoveragePath = option(
-    "--worker-coverage",
-    "quality-gate/input/worker/coverage.json",
-  );
   const duplicationPath = option(
     "--duplication-report",
     "quality-gate/output/jscpd-report.json",
@@ -111,7 +106,6 @@ function main() {
         (path) => path.startsWith("src/"),
         webCoverageFiles,
       ),
-      worker: parsePythonCoverage(read(workerCoveragePath)),
     },
     duplication: parseJscpdReport(read(duplicationPath)),
     files: {

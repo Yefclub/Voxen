@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-test("compose forwards all legacy Garage settings to web and worker", async () => {
+test("compose forwards all legacy Garage settings to web", async () => {
   const compose = await readFile(join(repoRoot, "docker-compose.yml"), "utf8");
   for (const key of [
     "GARAGE_ENDPOINT",
@@ -21,7 +21,7 @@ test("compose forwards all legacy Garage settings to web and worker", async () =
   ]) {
     assert.equal(
       (compose.match(new RegExp(`\\n\\s+${key}:`, "g")) ?? []).length,
-      2,
+      1,
       key,
     );
   }
@@ -31,7 +31,6 @@ test("all production entrypoints reject ephemeral local storage", async () => {
   for (const file of [
     "scripts/easypanel-entrypoint.sh",
     "apps/web/entrypoint.sh",
-    "apps/worker/entrypoint.sh",
   ]) {
     const source = await readFile(join(repoRoot, file), "utf8");
     assert.match(source, /\/proc\/self\/mountinfo/, file);
@@ -70,7 +69,7 @@ printf '%s\\n' "$*" >> "$DOCKER_LOG"
 case "$*" in
   'volume inspect voxen_minio_data') exit 0 ;;
   'compose --profile s3 ps --status running -q minio') printf 'minio-container\\n' ;;
-  'compose ps --status running --services') printf 'web\\nworker\\n' ;;
+  'compose ps --status running --services') printf 'web\\n' ;;
   'compose exec -T postgres pg_dump -U voxen voxen')
     if [[ "\${FAIL_DUMP:-0}" = 1 ]]; then exit 17; fi
     printf 'CREATE TABLE safe_backup();\\n'
@@ -116,10 +115,10 @@ test("backup pauses writers and publishes all artifacts only after success", asy
   );
   const log = await readFile(fixture.logFile, "utf8");
   assert.ok(
-    log.indexOf("compose stop web worker") <
+    log.indexOf("compose stop web") <
       log.indexOf("compose exec -T postgres pg_dump"),
   );
-  assert.match(log, /compose start web worker/);
+  assert.match(log, /compose start web/);
 });
 
 test("backup cannot report success or publish archives when pg_dump fails", async () => {
@@ -133,7 +132,7 @@ test("backup cannot report success or publish archives when pg_dump fails", asyn
   );
   assert.match(
     await readFile(fixture.logFile, "utf8"),
-    /compose start web worker/,
+    /compose start web(?! worker)/,
   );
 });
 

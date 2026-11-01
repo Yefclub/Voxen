@@ -35,16 +35,15 @@ authenticated user under `/conta/*`.
 ## User Isolation
 
 - Derive `userId` from the server session, never body or query input.
-- Scope transcripts, notes, jobs, graph entities, costs, conversations,
-  integrations, and agent tools by that `userId`.
+- Scope transcripts, notes, jobs, graph entities, and costs by that `userId`.
 - Keep administrator all-user views explicit and role-guarded.
-- Persist platform model configuration globally while keeping personal data
-  and third-party account sessions isolated.
+- Persist platform configuration globally while keeping personal data
+  isolated.
 
 ## Secrets
 
 Infrastructure secrets live only in the root `.env`. Runtime application
-secrets such as OpenRouter and OIDC credentials are stored encrypted with
+secrets such as OIDC credentials are stored encrypted with
 AES-256-GCM using `MASTER_KEY`.
 
 ```bash
@@ -57,10 +56,9 @@ master key.
 
 ## Network and Content Safety
 
-- The web service is the only public application port.
-- Worker extraction uses argument arrays, timeouts, isolated temporary
-  directories, and no shell interpolation.
-- Supported remote URLs are validated before media tools run.
+- The web service is the only application.
+- Source URLs are treated as metadata; Voxen never fetches, transcribes,
+  or analyzes content automatically.
 - Local storage rejects absolute/traversal keys and symlinks, uses restrictive
   modes, atomic writes, and is never exposed as a public static directory.
 - Optional S3 credentials should be limited to the Voxen bucket.

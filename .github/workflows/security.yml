@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [web, worker]
+        app: [web]
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -86,40 +86,6 @@ jobs:
           # Apenas vuln scan em imagens; secret-scan rola só no fs scan
           # (evita falsos positivos em chaves dummy nos extractors do yt-dlp etc.)
           scanners: vuln,misconfig
-
-  bandit:
-    name: Bandit (Python)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-      - uses: astral-sh/setup-uv@v8.1.0
-      - name: Install bandit
-        run: uv tool install bandit
-      - name: Scan
-        run: bandit -r apps/worker/src -ll
-
-  pip-audit:
-    name: pip-audit
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        app: [worker]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-      - uses: astral-sh/setup-uv@v8.1.0
-      - run: uv sync --frozen
-        working-directory: apps/${{ matrix.app }}
-      - run: uv tool install pip-audit
-      - name: Export requirements
-        run: uv export --frozen --format requirements.txt --no-hashes --output-file /tmp/${{ matrix.app }}-requirements.txt
-        working-directory: apps/${{ matrix.app }}
-      - run: pip-audit --requirement /tmp/${{ matrix.app }}-requirements.txt --strict
 
   pnpm-audit:
     name: pnpm audit

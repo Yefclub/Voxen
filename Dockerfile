@@ -51,25 +51,6 @@ COPY apps/web ./apps/web
 COPY packages ./packages
 
 
-FROM python:3.13-slim AS worker-builder
-WORKDIR /app/apps/worker
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Dependabot does not refresh COPY --from digests; review this pin during
-# security dependency updates.
-COPY --from=ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded \
-    /uv /usr/local/bin/uv
-
-COPY apps/worker/pyproject.toml ./
-COPY apps/worker/uv.lock ./
-RUN uv sync --frozen --no-install-project
-
-COPY apps/worker/src ./src
-RUN uv sync --frozen --no-editable
-
 FROM node:22-bookworm-slim AS node-runtime
 FROM oven/bun:1.3 AS bun-runtime
 
@@ -118,7 +99,6 @@ ENV NODE_ENV=production \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=3000 \
     STORAGE_LOCAL_PATH=/data/storage \
-    DENO_DIR=/tmp/voxen-deno \
     CHISEL_PORT=8088 \
     CHISEL_AUTHFILE=/run/voxen/chisel-auth.json \
     CHISEL_PIDFILE=/run/voxen/chisel.pid
@@ -137,7 +117,6 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && apt-get install -y --no-install-recommends \
       bash \
       ca-certificates \
-      ffmpeg \
       tini \
       wget \
     && npm install -g prisma@6.19.3 --omit=dev \
@@ -157,17 +136,9 @@ COPY --from=web-front-builder --chown=voxen:voxen /app/apps/web/dist ./apps/web/
 # Changelog manifesto (página Novidades)
 COPY --chown=voxen:voxen releases.json ./releases.json
 
-COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/.venv ./apps/worker/.venv
-COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/src ./apps/worker/src
-
 COPY --chown=voxen:voxen scripts/easypanel-entrypoint.sh /entrypoint.sh
 COPY --chown=voxen:voxen scripts/prisma-migrate-deploy.sh /prisma-migrate-deploy.sh
 RUN chmod +x /entrypoint.sh /prisma-migrate-deploy.sh
-
-# Mantem a imagem unica alinhada ao worker do Compose: yt-dlp atual precisa de
-# EJS + runtime JS para alguns fluxos do YouTube.
-RUN /app/apps/worker/.venv/bin/deno --version >/dev/null \
-    && /app/apps/worker/.venv/bin/python -m yt_dlp --version >/dev/null
 
 USER voxen
 EXPOSE 3000

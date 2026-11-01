@@ -1,5 +1,9 @@
 # Formato do `.md` de transcrição — Voxen
 
+> Nota (spec 215/216): o pipeline de captura e transcrição foi removido.
+> Este documento descreve o formato dos documentos já armazenados — novos
+> documentos chegam como conteúdo preparado via contratos versionados.
+
 Cada vídeo transcrito vira um arquivo Markdown com:
 
 1. **Frontmatter YAML** com metadata

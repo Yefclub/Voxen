@@ -32,10 +32,10 @@ test("version bot creates an English pull request and workflow output", () => {
   assert.match(workflow, /main:refs\/remotes\/origin\/main/);
   assert.match(workflow, /resolve-dev-package-version\.mjs/);
   assert.match(workflow, /stable baseline/);
-  assert.match(workflow, /Nine exact required checks passed/);
+  assert.match(workflow, /Seven exact required checks passed/);
   assert.match(workflow, /\.name == "Quality Gate"/);
   assert.match(workflow, /\.name == "Prisma migration gate"/);
-  assert.match(workflow, /REQUIRED_TOTAL:-0}" = "9"/);
+  assert.match(workflow, /REQUIRED_TOTAL:-0}" = "7"/);
   assert.doesNotMatch(workflow, /Bump automático|Sete required checks/);
 });
 
@@ -68,11 +68,10 @@ test("quality evidence survives producer and collector failures", () => {
 
   assert.match(
     job,
-    /needs: \[test-ts, test-py-worker\]\n    if: \$\{\{ always\(\) \}\}/,
+    /needs: \[test-ts\]\n    if: \$\{\{ always\(\) \}\}/,
   );
   for (const step of [
     "Download web coverage",
-    "Download worker coverage",
     "Preserve raw coverage evidence",
     "Collect duplication evidence",
     "Evaluate quality ratchet",

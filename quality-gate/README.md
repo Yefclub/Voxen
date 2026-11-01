@@ -4,7 +4,7 @@ Voxen uses a ratchet instead of aspirational thresholds that would fail on
 existing debt. [`baseline.json`](./baseline.json) freezes the measured state at
 adoption time:
 
-- web and worker line coverage may stay equal or increase;
+- web line coverage may stay equal or increase;
 - duplicated-line percentage may stay equal or decrease;
 - a legacy file above 500 lines may stay equal or shrink;
 - a new file may not cross 500 lines.
@@ -21,7 +21,7 @@ improvement.
 
 ## Local check
 
-Generate the two coverage inputs with the same database-backed commands used by
+Generate the web coverage input with the same database-backed command used by
 CI, then run:
 
 ```bash
@@ -49,9 +49,8 @@ PR run again; do not raise allowances.
 
 ## Coverage semantics
 
-Python coverage uses `pytest-cov --cov=src`, which includes unimported worker
-modules. Bun LCOV reports only loaded modules, so the collector adds every
-tracked, non-generated web source absent from LCOV as zero-covered code. Blank
+Bun LCOV reports only loaded modules, so the collector adds every tracked,
+non-generated web source absent from LCOV as zero-covered code. Blank
 and comment-only lines are excluded from that fallback denominator. This keeps
 new untested modules from bypassing the ratchet while allowing explanatory
 comments without a coverage penalty.

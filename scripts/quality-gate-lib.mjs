@@ -80,26 +80,6 @@ export function parseLcov(
   };
 }
 
-export function parsePythonCoverage(source) {
-  const report = JSON.parse(source);
-  const coveredLines = report?.totals?.covered_lines;
-  const totalLines = report?.totals?.num_statements;
-  if (
-    !Number.isSafeInteger(coveredLines) ||
-    !Number.isSafeInteger(totalLines) ||
-    coveredLines < 0 ||
-    totalLines <= 0 ||
-    coveredLines > totalLines
-  ) {
-    throw new Error("Worker coverage JSON has invalid totals.");
-  }
-  return {
-    coveredLines,
-    totalLines,
-    percent: percentage(coveredLines, totalLines),
-  };
-}
-
 export function parseJscpdReport(source) {
   const report = JSON.parse(source);
   const total = report?.statistics?.total;
@@ -137,8 +117,6 @@ export function isProductionSource(path) {
   ) {
     return false;
   }
-  if (normalized.startsWith("apps/worker/src/"))
-    return normalized.endsWith(".py");
   if (
     normalized.startsWith("apps/web/src/") ||
     normalized.startsWith("apps/extension/")
@@ -173,7 +151,6 @@ export function validateBaseline(baseline) {
     throw new Error("Quality baseline must use schemaVersion 1.");
   }
   requireNumber(baseline.coverageMinimum?.web, "coverageMinimum.web");
-  requireNumber(baseline.coverageMinimum?.worker, "coverageMinimum.worker");
   requireNumber(baseline.duplicationMaximum, "duplicationMaximum");
   requireNumber(baseline.fileLineLimit, "fileLineLimit");
   if (
@@ -202,7 +179,7 @@ function worseMaximum(current, maximum) {
 export function compareMetrics(metrics, rawBaseline) {
   const baseline = validateBaseline(rawBaseline);
   const failures = [];
-  for (const runtime of ["web", "worker"]) {
+  for (const runtime of ["web"]) {
     const current = metrics.coverage[runtime].percent;
     const allowed = baseline.coverageMinimum[runtime];
     if (worseMinimum(current, allowed)) {
@@ -241,7 +218,7 @@ export function compareBaselines(candidateRaw, targetRaw) {
   const candidate = validateBaseline(candidateRaw);
   const target = validateBaseline(targetRaw);
   const failures = [];
-  for (const runtime of ["web", "worker"]) {
+  for (const runtime of ["web"]) {
     if (
       worseMinimum(
         candidate.coverageMinimum[runtime],
@@ -282,7 +259,6 @@ export function renderSummary(
 ) {
   const status = (failed) => (failed ? "FAIL" : "PASS");
   const webFailed = failures.some(({ code }) => code === "coverage-web");
-  const workerFailed = failures.some(({ code }) => code === "coverage-worker");
   const duplicationFailed = failures.some(({ code }) => code === "duplication");
   const fileFailures = failures.filter(({ code }) =>
     code.includes("oversized"),
@@ -295,7 +271,6 @@ export function renderSummary(
     "| Metric | Current | Allowed | Status |",
     "| --- | ---: | ---: | :---: |",
     `| Web line coverage | ${metrics.coverage.web.percent}% | >= ${baseline.coverageMinimum.web}% | ${status(webFailed)} |`,
-    `| Worker line coverage | ${metrics.coverage.worker.percent}% | >= ${baseline.coverageMinimum.worker}% | ${status(workerFailed)} |`,
     `| Duplicated lines | ${metrics.duplication.percent}% | <= ${baseline.duplicationMaximum}% | ${status(duplicationFailed)} |`,
     `| Oversized source files | ${metrics.files.oversized.length} | no new/growing debt | ${status(fileFailures.length > 0)} |`,
     "",

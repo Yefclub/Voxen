@@ -19,7 +19,7 @@ export function parseStructuredLogLine(line) {
     const parsed = JSON.parse(line.slice(start));
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       return null;
-    if (!["voxen-web", "voxen-worker"].includes(parsed.service)) return null;
+    if (parsed.service !== "voxen-web") return null;
     if (typeof parsed.event !== "string" || typeof parsed.level !== "string")
       return null;
     if (
@@ -112,7 +112,7 @@ function usage() {
 
 Filters:
   --since 30m|2h|1d|ISO-8601
-  --service voxen-web|voxen-worker
+  --service voxen-web
   --level debug|info|warning|error
   --event EVENT  --job JOB_ID  --request REQUEST_ID  --error-code CODE
   --file PATH    read copied Easypanel logs instead of stdin

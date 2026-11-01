@@ -72,7 +72,7 @@ Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecime
 Stack, layout de diretórios, serviços e portas do Compose e a lista de comandos
 mudam com o código — ler da fonte, não de memória:
 
-- Stack e versões: `package.json`, `apps/worker/pyproject.toml`, `docs/STACK.md`
+- Stack e versões: `package.json`, `docs/STACK.md`
 - Layout: `ls` na raiz; visão narrativa em `docs/ARCHITECTURE.md`
 - Serviços, portas e volumes: `docker-compose.yml`
 - Comandos de dev, teste, lint, typecheck e migrations: `Makefile` (é o entry
@@ -113,7 +113,7 @@ O detalhe operacional de cada etapa vive em skill, carregada sob demanda:
 | Spec EARS + ciclo SDD/TDD                      | skill `spec`           |
 | Migrations Prisma                              | `prisma/CLAUDE.md`     |
 | UI/UX, tokens de tema, verificação visual      | `apps/web/CLAUDE.md`   |
-| Formato `.md` de transcrição                   | `apps/worker/CLAUDE.md` |
+| Formato `.md` de transcrição                   | `docs/TRANSCRIPT-FORMAT.md` |
 
 ### Os 9 passos (em ordem)
 
@@ -161,7 +161,7 @@ Este projeto **proíbe qualquer marca de autoria de IA**, em qualquer lugar:
 
 ### Env e Secrets (CRÍTICO)
 
-- **`.env` APENAS na raiz do projeto**. NUNCA em `apps/web/` ou `apps/worker/`
+- **`.env` APENAS na raiz do projeto**. NUNCA em `apps/web/`
 - O `.env` na raiz contém SÓ o mínimo essencial:
   - URLs de infra (`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`)
   - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `BETTER_AUTH_SECRET`, `MASTER_KEY`)

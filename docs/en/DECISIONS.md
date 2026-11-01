@@ -1,5 +1,12 @@
 # Architecture Decision Records — Voxen
 
+> Note (2026-11-01, specs 215/216, issues #894/#895): Voxen was re-scoped as
+> a Product 1 knowledge base — no built-in AI execution, capture, or worker.
+> ADRs below that assume an agentic chat, model providers, transcription/
+> scraping, a Python worker, or embeddings remain as historical record; the
+> current normative boundary is defined by specs `.specs/215-*` and
+> `.specs/216-*`.
+
 This English document is the default ADR index for contributors. The
 Portuguese file preserves the detailed historical log while decisions are
 progressively migrated; new public repository decisions must be documented in

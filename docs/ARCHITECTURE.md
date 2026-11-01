@@ -1,7 +1,7 @@
 # Arquitetura — Voxen
 
-Voxen é uma plataforma self-hosted de conhecimento com dois serviços de
-aplicação e três serviços de infraestrutura. Docker Compose é a referência; a
+Voxen é uma plataforma self-hosted de conhecimento com um serviço de
+aplicação e dois serviços de infraestrutura. Docker Compose é a referência; a
 imagem combinada `voxen` é o caminho recomendado no Easypanel.
 
 ## Visão do sistema
@@ -10,16 +10,16 @@ imagem combinada `voxen` é o caminho recomendado no Easypanel.
 Navegador
   |
   v
-apps/web (Bun + Hono + React + AI SDK)
+apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, grafo, usuários, jobs, configurações)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  |---- volume local compartilhado (padrão) ou S3 compatível
-  `---- apps/worker (Python asyncio + leases duráveis no Postgres)
+  `---- volume local compartilhado (padrão) ou S3 compatível
 ```
 
-O web é a única aplicação exposta. O worker não possui porta HTTP pública.
-Redis acelera notificações, mas o Postgres continua sendo a fonte durável dos
-jobs e do estado da aplicação.
+O web é a única aplicação. A manutenção retida (exclusões de conhecimento)
+roda no próprio processo web com leases duráveis no Postgres. Redis acelera
+notificações, mas o Postgres continua sendo a fonte durável dos jobs e do
+estado da aplicação.
 
 ## `apps/web`
 
@@ -27,8 +27,7 @@ O serviço Bun entrega a SPA React e a API Hono. Ele concentra:
 
 - sessões Better Auth por email/senha e SSO OIDC opcional;
 - onboarding, aprovação de usuários e controles administrativos;
-- APIs de transcrições, notas, grafo, automações, MCP e custos;
-- chat-agente integrado com AI SDK 7 e OpenRouter;
+- APIs de leitura da biblioteca, notas, grafo, MCP e conta;
 - recuperação determinística e isolada por usuário usando FTS, relações do
   grafo e transcrições no storage selecionado;
 - streaming SSE de texto, raciocínio, ferramentas e progresso;
@@ -38,32 +37,23 @@ Configurações administrativas ficam em `/admin/*`. Perfil, contas de
 plataforma e MCP pertencentes ao usuário ficam em `/conta/*`. Toda query de
 dado pessoal deriva `userId` da sessão autenticada, nunca do request.
 
-## `apps/worker`
+## Manutenção retida (sem worker)
 
-O worker Python reivindica jobs duráveis com `FOR UPDATE SKIP LOCKED`. Cada
-tentativa mantém um lease renovável; leases expirados são retomados ou falham
-após o limite de tentativas. Redis serve apenas para wakeup e progresso.
-
-Fluxo principal:
-
-1. Validar o job e a URL de origem.
-2. Preferir legendas oficiais quando disponíveis.
-3. Extrair e segmentar mídia quando houver transcrição.
-4. Enviar entradas suportadas aos modelos configurados pelo administrador.
-5. Gerar Markdown canônico e metadados derivados.
-6. Salvar artefatos pelo driver local ou S3 selecionado.
-7. Espelhar texto, autoria, origem, tags e relações no Postgres.
-8. Marcar o conteúdo pronto somente após todas as etapas obrigatórias atingirem
-   estado terminal.
+Não há worker separado. As exclusões de conhecimento (`DELETE_KNOWLEDGE`)
+são executadas pelo próprio processo web (`knowledge-deletion-executor`),
+com claim `FOR UPDATE SKIP LOCKED`, lease com heartbeat e orçamento de 3
+tentativas. Leases expirados são retomados pelo drain de startup e pelo
+intervalo periódico. Conteúdo preparado chega por contratos versionados
+HTTP/MCP; a Voxen nunca executa modelos, transcrição ou scraping.
 
 ## Fluxos principais
 
 ### Primeira configuração
 
 1. A primeira conta se torna administradora aprovada.
-2. O administrador configura o OpenRouter no onboarding.
-3. A Voxen valida a conta e aplica os slots canônicos de modelos.
-4. Usuários seguintes herdam a configuração da plataforma, mantendo dados e
+2. O administrador conclui o onboarding com idioma e fuso horário — sem
+   conta de provedor, chave ou modelo.
+3. Usuários seguintes herdam a configuração da plataforma, mantendo dados e
    sessões de contas pessoais isolados.
 
 ### Usuários e SSO
@@ -72,16 +62,15 @@ Contas locais começam pendentes até aprovação. O administrador também pode
 configurar um provedor OIDC, limitar domínios de email e escolher aprovação
 automática para identidades confiáveis.
 
-### Chat
+### Recuperação (sem chat integrado)
 
-1. A mensagem do usuário autenticado é persistida.
-2. FTS e grafo sugerem contexto compacto.
-3. O agente confirma evidências com ferramentas progressivas.
-4. Fatos atuais podem usar busca web e pesquisa no X usa seu slot dedicado.
-5. URLs novas suportadas podem gerar ingestão e aguardar o resultado final.
-6. Texto, raciocínio, fontes e ferramentas são transmitidos por SSE e
-   persistidos cronologicamente.
-7. O reload restaura a linha do tempo sem reenviar raciocínio salvo ao modelo.
+1. O cliente MCP ou a biblioteca consultam a base com FTS determinístico.
+2. Leituras progressivas retornam estrutura (outline) e depois trechos
+   estreitos (linhas/seção/intervalo), com cursores assinados e orçamentos
+   de resposta.
+3. Relações do grafo complementam a busca textual com evidência ancorada.
+4. Citações são verificadas contra o conteúdo canônico armazenado; sem
+   evidência, o sistema reporta ausência em vez de sintetizar resposta.
 
 ## Dados e armazenamento
 

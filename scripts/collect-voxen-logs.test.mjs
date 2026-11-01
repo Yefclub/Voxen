@@ -30,16 +30,16 @@ test("parses JSON after a Docker or Easypanel log prefix", () => {
 });
 
 test("filters safe structured fields and summarizes matching failures", () => {
-  const worker = {
+  const other = {
     timestamp: "2026-08-15T12:01:00.000Z",
     level: "info",
-    service: "voxen-worker",
+    service: "voxen-web",
     event: "job-done",
     job_id: "job-2",
   };
   const input = [
     JSON.stringify(web),
-    `prefix | ${JSON.stringify(worker)}`,
+    `prefix | ${JSON.stringify(other)}`,
     "unstructured",
   ].join("\n");
 

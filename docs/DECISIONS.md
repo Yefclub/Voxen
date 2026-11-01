@@ -1,5 +1,12 @@
 # Architecture Decision Records — Voxen
 
+> Nota (2026-11-01, specs 215/216, issues #894/#895): o Voxen foi
+> re-delimitado como base de conhecimento Product 1 — sem execução interna
+> de IA, captura, ou worker. ADRs abaixo que assumem chat agentivo,
+> providers de modelo, transcrição/scraping, worker Python, ou embeddings
+> permanecem como registro histórico; a boundary normativa atual está nas
+> specs `.specs/215-*` e `.specs/216-*`.
+
 Cada ADR captura uma decisão arquitetural significativa, o contexto que a motivou, alternativas consideradas e consequências. Adicionar nova ADR quando uma decisão grande for tomada — usar próxima numeração.
 
 ---
