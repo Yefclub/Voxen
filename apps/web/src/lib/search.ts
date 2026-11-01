@@ -92,7 +92,9 @@ export async function queryTranscriptFts(
 ): Promise<FtsResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const take = clampInt(limit, 8, 1, 25);
+  // Max 26: o teto público é 25, mas a sonda take+1 da página precisa de uma
+  // linha extra para sinalizar truncamento sem outra consulta.
+  const take = clampInt(limit, 8, 1, 26);
   assertTranscriptSearchFilters(filters);
   const conditions: Prisma.Sql[] = [];
   if (filters.sources?.length) {
@@ -160,7 +162,9 @@ export async function ftsSearchTranscripts(
 ): Promise<FtsResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const take = clampInt(limit, 8, 1, 25);
+  // Max 26: o teto público é 25, mas a sonda take+1 da página precisa de uma
+  // linha extra para sinalizar truncamento sem outra consulta.
+  const take = clampInt(limit, 8, 1, 26);
   // Lexical FTS only (spec 215): no built-in embedding inference or
   // semantic-rescue execution.
   return queryTranscriptFts(userId, q, take, filters);
@@ -175,7 +179,9 @@ export async function ftsSearchNotes(
 ): Promise<KnowledgeSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const take = clampInt(limit, 8, 1, 25);
+  // Max 26: o teto público é 25, mas a sonda take+1 da página precisa de uma
+  // linha extra para sinalizar truncamento sem outra consulta.
+  const take = clampInt(limit, 8, 1, 26);
   assertNoteSearchFilters(filters);
   const conditions: Prisma.Sql[] = [];
   if (filters.noteIds?.length) {
@@ -225,7 +231,8 @@ export function mergeKnowledgeResults(
   items: readonly KnowledgeSearchResult[],
   limit = 8,
 ): KnowledgeSearchResult[] {
-  const take = clampInt(limit, 8, 1, 25);
+  // Max 26: acompanha a sonda take+1 da página; o teto público segue 25.
+  const take = clampInt(limit, 8, 1, 26);
   const bestRank = Math.max(0, ...items.map((item) => Number(item.rank) || 0));
   return [...items]
     .sort((a, b) => {
@@ -252,18 +259,35 @@ export async function searchKnowledgeBase(
   limit = 8,
   filters: KnowledgeSearchFilters = {},
 ): Promise<KnowledgeSearchResult[]> {
+  return (await searchKnowledgeBasePage(userId, query, limit, filters)).results;
+}
+
+/** Variante paginada: busca take+1 por fonte e sinaliza truncamento explícito.
+ *
+ * Uma página cheia (results.length === limit) com truncated=false significa
+ * que não há mais candidatos; truncated=true exige nova busca mais estreita
+ * ou continuação paginada — nunca presumir enumeração completa.
+ */
+export async function searchKnowledgeBasePage(
+  userId: string,
+  query: string,
+  limit = 8,
+  filters: KnowledgeSearchFilters = {},
+): Promise<{ results: KnowledgeSearchResult[]; truncated: boolean }> {
   const take = clampInt(limit, 8, 1, 25);
   assertKnowledgeSearchFilters(filters);
   const wanted = (type: 'transcript' | 'note' | 'external_enrichment'): boolean =>
     !filters.sourceTypes || filters.sourceTypes.includes(type);
   const [transcripts, notes, enrichments] = await Promise.all([
-    wanted('transcript') ? ftsSearchTranscripts(userId, query, take, filters) : Promise.resolve([]),
-    wanted('note') ? ftsSearchNotes(userId, query, take, filters) : Promise.resolve([]),
+    wanted('transcript')
+      ? ftsSearchTranscripts(userId, query, take + 1, filters)
+      : Promise.resolve([]),
+    wanted('note') ? ftsSearchNotes(userId, query, take + 1, filters) : Promise.resolve([]),
     wanted('external_enrichment')
-      ? ftsSearchTranscriptEnrichments(userId, query, take, filters)
+      ? ftsSearchTranscriptEnrichments(userId, query, take + 1, filters)
       : Promise.resolve([]),
   ]);
-  return mergeKnowledgeResults(
+  const merged = mergeKnowledgeResults(
     [
       ...transcripts.map((item) => ({
         ...item,
@@ -273,8 +297,9 @@ export async function searchKnowledgeBase(
       ...notes,
       ...enrichments,
     ],
-    take,
+    take + 1,
   );
+  return { results: merged.slice(0, take), truncated: merged.length > take };
 }
 
 /** Pré-busca best-effort usada pelo harness antes do primeiro step do modelo. */
