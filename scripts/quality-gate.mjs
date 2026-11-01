@@ -15,7 +15,6 @@ import {
   isProductionSource,
   parseJscpdReport,
   parseLcov,
-  parsePythonCoverage,
   renderSummary,
   validateBaseline,
 } from "./quality-gate-lib.mjs";
