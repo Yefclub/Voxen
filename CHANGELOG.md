@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793565928 — 2026-11-01 · Dev
+
+### 🧹 Adopted issue-plan and debug workflows
+
+### Added
+- Native `issue-plan` and `debug` skills with triggers, boundaries, and evidence rules, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.
+
 ## v0.15.1-dev.1793565038 — 2026-11-01 · Dev
 
 ### ✨ Tag-weighted transcript search

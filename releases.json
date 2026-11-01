@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793565928",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Adopted issue-plan and debug workflows",
+    "body": "### Added\n- Native `issue-plan` and `debug` skills with triggers, boundaries, and evidence rules, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.",
+    "pr": 973,
+    "author": "Kalyel",
+    "date": "2026-11-01T17:45:07-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/973"
+  },
+  {
     "version": "0.15.1-dev.1793565038",
     "channel": "dev",
     "type": "feat",
