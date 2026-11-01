@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793574808 — 2026-11-01 · Dev
+
+### 🧹 Read-only agent doctor diagnostics
+
+### Added
+- `scripts/agent-doctor.mjs` reports declared agent configuration with effective/observed states as explicitly unverified, plus a sanitized `--json`/`--strict` contract covered by tests.
+
 ## v0.15.1-dev.1793573861 — 2026-11-01 · Dev
 
 ### ✨ Explicit truncation on outline and expand context
