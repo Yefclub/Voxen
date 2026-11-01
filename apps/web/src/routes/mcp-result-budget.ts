@@ -118,8 +118,23 @@ export function budgetMcpResult(
     if (wireSize(result) > RESULT_BUDGET) throw new McpResultBudgetError('MCP_RESULT_TOO_LARGE');
     return result;
   }
-  if (Buffer.byteLength(serialized) > MAX_READ_RESULT_BYTES)
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_READ_RESULT_BYTES)
     throw new McpResultBudgetError('MCP_RESULT_TOO_LARGE');
+  return sliceSerializedResult(serialized, digest, offset, context, now);
+}
+
+/** Slice a prepared serialized result into a bounded dataChunk page.
+ *
+ * Shared by the fresh path (budgetMcpResult) and the reuse path
+ * (serveReusedResult) so both produce byte-identical envelopes.
+ */
+export function sliceSerializedResult(
+  serialized: string,
+  digest: string,
+  offset: number,
+  context: McpResultContext,
+  now = Date.now(),
+): Record<string, unknown> {
   let end = Math.min(serialized.length, offset + 24 * 1024);
   while (true) {
     if (

@@ -62,7 +62,11 @@ argumentos originais com `content_cursor: nextCursor`, concatene os `dataChunk`
 em ordem e só interprete o JSON quando `nextCursor` virar null. Cada página
 confere novamente propriedade e ciclo de vida. Conteúdo alterado, outro usuário/
 ferramenta/filtro ou cursor expirado exigem reiniciar sem `content_cursor`.
-O cursor vale cinco minutos; cada página seguinte renova o prazo. Resultados
+O cursor vale cinco minutos; cada página seguinte renova o prazo. Páginas de
+busca ranqueada reaproveitam o resultado preparado dentro de TTL, limite de
+entradas/bytes e revalidação de versões por documento; qualquer mudança
+relevante responde `MCP_CONTENT_CHANGED` com instrução de reinício em vez de
+conteúdo obsoleto. Resultados
 completos acima de 16 MiB exigem uma página menor ou um trecho progressivo.
 
 WRITE grandes retornam `summary` limitado e instruções READ em `_mcp.followUp`.
