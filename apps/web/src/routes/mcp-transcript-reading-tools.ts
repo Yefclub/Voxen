@@ -10,7 +10,50 @@ import {
   readTimespanFromMd,
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
+import { TranscriptReadError } from '../lib/transcript-content';
 import { fail, ok, READ_ONLY } from './mcp-tool-helpers';
+
+const REVISION_FILTERS = {
+  correction_revision: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Revisão de correção esperada; diverge → erro STALE_REVISION.'),
+  source_version: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Versão da fonte esperada; diverge → erro STALE_REVISION.'),
+} as const;
+
+function readError(error: unknown): { error: string; code?: string; current?: unknown } | null {
+  if (error instanceof TranscriptReadError) {
+    return {
+      error:
+        error.code === 'NOT_FOUND'
+          ? 'Transcrição não encontrada (ou fora do escopo do token).'
+          : error.code === 'STALE_REVISION'
+            ? 'Revisão desatualizada: releia outline/trechos.'
+            : 'Fonte canônica indisponível no storage.',
+      code: error.code,
+      ...(error.current ? { current: error.current } : {}),
+    };
+  }
+  return null;
+}
+
+async function loadDoc(
+  userId: string,
+  transcriptId: string,
+  args: { correction_revision?: number; source_version?: number },
+) {
+  return loadTranscriptMd(userId, transcriptId.trim(), {
+    expectedCorrectionRevision: args.correction_revision,
+    expectedSourceVersion: args.source_version,
+  });
+}
 
 export function registerProgressiveTools(server: McpServer, userId: string): void {
   server.registerTool(
@@ -24,12 +67,19 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         'Sem texto pesado.',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
+        ...REVISION_FILTERS,
       },
       annotations: { ...READ_ONLY, title: 'Estrutura da transcrição' },
     },
     async (args) => {
-      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
-      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      let doc: Awaited<ReturnType<typeof loadDoc>>;
+      try {
+        doc = await loadDoc(userId, args.transcript_id, args);
+      } catch (error) {
+        const mapped = readError(error);
+        if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
+        throw error;
+      }
       const outline = parseOutline(doc.md);
       return ok({ id: doc.id, title: doc.title, ...outline });
     },
@@ -46,12 +96,19 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         from: z.number().int().min(1).describe('Primeira linha (1-indexed).'),
         to: z.number().int().min(1).describe('Última linha (inclusiva).'),
+        ...REVISION_FILTERS,
       },
       annotations: { ...READ_ONLY, title: 'Ler linhas' },
     },
     async (args) => {
-      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
-      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      let doc: Awaited<ReturnType<typeof loadDoc>>;
+      try {
+        doc = await loadDoc(userId, args.transcript_id, args);
+      } catch (error) {
+        const mapped = readError(error);
+        if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
+        throw error;
+      }
       return ok({ id: doc.id, title: doc.title, ...readLinesFromMd(doc.md, args.from, args.to) });
     },
   );
@@ -67,6 +124,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         heading: z.string().min(1).optional().describe('Heading da seção (match parcial).'),
         index: z.number().int().min(0).optional().describe('Índice da seção no outline.'),
+        ...REVISION_FILTERS,
       },
       annotations: { ...READ_ONLY, title: 'Ler seção' },
     },
@@ -74,8 +132,14 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       if (args.heading === undefined && args.index === undefined) {
         return fail('Informe heading ou index.');
       }
-      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
-      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      let doc: Awaited<ReturnType<typeof loadDoc>>;
+      try {
+        doc = await loadDoc(userId, args.transcript_id, args);
+      } catch (error) {
+        const mapped = readError(error);
+        if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
+        throw error;
+      }
       const result = readSectionFromMd(doc.md, { heading: args.heading, index: args.index });
       if (!result) return fail('Seção não encontrada.');
       return ok({ id: doc.id, title: doc.title, ...result });
@@ -93,12 +157,19 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         from_sec: z.number().int().min(0).describe('Início em segundos.'),
         to_sec: z.number().int().min(0).describe('Fim em segundos (inclusivo).'),
+        ...REVISION_FILTERS,
       },
       annotations: { ...READ_ONLY, title: 'Ler intervalo de tempo' },
     },
     async (args) => {
-      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
-      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      let doc: Awaited<ReturnType<typeof loadDoc>>;
+      try {
+        doc = await loadDoc(userId, args.transcript_id, args);
+      } catch (error) {
+        const mapped = readError(error);
+        if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
+        throw error;
+      }
       return ok({
         id: doc.id,
         title: doc.title,
@@ -125,6 +196,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
           .max(200)
           .optional()
           .describe('Linhas antes/depois (padrão 8).'),
+        ...REVISION_FILTERS,
       },
       annotations: { ...READ_ONLY, title: 'Expandir contexto' },
     },
@@ -132,8 +204,14 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       if (args.line === undefined && args.sec === undefined) {
         return fail('Informe line ou sec.');
       }
-      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
-      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      let doc: Awaited<ReturnType<typeof loadDoc>>;
+      try {
+        doc = await loadDoc(userId, args.transcript_id, args);
+      } catch (error) {
+        const mapped = readError(error);
+        if (mapped) return fail(`${mapped.code}: ${mapped.error}`);
+        throw error;
+      }
       const result = expandContextFromMd(doc.md, { line: args.line, sec: args.sec }, args.radius);
       if (!result) return fail('Âncora não encontrada.');
       return ok({ id: doc.id, title: doc.title, ...result });
@@ -205,15 +283,18 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         const tid = claim.transcript_id.trim();
         let md = cache.get(tid);
         if (md === undefined) {
-          const doc = await loadTranscriptMd(userId, tid);
-          md = doc?.md ?? null;
+          try {
+            md = (await loadTranscriptMd(userId, tid)).md;
+          } catch {
+            md = null;
+          }
           cache.set(tid, md);
         }
         if (md === null) {
           results.push({
             transcriptId: tid,
             supported: false,
-            error: 'Transcrição não encontrada.',
+            error: 'Transcrição não encontrada ou fonte indisponível.',
           });
           continue;
         }

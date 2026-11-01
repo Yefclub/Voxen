@@ -9,6 +9,7 @@ import { db } from './db';
 import { invalidateGraphCache } from './graph-cache';
 import { noteAnchorMatchesMarkdown } from './note-anchors';
 import { storageReadText } from './storage';
+import { invalidateTranscriptReadCache } from './transcript-content';
 import {
   applyTranscriptPatch,
   effectiveTranscriptContent,
@@ -143,7 +144,11 @@ export type CommittedTranscriptCorrection = {
 export async function commitTranscriptCorrection(
   input: CommitTranscriptCorrectionInput,
 ): Promise<CommittedTranscriptCorrection> {
-  return db.$transaction((tx) => commitTranscriptCorrectionInTransaction(tx, input));
+  const committed = await db.$transaction((tx) =>
+    commitTranscriptCorrectionInTransaction(tx, input),
+  );
+  invalidateTranscriptReadCache(input.userId, input.transcriptId);
+  return committed;
 }
 
 export async function commitTranscriptCorrectionInTransaction(

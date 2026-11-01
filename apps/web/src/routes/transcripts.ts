@@ -494,7 +494,19 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = baseCost.toFixed(6);
 
-  const { markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript);
+  let markdown: string;
+  let canonicalMarkdown: string | null;
+  try {
+    ({ markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript));
+  } catch {
+    return c.json(
+      {
+        error: 'Fonte canônica indisponível no storage.',
+        code: 'UNAVAILABLE_SOURCE',
+      },
+      404,
+    );
+  }
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);
   return c.json({
