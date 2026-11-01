@@ -445,6 +445,7 @@ async function executeLibraryFolderDeletion(job: ClaimedDeletionJob): Promise<vo
     await db.$transaction(async (tx) => {
       await assertOwnership(tx, job);
       let ids: string[];
+      let transcriptIds: string[];
       if (job.deletionTargetId === '*') {
         const forest = await tx.$queryRaw<Array<{ id: string; userId: string }>>`
           WITH RECURSIVE tree AS (
@@ -460,10 +461,22 @@ async function executeLibraryFolderDeletion(job: ClaimedDeletionJob): Promise<vo
           throw new Error('Cross-workspace folder relation rejected.');
         }
         ids = forest.map((row) => String(row.id));
+        transcriptIds = (
+          await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
+            AND "folderId" = ANY(${ids}::text[])
+          `
+        ).map((row) => String(row.id));
         await deleteGraphSources(tx, job.userId, 'FOLDER', ids);
         await tx.$executeRaw`DELETE FROM "LibraryFolder" WHERE "userId" = ${job.userId}`;
       } else {
         ids = await ownedTreeIds(tx, 'LibraryFolder', job.userId, job.deletionTargetId);
+        transcriptIds = (
+          await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
+            AND "folderId" = ANY(${ids}::text[])
+          `
+        ).map((row) => String(row.id));
         await deleteGraphSources(
           tx,
           job.userId,
@@ -474,11 +487,8 @@ async function executeLibraryFolderDeletion(job: ClaimedDeletionJob): Promise<vo
           DELETE FROM "LibraryFolder" WHERE id = ${job.deletionTargetId} AND "userId" = ${job.userId}
         `;
       }
-      const transcripts = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM "Transcript" WHERE "userId" = ${job.userId}
-        AND "folderId" = ANY(${ids}::text[])
-      `;
-      const transcriptIds = transcripts.map((row) => String(row.id));
+      // Folder deletion nulls transcript.folderId via FK, so the affected
+      // transcripts must be resolved before the folders are removed.
       if (transcriptIds.length > 0) {
         await tx.$executeRaw`
           UPDATE "BrainNode"

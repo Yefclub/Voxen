@@ -300,6 +300,7 @@ describeIfDb('knowledge deletion web executor', () => {
         transcriptId: transcript.id,
         runKey: 'run-1',
         trigger: 'MANUAL',
+        status: 'READY',
         title: 'Pesquisa',
         content: 'conteúdo',
       },
