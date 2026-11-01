@@ -2,7 +2,7 @@
 // Knowledge deletion target execution (web) — spec 215
 // ============================================================================
 // Per-target deletion routines for the web executor. Mirrors the execution
-// functions in apps/worker/src/knowledge_deletion.py.
+// functions in the removed worker implementation (spec 215).
 // ============================================================================
 
 import { db } from './db';

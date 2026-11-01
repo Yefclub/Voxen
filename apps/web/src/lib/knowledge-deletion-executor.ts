@@ -6,7 +6,7 @@
 // web process (startup drain + interval with cancellation window) so deletions
 // complete and recover after restart without the worker.
 //
-// Mirrors apps/worker/src/knowledge_deletion.py: same ordering (advisory
+// Mirrors the removed worker implementation (spec 215, ex-apps/worker/src/knowledge_deletion.py): same ordering (advisory
 // lock → graph lease → canonical transaction → storage deletes), same
 // ownership checks, same retry budget (3 attempts, expired leases requeue).
 // ============================================================================

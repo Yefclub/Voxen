@@ -32,7 +32,6 @@ body:
       options:
         - Web/API
         - Chat
-        - Worker/transcription
         - Deployment/infrastructure
         - Security
         - Documentation

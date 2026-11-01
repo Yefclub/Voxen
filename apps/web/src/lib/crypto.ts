@@ -12,8 +12,8 @@
 // - ciphertext: AES-256-GCM(plaintext, key, iv) sem o tag
 // - tag: 16 bytes de authentication tag
 //
-// O mesmo formato é implementado em Python em apps/worker,
-// pra que as 3 aplicações decifrem/cifrem os mesmos blobs no DB.
+// O mesmo formato era implementado em Python no worker removido (spec 215);
+// as aplicações restantes decifram/cifram os mesmos blobs no DB.
 // ============================================================================
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';

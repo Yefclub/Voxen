@@ -58,7 +58,7 @@ If it is lost, encrypted secrets stored in the database cannot be recovered.
 ## Storage drivers and upgrade safety
 
 New single-host installations use the shared local volume at `/data/storage`.
-Both `web` and `worker` mount the same `storage_data` volume and the database
+Both the single `web` service and the database backup mount the same `storage_data` volume and the database
 continues to store provider-neutral keys, never host paths. This is the simplest
 and recommended home-lab, VPS, Compose, and Easypanel topology.
 Production entrypoints refuse to start local mode when this path is still on the
@@ -84,7 +84,7 @@ current driver configured, stop both writers, and prepare an `.env.s3` file
 containing the destination/source S3 values. For local to S3:
 
 ```bash
-docker compose stop web worker
+docker compose stop web
 docker run --rm --network voxen_voxen-net --env-file .env.s3 \
   -v voxen_storage_data:/data:ro --entrypoint sh amazon/aws-cli:2 -c '
   export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" AWS_DEFAULT_REGION="$S3_REGION"
@@ -94,7 +94,7 @@ docker run --rm --network voxen_voxen-net --env-file .env.s3 \
 
 For S3 to the local volume, mount it read-write and reverse the final two sync
 arguments. Inspect object/file counts and total bytes, keep the source backup,
-then change `STORAGE_DRIVER` and start `web` and `worker`. Confirm several old
+then change `STORAGE_DRIVER` and start `web`. Confirm several old
 transcripts and media ranges plus `GET /health/deep` before deleting the source.
 Never switch drivers while either writer is running; there is no online dual
 write or automatic rollback.
@@ -104,22 +104,13 @@ without a trailing slash). If Easypanel exposes both a temporary domain and a
 final domain, add the extra origin to `BETTER_AUTH_TRUSTED_ORIGINS`; otherwise
 Better Auth rejects signup/login requests with `Invalid origin`.
 
-## YouTube Extraction
+## Media Capture (removed)
 
-The worker tries YouTube transcripts/captions before downloading audio. If a
-transcript is available, Voxen stores it as subtitles with no OpenRouter audio
-cost. If that path fails, the normal fallback remains: `yt-dlp` subtitles,
-then audio transcription, then manual upload when the platform blocks access.
-
-On VPS/datacenter IPs, YouTube may still block automated access. The stable
-free mitigation is to run extraction from a residential/home-lab network — when
-the app itself runs on a VPS, the supported way is the residential proxy agent
-(`ghcr.io/yefclub/voxen-proxy-agent`): a lightweight container you run on a home
-IP that the worker reaches through a reverse tunnel. Generate its token in
-Admin → Integrations → Proxy Agent. If you operate your own bgutil HTTP provider
-for yt-dlp PO tokens, set
-`YTDLP_BGUTIL_BASE_URL=http://host:4416` in the worker environment. Do not use
-public providers; this is a fragile mitigation, not a download guarantee.
+> Note (spec 215, issue #894): media capture and extraction (downloads,
+> transcription, scraping, extraction proxying, and platform cookies) were
+> removed from Voxen. Content arrives as prepared material through versioned
+> HTTP/MCP contracts. The residential proxy agent section below remains only
+> until its dedicated service is removed.
 
 ## Home-Lab
 
@@ -172,9 +163,8 @@ docker compose --profile nginx up -d --build
 
 Easypanel is supported. The recommended topology is **one Voxen App** from the
 published combined image, PostgreSQL, Redis, and one persistent App volume
-mounted at `/data/storage`. Do not deploy separate `voxen-web`, `voxen-worker`,
-or `voxen-chat` services: the combined image runs the web/API, worker, and
-integrated chat runtime together.
+mounted at `/data/storage`. Do not deploy separate services: the combined
+image runs the web/API.
 
 Provision PostgreSQL and Redis first, attach the persistent storage volume,
 then deploy the App from a Docker image:
@@ -213,7 +203,7 @@ and sends short heartbeats so `/api/jobs/events/me` remains stable.
 
 ### Structured logs and incident collection
 
-The web and worker processes emit one-line JSON events with `service`, `event`,
+The web process emits one-line JSON events with `service`, `event`,
 `level`, `timestamp`, and, when applicable, `request_id`, `job_id`, and
 `error_code`. Web responses also include `x-request-id`. Provider payloads,
 messages, cookies, tokens, and secrets are excluded from these events.
@@ -222,7 +212,7 @@ The collector ignores legacy lines and Docker/Easypanel prefixes and supports
 composable filters:
 
 ```bash
-docker compose logs --since 2h web worker 2>&1 \
+docker compose logs --since 2h web 2>&1 \
   | node scripts/collect-voxen-logs.mjs --level error
 
 docker service logs yefclub_voxen-app --since 2h 2>&1 \
@@ -254,7 +244,7 @@ because provider snapshots/versioning must be configured and verified
 separately. `make restore-storage` requires an explicit archive and
 `RESTORE_CONFIRM=restore`; stop and verify the instance before treating a
 restore as complete.
-For local/Compose storage, the backup pauses web and worker, resumes only the
+For local/Compose storage, the backup pauses web, resumes only the service if
 services that were already running, and publishes final artifacts only after the
 database dump, master key, and storage snapshot all succeed.
 

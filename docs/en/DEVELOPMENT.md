@@ -12,7 +12,6 @@ Optional for running tooling outside containers:
 
 - Bun 1.2+
 - Node.js 22 and pnpm 9+
-- Python 3.13 with `uv`
 
 ## Initial Setup
 
@@ -23,7 +22,7 @@ make dev
 ```
 
 `make dev` creates or completes the root `.env` and starts Postgres, Redis,
-the shared local storage volume, web, and worker. Open `http://localhost:3000`; the first account becomes
+the shared local storage volume and web. Open `http://localhost:3000`; the first account becomes
 the administrator and enters onboarding.
 
 ## Daily Commands
@@ -36,12 +35,11 @@ make update        # rebuild and recreate without removing data
 make logs          # follow service logs
 make ps            # show service status
 
-make test          # scripts, web, extension, and worker tests
+make test          # scripts, web, and extension tests
 make test-ts       # web tests only
-make test-py       # worker tests only
-make lint          # ESLint and Ruff
-make format-check  # Prettier and Ruff formatting checks
-make typecheck     # TypeScript and mypy
+make lint          # ESLint
+make format-check  # Prettier formatting checks
+make typecheck     # TypeScript
 make build         # build the Compose images
 
 make migrate       # apply Prisma migrations
@@ -63,7 +61,6 @@ migration gate.
 ## Validation Expectations
 
 - `apps/web`: lint, typecheck, tests, and formatting checks
-- `apps/worker`: Ruff, mypy, pytest, and formatting checks
 - extension changes: extension tests and packaging
 - Docker/runtime changes: `docker compose config -q` and image builds
 - UI changes: local browser verification of affected states and responsive

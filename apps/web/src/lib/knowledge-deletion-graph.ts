@@ -2,8 +2,8 @@
 // Knowledge deletion canonical writes (web) — spec 215
 // ============================================================================
 // Shared ownership-fence and graph-cleanup helpers for the web deletion
-// executor. Mirrors the lease fence and graph cleanup in
-// apps/worker/src/db.py and apps/worker/src/knowledge_deletion.py.
+// executor. Mirrors the lease fence and graph cleanup in the removed worker
+// implementation (spec 215).
 // ============================================================================
 
 import type { Prisma } from '../../prisma-generated/client';

@@ -258,12 +258,12 @@ echo "[easypanel] applying migrations..."
 # chisel — servidor de túnel reverso (opcional, dirigido por token).
 # Aceita conexões do agente residencial na porta de controle (CHISEL_PORT,
 # default 8088), que é exposta via domínio TLS no deploy. O SOCKS reverso
-# (127.0.0.1:1080) NÃO é publicado — só o worker local o consome.
+# (127.0.0.1:1080) NÃO é publicado — reservado ao agente dedicado (spec futura).
 # O authfile é gerenciado em runtime pela app web (syncChiselAuthfile): começa
 # vazio ({}, recusa qualquer conexão) e é preenchido quando o admin gera o token.
 # O chisel faz hot-reload automático do authfile ao detectar mudança (sem sinal).
-# Best-effort: se o chisel falhar, logamos e seguimos — o boot dos 3 serviços
-# core NÃO depende dele.
+# Best-effort: se o chisel falhar, logamos e seguimos — o boot do web
+# NÃO depende dele.
 # ---------------------------------------------------------------------------
 export CHISEL_PORT="${CHISEL_PORT:-8088}"
 export CHISEL_AUTHFILE="${CHISEL_AUTHFILE:-/run/voxen/chisel-auth.json}"

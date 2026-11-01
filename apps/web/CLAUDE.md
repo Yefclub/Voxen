@@ -91,4 +91,4 @@ recebe tools:
 
 Ao adicionar tool nova, manter o padrão: tools devem ser **simples, determinísticas, sem efeito colateral** (read-only sobre a Base de conhecimento). Decisão em `docs/DECISIONS.md` ADR-004.
 
-O formato `.md` que essas tools leem é gerado pelo worker — contrato em `docs/TRANSCRIPT-FORMAT.md`, regras em `apps/worker/CLAUDE.md`.
+O formato `.md` que essas tools leem é o de documentos preparados já armazenados — contrato em `docs/TRANSCRIPT-FORMAT.md`.

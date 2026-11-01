@@ -2,9 +2,9 @@
 
 English | [Português (Brasil)](../README.md)
 
-Voxen is a self-hosted web platform for multimodal knowledge bases. It ingests videos, audio, images, documents, and web pages, stores structured Markdown transcripts, and provides an agentic chat interface over the collection.
+Voxen is a self-hosted web platform for prepared knowledge bases. Externally prepared content is stored with provenance and retrieved fast and precisely over MCP. Voxen itself runs no models, transcription, or scraping.
 
-Voxen is not a hosted SaaS. It is designed for individuals and small teams that run the stack on their own server and keep control over data, credentials, models, and users.
+Voxen is not a hosted SaaS. It is designed for individuals and small teams that run the stack on their own server and keep control over data and users.
 
 ## Quick Start
 
@@ -17,8 +17,8 @@ make dev
 ```
 
 Open `http://localhost:3000`. The first account becomes the administrator and
-is sent to onboarding, where it adds the OpenRouter API key; Voxen validates
-the account and applies the canonical models automatically.
+completes onboarding with instance language and timezone — no provider
+account, key, or model configuration is required.
 
 ## Documentation Map
 
@@ -35,11 +35,12 @@ the account and applies the canonical models automatically.
 
 ## Core Workflow
 
-1. A user submits a URL or uploads supported media.
-2. `apps/web` creates a job and stores metadata.
-3. `apps/worker` extracts media, downloads captions when available, transcribes audio when needed, and writes canonical Markdown through the selected local-volume or S3 driver.
-4. Postgres mirrors searchable plain text and metadata.
-5. The integrated web agent uses deterministic, user-scoped tools over Postgres FTS, graph relations, and provider-neutral transcript storage to answer questions.
+1. An external producer publishes prepared content through the versioned
+   HTTP/MCP ingestion contract (idempotent, with provenance).
+2. `apps/web` validates, stores, and deterministically indexes it.
+3. Postgres mirrors searchable plain text and metadata.
+4. MCP clients retrieve passages with source-backed locations through
+   filtered search and progressive reads.
 
 ## Branch and Release Flow
 
