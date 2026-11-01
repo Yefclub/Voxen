@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793561323",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Deterministic discovery catalog",
+    "body": "### Added\n- New `voxen_discover` MCP tool: name/topic/collection lookup over indexed metadata with deterministic ordering, producer provenance, and explicit truncation (catalog now 38 tools: 30 READ + 8 WRITE).",
+    "pr": 965,
+    "author": "Kalyel",
+    "date": "2026-11-01T16:28:01-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/965"
+  },
+  {
     "version": "0.15.1-dev.1793560612",
     "channel": "dev",
     "type": "feat",
