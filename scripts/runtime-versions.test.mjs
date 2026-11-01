@@ -50,6 +50,14 @@ test("docker stages select patched Node.js and Bun releases", () => {
         `${file} stage ${match[2]} uses ${match[1]}`,
       );
     }
+    // Copying the npm/npx/corepack symlinks as files breaks npm module
+    // resolution; they must be recreated with ln -sf after the lib copy.
+    assert.ok(
+      !/^COPY\s+--from=\S+\s+\/usr\/local\/bin\/(npm|npx|corepack)\s/m.test(
+        content,
+      ),
+      `${file} copies npm/npx/corepack binaries instead of relinking them`,
+    );
   }
 });
 

@@ -76,17 +76,19 @@ ENV VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-}
 ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
 
 # Node.js vem pinado da stage node-runtime (22.23.4, mesma do build), em vez
-# do pacote apk flutuante — mesma técnica da imagem combinada.
+# do pacote apk flutuante — mesma técnica da imagem combinada. Copia-se o
+# binário e a lib; os links npm/npx/corepack são recriados abaixo (COPY de
+# symlink como arquivo quebraria a resolução de módulos do npm).
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
-COPY --from=node-runtime /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=node-runtime /usr/local/bin/npx /usr/local/bin/npx
-COPY --from=node-runtime /usr/local/bin/corepack /usr/local/bin/corepack
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 
 # `apk upgrade` aplica patches de segurança da base alpine (ex: CVE-2026-45447
 # em libcrypto3) sem depender de bump da imagem oven/bun.
 RUN apk upgrade --no-cache && \
     apk add --no-cache wget && \
+    ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+    ln -sf ../lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack && \
     npm install -g prisma@6.19.3 --omit=dev && \
     npm install --prefix /usr/local/lib/node_modules/prisma/node_modules/@prisma/config deepmerge-ts@8.0.0 --omit=dev && \
     rm -rf /usr/local/lib/node_modules/prisma/node_modules/deepmerge-ts && \
@@ -95,7 +97,9 @@ RUN apk upgrade --no-cache && \
     chown -R voxen:voxen /data/storage && \
     # Prisma 6 precisa escrever no diretório de instalação pra baixar engines
     # em runtime — dá chown pra voxen senão `prisma generate` falha.
-    chown -R voxen:voxen /usr/local/lib/node_modules/prisma /usr/local/lib/node_modules/@prisma 2>/dev/null || true
+    # O `|| true` vale só pra este chown tolerante (paths variam por versão);
+    # falhas reais nas etapas acima reprovam o build.
+    (chown -R voxen:voxen /usr/local/lib/node_modules/prisma /usr/local/lib/node_modules/@prisma 2>/dev/null || true)
 
 COPY --from=build-server --chown=voxen:voxen /app/node_modules ./node_modules
 COPY --from=build-server --chown=voxen:voxen /app/apps/web ./apps/web
