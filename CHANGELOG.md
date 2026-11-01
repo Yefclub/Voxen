@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793532355 — 2026-11-01 · Dev
+
+### 🧹 Remove proxy-agent tunnel service and admin surface
+
+### Removed
+- The residential proxy-agent tunnel service is gone: dedicated image, chisel server, WebSocket tunnel proxy, admin token/status UI, and request settings.
+- Orphan proxy settings are cleaned by forward migration; removed admin routes fail closed with 404.
+
 ## v0.15.1-dev.1793531042 — 2026-11-01 · Dev
 
 ### ✨ Versioned prepared-content ingestion with idempotency
