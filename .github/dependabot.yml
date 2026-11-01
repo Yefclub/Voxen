@@ -133,13 +133,6 @@ updates:
       interval: weekly
     open-pull-requests-limit: 3
 
-  - package-ecosystem: docker
-    directory: /apps/proxy-agent
-    target-branch: dev
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
-
   - package-ecosystem: github-actions
     directory: /
     target-branch: dev

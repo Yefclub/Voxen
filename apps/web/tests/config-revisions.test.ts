@@ -53,7 +53,7 @@ describeIfDb('configuração global auditável', () => {
   it('cria uma revisão atômica com executor e sem reter segredo', async () => {
     const admin = await createUser('admin-revisao@voxen.local');
     await setSettings(
-      { proxy_agent_token: 'tok-' + 'x'.repeat(40), app_language: 'en' },
+      { mcp_api_token: 'tok-' + 'x'.repeat(40), app_language: 'en' },
       { actorUserId: admin.id, reason: 'Troca de chave' },
     );
 
@@ -64,7 +64,7 @@ describeIfDb('configuração global auditável', () => {
     expect(revision.actorUserId).toBe(admin.id);
     expect(revision.reason).toBe('Troca de chave');
     expect(revision.changes).toHaveLength(2);
-    expect(revision.changes.find((change) => change.key === 'proxy_agent_token')).toMatchObject({
+    expect(revision.changes.find((change) => change.key === 'mcp_api_token')).toMatchObject({
       isSecret: true,
       previousValue: null,
       nextValue: null,
@@ -80,7 +80,7 @@ describeIfDb('configuração global auditável', () => {
   it('expõe somente diff redigido a administradores', async () => {
     const admin = await createUser('admin-historico@voxen.local');
     await setSettings(
-      { proxy_agent_token: 'tok-' + 'x'.repeat(40), app_language: 'en' },
+      { mcp_api_token: 'tok-' + 'x'.repeat(40), app_language: 'en' },
       { actorUserId: admin.id },
     );
 
@@ -100,9 +100,9 @@ describeIfDb('configuração global auditável', () => {
         }>;
       }>;
     };
-    const secret = body.revisions[0]?.changes.find((change) => change.key === 'proxy_agent_token');
+    const secret = body.revisions[0]?.changes.find((change) => change.key === 'mcp_api_token');
     expect(secret).toEqual({
-      key: 'proxy_agent_token',
+      key: 'mcp_api_token',
       isSecret: true,
       previousValue: null,
       nextValue: null,
@@ -153,7 +153,7 @@ describeIfDb('configuração global auditável', () => {
   it('faz rollback apenas de valores não secretos e registra nova revisão', async () => {
     const admin = await createUser('admin-rollback@voxen.local');
     await setSettings(
-      { app_language: 'en', proxy_agent_token: 'tok-' + 'x'.repeat(40) },
+      { app_language: 'en', mcp_api_token: 'tok-' + 'x'.repeat(40) },
       { actorUserId: admin.id },
     );
     await setSettings({ app_language: 'pt-BR' }, { actorUserId: admin.id });
@@ -167,23 +167,23 @@ describeIfDb('configuração global auditável', () => {
     await expect(getSetting('app_language')).resolves.toBe('en');
 
     const secretRollback = await rollbackConfigRevision(1, { actorUserId: admin.id });
-    expect(secretRollback.skippedSecretKeys).toEqual(['proxy_agent_token']);
-    await expect(getSetting('proxy_agent_token')).resolves.toBe('tok-' + 'x'.repeat(40));
+    expect(secretRollback.skippedSecretKeys).toEqual(['mcp_api_token']);
+    await expect(getSetting('mcp_api_token')).resolves.toBe('tok-' + 'x'.repeat(40));
   });
 
   it('audita a tentativa de rollback de uma revisão somente secreta', async () => {
     const admin = await createUser('admin-rollback-segredo@voxen.local');
-    await setSettings({ proxy_agent_token: 'tok-' + 'x'.repeat(40) }, { actorUserId: admin.id });
+    await setSettings({ mcp_api_token: 'tok-' + 'x'.repeat(40) }, { actorUserId: admin.id });
 
     const result = await rollbackConfigRevision(1, { actorUserId: admin.id });
     expect(result.revision?.number).toBe(2);
-    expect(result.skippedSecretKeys).toEqual(['proxy_agent_token']);
+    expect(result.skippedSecretKeys).toEqual(['mcp_api_token']);
     const rollback = await db.configRevision.findUniqueOrThrow({
       where: { number: 2 },
       include: { changes: true },
     });
     expect(rollback.changes).toEqual([
-      expect.objectContaining({ key: 'proxy_agent_token', isSecret: true }),
+      expect.objectContaining({ key: 'mcp_api_token', isSecret: true }),
     ]);
   });
 

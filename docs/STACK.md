@@ -32,8 +32,7 @@
 
 O CI executa formatação, lint, tipos, testes, validação de migrations, CodeQL,
 Trivy, revisão/auditoria de dependências e gitleaks. Releases publicam a imagem
-combinada `ghcr.io/yefclub/voxen`; `voxen-proxy-agent` permanece separado por
-ser opcional.
+combinada `ghcr.io/yefclub/voxen`.
 
 Patches passam por CI e revisão; minors exigem validação de compatibilidade;
 majors exigem nota de migração ou ADR quando alteram contratos. Exceções de

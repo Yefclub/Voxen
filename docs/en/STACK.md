@@ -42,8 +42,7 @@ application remains self-hosted and does not require a managed Voxen service.
 
 GitHub Actions runs formatting, lint, type checks, tests, Prisma migration
 validation, dependency review, CodeQL, Trivy, dependency audits, and secret
-scanning. Stable releases publish the combined `ghcr.io/yefclub/voxen` image;
-`voxen-proxy-agent` remains a separate optional image for residential egress.
+scanning. Stable releases publish the combined `ghcr.io/yefclub/voxen` image.
 
 ## Upgrade Policy
 
