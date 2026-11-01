@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793557056",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explicit truncation on ranked search",
+    "body": "### Added\n- Ranked MCP search tools return an explicit `truncated` flag computed with a take+1 probe, keeping deterministic ordering; docs state that a full page never implies complete enumeration.",
+    "pr": 955,
+    "author": "Kalyel",
+    "date": "2026-11-01T15:16:53-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/955"
+  },
+  {
     "version": "0.15.1-dev.1793556179",
     "channel": "dev",
     "type": "chore",
