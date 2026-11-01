@@ -6,7 +6,7 @@
 # O docker-compose.yml continua sendo o caminho recomendado para dev/local.
 # ============================================================================
 
-FROM node:22-alpine AS web-front-builder
+FROM node:22.23.4-alpine AS web-front-builder
 WORKDIR /app
 
 ARG VOXEN_VERSION
@@ -32,7 +32,7 @@ COPY apps/web ./apps/web
 COPY packages ./packages
 RUN cd apps/web && pnpm exec vite build
 
-FROM node:22-alpine AS web-server-builder
+FROM node:22.23.4-alpine AS web-server-builder
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
@@ -51,8 +51,8 @@ COPY apps/web ./apps/web
 COPY packages ./packages
 
 
-FROM node:22-bookworm-slim AS node-runtime
-FROM oven/bun:1.3 AS bun-runtime
+FROM node:22.23.4-bookworm-slim AS node-runtime
+FROM oven/bun:1.4.4 AS bun-runtime
 
 # ---------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime

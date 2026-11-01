@@ -7,7 +7,7 @@ Este guia cobre ambiente local, validação e contribuição segura.
 - Docker e Docker Compose v2
 - Git
 
-Opcional para tooling fora dos containers: Bun 1.2+ e Node.js 22 com pnpm 9+.
+Opcional para tooling fora dos containers: Bun 1.4.4+ e Node.js 22.23.4+ com pnpm 9+.
 
 ## Ambiente local
 
