@@ -91,6 +91,11 @@ Within-document search (`voxen_search_note_content`,
 `voxen_search_transcript_content`) follows the same rule: it returns
 `truncated` when more occurrences exist than the limit.
 
+Graph navigation (`voxen_brain_search`, `voxen_brain_neighbors`,
+`voxen_brain_sources`, `voxen_brain_hubs`, `voxen_brain_timeline`) also returns
+`truncated`: `true` means more candidates than the limit; `false` means
+complete enumeration of the queried set.
+
 Related documents (`voxen_related`) also return `truncated` over the fused set
 (graph neighborhood + title/topic FTS).
 

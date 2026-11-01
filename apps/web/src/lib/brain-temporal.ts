@@ -72,7 +72,9 @@ export async function queryBrainTimeline(
   if (asOf && (from || to))
     throw new BrainTimelineInputError('asOf cannot be combined with from/to.');
   if (from && to && to <= from) throw new BrainTimelineInputError('to must be later than from.');
-  const limit = Math.max(1, Math.min(50, Math.trunc(input.limit ?? 12)));
+  // Max 51: o teto público é 50, mas a sonda take+1 precisa de uma linha
+  // extra para sinalizar truncamento sem outra consulta.
+  const limit = Math.max(1, Math.min(51, Math.trunc(input.limit ?? 12)));
   const query = input.query?.trim().slice(0, 300) || null;
   const entityRef = input.entityRef?.trim().slice(0, 300) || null;
   const normalizedAlias = entityRef ? normalizeEntityAlias(entityRef) : null;

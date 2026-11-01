@@ -10,6 +10,7 @@ test('MCP expõe cobertura e localização da compilação grounded', () => {
   expect(source).toContain('endLine: true');
   expect(source).toContain('conflicting_sources');
   expect(source).toContain('toNodeId: claimNodeId');
-  expect(source).toContain('take: 10');
+  // Consulta limitada com sonda take+1 (11 = cap 10 + probe); truncamento vai em `truncated`.
+  expect(source).toContain('take: 11');
   expect(source).not.toContain('{ fromNodeId: contradiction.fromNodeId }');
 });

@@ -32,6 +32,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
       const limit = bounded(args.limit, 8, 1, 30);
+      const takeOneMore = limit + 1;
       const nodes = args.include_archived
         ? await db.brainNode.findMany({
             where: {
@@ -44,15 +45,18 @@ export function registerBrainTools(server: McpServer, userId: string): void {
               ],
             },
             orderBy: { updatedAt: 'desc' },
-            take: limit,
+            take: takeOneMore,
             select: BRAIN_NODE_SELECT,
           })
-        : await searchBrainNodes(userId, query, limit);
+        : await searchBrainNodes(userId, query, takeOneMore);
+      const truncated = nodes.length > limit;
+      const page = nodes.slice(0, limit);
       return ok({
         results: args.include_archived
-          ? await filterAccessibleBrainNodes(userId, nodes, true)
-          : nodes,
+          ? await filterAccessibleBrainNodes(userId, page, true)
+          : page,
         query,
+        truncated,
       });
     },
   );
@@ -88,6 +92,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
         !(await filterAccessibleBrainNodes(userId, [node], args.include_archived)).length
       )
         return fail('Nó não encontrado.');
+      const limit = bounded(args.limit, 30, 1, 80);
       const edges = await db.brainEdge.findMany({
         where: {
           userId,
@@ -105,7 +110,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
               }),
         },
         orderBy: { updatedAt: 'desc' },
-        take: bounded(args.limit, 30, 1, 80),
+        take: limit + 1,
         select: {
           id: true,
           kind: true,
@@ -127,11 +132,14 @@ export function registerBrainTools(server: McpServer, userId: string): void {
           )
         ).map((item) => item.id),
       );
+      const truncated = edges.length > limit;
       return ok({
         node,
         edges: edges
+          .slice(0, limit)
           .filter((edge) => visible.has(edge.from.id) && visible.has(edge.to.id))
           .map((edge) => ({ ...edge, confidence: Number(edge.confidence) })),
+        truncated,
       });
     },
   );
@@ -143,7 +151,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
       description:
         'Retorna as evidências (proveniência) de um nó, aresta ou sourceId do Brain: tipo de ' +
         'fonte, id, recorte de timestamps e trecho de evidência. Use para CITAR a origem de um ' +
-        'claim ou relação antes de afirmar algo.',
+        'claim ou relação antes de afirmar algo. `truncated=true` indica mais evidências que o limite.',
       inputSchema: {
         ref: z.string().min(1).describe('node_id, edge_id, key do nó ou sourceId.'),
         limit: z.number().int().min(1).max(50).optional().describe('Máx. evidências (padrão 20).'),
@@ -153,6 +161,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
     async (args) => {
       const ref = args.ref.trim();
       if (!ref) return fail('ref obrigatório.');
+      const limit = bounded(args.limit, 20, 1, 50);
       const sources = await db.brainSource.findMany({
         where: {
           userId,
@@ -161,7 +170,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
           OR: [{ nodeId: ref }, { edgeId: ref }, { sourceId: ref }, { node: { key: ref } }],
         },
         orderBy: { createdAt: 'desc' },
-        take: bounded(args.limit, 20, 1, 50),
+        take: limit + 1,
         select: {
           id: true,
           nodeId: true,
@@ -193,40 +202,40 @@ export function registerBrainTools(server: McpServer, userId: string): void {
         where: { userId, id: ref, kind: 'CONTRADICTS', status: 'ACTIVE' },
         select: { fromNodeId: true, toNodeId: true },
       });
-      const conflictingSources = contradiction
-        ? (
-            await Promise.all(
-              [contradiction.fromNodeId, contradiction.toNodeId].map((claimNodeId) =>
-                db.brainSource.findMany({
-                  where: {
-                    userId,
-                    invalidatedAt: null,
-                    AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
-                    edge: {
-                      method: 'llm-grounded',
-                      kind: 'SUPPORTS',
-                      toNodeId: claimNodeId,
-                    },
+      const conflictingSides = contradiction
+        ? await Promise.all(
+            [contradiction.fromNodeId, contradiction.toNodeId].map((claimNodeId) =>
+              db.brainSource.findMany({
+                where: {
+                  userId,
+                  invalidatedAt: null,
+                  AND: [{ OR: [{ factId: null }, { fact: { is: { invalidatedAt: null } } }] }],
+                  edge: {
+                    method: 'llm-grounded',
+                    kind: 'SUPPORTS',
+                    toNodeId: claimNodeId,
                   },
-                  orderBy: { createdAt: 'desc' },
-                  take: 10,
-                  select: {
-                    edgeId: true,
-                    sourceType: true,
-                    sourceId: true,
-                    startLine: true,
-                    endLine: true,
-                    startSec: true,
-                    endSec: true,
-                    excerpt: true,
-                  },
-                }),
-              ),
-            )
-          ).flat()
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 11,
+                select: {
+                  edgeId: true,
+                  sourceType: true,
+                  sourceId: true,
+                  startLine: true,
+                  endLine: true,
+                  startSec: true,
+                  endSec: true,
+                  excerpt: true,
+                },
+              }),
+            ),
+          )
         : [];
+      const conflictingOverflow = conflictingSides.some((side) => side.length > 10);
+      const conflictingSources = conflictingSides.flatMap((side) => side.slice(0, 10));
       const [currentSources, currentConflicts] = await Promise.all([
-        keepCurrentOwnedSources(userId, sources),
+        keepCurrentOwnedSources(userId, sources.slice(0, limit)),
         keepCurrentOwnedSources(userId, conflictingSources),
       ]);
       return ok({
@@ -235,6 +244,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
           fact: source.fact ? { ...source.fact, confidence: Number(source.fact.confidence) } : null,
         })),
         conflicting_sources: currentConflicts,
+        truncated: sources.length > limit || conflictingOverflow,
       });
     },
   );
@@ -280,7 +290,8 @@ export function registerBrainTools(server: McpServer, userId: string): void {
       title: 'Hubs do grafo (god nodes)',
       description:
         'Lista os nós mais conectados do Brain (maior grau). Use para ver o que concentra ' +
-        'relações na Base de conhecimento — tópicos/entidades “centrais”.',
+        'relações na Base de conhecimento — tópicos/entidades “centrais”. `truncated=true` ' +
+        'indica mais hubs que o limite.',
       inputSchema: {
         limit: z.number().int().min(1).max(30).optional().describe('Quantos hubs (default 10).'),
       },
@@ -296,9 +307,9 @@ export function registerBrainTools(server: McpServer, userId: string): void {
         degree: number;
       };
       const hubs = await withMcpReadDeadline((tx) =>
-        tx.$queryRaw<HubRow[]>(mcpHubsQuery(userId, limit)),
+        tx.$queryRaw<HubRow[]>(mcpHubsQuery(userId, limit + 1)),
       );
-      return ok({ hubs });
+      return ok({ hubs: hubs.slice(0, limit), truncated: hubs.length > limit });
     },
   );
 }

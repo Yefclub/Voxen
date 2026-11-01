@@ -40,8 +40,18 @@ const source = z
       .optional(),
   })
   .passthrough();
+const truncatedField = z
+  .boolean()
+  .describe(
+    'true quando há mais itens que o limite; false indica enumeração completa do conjunto consultado.',
+  );
+
 export const MCP_GRAPH_OUTPUT_SHAPES = {
-  voxen_brain_search: { results: z.array(MCP_GRAPH_NODE_SCHEMA), query: z.string() },
+  voxen_brain_search: {
+    results: z.array(MCP_GRAPH_NODE_SCHEMA),
+    query: z.string(),
+    truncated: truncatedField,
+  },
   voxen_brain_neighbors: {
     node: MCP_GRAPH_NODE_SCHEMA,
     edges: z.array(
@@ -57,8 +67,13 @@ export const MCP_GRAPH_OUTPUT_SHAPES = {
         to: MCP_GRAPH_NODE_SCHEMA,
       }),
     ),
+    truncated: truncatedField,
   },
-  voxen_brain_sources: { sources: z.array(source), conflicting_sources: z.array(source) },
+  voxen_brain_sources: {
+    sources: z.array(source),
+    conflicting_sources: z.array(source),
+    truncated: truncatedField,
+  },
   voxen_brain_compilation_status: {
     compilation: z
       .object({
@@ -80,6 +95,7 @@ export const MCP_GRAPH_OUTPUT_SHAPES = {
         degree: z.number().int(),
       }),
     ),
+    truncated: truncatedField,
   },
   voxen_brain_path: {
     paths: z.array(
@@ -127,5 +143,6 @@ export const MCP_GRAPH_OUTPUT_SHAPES = {
         ),
       }),
     ),
+    truncated: truncatedField,
   },
 };

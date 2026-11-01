@@ -12,7 +12,8 @@ export function registerBrainTimelineTool(server: McpServer, userId: string): vo
         'Consulta relações temporais extraídas e citáveis. Sem período, retorna fatos atuais ' +
         '(sem término ou com término futuro); as_of consulta um instante; from/to consulta ' +
         'sobreposição de intervalo. ' +
-        'Use as evidências retornadas antes de apresentar qualquer relação como fato.',
+        'Use as evidências retornadas antes de apresentar qualquer relação como fato. ' +
+        '`truncated=true` indica mais fatos que o limite.',
       inputSchema: {
         query: z.string().min(1).max(300).optional(),
         entity_ref: z.string().min(1).max(300).optional(),
@@ -25,15 +26,16 @@ export function registerBrainTimelineTool(server: McpServer, userId: string): vo
     },
     async (args) => {
       try {
+        const limit = args.limit ?? 12;
         const facts = await queryBrainTimeline(userId, {
           query: args.query,
           entityRef: args.entity_ref,
           asOf: args.as_of,
           from: args.from,
           to: args.to,
-          limit: args.limit,
+          limit: limit + 1,
         });
-        return ok({ facts });
+        return ok({ facts: facts.slice(0, limit), truncated: facts.length > limit });
       } catch (error) {
         if (error instanceof BrainTimelineInputError) return fail(error.message);
         throw error;
