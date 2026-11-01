@@ -43,6 +43,11 @@ export const MCP_CORRECTION_OUTPUT_SHAPES = {
         contextEnd: z.number().int(),
       }),
     ),
+    truncated: z
+      .boolean()
+      .describe(
+        'true quando há mais ocorrências que o limite; refine a consulta em vez de presumir enumeração completa.',
+      ),
   },
   voxen_list_transcript_corrections: {
     revisions: z.array(revision),

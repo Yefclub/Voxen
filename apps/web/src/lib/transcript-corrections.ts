@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   applyTextPatch,
   searchWithinText,
+  searchWithinTextPage,
   type AppliedNotePatch,
   type NoteContentMatch,
   type NotePatchOperation,
@@ -83,6 +84,14 @@ export function searchWithinTranscript(
   options: { limit?: number; contextChars?: number } = {},
 ): NoteContentMatch[] {
   return searchWithinText(markdown, query, options);
+}
+
+export function searchWithinTranscriptPage(
+  markdown: string,
+  query: string,
+  options: { limit?: number; contextChars?: number } = {},
+): { matches: NoteContentMatch[]; truncated: boolean } {
+  return searchWithinTextPage(markdown, query, options);
 }
 
 export function transcriptCorrectionChecksum(markdown: string, plainText: string): string {

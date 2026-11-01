@@ -17,7 +17,7 @@ import {
 } from '../lib/transcript-correction-schemas';
 import {
   applyTranscriptPatch,
-  searchWithinTranscript,
+  searchWithinTranscriptPage,
   transcriptCorrectionChecksum,
   TranscriptCorrectionInvariantError,
   transcriptMarkdownToPlainText,
@@ -43,15 +43,17 @@ export function registerTranscriptCorrectionRoutes(routes: Hono<{ Variables: Var
     if (!query) return c.json({ error: 'Informe um termo de busca.' }, 400);
     try {
       const head = await loadTranscriptCorrectionHead(c.get('userId'), c.req.param('id'));
+      const page = searchWithinTranscriptPage(head.markdown, query, {
+        limit: parseBoundedInt(c.req.query('limit'), 20, 1, 100),
+        contextChars: parseBoundedInt(c.req.query('contextChars'), 160, 0, 500),
+      });
       return c.json({
         revision: head.correctionRevision,
         checksum: head.checksum,
         sourceVersion: head.sourceVersion,
         sourceChecksum: head.sourceChecksum,
-        matches: searchWithinTranscript(head.markdown, query, {
-          limit: parseBoundedInt(c.req.query('limit'), 20, 1, 100),
-          contextChars: parseBoundedInt(c.req.query('contextChars'), 160, 0, 500),
-        }),
+        matches: page.matches,
+        truncated: page.truncated,
       });
     } catch (error) {
       return correctionFailure(c, error);

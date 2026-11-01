@@ -167,13 +167,22 @@ export function searchWithinText(
   query: string,
   options: { limit?: number; contextChars?: number } = {},
 ): NoteContentMatch[] {
-  const needle = query.trim();
-  if (!needle) return [];
   const limit = Math.max(1, Math.min(MAX_SEARCH_LIMIT, options.limit ?? DEFAULT_SEARCH_LIMIT));
   const contextChars = Math.max(
     0,
     Math.min(MAX_CONTEXT_CHARS, options.contextChars ?? DEFAULT_CONTEXT_CHARS),
   );
+  return searchWithinTextCapped(content, query, limit, contextChars);
+}
+
+function searchWithinTextCapped(
+  content: string,
+  query: string,
+  limit: number,
+  contextChars: number,
+): NoteContentMatch[] {
+  const needle = query.trim();
+  if (!needle) return [];
   const matches: NoteContentMatch[] = [];
   const matcher = new RegExp(escapeRegExp(needle), 'giu');
   let match: RegExpExecArray | null;
@@ -203,6 +212,36 @@ export function searchWithinNote(
   options: { limit?: number; contextChars?: number } = {},
 ): NoteContentMatch[] {
   return searchWithinText(content, query, options);
+}
+
+/** Variante paginada: sonda limit+1 e sinaliza truncamento explícito.
+ *
+ * Uma página cheia sem `truncated` não implica enumeração completa das
+ * ocorrências — refine a consulta em vez de presumir que viu tudo.
+ */
+export function searchWithinTextPage(
+  content: string,
+  query: string,
+  options: { limit?: number; contextChars?: number } = {},
+): { matches: NoteContentMatch[]; truncated: boolean } {
+  const take = Math.max(
+    1,
+    Math.min(MAX_SEARCH_LIMIT, Math.trunc(options.limit ?? DEFAULT_SEARCH_LIMIT)),
+  );
+  const contextChars = Math.max(
+    0,
+    Math.min(MAX_CONTEXT_CHARS, options.contextChars ?? DEFAULT_CONTEXT_CHARS),
+  );
+  const rows = searchWithinTextCapped(content, query, take + 1, contextChars);
+  return { matches: rows.slice(0, take), truncated: rows.length > take };
+}
+
+export function searchWithinNotePage(
+  content: string,
+  query: string,
+  options: { limit?: number; contextChars?: number } = {},
+): { matches: NoteContentMatch[]; truncated: boolean } {
+  return searchWithinTextPage(content, query, options);
 }
 
 export function noteContentChecksum(title: string, content: string): string {

@@ -5,7 +5,7 @@ import {
   NotePatchError,
   applyNotePatch,
   noteContentChecksum,
-  searchWithinNote,
+  searchWithinNotePage,
   summarizeNotePatch,
   type NotePatchOperation,
 } from '../lib/note-revisions';
@@ -93,13 +93,15 @@ noteVersionRoutes.get('/:id/search', async (c) => {
     select: { id: true, title: true, content: true, revision: true },
   });
   if (!note) return c.json({ error: 'Nota não encontrada.' }, 404);
+  const page = searchWithinNotePage(note.content, query, { limit });
   return c.json({
     noteId: note.id,
     title: note.title,
     revision: note.revision,
     checksum: noteContentChecksum(note.title, note.content),
     query,
-    matches: searchWithinNote(note.content, query, { limit }),
+    matches: page.matches,
+    truncated: page.truncated,
   });
 });
 

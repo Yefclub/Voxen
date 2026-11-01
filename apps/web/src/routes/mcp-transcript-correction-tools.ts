@@ -15,7 +15,7 @@ import { TranscriptPatchOperationSchema } from '../lib/transcript-correction-sch
 import {
   applyTranscriptPatch,
   TranscriptCorrectionInvariantError,
-  searchWithinTranscript,
+  searchWithinTranscriptPage,
   transcriptCorrectionChecksum,
   transcriptMarkdownToPlainText,
 } from '../lib/transcript-corrections';
@@ -34,7 +34,9 @@ export function registerMcpTranscriptCorrectionReadTools(server: McpServer, user
     'voxen_search_transcript_content',
     {
       title: 'Buscar dentro de uma transcrição',
-      description: 'Localiza ocorrências no Markdown efetivo antes de uma correção cirúrgica.',
+      description:
+        'Localiza ocorrências no Markdown efetivo antes de uma correção cirúrgica. ' +
+        'truncated=true indica mais ocorrências que o limite.',
       inputSchema: {
         transcript_id: z.string().min(1),
         query: z.string().min(1).max(10_000),
@@ -45,12 +47,14 @@ export function registerMcpTranscriptCorrectionReadTools(server: McpServer, user
     async (args) => {
       try {
         const head = await loadTranscriptCorrectionHead(userId, args.transcript_id);
+        const page = searchWithinTranscriptPage(head.markdown, args.query, {
+          limit: args.limit ?? 20,
+          contextChars: 180,
+        });
         return ok({
           ...headFields(head),
-          matches: searchWithinTranscript(head.markdown, args.query, {
-            limit: args.limit ?? 20,
-            contextChars: 180,
-          }),
+          matches: page.matches,
+          truncated: page.truncated,
         });
       } catch (error) {
         return correctionFailure(error);

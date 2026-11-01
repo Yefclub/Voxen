@@ -87,6 +87,10 @@ que o limite, `false` quando a página está completa. Uma página cheia sem
 truncamento não implica enumeração completa da coleção: refine os termos ou
 filtros em vez de presumir que todos os procedimentos foram enumerados.
 
+Buscas dentro de um documento (`voxen_search_note_content`,
+`voxen_search_transcript_content`) seguem a mesma regra: retornam `truncated`
+quando há mais ocorrências que o limite.
+
 Descoberta por nome (`voxen_discover`) localiza documentos por título,
 tópicos (tags, até 20 nomes) e coleções (pastas, até 20 nomes) a partir de metadados indexados, sem ler
 o texto corrido e sem modelo ou enriquecimento obrigatório. Cartões trazem
