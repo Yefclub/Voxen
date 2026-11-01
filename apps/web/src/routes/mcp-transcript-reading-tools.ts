@@ -311,36 +311,27 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
     async (args) => {
       // Verificação sempre lê o conteúdo atual (sem REVISION_FILTERS): o objetivo
       // é validar a citação contra o que está armazenado agora.
-      const cache = new Map<string, string | null>();
+      const cache = new Map<string, { md: string } | { error: string }>();
       const results = [];
       for (const claim of args.claims) {
         const tid = claim.transcript_id.trim();
-        let md = cache.get(tid);
-        if (md === undefined) {
+        let entry = cache.get(tid);
+        if (entry === undefined) {
           try {
-            md = (await loadDoc(userId, tid, {})).md;
+            entry = { md: (await loadDoc(userId, tid, {})).md };
           } catch (error) {
             const mapped = readError(error);
-            md = null;
-            results.push({
-              transcriptId: tid,
-              supported: false,
+            entry = {
               error: mapped ? `${mapped.code}: ${mapped.error}` : 'Transcrição indisponível.',
-            });
-            cache.set(tid, md);
-            continue;
+            };
           }
-          cache.set(tid, md);
+          cache.set(tid, entry);
         }
-        if (md === null) {
-          results.push({
-            transcriptId: tid,
-            supported: false,
-            error: 'NOT_FOUND: Transcrição não encontrada (ou fora do escopo do token).',
-          });
+        if ('error' in entry) {
+          results.push({ transcriptId: tid, supported: false, error: entry.error });
           continue;
         }
-        const verdict = verifyClaimAgainstMd(md, {
+        const verdict = verifyClaimAgainstMd(entry.md, {
           quote: claim.quote,
           fromLine: claim.from_line,
           toLine: claim.to_line,

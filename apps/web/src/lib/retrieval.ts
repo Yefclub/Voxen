@@ -11,8 +11,9 @@
 // tocam DB/S3 — testáveis isoladamente. As funções de acesso (loadTranscriptMd,
 // ftsSearchTranscripts, findRelated) escopam TUDO por userId (isolamento de
 // workspace) e são read-only. Leitura de `.md` usa cache versionado com erros
-// explícitos (NOT_FOUND / UNAVAILABLE_SOURCE / STALE_REVISION), sem fallback
-// fabricado.
+// explícitos (NOT_FOUND / UNAVAILABLE_SOURCE / STALE_REVISION); TRASH e
+// ARCHIVED não são legíveis (NOT_FOUND) e nada é fabricado a partir de texto
+// corrido quando a fonte canônica falta.
 //
 // Structure/timestamps come from canonical Markdown in the selected storage driver.
 // O `Transcript.plainText` do Postgres é só texto corrido pra FTS — NÃO tem
