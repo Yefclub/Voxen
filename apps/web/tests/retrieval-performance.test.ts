@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
@@ -66,9 +67,11 @@ async function mcpCall(body: unknown, token: string): Promise<Response> {
 }
 
 describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
-  const TOKEN = 'test-benchmark-' + 'k'.repeat(20);
+  const TOKEN = 'test-benchmark-' + randomUUID().replaceAll('-', '');
   let userId = '';
   const ids: Record<string, string> = {};
+  let previousStoragePath: string | undefined;
+  let storageDir = '';
   const docId = (key: string): string => {
     const id = ids[key];
     if (!id) throw new Error(`missing fixture: ${key}`);
@@ -76,7 +79,9 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
   };
 
   beforeAll(async () => {
-    process.env.STORAGE_LOCAL_PATH = await mkdtemp(join(tmpdir(), 'voxen-bench-storage-'));
+    previousStoragePath = process.env.STORAGE_LOCAL_PATH;
+    storageDir = await mkdtemp(join(tmpdir(), 'voxen-bench-storage-'));
+    process.env.STORAGE_LOCAL_PATH = storageDir;
     const user = await db.user.create({
       data: { email: `bench-${Date.now()}@voxen.local`, name: 'Bench', status: 'APPROVED' },
     });
@@ -154,6 +159,9 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
 
   afterAll(async () => {
     if (userId) await db.user.delete({ where: { id: userId } }).catch(() => undefined);
+    if (previousStoragePath === undefined) delete process.env.STORAGE_LOCAL_PATH;
+    else process.env.STORAGE_LOCAL_PATH = previousStoragePath;
+    if (storageDir) await rm(storageDir, { recursive: true, force: true });
     await db.$disconnect();
   });
 
