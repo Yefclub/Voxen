@@ -21,6 +21,8 @@ import { registerMcpKnowledgeDeletionTool } from './mcp-knowledge-deletion-tool'
 import {
   createPreparedNote,
   PreparedIngestContractError,
+  PreparedNoteMetadataSchema,
+  toPreparedNoteMetadata,
   type PreparedNoteResult,
 } from '../lib/prepared-note-ingest';
 import { PREPARED_CONTRACT_VERSION } from '../lib/prepared-ingest';
@@ -90,6 +92,7 @@ export function registerWriteTools(server: McpServer, userId: string): void {
           ),
         producer_id: z.string().max(128).optional().describe('Identidade do produtor externo.'),
         external_id: z.string().max(256).optional().describe('ID do documento no produtor.'),
+        ...PreparedNoteMetadataSchema.shape,
       },
       outputSchema: {
         id: z.string(),
@@ -136,6 +139,7 @@ export function registerWriteTools(server: McpServer, userId: string): void {
           producerId: args.producer_id,
           externalId: args.external_id,
           contractVersion: args.contract_version,
+          metadata: toPreparedNoteMetadata(args),
         });
       } catch (error) {
         if (error instanceof PreparedIngestContractError) return fail(error.message);
@@ -338,6 +342,7 @@ export function registerWriteTools(server: McpServer, userId: string): void {
               idempotency_key: z.string().max(128).optional(),
               producer_id: z.string().max(128).optional(),
               external_id: z.string().max(256).optional(),
+              ...PreparedNoteMetadataSchema.shape,
             }),
           )
           .min(1)
@@ -422,6 +427,7 @@ export function registerWriteTools(server: McpServer, userId: string): void {
               producerId: item.producer_id ?? args.producer_id,
               externalId: item.external_id,
               contractVersion: args.contract_version,
+              metadata: toPreparedNoteMetadata(item),
             });
           } catch (error) {
             if (error instanceof PreparedIngestContractError) {

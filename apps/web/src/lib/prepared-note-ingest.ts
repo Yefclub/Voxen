@@ -16,6 +16,7 @@ import {
 } from './prepared-ingest';
 
 export { PreparedIngestContractError };
+import { z } from 'zod';
 import type { ValidatedNoteAnchor } from './note-anchors';
 import { noteSourceCreateData } from './note-anchors';
 import { recordInitialNoteRevision, syncNoteGraph } from './note-versioning';
@@ -31,7 +32,66 @@ export type PreparedNoteInput = {
   producerId?: string;
   externalId?: string;
   contractVersion?: string;
+  metadata?: PreparedNoteMetadata;
 };
+
+// Generic prepared-document provenance (spec 216 §2): describes the external
+// document without fabricated media values. Document-level (not revisioned);
+// curation edits keep flowing through the revisioned title/content path.
+export const PreparedNoteMetadataSchema = z.object({
+  language: z
+    .string()
+    .regex(/^[a-zA-Z]{2}$/, 'Código ISO 639-1 com 2 letras.')
+    .optional()
+    .describe('Idioma do documento (ISO 639-1, ex.: "pt").'),
+  author: z.string().trim().min(1).max(200).optional().describe('Autor do documento externo.'),
+  source_url: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2000)
+    .optional()
+    .describe('URL de origem como metadado (nunca dispara busca).'),
+  published_at: z
+    .string()
+    .max(64)
+    .optional()
+    .describe('ISO date de publicação do documento externo.'),
+});
+
+export type PreparedNoteMetadata = {
+  language?: string;
+  author?: string;
+  sourceUrl?: string;
+  publishedAt?: Date;
+};
+
+export function toPreparedNoteMetadata(args: {
+  language?: string;
+  author?: string;
+  source_url?: string;
+  published_at?: string;
+}): PreparedNoteMetadata | undefined {
+  let publishedAt: Date | undefined;
+  if (args.published_at !== undefined) {
+    publishedAt = new Date(args.published_at);
+    if (Number.isNaN(publishedAt.getTime())) {
+      throw new PreparedIngestContractError('Metadado de data inválido: published_at.');
+    }
+  }
+  if (args.language !== undefined && !/^[a-zA-Z]{2}$/.test(args.language)) {
+    throw new PreparedIngestContractError(
+      'Metadado inválido: language precisa de código ISO 639-1.',
+    );
+  }
+  const metadata: PreparedNoteMetadata = {
+    ...(args.language ? { language: args.language.toLowerCase() } : {}),
+    ...(args.author?.trim() ? { author: args.author.trim() } : {}),
+    ...(args.source_url?.trim() ? { sourceUrl: args.source_url.trim() } : {}),
+    ...(publishedAt ? { publishedAt } : {}),
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
 
 export type PreparedNoteResult = {
   id: string;
@@ -80,6 +140,10 @@ export async function createPreparedNote(
           kind: 'NOTE',
           title,
           content: input.content ?? '',
+          language: input.metadata?.language ?? null,
+          author: input.metadata?.author ?? null,
+          sourceUrl: input.metadata?.sourceUrl ?? null,
+          publishedAt: input.metadata?.publishedAt ?? null,
           sourceType: input.transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
           sourceId: input.transcriptIds[0] ?? null,
           ...(input.transcriptIds.length > 0

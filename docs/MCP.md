@@ -160,6 +160,10 @@ independente por item: `created`, `duplicate` ou `error`). O HTTP
   até 128 chars). Repetir a mesma chave devolve a nota original com
   `duplicate: true`, sem criar documento ou revisão.
 - `producer_id` / `external_id`: identidade do produtor e do documento na origem.
+- Metadados genéricos do documento (`language`, `author`, `source_url`,
+  `published_at`): proveniência do documento externo, sem valores fabricados
+  de mídia. Nível de documento (não revisionado): curadoria posterior usa o
+  caminho revisionado de título/conteúdo e preserva os metadados.
 - URL de origem é metadado: recebê-la nunca dispara busca, transcrição ou
   análise. Conteúdo chega pronto; o Voxen nunca executa modelos.
 - Cargas acima do orçamento da chamada devem ser divididas em vários lotes.

@@ -158,6 +158,10 @@ independent per-item outcome: `created`, `duplicate`, or `error`). HTTP
   up to 128 chars). Retrying the same key returns the original note with
   `duplicate: true`, without creating a document or revision.
 - `producer_id` / `external_id`: producer identity and source document ID.
+- Generic document metadata (`language`, `author`, `source_url`,
+  `published_at`): external-document provenance, no fabricated media values.
+  Document-level (not revisioned): later curation uses the revisioned
+  title/content path and preserves the metadata.
 - A source URL is metadata: receiving one never triggers fetching,
   transcription, or analysis. Content arrives prepared; Voxen runs no models.
 - Payloads above the call budget must be split into multiple batches.
