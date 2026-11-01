@@ -19,9 +19,12 @@ describeIfDb('backup restore contract (spec 216)', () => {
   let userId = '';
   let storageDir = '';
   let previousStoragePath: string | undefined;
+  let previousStorageDriver: string | undefined;
 
   beforeAll(async () => {
     previousStoragePath = process.env.STORAGE_LOCAL_PATH;
+    previousStorageDriver = process.env.STORAGE_DRIVER;
+    process.env.STORAGE_DRIVER = 'local';
     storageDir = await mkdtemp(join(tmpdir(), 'voxen-backup-test-'));
     process.env.STORAGE_LOCAL_PATH = storageDir;
     const user = await db.user.create({
@@ -34,6 +37,8 @@ describeIfDb('backup restore contract (spec 216)', () => {
     if (userId) await db.user.delete({ where: { id: userId } }).catch(() => undefined);
     if (previousStoragePath === undefined) delete process.env.STORAGE_LOCAL_PATH;
     else process.env.STORAGE_LOCAL_PATH = previousStoragePath;
+    if (previousStorageDriver === undefined) delete process.env.STORAGE_DRIVER;
+    else process.env.STORAGE_DRIVER = previousStorageDriver;
     if (storageDir) await rm(storageDir, { recursive: true, force: true });
     await db.$disconnect();
   });
@@ -112,6 +117,7 @@ describeIfDb('backup restore contract (spec 216)', () => {
         transcriptRow,
         storedMd,
         mdPath: transcriptRow.mdPath,
+        tagRow: tag,
       }),
     );
     expect(revisions.length).toBe(2);
@@ -120,6 +126,8 @@ describeIfDb('backup restore contract (spec 216)', () => {
     // Delete the slice (simulates loss), then restore from snapshot with stable IDs.
     await db.note.delete({ where: { id: created.id } });
     await db.transcript.delete({ where: { id: transcript.id } });
+    const { storageDelete } = await import('../src/lib/storage');
+    await storageDelete(`workspaces/${userId}/transcripts/atlas-backup.md`);
     await expect(
       loadEffectiveTranscriptMarkdown(userId, transcript.id).catch((error: unknown) => {
         throw error;
@@ -225,5 +233,7 @@ describeIfDb('backup restore contract (spec 216)', () => {
       where: { transcriptId: transcript.id },
     });
     expect(restoredTags.map((row) => row.tagId)).toContain(tag.id);
+    expect(tag.name).toBe(snapshot.tagRow.name);
+    expect(tag.slug).toBe(snapshot.tagRow.slug);
   });
 });
