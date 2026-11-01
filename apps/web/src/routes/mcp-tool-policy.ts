@@ -9,6 +9,7 @@ export const MCP_TOOL_SCOPES = {
   voxen_brain_search: 'READ',
   voxen_brain_sources: 'READ',
   voxen_brain_timeline: 'READ',
+  voxen_discover: 'READ',
   voxen_expand_context: 'READ',
   voxen_get_job_status: 'READ',
   voxen_list_note_revisions: 'READ',

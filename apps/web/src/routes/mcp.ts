@@ -14,6 +14,7 @@ import { registerMcpJobStatusTool } from './mcp-job-status-tool';
 import { registerWriteTools } from './mcp-write-tools';
 import { mcpBearerChallenge, writeMcpOAuthAudit } from '../lib/mcp-oauth';
 import { registerMcpPersonalContextTool } from './mcp-personal-context-tool';
+import { registerDiscoveryTools } from './mcp-discovery-tools';
 import { registerTranscriptTools } from './mcp-transcript-discovery-tools';
 import { registerNoteTools } from './mcp-note-tools';
 import { registerBrainTools } from './mcp-graph-tools';
@@ -173,6 +174,7 @@ function buildVoxenMcpServer(
   installMcpToolExecution(server, { userId, requestId });
   if (scopes.includes('READ')) {
     registerMcpJobStatusTool(server, userId);
+    registerDiscoveryTools(server, userId, publicOrigin);
     registerTranscriptTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
     registerMcpPersonalContextTool(server, userId, publicOrigin);

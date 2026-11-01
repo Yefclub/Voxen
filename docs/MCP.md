@@ -39,7 +39,7 @@ nunca o segredo Bearer.
 
 ## Contratos de execução e resultados
 
-O catálogo tem **37 ferramentas: 29 READ e 8 WRITE**, com escopos, anotações de
+O catálogo tem **38 ferramentas: 30 READ e 8 WRITE**, com escopos, anotações de
 efeitos e schemas de saída validados. `voxen_get_job_status` é READ, inclusive
 para jobs enviados por um cliente com escrita. Os metadados informam a versão
 real do Voxen em execução.
@@ -86,6 +86,13 @@ Buscas ranqueadas (`voxen_search_knowledge`, `voxen_search_transcripts`,
 que o limite, `false` quando a página está completa. Uma página cheia sem
 truncamento não implica enumeração completa da coleção: refine os termos ou
 filtros em vez de presumir que todos os procedimentos foram enumerados.
+
+Descoberta por nome (`voxen_discover`) localiza documentos por título,
+tópicos (tags, até 20 nomes) e coleções (pastas, até 20 nomes) a partir de metadados indexados, sem ler
+o texto corrido e sem modelo ou enriquecimento obrigatório. Cartões trazem
+descrição curta, tópicos, coleção, identificadores e proveniência do produtor
+quando o contrato de ingestão a forneceu. Um cartão ausente nunca exclui o
+documento original: use as buscas ranqueadas para passagens no corpo do texto.
 
 A proteção permite 600 chamadas/minuto por usuário, 1.200 por conexão e 6.000 no
 servidor. Ela usa o endereço TCP observado, sem confiar em headers encaminhados
