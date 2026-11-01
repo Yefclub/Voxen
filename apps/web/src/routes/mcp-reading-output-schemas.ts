@@ -15,6 +15,17 @@ const document = {
   correctionRevision: z.number().int(),
   sourceVersion: z.number().int(),
 };
+const enclosingSection = z
+  .object({
+    index: z.number().int(),
+    heading: z.string(),
+    level: z.number().int(),
+    startLine: z.number().int(),
+  })
+  .nullable()
+  .describe(
+    'Seção que contém o trecho (índice navegável em voxen_read_section); null sem headings.',
+  );
 export const MCP_READING_OUTPUT_SHAPES = {
   voxen_outline: { ...document, totalLines: z.number().int(), sections: z.array(section) },
   voxen_read_lines: {
@@ -24,6 +35,7 @@ export const MCP_READING_OUTPUT_SHAPES = {
     to: z.number().int(),
     truncated: z.boolean(),
     lines: z.array(line),
+    section: enclosingSection,
   },
   voxen_read_section: { ...document, section, truncated: z.boolean(), lines: z.array(line) },
   voxen_read_timespan: {
@@ -32,6 +44,7 @@ export const MCP_READING_OUTPUT_SHAPES = {
     toSec: z.number(),
     truncated: z.boolean(),
     lines: z.array(line),
+    section: enclosingSection,
   },
   voxen_expand_context: {
     ...document,
@@ -39,6 +52,7 @@ export const MCP_READING_OUTPUT_SHAPES = {
     from: z.number().int(),
     to: z.number().int(),
     lines: z.array(line),
+    section: enclosingSection,
   },
   voxen_related: {
     results: z.array(

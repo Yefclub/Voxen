@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { type McpServer } from '@modelcontextprotocol/server';
 import {
   expandContextFromMd,
+  findEnclosingSection,
   findRelated,
   loadTranscriptMd,
   parseOutline,
@@ -101,7 +102,8 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       title: 'Ler linhas',
       description:
         'PASSO 3: lê um intervalo de linhas [from, to] (1-indexed, inclusivo, cap de 200 linhas) ' +
-        'do `.md`. Prefira isto a ler o documento inteiro.',
+        'do `.md`. Prefira isto a ler o documento inteiro. A resposta inclui a seção ' +
+        'que contém o trecho (índice navegável em voxen_read_section).',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         from: z.number().int().min(1).describe('Primeira linha (1-indexed).'),
@@ -126,6 +128,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         correctionRevision: doc.correctionRevision,
         sourceVersion: doc.sourceVersion,
         ...lines,
+        section: findEnclosingSection(doc.md, lines.from),
       });
     },
   );
@@ -175,7 +178,8 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       title: 'Ler intervalo de tempo',
       description:
         'PASSO 3: lê as linhas cujo timestamp cai em [from_sec, to_sec] (segundos, inclusivo, ' +
-        'cap de 200 linhas). Útil para ancorar num momento do vídeo.',
+        'cap de 200 linhas). Útil para ancorar num momento do vídeo. A resposta inclui a ' +
+        'seção que contém o trecho.',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         from_sec: z.number().int().min(0).describe('Início em segundos.'),
@@ -200,6 +204,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         correctionRevision: doc.correctionRevision,
         sourceVersion: doc.sourceVersion,
         ...span,
+        section: span.lines.length > 0 ? findEnclosingSection(doc.md, span.lines[0]!.n) : null,
       });
     },
   );
@@ -210,7 +215,8 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
       title: 'Expandir contexto',
       description:
         'PASSO 4: dada uma âncora (`line` OU `sec`), devolve uma janela de `radius` linhas ' +
-        'antes/depois. Use só quando o trecho lido não bastar.',
+        'antes/depois. Use só quando o trecho lido não bastar. A resposta inclui a seção ' +
+        'da âncora.',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição.'),
         line: z.number().int().min(1).optional().describe('Linha-âncora (1-indexed).'),
@@ -246,6 +252,7 @@ export function registerProgressiveTools(server: McpServer, userId: string): voi
         correctionRevision: doc.correctionRevision,
         sourceVersion: doc.sourceVersion,
         ...result,
+        section: findEnclosingSection(doc.md, result.anchorLine),
       });
     },
   );
