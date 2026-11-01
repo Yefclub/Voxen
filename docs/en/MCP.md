@@ -20,7 +20,7 @@ and subscriptions are not exposed; tool calls use POST.
 | Transport      | Streamable HTTP                            |
 | Authentication | Personal Bearer token or OAuth 2.1 + PKCE  |
 | Read scope     | Search and read the owner's knowledge base |
-| Write scope    | Create/update notes and request ingestion  |
+| Write scope    | Create/update notes and import prepared content |
 
 Create a token in **Your account → MCP access**. The secret is displayed only
 once. Store it in a password manager or secret environment variable. Never put
@@ -38,7 +38,7 @@ and an environment placeholder, never a bearer secret.
 
 ## Execution and result contracts
 
-The catalog contains **44 tools: 31 READ and 13 WRITE**, with required scopes,
+The catalog contains **37 tools: 29 READ and 8 WRITE**, with required scopes,
 explicit effect annotations and validated output schemas. `voxen_get_job_status`
 is READ, including jobs submitted by a WRITE-capable client. Server metadata
 reports the actual running Voxen version.
@@ -144,7 +144,23 @@ make bounded changes instead of replacing an entire note whenever possible:
 replacements, but it also requires `expected_revision`. A conflict means the
 agent must read the current note again and propose a new change; it must never
 retry blindly. Read-only credentials cannot discover or execute patch, restore,
-create, full-update, or ingestion tools.
+create, full-update, or batch import.
+
+## Prepared-content contract (v1)
+
+External producers publish ready-made documents via `voxen_create_note`
+(single) and `voxen_import_notes` (batches of up to 20 items, with an
+independent per-item outcome: `created`, `duplicate`, or `error`). HTTP
+`POST /api/notes` shares the same semantics: 201 on create, 200 on retry.
+
+- `contract_version`: currently only `"1"`; unknown versions are rejected.
+- `idempotency_key`: optional, workspace-scoped (letters, digits, `:`/`_`/`-`,
+  up to 128 chars). Retrying the same key returns the original note with
+  `duplicate: true`, without creating a document or revision.
+- `producer_id` / `external_id`: producer identity and source document ID.
+- A source URL is metadata: receiving one never triggers fetching,
+  transcription, or analysis. Content arrives prepared; Voxen runs no models.
+- Payloads above the call budget must be split into multiple batches.
 
 Instance administrators can optionally enable OAuth 2.1 in **Administration →
 Integrations → MCP Server**. OAuth access is still bound to the Voxen user who
