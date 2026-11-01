@@ -1616,7 +1616,6 @@ export async function streamAssistantReply(options: {
   ]);
   const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
   let answer = '';
-  let _providerStreamCompleted = true;
   const tools: StoredToolEvent[] = [];
   const segments: StoredMessageSegment[] = [];
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
@@ -1714,7 +1713,6 @@ export async function streamAssistantReply(options: {
     for await (const rawPart of result.fullStream) {
       const part = rawPart as unknown as Record<string, unknown>;
       const type = part.type;
-      if (type === 'error') _providerStreamCompleted = false;
       if (!firstProviderEventLogged && isProviderObservedEvent(type)) {
         firstProviderEventLogged = true;
         const firstEventAt = Date.now();
@@ -1864,7 +1862,6 @@ export async function streamAssistantReply(options: {
       }
     }
   } catch (error) {
-    _providerStreamCompleted = false;
     const message = abortSignal.aborted ? 'Resposta interrompida.' : normalizeError(error);
     emit({ type: 'error', message });
     if (!answer) answer = message;
