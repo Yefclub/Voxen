@@ -144,11 +144,7 @@ export type CommittedTranscriptCorrection = {
 export async function commitTranscriptCorrection(
   input: CommitTranscriptCorrectionInput,
 ): Promise<CommittedTranscriptCorrection> {
-  const committed = await db.$transaction((tx) =>
-    commitTranscriptCorrectionInTransaction(tx, input),
-  );
-  invalidateTranscriptReadCache(input.userId, input.transcriptId);
-  return committed;
+  return db.$transaction((tx) => commitTranscriptCorrectionInTransaction(tx, input));
 }
 
 export async function commitTranscriptCorrectionInTransaction(
@@ -272,6 +268,7 @@ export async function commitTranscriptCorrectionInTransaction(
     },
   });
   await deferGroundedCompilation(tx, input.userId, current.id, revision, checksum);
+  invalidateTranscriptReadCache(input.userId, input.transcriptId);
   return {
     transcriptId: current.id,
     revision,

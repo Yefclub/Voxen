@@ -47,6 +47,19 @@ export type TranscriptReadOptions = {
   expectedSourceVersion?: number;
 };
 
+export function transcriptMarkdownHttpError(error: unknown): {
+  status: 404 | 500;
+  body: { error: string; code?: string };
+} {
+  if (error instanceof TranscriptReadError && error.code === 'UNAVAILABLE_SOURCE') {
+    return {
+      status: 404,
+      body: { error: 'Fonte canônica indisponível no storage.', code: 'UNAVAILABLE_SOURCE' },
+    };
+  }
+  return { status: 500, body: { error: 'Falha interna ao ler o documento.' } };
+}
+
 export type TranscriptReadDoc = {
   id: string;
   title: string;

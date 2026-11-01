@@ -9,7 +9,7 @@ import { applyTranscriptLifecycle } from '../lib/brain-grounded-lifecycle';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
-import { TranscriptReadError } from '../lib/transcript-content';
+import { transcriptMarkdownHttpError } from '../lib/transcript-content';
 import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
   NoteAnchorInputSchema,
@@ -495,26 +495,14 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = baseCost.toFixed(6);
 
-  let markdown: string;
-  let canonicalMarkdown: string | null;
+  let resolved: { markdown: string; canonicalMarkdown: string | null };
   try {
-    ({ markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript));
+    resolved = await resolveTranscriptMarkdownViews(transcript);
   } catch (error) {
-    if (error instanceof TranscriptReadError && error.code === 'UNAVAILABLE_SOURCE') {
-      return c.json(
-        {
-          error: 'Fonte canônica indisponível no storage.',
-          code: 'UNAVAILABLE_SOURCE',
-        },
-        404,
-      );
-    }
-    console.error(
-      '[transcripts] erro inesperado ao resolver markdown',
-      safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', error),
-    );
-    return c.json({ error: 'Falha interna ao ler o documento.' }, 500);
+    const mapped = transcriptMarkdownHttpError(error);
+    return c.json(mapped.body, mapped.status);
   }
+  const { markdown, canonicalMarkdown } = resolved;
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);
   return c.json({
