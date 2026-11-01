@@ -13,10 +13,8 @@ import {
   Network,
   Search,
   SlidersHorizontal,
-  Sparkles,
   Tags,
   Trash2,
-  Type,
   X,
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
@@ -145,12 +143,8 @@ export function TranscricoesPage(): React.ReactElement {
   const currentPage = pageState.page;
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [reorganizing, setReorganizing] = useState(false);
-  const [regeneratingTitles, setRegeneratingTitles] = useState(false);
-  const [generatingTags, setGeneratingTags] = useState(false);
   const [clearingFolders, setClearingFolders] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  const [confirmRetitleOpen, setConfirmRetitleOpen] = useState(false);
   const debouncedQ = useDebounced(q, 250);
   const requestQ = normalizeLibraryRequestQuery(debouncedQ);
   const periodBounds = useMemo(() => libraryWeekBounds(period), [period]);
@@ -320,168 +314,6 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
-  async function reorganizeWithAi(): Promise<void> {
-    if (reorganizing) return;
-    setReorganizing(true);
-    let totalAssigned = 0;
-    let totalFailed = 0;
-    let totalSkipped = 0;
-    try {
-      for (let i = 0; i < 20; i++) {
-        const body = await apiPost<{
-          processed: number;
-          assigned: number;
-          skipped: number;
-          failed: number;
-          remaining: number;
-          pendingTotal: number;
-        }>('/api/library/reorganize', { limit: 15 });
-        totalAssigned += body.assigned;
-        totalFailed += body.failed;
-        totalSkipped += body.skipped;
-        if (body.pendingTotal === 0 && body.processed === 0) {
-          toast.message(t('library.reorgNothing'));
-          break;
-        }
-        if (body.remaining === 0) {
-          toast.success(
-            t('library.reorgDone', {
-              assigned: totalAssigned,
-              skipped: totalSkipped,
-              failed: totalFailed,
-            }),
-          );
-          break;
-        }
-        if (i === 19) {
-          toast.success(
-            t('library.reorgPartial', {
-              assigned: totalAssigned,
-              remaining: body.remaining,
-            }),
-          );
-        }
-      }
-      refreshFolders();
-      refreshTags();
-      patchFilters({ page: null }, { replace: true });
-      refreshTranscripts();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('library.reorgError'));
-    } finally {
-      setReorganizing(false);
-    }
-  }
-
-  // Gera tags via IA só para conteúdo sem tag, drenando em lotes. Custa créditos
-  // (1 chamada de IA por conteúdo). Cada tag também vira/reaproveita uma pasta.
-  async function generateTagsBatch(): Promise<void> {
-    if (generatingTags) return;
-    setGeneratingTags(true);
-    let totalTagged = 0;
-    let totalSkipped = 0;
-    let totalFailed = 0;
-    try {
-      for (let i = 0; i < 30; i++) {
-        const body = await apiPost<{
-          processed: number;
-          tagged: number;
-          skipped: number;
-          failed: number;
-          remaining: number;
-          pendingTotal: number;
-        }>('/api/library/generate-tags', { limit: 10 });
-        totalTagged += body.tagged;
-        totalSkipped += body.skipped;
-        totalFailed += body.failed;
-        if (body.pendingTotal === 0 && body.processed === 0) {
-          toast.message(t('library.tagsNothing'));
-          break;
-        }
-        if (body.remaining === 0) {
-          toast.success(
-            t('library.tagsDone', {
-              tagged: totalTagged,
-              skipped: totalSkipped,
-              failed: totalFailed,
-            }),
-          );
-          break;
-        }
-        if (i === 29) {
-          toast.success(
-            t('library.tagsPartial', { tagged: totalTagged, remaining: body.remaining }),
-          );
-        }
-      }
-      refreshFolders();
-      refreshTags();
-      patchFilters({ page: null }, { replace: true });
-      refreshTranscripts();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('library.tagsError'));
-    } finally {
-      setGeneratingTags(false);
-    }
-  }
-
-  // Regenera os títulos via IA drenando a Base de conhecimento por cursor. Custa créditos
-  // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
-  async function regenerateTitles(): Promise<void> {
-    if (regeneratingTitles) return;
-    setRegeneratingTitles(true);
-    let totalChanged = 0;
-    let totalKept = 0;
-    let totalFailed = 0;
-    let cursor: string | null = null;
-    try {
-      for (let i = 0; i < 60; i++) {
-        const body: {
-          processed: number;
-          changed: number;
-          kept: number;
-          skipped: number;
-          failed: number;
-          pendingTotal: number;
-          nextCursor: string | null;
-        } = await apiPost('/api/library/regenerate-titles', { limit: 15, cursor });
-        totalChanged += body.changed;
-        totalKept += body.kept;
-        totalFailed += body.failed;
-        if (i === 0 && body.pendingTotal === 0) {
-          toast.message(t('library.retitleNothing'));
-          break;
-        }
-        // Falha sistêmica (ex.: chave da OpenRouter inválida): o lote inteiro
-        // falhou. Aborta em vez de gastar créditos rodando os 60 lotes.
-        if (body.processed > 0 && body.failed === body.processed) {
-          toast.error(t('library.retitleError'));
-          break;
-        }
-        cursor = body.nextCursor;
-        if (!cursor) {
-          toast.success(
-            t('library.retitleDone', {
-              changed: totalChanged,
-              kept: totalKept,
-              failed: totalFailed,
-            }),
-          );
-          break;
-        }
-        if (i === 59) {
-          toast.success(t('library.retitlePartial', { changed: totalChanged }));
-        }
-      }
-      patchFilters({ page: null }, { replace: true });
-      refreshTranscripts();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('library.retitleError'));
-    } finally {
-      setRegeneratingTitles(false);
-    }
-  }
-
   const pageLoading = loading && !responseMatches;
   const sortedFolders = useMemo(
     () => [...folders].sort((a, b) => a.name.localeCompare(b.name, locale)),
@@ -518,53 +350,6 @@ export function TranscricoesPage(): React.ReactElement {
         description={t('library.description')}
         actions={
           <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={reorganizing}
-              onClick={() => void reorganizeWithAi()}
-              className="h-8 text-xs"
-            >
-              {reorganizing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-              )}
-              {reorganizing ? t('library.reorgRunning') : t('library.reorgAction')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={regeneratingTitles}
-              onClick={() => setConfirmRetitleOpen(true)}
-              className="h-8 text-xs"
-              title={t('library.retitleHint')}
-            >
-              {regeneratingTitles ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Type className="h-3.5 w-3.5 text-violet-400" />
-              )}
-              {regeneratingTitles ? t('library.retitleRunning') : t('library.retitleAction')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={generatingTags}
-              onClick={() => void generateTagsBatch()}
-              className="h-8 text-xs"
-              title={t('library.tagsHint')}
-            >
-              {generatingTags ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Tags className="h-3.5 w-3.5 text-violet-400" />
-              )}
-              {generatingTags ? t('library.tagsRunning') : t('library.tagsAction')}
-            </Button>
             {folders.length > 0 && (
               <Button
                 type="button"
@@ -595,16 +380,6 @@ export function TranscricoesPage(): React.ReactElement {
         confirmLabel={t('library.clearFolders')}
         loading={clearingFolders}
         onConfirm={clearAllFolders}
-      />
-
-      <ConfirmDialog
-        open={confirmRetitleOpen}
-        onOpenChange={setConfirmRetitleOpen}
-        title={t('library.retitleAction')}
-        description={t('library.retitleConfirm')}
-        confirmLabel={t('library.retitleAction')}
-        loading={regeneratingTitles}
-        onConfirm={regenerateTitles}
       />
 
       <LibrarySearch
