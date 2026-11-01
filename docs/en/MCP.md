@@ -99,6 +99,11 @@ complete enumeration of the queried set.
 Related documents (`voxen_related`) also return `truncated` over the fused set
 (graph neighborhood + title/topic FTS).
 
+Narrow reads (`voxen_outline`, `voxen_read_lines`, `voxen_read_section`,
+`voxen_read_timespan`, `voxen_expand_context`) also return `truncated`:
+outline cuts at 300 sections and reads cut at 200 lines; `false` means a
+complete page with no cap cut.
+
 Name discovery (`voxen_discover`) locates documents by title, topics (up to 20 tag names),
 and collections (up to 20 folder names) from indexed metadata, without reading body text
 and without requiring models or enrichment. Cards carry a short description,

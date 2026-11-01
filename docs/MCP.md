@@ -101,6 +101,11 @@ significa enumeração completa do conjunto consultado.
 Documentos relacionados (`voxen_related`) também retornam `truncated` sobre o
 conjunto fundido (vizinhança do Brain + FTS por título/tópico).
 
+Leituras estreitas (`voxen_outline`, `voxen_read_lines`, `voxen_read_section`,
+`voxen_read_timespan`, `voxen_expand_context`) também retornam `truncated`:
+outline corta em 300 seções e leituras cortam em 200 linhas; `false` indica
+página completa sem corte pelo cap.
+
 Descoberta por nome (`voxen_discover`) localiza documentos por título,
 tópicos (tags, até 20 nomes) e coleções (pastas, até 20 nomes) a partir de metadados indexados, sem ler
 o texto corrido e sem modelo ou enriquecimento obrigatório. Cartões trazem
