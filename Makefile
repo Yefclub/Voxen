@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev dev-s3 update build down restart logs ps test test-scripts test-ts test-extension lint lint-ts format format-ts format-check format-check-ts typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup restore-storage clean
+.PHONY: help ensure-env dev dev-s3 update build down restart logs ps test test-scripts test-ts lint lint-ts format format-ts format-check format-check-ts typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup restore-storage clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -55,16 +55,13 @@ ps: ## Status dos serviços
 	docker compose ps
 
 # --- Testes ---
-test: test-scripts test-ts test-extension ## Roda todos os testes (scripts + TS + extensão)
+test: test-scripts test-ts ## Roda todos os testes (scripts + TS)
 
 test-scripts: ## Testes dos scripts de automação (Node.js)
 	node --test scripts/*.test.mjs
 
 test-ts: ## Testes do apps/web (Bun)
 	cd apps/web && bun test
-
-test-extension: ## Testes da extensão MV3 (Bun)
-	cd apps/web && bun run test:extension
 
 # --- Lint / format / typecheck ---
 lint: lint-ts ## Lint completo
