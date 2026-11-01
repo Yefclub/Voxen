@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { DollarSign, KeyRound, Plug, Settings, ShieldCheck, Users } from '@/components/ui/icons';
+import { KeyRound, Plug, Settings, ShieldCheck, Users } from '@/components/ui/icons';
 import { useI18n, type I18nKey } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 
@@ -8,7 +8,6 @@ const ADMIN_NAV = [
   { to: '/admin/integracoes', labelKey: 'admin.shell.integrations', Icon: Plug },
   { to: '/admin/autenticacao', labelKey: 'admin.shell.authentication', Icon: KeyRound },
   { to: '/admin/usuarios', labelKey: 'admin.shell.users', Icon: Users },
-  { to: '/admin/custos', labelKey: 'admin.shell.costs', Icon: DollarSign },
 ] satisfies { to: string; labelKey: I18nKey; Icon: typeof Settings }[];
 
 /** Shared shell that keeps instance-wide controls visibly separate from user work. */

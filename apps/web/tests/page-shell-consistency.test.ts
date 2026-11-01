@@ -6,7 +6,6 @@ const PAGES_ROOT = join(import.meta.dir, '../src/client/pages');
 const CLIENT_STYLES = join(import.meta.dir, '../src/client/index.css');
 
 const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> = {
-  'admin-custos.tsx': 'wide',
   'admin-integracoes.tsx': 'workspace',
   'admin-usuarios.tsx': 'wide',
   'automacoes.tsx': 'wide',
@@ -24,7 +23,6 @@ const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> 
 };
 
 const CANONICAL_HEADER_PAGES = [
-  'admin-custos.tsx',
   'admin-integracoes.tsx',
   'admin-usuarios.tsx',
   'automacoes.tsx',

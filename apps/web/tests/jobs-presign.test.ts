@@ -94,9 +94,8 @@ function extractCookie(res: Response): string {
 }
 
 async function completeSetup(): Promise<void> {
-  await setSetting('openrouter_api_key', 'sk-or-v1-' + 'x'.repeat(40));
-  await setSetting('default_chat_model', 'openrouter/auto');
-  await setSetting('default_transcription_model', 'x-ai/grok-stt-1.0');
+  // Setup Product 1: onboarding concluído, sem provider (spec 215).
+  await setSetting('onboarding_done', 'true');
 }
 
 async function approvedSession(): Promise<string> {

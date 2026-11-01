@@ -96,7 +96,6 @@ describe('fundação visual Linear', () => {
     const dataSurface = read('src/client/components/ui/data-surface.tsx');
     const integrations = read('src/client/pages/admin-integracoes.tsx');
     const users = read('src/client/pages/admin-usuarios.tsx');
-    const costs = read('src/client/pages/admin-custos.tsx');
 
     expect(PAGE_SHELL_WIDTHS.wide).toBe('max-w-[1600px]');
     expect(PAGE_SHELL_WIDTHS.workspace).toBe('max-w-[1600px]');
@@ -109,7 +108,6 @@ describe('fundação visual Linear', () => {
     expect(integrations).toContain('<PageShell width="workspace">');
     expect(users).toContain('<DataSurface>');
     expect(users).toContain('<PageShell width="wide">');
-    expect(costs).toContain('<PageShell width="wide">');
   });
 
   test('mantém os controles utilizáveis quando a timeline não pode iniciar', () => {
