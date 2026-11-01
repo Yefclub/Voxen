@@ -160,6 +160,17 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
       '# Caldeira industrial\n\nProcedimentos operacionais padrão para equipamentos térmicos.',
       { title: 'Caldeira industrial Atlas' },
     );
+    const tornoDoc = await put(
+      'etiqueta-exclusiva',
+      '# Manual de bancada\n\nProcedimentos de segurança para equipamentos rotativos.',
+      { title: 'Manual de bancada' },
+    );
+    const tagMecanica = await db.tag.create({
+      data: { userId, name: 'Torno mecânico', slug: 'torno-mecanico' },
+    });
+    await db.transcriptTag.create({
+      data: { transcriptId: tornoDoc.id, tagId: tagMecanica.id },
+    });
   });
 
   afterAll(async () => {
@@ -197,6 +208,12 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
     const titleOnly = await searchKnowledgeBase(userId, 'caldeira', 8);
     expect(titleOnly.map((item) => item.id)).toContain(ids['titulo-distintivo']!);
     expect(titleOnly[0]?.id).toBe(ids['titulo-distintivo']);
+
+    // Tag-only terms (absent from title and body) must retrieve the tagged
+    // document: tags are indexed with weight B, like body text (spec 217 §5).
+    const tagOnly = await searchKnowledgeBase(userId, 'torno', 8);
+    expect(tagOnly.map((item) => item.id)).toContain(ids['etiqueta-exclusiva']!);
+    expect(tagOnly[0]?.id).toBe(ids['etiqueta-exclusiva']);
 
     const none = await searchKnowledgeBase(userId, 'xqzt jogo de tabuleiro inexistente', 8);
     expect(none).toEqual([]);
