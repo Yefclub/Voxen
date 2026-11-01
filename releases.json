@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793574808",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Read-only agent doctor diagnostics",
+    "body": "### Added\n- `scripts/agent-doctor.mjs` reports declared agent configuration with effective/observed states as explicitly unverified, plus a sanitized `--json`/`--strict` contract covered by tests.",
+    "pr": 989,
+    "author": "Kalyel",
+    "date": "2026-11-01T20:13:17-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/989"
+  },
+  {
     "version": "0.15.1-dev.1793573861",
     "channel": "dev",
     "type": "feat",
