@@ -1,17 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import {
-  Check,
-  Eraser,
-  LoaderCircle,
-  LogOut,
-  Moon,
-  ShieldCheck,
-  Sun,
-  User as UserIcon,
-  Volume2,
-  VolumeX,
-} from '@/components/ui/icons';
-import { play } from 'cuelume';
+import { Check, LogOut, Moon, ShieldCheck, Sun, User as UserIcon } from '@/components/ui/icons';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -30,8 +18,7 @@ import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
 import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
-import { hidesBottomNav, isChatRoute } from '../../lib/mobile-nav';
-import { requestClearConversation, setSounds, useChatShell } from '../../lib/chat-shell-state';
+import { hidesBottomNav } from '../../lib/mobile-nav';
 import { useInterfaceMode } from '../../lib/interface-mode-provider';
 
 function initials(name: string): string {
@@ -69,8 +56,6 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
   const { interfaceMode } = useInterfaceMode();
-  const { sourcesOpen } = useChatShell();
-  const inChat = isChatRoute(location.pathname);
   const mobileUserMenuNeeded = hidesBottomNav(location.pathname, false);
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -86,11 +71,8 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
         interfaceMode === 'focus'
           ? 'md:right-9 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
           : 'md:right-7 md:top-[calc(env(safe-area-inset-top)+1rem)]',
-        inChat && sourcesOpen && 'md:-translate-x-[22rem]',
       )}
     >
-      {inChat && <ChatShellControls />}
-
       <button
         type="button"
         onClick={() => void toggleAppearance()}
@@ -180,43 +162,5 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
-  );
-}
-
-function ChatShellControls(): React.ReactElement {
-  const { t } = useI18n();
-  const { soundsEnabled, streaming, isEmpty } = useChatShell();
-
-  return (
-    <div className="flex items-center gap-1.5 md:gap-2">
-      {streaming && (
-        <span className="hidden items-center gap-1.5 text-xs text-[var(--color-accent-primary)] md:inline-flex">
-          <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> {t('chat.responding')}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={() => {
-          const next = !soundsEnabled;
-          setSounds(next);
-          if (next) play('success');
-        }}
-        className={chromeControlClass}
-        aria-label={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
-        title={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
-      >
-        {soundsEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-      </button>
-      <button
-        type="button"
-        onClick={() => requestClearConversation()}
-        disabled={streaming || isEmpty}
-        className={cn(chromeControlClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
-        aria-label={t('chat.clearConversation')}
-        title={t('chat.clearConversation')}
-      >
-        <Eraser className="h-4 w-4" />
-      </button>
-    </div>
   );
 }

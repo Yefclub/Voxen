@@ -90,9 +90,6 @@ export function useFetch<T>(path: string | null): {
   return { data, resolvedPath, loading, error, refresh };
 }
 
-// ============================================================================
-// useSse — assina canal SSE em /api/jobs/:id/events
-// ============================================================================
 export function useSse<T>(
   url: string | null,
   onEvent: (data: T) => void,

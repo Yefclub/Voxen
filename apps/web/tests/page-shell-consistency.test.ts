@@ -85,11 +85,9 @@ describe('consistência dos shells de página', () => {
     }
   });
 
-  test('chat e grafo permanecem full-bleed e sem shell limitado', () => {
-    for (const file of ['chat.tsx', 'grafo.tsx']) {
-      const source = readFileSync(join(PAGES_ROOT, file), 'utf8');
-      expect(source, file).toContain('h-full');
-      expect(source, file).not.toContain('<PageShell');
-    }
+  test('grafo permanece full-bleed e sem shell limitado', () => {
+    const source = readFileSync(join(PAGES_ROOT, 'grafo.tsx'), 'utf8');
+    expect(source).toContain('h-full');
+    expect(source).not.toContain('<PageShell');
   });
 });

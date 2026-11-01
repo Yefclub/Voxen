@@ -67,15 +67,4 @@ describe('regressões de interface confirmadas em produção', () => {
       'className="flex h-full min-h-48 items-center justify-center p-6"',
     );
   });
-
-  test('chat mantém histórico, prosa e composer na mesma coluna legível', () => {
-    const chat = read('pages/chat.tsx');
-    const styles = read('index.css');
-    expect(chat).not.toContain('max-w-5xl');
-    expect(chat.match(/max-w-3xl/gu)?.length ?? 0).toBeGreaterThanOrEqual(4);
-    expect(chat).toContain('chat-response-markdown');
-    expect(chat).toContain('[&_p]:max-w-3xl');
-    expect(styles).toContain(".chat-response-markdown [data-horizontal-scroll='true']");
-    expect(styles).toContain('width: min(64rem, calc(100vw - 24rem))');
-  });
 });

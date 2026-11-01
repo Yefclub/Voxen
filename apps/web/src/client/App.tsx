@@ -190,7 +190,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/notas" element={<NotasPage />} />
         <Route path="/notas/:id" element={<NotasPage />} />
         <Route path="/automacoes" element={<Navigate to="/transcricoes" replace />} />
-        <Route path="/artefatos" element={<Navigate to="/" replace />} />
+        <Route path="/artefatos" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/guia" element={<GuiaPage />} />
         <Route path="/grafo" element={<GrafoPage />} />
         <Route path="/novidades" element={<NovidadesPage />} />
