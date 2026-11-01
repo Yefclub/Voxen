@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793570309",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explicit enumeration completion on list tools",
+    "body": "### Added\n- List tools (`voxen_list_transcripts`, `voxen_list_notes`, `voxen_list_note_revisions`, `voxen_list_transcript_corrections`) return an explicit `hasMore`; `false` with a null cursor means complete enumeration of the defined set.",
+    "pr": 981,
+    "author": "Kalyel",
+    "date": "2026-11-01T18:58:18-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/981"
+  },
+  {
     "version": "0.15.1-dev.1793569075",
     "channel": "dev",
     "type": "feat",
