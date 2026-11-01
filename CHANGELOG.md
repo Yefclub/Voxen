@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793542150 — 2026-11-01 · Dev
+
+### ✨ Backup/restore preservation checks
+
+### Added
+- Contract test proving a library slice (transcript + canonical markdown + note + revisions + anchors + tags) round-trips through export, delete, and re-import with stable IDs, links, versions, and checksums.
+
 ## v0.15.1-dev.1793541284 — 2026-11-01 · Dev
 
 ### 🧹 Cancel outstanding Product 2 jobs and remove dead AI library UI
