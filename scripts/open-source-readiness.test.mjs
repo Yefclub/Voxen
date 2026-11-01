@@ -198,3 +198,29 @@ test("README cover assets are valid, reviewable PNG files", () => {
     assert.ok(size >= 50_000 && size <= 2_000_000, `${asset} size is ${size}`);
   }
 });
+
+test("agent roles honor read-only review and current architecture", () => {
+  const reviewer = read(".claude/agents/code-reviewer.md");
+  assert.doesNotMatch(reviewer, /Comentário único no PR|Comente no PR/i);
+  assert.doesNotMatch(reviewer, /🤖/);
+  assert.match(reviewer, /APROVADO/);
+  assert.match(reviewer, /MUDANCAS NECESSARIAS/);
+  assert.match(reviewer, /BLOQUEADO/);
+  assert.match(reviewer, /[Rr]ead-only/);
+  for (const stale of ["FastAPI", "Agno", "Express", "BullMQ", "OpenRouter"]) {
+    assert.doesNotMatch(
+      reviewer,
+      new RegExp(stale),
+      `code-reviewer still references retired ${stale} stack`,
+    );
+  }
+
+  const author = read(".claude/agents/spec-author.md");
+  assert.doesNotMatch(author, /\.docs\//);
+  assert.doesNotMatch(author, /_template\.md/);
+  assert.doesNotMatch(author, /OpenRouter como provider/);
+
+  const policy = read("CLAUDE.md");
+  assert.doesNotMatch(policy, /Mergear qualquer coisa/);
+  assert.match(policy, /Precisam de confirma/);
+});

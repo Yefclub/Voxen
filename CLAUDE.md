@@ -275,8 +275,10 @@ skill não está sendo invocada quando deveria, o defeito é a `description` del
 
 ### Decisões que PRECISAM de confirmação
 
-- Criar branches e PRs
-- Mergear qualquer coisa
+Regra única: o fluxo acima (review independente + CI verde) já autoriza
+branches, PRs e merges em `dev`. Precisam de confirmação explícita do owner:
+
+- Mergear em `main` (qualquer release `dev→main`)
 - Deletar arquivos, branches, ou dados
 - Modificar configuração de CI/CD
 - Escolher entre opções de implementação quando há trade-offs significativos
