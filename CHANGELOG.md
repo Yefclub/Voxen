@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793543382 — 2026-11-01 · Dev
+
+### ✨ Generic prepared-document metadata on notes
+
+### Added
+- Notes accept generic external-document provenance (`language`, `author`, `source_url`, `published_at`) over MCP and HTTP, stored without fabricated media values and preserved across revisions, retries, and legacy rows.
+
 ## v0.15.1-dev.1793542150 — 2026-11-01 · Dev
 
 ### ✨ Backup/restore preservation checks
