@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793542150",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Backup/restore preservation checks",
+    "body": "### Added\n- Contract test proving a library slice (transcript + canonical markdown + note + revisions + anchors + tags) round-trips through export, delete, and re-import with stable IDs, links, versions, and checksums.",
+    "pr": 944,
+    "author": "Kalyel",
+    "date": "2026-11-01T11:08:43-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/944"
+  },
+  {
     "version": "0.15.1-dev.1793541284",
     "channel": "dev",
     "type": "chore",
