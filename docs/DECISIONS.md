@@ -388,10 +388,12 @@ ingestão” de entidades/claims.
 
 ---
 
-## ADR-013 — Mem0 apenas como shadow de memória conversacional opcional
+## ADR-013 — Mem0 apenas como shadow de memória conversacional opcional (substituída)
+
+**Status (2026-11-01)**: Substituída pela spec 215 — integração Mem0 removida na issue #894. Registro histórico mantido.
 
 **Data**: 2026-08-11
-**Status**: Aceita para avaliação; não aprovado para injeção no prompt
+**Status original**: Aceita para avaliação; não aprovado para injeção no prompt
 
 O Mem0 OSS resolve um problema menor que a base da Voxen: recuperar algumas
 preferências e informações recorrentes da conversa sem repetir históricos

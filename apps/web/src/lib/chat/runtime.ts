@@ -94,10 +94,7 @@ import {
   isToolErrorOutput,
 } from './tool-outcomes';
 import { citationsFromToolEvents } from './citations';
-import {
-  createTrailedAssistant,
-  scheduleCompletedTurnMemoryShadow,
-} from './completed-turn-persistence';
+import { createTrailedAssistant } from './completed-turn-persistence';
 import {
   getChatModelConfig as getModelConfig,
   normalizeOpenRouterError as normalizeError,
@@ -1619,7 +1616,7 @@ export async function streamAssistantReply(options: {
   ]);
   const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
   let answer = '';
-  let providerStreamCompleted = true;
+  let _providerStreamCompleted = true;
   const tools: StoredToolEvent[] = [];
   const segments: StoredMessageSegment[] = [];
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
@@ -1717,7 +1714,7 @@ export async function streamAssistantReply(options: {
     for await (const rawPart of result.fullStream) {
       const part = rawPart as unknown as Record<string, unknown>;
       const type = part.type;
-      if (type === 'error') providerStreamCompleted = false;
+      if (type === 'error') _providerStreamCompleted = false;
       if (!firstProviderEventLogged && isProviderObservedEvent(type)) {
         firstProviderEventLogged = true;
         const firstEventAt = Date.now();
@@ -1867,7 +1864,7 @@ export async function streamAssistantReply(options: {
       }
     }
   } catch (error) {
-    providerStreamCompleted = false;
+    _providerStreamCompleted = false;
     const message = abortSignal.aborted ? 'Resposta interrompida.' : normalizeError(error);
     emit({ type: 'error', message });
     if (!answer) answer = message;
@@ -1948,18 +1945,5 @@ export async function streamAssistantReply(options: {
     costUsd: 0,
   });
   emit({ type: 'done', messageId: assistant.id });
-  scheduleCompletedTurnMemoryShadow({
-    userId,
-    conversationId,
-    userMessageId: options.userMessageId ?? pendingParentId,
-    assistantMessageId: assistant.id,
-    assistantContent: answer,
-    eligible:
-      providerStreamCompleted &&
-      !abortSignal.aborted &&
-      !awaitingHitl &&
-      failedTools.length === 0 &&
-      !!answer.trim(),
-  });
   return assistant.id;
 }

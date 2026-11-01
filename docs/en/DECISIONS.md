@@ -74,7 +74,9 @@ integrated agent emits the application's SSE event contract directly from the
 authenticated Hono route and persists text, reasoning, sources, and tool events
 as ordered message segments.
 
-## ADR-013: Mem0 only as an optional conversational-memory shadow
+## ADR-013: Mem0 only as an optional conversational-memory shadow (superseded)
+
+**Status (2026-11-01)**: Superseded by spec 215 — Mem0 integration removed under issue #894. Kept as historical record.
 
 Mem0 OSS addresses a narrower problem than Voxen's knowledge base: recovering a
 small set of recurring conversational preferences and project facts without
