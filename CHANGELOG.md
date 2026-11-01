@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793557056 — 2026-11-01 · Dev
+
+### ✨ Explicit truncation on ranked search
+
+### Added
+- Ranked MCP search tools return an explicit `truncated` flag computed with a take+1 probe, keeping deterministic ordering; docs state that a full page never implies complete enumeration.
+
 ## v0.15.1-dev.1793556179 — 2026-11-01 · Dev
 
 ### 🧹 EARS spec for native agent setup and Impeccable
