@@ -1,14 +1,61 @@
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import type { KnowledgeSearchResult } from './retrieval';
+import { assertTranscriptSearchFilters, type TranscriptSearchFilters } from './search-filters';
 
 export async function ftsSearchTranscriptEnrichments(
   userId: string,
   query: string,
   limit: number,
+  filters: Pick<
+    TranscriptSearchFilters,
+    | 'sources'
+    | 'language'
+    | 'publishedAfter'
+    | 'publishedBefore'
+    | 'createdAfter'
+    | 'createdBefore'
+    | 'tags'
+    | 'folderId'
+    | 'transcriptIds'
+    | 'includeArchived'
+  > = {},
 ): Promise<KnowledgeSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
   const take = Math.max(1, Math.min(25, Math.trunc(Number.isFinite(limit) ? limit : 8)));
+  assertTranscriptSearchFilters(filters);
+  const tconds: Prisma.Sql[] = [];
+  if (filters.sources?.length) {
+    tconds.push(Prisma.sql`t.source = ANY(${[...filters.sources]}::"TranscriptSource"[])`);
+  }
+  if (filters.language) {
+    tconds.push(Prisma.sql`t.language = ${filters.language.toLowerCase()}`);
+  }
+  if (filters.publishedAfter) tconds.push(Prisma.sql`t."publishedAt" >= ${filters.publishedAfter}`);
+  if (filters.publishedBefore)
+    tconds.push(Prisma.sql`t."publishedAt" < ${filters.publishedBefore}`);
+  if (filters.createdAfter) tconds.push(Prisma.sql`t."createdAt" >= ${filters.createdAfter}`);
+  if (filters.createdBefore) tconds.push(Prisma.sql`t."createdAt" < ${filters.createdBefore}`);
+  if (filters.folderId) tconds.push(Prisma.sql`t."folderId" = ${filters.folderId}`);
+  if (filters.transcriptIds?.length) {
+    tconds.push(Prisma.sql`e."transcriptId" = ANY(${[...filters.transcriptIds]}::text[])`);
+  }
+  if (filters.tags?.length) {
+    const names = [...new Set(filters.tags.map((tag) => tag.trim().toLowerCase()))];
+    tconds.push(Prisma.sql`
+      EXISTS (
+        SELECT 1 FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId" AND tag."userId" = t."userId"
+        WHERE tt."transcriptId" = t.id
+          AND (tag.slug = ANY(${names}::text[]) OR LOWER(tag.name) = ANY(${names}::text[]))
+      )
+    `);
+  }
+  const statusClause = filters.includeArchived
+    ? Prisma.sql`t.status IN ('ACTIVE'::"ContentStatus", 'ARCHIVED'::"ContentStatus")`
+    : Prisma.sql`t.status = 'ACTIVE'::"ContentStatus"`;
+  const extra = tconds.length > 0 ? Prisma.sql`AND ${Prisma.join(tconds, ' AND ')}` : Prisma.empty;
   type EnrichmentRow = {
     id: string;
     transcriptId: string;
@@ -32,12 +79,13 @@ export async function ftsSearchTranscriptEnrichments(
       AND e."reviewState" = 'ACCEPTED'::"TranscriptEnrichmentReviewState"
       AND e."staleReason" IS NULL
       AND (e."expiresAt" IS NULL OR e."expiresAt" >= NOW())
-      AND t.status = 'ACTIVE'::"ContentStatus"
+      AND ${statusClause}
       AND e."sourceVersion" = t."sourceVersion"
       AND e."sourceChecksum" IS NOT DISTINCT FROM t."sourceChecksum"
       AND to_tsvector('portuguese', concat_ws(E'\n\n', e.title, e.content))
           @@ websearch_to_tsquery('portuguese', ${q})
-    ORDER BY rank DESC, e."updatedAt" DESC
+      ${extra}
+    ORDER BY rank DESC, e.id ASC
     LIMIT ${take}
   `;
   return rows.map((row) => ({

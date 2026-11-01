@@ -2,12 +2,12 @@ import { registerProgressiveTools } from './mcp-transcript-reading-tools';
 import { z } from 'zod';
 import { type McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
+import { ftsSearchTranscripts, searchKnowledgeBase } from '../lib/retrieval';
 import {
-  ftsSearchTranscripts,
-  searchKnowledgeBase,
+  assertKnowledgeSearchFilters,
   SearchFilterError,
   type KnowledgeSearchFilters,
-} from '../lib/retrieval';
+} from '../lib/search-filters';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
 import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
 import { registerMcpTranscriptCorrectionReadTools } from './mcp-transcript-correction-tools';
@@ -21,6 +21,7 @@ export function registerTranscriptTools(
   const searchFilterShape = {
     sources: z
       .array(z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'X', 'WEB', 'UPLOAD']))
+      .min(1)
       .max(6)
       .optional()
       .describe('Filtra por origem da transcrição.'),
@@ -35,12 +36,14 @@ export function registerTranscriptTools(
     created_before: z.string().max(64).optional().describe('ISO date: criados antes de.'),
     tags: z
       .array(z.string().min(1).max(60))
+      .min(1)
       .max(10)
       .optional()
       .describe('Filtra por tags (slug ou nome).'),
     folder_id: z.string().min(1).max(64).optional().describe('Filtra por pasta (collection).'),
     transcript_ids: z
       .array(z.string().min(1).max(64))
+      .min(1)
       .max(50)
       .optional()
       .describe('Restringe aos documentos informados.'),
@@ -83,6 +86,29 @@ export function registerTranscriptTools(
     };
   };
 
+  const toKnowledgeFilters = (args: {
+    sources?: readonly string[];
+    language?: string;
+    published_after?: string;
+    published_before?: string;
+    created_after?: string;
+    created_before?: string;
+    tags?: readonly string[];
+    folder_id?: string;
+    transcript_ids?: readonly string[];
+    note_ids?: readonly string[];
+    source_types?: readonly ('transcript' | 'note' | 'external_enrichment')[];
+    include_archived?: boolean;
+  }): KnowledgeSearchFilters => {
+    const filters: KnowledgeSearchFilters = {
+      ...toTranscriptFilters(args),
+      noteIds: args.note_ids ? [...args.note_ids] : undefined,
+      sourceTypes: args.source_types ? [...args.source_types] : undefined,
+    };
+    assertKnowledgeSearchFilters(filters);
+    return filters;
+  };
+
   server.registerTool(
     'voxen_search_knowledge',
     {
@@ -99,11 +125,14 @@ export function registerTranscriptTools(
         ...searchFilterShape,
         note_ids: z
           .array(z.string().min(1).max(64))
+          .min(1)
           .max(50)
           .optional()
           .describe('Restringe as notas aos documentos informados.'),
         source_types: z
           .array(z.enum(['transcript', 'note', 'external_enrichment']))
+          .min(1)
+          .max(3)
           .optional()
           .describe('Restringe os tipos de fonte pesquisados.'),
       },
@@ -131,11 +160,7 @@ export function registerTranscriptTools(
       if (!query) return fail('Parâmetro query vazio.');
       let filters: KnowledgeSearchFilters;
       try {
-        filters = {
-          ...toTranscriptFilters(args),
-          noteIds: args.note_ids ? [...args.note_ids] : undefined,
-          sourceTypes: args.source_types ? [...args.source_types] : undefined,
-        };
+        filters = toKnowledgeFilters(args);
       } catch (error) {
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;
@@ -198,7 +223,7 @@ export function registerTranscriptTools(
       if (!query) return fail('Parâmetro query vazio.');
       let filters: KnowledgeSearchFilters;
       try {
-        filters = toTranscriptFilters(args);
+        filters = toKnowledgeFilters(args);
       } catch (error) {
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;

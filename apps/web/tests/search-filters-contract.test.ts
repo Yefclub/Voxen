@@ -2,12 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
-import {
-  ftsSearchNotes,
-  ftsSearchTranscripts,
-  searchKnowledgeBase,
-  SearchFilterError,
-} from '../src/lib/retrieval';
+import { ftsSearchNotes, ftsSearchTranscripts, searchKnowledgeBase } from '../src/lib/retrieval';
+import { SearchFilterError } from '../src/lib/search-filters';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -85,6 +81,7 @@ describeIfDb('search filters contract (spec 216)', () => {
     );
     await mk('foldered', { source: 'WEB', language: 'pt', folderId }, [tagA.id]);
     await mk('archived', { source: 'WEB', language: 'pt', status: 'ARCHIVED' as never }, []);
+    await mk('trashed', { source: 'WEB', language: 'pt', status: 'TRASH' as never }, []);
     await db.note.create({
       data: {
         userId,
@@ -147,6 +144,16 @@ describeIfDb('search filters contract (spec 216)', () => {
       includeArchived: true,
     });
     expect(withArchived.map((row) => row.id)).toContain(ids['archived']!);
+    expect(withArchived.map((row) => row.id)).not.toContain(ids['trashed']!);
+    const trashedOnly = await ftsSearchTranscripts(userId, 'Atlas orçamento', 25, {
+      transcriptIds: [ids['trashed']!],
+    });
+    expect(trashedOnly).toEqual([]);
+    const trashedArchived = await ftsSearchTranscripts(userId, 'Atlas orçamento', 25, {
+      transcriptIds: [ids['trashed']!],
+      includeArchived: true,
+    });
+    expect(trashedArchived).toEqual([]);
   });
 
   it('ordena deterministicamente por score e identidade', async () => {
@@ -267,5 +274,12 @@ describeIfDb('search filters contract (spec 216)', () => {
     });
     expect(onlyNotes.length).toBeGreaterThan(0);
     expect(onlyNotes.every((item) => item.sourceType === 'note')).toBe(true);
+  });
+
+  it('filtros exclusivos de transcrição não restringem notas (documentado)', async () => {
+    const withTag = await searchKnowledgeBase(userId, 'Atlas orçamento', 25, {
+      tags: ['atlas'],
+    });
+    expect(withTag.some((item) => item.sourceType === 'note')).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { type McpServer } from '@modelcontextprotocol/server';
 import { Prisma } from '../../prisma-generated/client';
 import { db } from '../lib/db';
 import { noteContentChecksum } from '../lib/note-revisions';
-import { SearchFilterError } from '../lib/retrieval';
+import { SearchFilterError, assertNoteSearchFilters } from '../lib/search-filters';
 import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
 import { decodeMcpPageCursor, encodeMcpPageCursor, mcpPageBoundary } from './mcp-page-cursor';
 import { registerMcpNoteRevisionReadTools } from './mcp-note-revision-read-tools';
@@ -21,6 +21,7 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
         note_ids: z
           .array(z.string().min(1).max(64))
+          .min(1)
           .max(50)
           .optional()
           .describe('Restringe aos documentos informados.'),
@@ -53,25 +54,19 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       };
       let createdAfter: Date | undefined;
       let createdBefore: Date | undefined;
+      let noteIds: string[] | undefined;
       try {
         createdAfter = parseDate(args.created_after, 'created_after');
         createdBefore = parseDate(args.created_before, 'created_before');
-        if (createdAfter && createdBefore && createdAfter >= createdBefore) {
-          throw new SearchFilterError('created_after precisa ser anterior a created_before.');
-        }
-        if (
-          args.note_ids !== undefined &&
-          (args.note_ids.length === 0 || args.note_ids.length > 50)
-        ) {
-          throw new SearchFilterError('Filtro note_ids inválido: 1-50 valores.');
-        }
+        noteIds = args.note_ids ? [...args.note_ids] : undefined;
+        assertNoteSearchFilters({ noteIds, createdAfter, createdBefore });
       } catch (error) {
         if (error instanceof SearchFilterError) return fail(error.message);
         throw error;
       }
       const conditions: Prisma.Sql[] = [];
-      if (args.note_ids?.length) {
-        conditions.push(Prisma.sql`id = ANY(${[...args.note_ids]}::text[])`);
+      if (noteIds?.length) {
+        conditions.push(Prisma.sql`id = ANY(${noteIds}::text[])`);
       }
       if (createdAfter) conditions.push(Prisma.sql`"createdAt" >= ${createdAfter}`);
       if (createdBefore) conditions.push(Prisma.sql`"createdAt" < ${createdBefore}`);
@@ -80,13 +75,13 @@ export function registerNoteTools(server: McpServer, userId: string, publicOrigi
       type Row = { id: string; title: string; snippet: string; rank: number; revision: number };
       const rows = await db.$queryRaw<Row[]>`
         SELECT id, title, revision,
-          ts_headline('portuguese', coalesce(content, ''), plainto_tsquery('portuguese', ${query}),
+          ts_headline('portuguese', concat_ws(E'\n\n', title, content), websearch_to_tsquery('portuguese', ${query}),
             'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
-          ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
+          ts_rank("searchVector", websearch_to_tsquery('portuguese', ${query})) AS rank
         FROM "Note"
         WHERE "userId" = ${userId}
           AND kind = 'NOTE'
-          AND "searchVector" @@ plainto_tsquery('portuguese', ${query})
+          AND "searchVector" @@ websearch_to_tsquery('portuguese', ${query})
           ${extra}
         ORDER BY rank DESC, id ASC
         LIMIT ${limit}

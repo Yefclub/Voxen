@@ -21,6 +21,14 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
+import {
+  assertKnowledgeSearchFilters,
+  assertNoteSearchFilters,
+  assertTranscriptSearchFilters,
+  type KnowledgeSearchFilters,
+  type NoteSearchFilters,
+  type TranscriptSearchFilters,
+} from './search-filters';
 export { loadEffectiveTranscriptMarkdown as loadTranscriptMd } from './transcript-content';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
@@ -376,128 +384,6 @@ export function promptSearchQuery(prompt: string): string {
   return unique.join(' OR ');
 }
 
-export type TranscriptSearchFilters = {
-  sources?: readonly string[];
-  language?: string;
-  publishedAfter?: Date;
-  publishedBefore?: Date;
-  createdAfter?: Date;
-  createdBefore?: Date;
-  tags?: readonly string[];
-  folderId?: string;
-  transcriptIds?: readonly string[];
-  includeArchived?: boolean;
-};
-
-export type NoteSearchFilters = {
-  noteIds?: readonly string[];
-  createdAfter?: Date;
-  createdBefore?: Date;
-};
-
-export type KnowledgeSearchFilters = TranscriptSearchFilters &
-  NoteSearchFilters & {
-    sourceTypes?: readonly ('transcript' | 'note' | 'external_enrichment')[];
-  };
-
-export class SearchFilterError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'SearchFilterError';
-  }
-}
-
-const TRANSCRIPT_SOURCES = ['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'X', 'WEB', 'UPLOAD'] as const;
-const MAX_FILTER_TAGS = 10;
-const MAX_FILTER_IDS = 50;
-
-function assertValidDate(value: unknown, name: string): asserts value is Date {
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw new SearchFilterError(`Filtro de data inválido: ${name}.`);
-  }
-}
-
-export function assertTranscriptSearchFilters(filters: TranscriptSearchFilters): void {
-  if (filters.sources !== undefined) {
-    if (filters.sources.length === 0 || filters.sources.length > 6) {
-      throw new SearchFilterError('Filtro sources inválido: 1-6 valores.');
-    }
-    for (const source of filters.sources) {
-      if (!(TRANSCRIPT_SOURCES as readonly string[]).includes(source)) {
-        throw new SearchFilterError(`Fonte desconhecida: ${source}.`);
-      }
-    }
-  }
-  if (filters.language !== undefined && !/^[a-z]{2}$/i.test(filters.language)) {
-    throw new SearchFilterError('Filtro language inválido: código ISO 639-1 com 2 letras.');
-  }
-  if (filters.publishedAfter !== undefined)
-    assertValidDate(filters.publishedAfter, 'published_after');
-  if (filters.publishedBefore !== undefined)
-    assertValidDate(filters.publishedBefore, 'published_before');
-  if (filters.createdAfter !== undefined) assertValidDate(filters.createdAfter, 'created_after');
-  if (filters.createdBefore !== undefined) assertValidDate(filters.createdBefore, 'created_before');
-  if (
-    filters.publishedAfter !== undefined &&
-    filters.publishedBefore !== undefined &&
-    filters.publishedAfter >= filters.publishedBefore
-  ) {
-    throw new SearchFilterError('published_after precisa ser anterior a published_before.');
-  }
-  if (
-    filters.createdAfter !== undefined &&
-    filters.createdBefore !== undefined &&
-    filters.createdAfter >= filters.createdBefore
-  ) {
-    throw new SearchFilterError('created_after precisa ser anterior a created_before.');
-  }
-  if (filters.tags !== undefined) {
-    if (filters.tags.length === 0 || filters.tags.length > MAX_FILTER_TAGS) {
-      throw new SearchFilterError(`Filtro tags inválido: 1-${MAX_FILTER_TAGS} valores.`);
-    }
-    for (const tag of filters.tags) {
-      if (typeof tag !== 'string' || !tag.trim() || tag.trim().length > 60) {
-        throw new SearchFilterError('Filtro tags inválido: nomes com 1-60 chars.');
-      }
-    }
-  }
-  if (
-    filters.folderId !== undefined &&
-    (typeof filters.folderId !== 'string' || !filters.folderId)
-  ) {
-    throw new SearchFilterError('Filtro folder_id inválido.');
-  }
-  if (filters.transcriptIds !== undefined) {
-    if (filters.transcriptIds.length === 0 || filters.transcriptIds.length > MAX_FILTER_IDS) {
-      throw new SearchFilterError(`Filtro transcript_ids inválido: 1-${MAX_FILTER_IDS} valores.`);
-    }
-    for (const id of filters.transcriptIds) {
-      if (typeof id !== 'string' || !id)
-        throw new SearchFilterError('Filtro transcript_ids inválido.');
-    }
-  }
-}
-
-function assertNoteSearchFilters(filters: NoteSearchFilters): void {
-  if (filters.noteIds !== undefined) {
-    if (filters.noteIds.length === 0 || filters.noteIds.length > MAX_FILTER_IDS) {
-      throw new SearchFilterError(`Filtro note_ids inválido: 1-${MAX_FILTER_IDS} valores.`);
-    }
-    for (const id of filters.noteIds) {
-      if (typeof id !== 'string' || !id) throw new SearchFilterError('Filtro note_ids inválido.');
-    }
-  }
-  if (filters.createdAfter !== undefined) assertValidDate(filters.createdAfter, 'created_after');
-  if (filters.createdBefore !== undefined) assertValidDate(filters.createdBefore, 'created_before');
-  if (
-    filters.createdAfter !== undefined &&
-    filters.createdBefore !== undefined &&
-    filters.createdAfter >= filters.createdBefore
-  ) {
-    throw new SearchFilterError('created_after precisa ser anterior a created_before.');
-  }
-}
-
 /**
  * Busca full-text forte nas transcrições do usuário (Postgres FTS, dicionário
  * português): ts_headline (trecho destacado) + ts_rank (relevância). Retorna
@@ -652,12 +538,20 @@ export function mergeKnowledgeResults(
       const aScore = a.rank + (a.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
       const bScore = b.rank + (b.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
       if (bScore !== aScore) return bScore - aScore;
-      return a.id.localeCompare(b.id);
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
     })
     .slice(0, take);
 }
 
-/** Busca unificada da Base de conhecimento, escopada por workspace. */
+/** Busca unificada da Base de conhecimento, escopada por workspace.
+ *
+ * Filtros de origem/idioma/datas/tags/pasta/documentos de transcrição valem
+ * para transcrições e contexto aceito; notas usam só note_ids e datas
+ * (notas não têm origem/idioma/tags/pasta) e por isso não são restringidas
+ * pelos filtros exclusivos de transcrição. Lixeira nunca entra.
+ */
 export async function searchKnowledgeBase(
   userId: string,
   query: string,
@@ -665,26 +559,14 @@ export async function searchKnowledgeBase(
   filters: KnowledgeSearchFilters = {},
 ): Promise<KnowledgeSearchResult[]> {
   const take = clampInt(limit, 8, 1, 25);
-  if (filters.sourceTypes !== undefined) {
-    const allowed = new Set(filters.sourceTypes);
-    if (allowed.size === 0) throw new SearchFilterError('Filtro source_types inválido: vazio.');
-    for (const sourceType of allowed) {
-      if (
-        sourceType !== 'transcript' &&
-        sourceType !== 'note' &&
-        sourceType !== 'external_enrichment'
-      ) {
-        throw new SearchFilterError(`Tipo de fonte desconhecido: ${sourceType}.`);
-      }
-    }
-  }
+  assertKnowledgeSearchFilters(filters);
   const wanted = (type: 'transcript' | 'note' | 'external_enrichment'): boolean =>
     !filters.sourceTypes || filters.sourceTypes.includes(type);
   const [transcripts, notes, enrichments] = await Promise.all([
     wanted('transcript') ? ftsSearchTranscripts(userId, query, take, filters) : Promise.resolve([]),
     wanted('note') ? ftsSearchNotes(userId, query, take, filters) : Promise.resolve([]),
     wanted('external_enrichment')
-      ? ftsSearchTranscriptEnrichments(userId, query, take)
+      ? ftsSearchTranscriptEnrichments(userId, query, take, filters)
       : Promise.resolve([]),
   ]);
   return mergeKnowledgeResults(
