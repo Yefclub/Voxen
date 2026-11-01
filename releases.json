@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793563813",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Title-weighted transcript search",
+    "body": "### Fixed\n\n- Transcript FTS now indexes titles with weight A (body weight B, same as notes), so title-only terms retrieve their document first; snippets and deterministic ordering unchanged.",
+    "pr": 969,
+    "author": "Kalyel",
+    "date": "2026-11-01T17:10:03-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/969"
+  },
+  {
     "version": "0.15.1-dev.1793562324",
     "channel": "dev",
     "type": "chore",
