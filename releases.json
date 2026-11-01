@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793543382",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Generic prepared-document metadata on notes",
+    "body": "### Added\n- Notes accept generic external-document provenance (`language`, `author`, `source_url`, `published_at`) over MCP and HTTP, stored without fabricated media values and preserved across revisions, retries, and legacy rows.",
+    "pr": 946,
+    "author": "Kalyel",
+    "date": "2026-11-01T11:29:30-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/946"
+  },
+  {
     "version": "0.15.1-dev.1793542150",
     "channel": "dev",
     "type": "feat",
