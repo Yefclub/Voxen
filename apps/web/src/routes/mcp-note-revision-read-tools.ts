@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { db } from '../lib/db';
-import { noteContentChecksum, searchWithinNote } from '../lib/note-revisions';
+import { noteContentChecksum, searchWithinNotePage } from '../lib/note-revisions';
 import { bounded, fail, ok, READ_ONLY } from './mcp-tool-helpers';
 
 export function registerMcpNoteRevisionReadTools(server: McpServer, userId: string): void {
@@ -11,7 +11,8 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
       title: 'Buscar dentro de uma nota',
       description:
         'Localiza uma passagem exata dentro de uma nota e retorna ocorrências, offsets, linhas, ' +
-        'contexto, revision e checksum. Use antes de propor voxen_patch_note.',
+        'contexto, revision e checksum. Use antes de propor voxen_patch_note. ' +
+        'truncated=true indica mais ocorrências que o limite.',
       inputSchema: {
         note_id: z.string().min(1),
         query: z.string().min(1).max(500),
@@ -35,6 +36,11 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
             contextEnd: z.number(),
           }),
         ),
+        truncated: z
+          .boolean()
+          .describe(
+            'true quando há mais ocorrências que o limite; refine a consulta em vez de presumir enumeração completa.',
+          ),
       },
       annotations: { ...READ_ONLY, title: 'Buscar dentro de uma nota' },
     },
@@ -45,13 +51,17 @@ export function registerMcpNoteRevisionReadTools(server: McpServer, userId: stri
       });
       if (!note) return fail('Nota não encontrada (ou fora do escopo do token).');
       const query = args.query.trim();
+      const page = searchWithinNotePage(note.content, query, {
+        limit: bounded(args.limit, 20, 1, 100),
+      });
       return ok({
         noteId: note.id,
         title: note.title,
         revision: note.revision,
         checksum: noteContentChecksum(note.title, note.content),
         query,
-        matches: searchWithinNote(note.content, query, { limit: bounded(args.limit, 20, 1, 100) }),
+        matches: page.matches,
+        truncated: page.truncated,
       });
     },
   );
