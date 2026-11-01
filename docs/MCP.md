@@ -20,7 +20,7 @@ ferramentas são chamadas por POST.
 | Transporte   | Streamable HTTP                                     |
 | Autenticação | Token Bearer pessoal ou OAuth 2.1 + PKCE            |
 | Escopo READ  | Buscar e ler a Base de conhecimento do proprietário |
-| Escopo WRITE | Criar/editar notas e solicitar ingestões            |
+| Escopo WRITE | Criar/editar notas e importar conteúdo preparado      |
 
 Crie o token em **Sua conta → Acesso MCP**. O segredo aparece uma única vez.
 Guarde-o em um gerenciador de senhas ou variável de ambiente secreta. Nunca o
@@ -39,7 +39,7 @@ nunca o segredo Bearer.
 
 ## Contratos de execução e resultados
 
-O catálogo tem **44 ferramentas: 31 READ e 13 WRITE**, com escopos, anotações de
+O catálogo tem **37 ferramentas: 29 READ e 8 WRITE**, com escopos, anotações de
 efeitos e schemas de saída validados. `voxen_get_job_status` é READ, inclusive
 para jobs enviados por um cliente com escrita. Os metadados informam a versão
 real do Voxen em execução.
@@ -146,7 +146,23 @@ Sempre que possível, o agente deve alterar somente o trecho necessário:
 completas intencionais, mas também exige `expected_revision`. Um conflito exige
 reler a nota e propor uma nova mudança; o agente nunca deve repetir cegamente.
 Credenciais somente leitura não descobrem nem executam patch, restauração,
-criação, atualização completa ou ingestão.
+criação, atualização completa ou importação em lote.
+
+## Contrato de conteúdo preparado (v1)
+
+Produtores externos publicam documentos prontos via `voxen_create_note`
+(unitário) e `voxen_import_notes` (lote de até 20 itens, com resultado
+independente por item: `created`, `duplicate` ou `error`). O HTTP
+`POST /api/notes` usa a mesma semântica: 201 na criação, 200 na repetição.
+
+- `contract_version`: atualmente somente `"1"`; versão desconhecida é rejeitada.
+- `idempotency_key`: opcional, escopo do workspace (letras, dígitos, `:`/`_`/`-`,
+  até 128 chars). Repetir a mesma chave devolve a nota original com
+  `duplicate: true`, sem criar documento ou revisão.
+- `producer_id` / `external_id`: identidade do produtor e do documento na origem.
+- URL de origem é metadado: recebê-la nunca dispara busca, transcrição ou
+  análise. Conteúdo chega pronto; o Voxen nunca executa modelos.
+- Cargas acima do orçamento da chamada devem ser divididas em vários lotes.
 
 O administrador pode habilitar OAuth 2.1 em **Administração → Integrações → MCP
 Server**. O acesso OAuth continua vinculado ao usuário Voxen que aprova o
