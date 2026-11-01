@@ -14,7 +14,9 @@ describe('carregamento progressivo de rotas', () => {
     expect(source).toContain("import('./pages/grafo')");
     expect(source).toContain("import('./pages/notas')");
     expect(source).toContain("import('./pages/transcricoes')");
-    expect(source).toContain("import('./pages/automacoes')");
+    expect(source).not.toContain("import('./pages/automacoes')");
+    expect(source).not.toContain("import('./pages/fila')");
+    expect(source).not.toContain("import('./pages/saved-media')");
     expect(source).not.toContain("import { GrafoPage } from './pages/grafo';");
     expect(source).not.toContain("import { ChatPage } from './pages/chat';");
   });
@@ -31,7 +33,7 @@ describe('carregamento progressivo de rotas', () => {
   test('mantém o shell autenticado e o fallback de rota acessível durante o carregamento', () => {
     const source = readClientSource('components/layout/app-layout.tsx');
 
-    expect(source).toContain('import { Suspense, useCallback, useLayoutEffect, useRef, useState }');
+    expect(source).toContain('import { Suspense, useLayoutEffect, useRef, useState }');
     expect(source).toContain('<Suspense fallback={<RouteLoading />}>');
     expect(source).toContain('data-route-loading');
     expect(source).toContain('Carregando tela');
@@ -44,12 +46,10 @@ describe('carregamento progressivo de rotas', () => {
     expect(viteConfig).not.toContain("markdown: ['streamdown']");
   });
 
-  test('mantém artefatos implementados, mas não carrega a página enquanto a rota está pausada', () => {
+  test('mantém rota de artefatos pausada sem carregar página removida', () => {
     const source = readClientSource('App.tsx');
-    const artifacts = readClientSource('pages/artefatos.tsx');
 
     expect(source).toContain('<Route path="/artefatos" element={<Navigate to="/" replace />} />');
     expect(source).not.toContain("import('./pages/artefatos')");
-    expect(artifacts).toContain('export function ArtefatosPage');
   });
 });

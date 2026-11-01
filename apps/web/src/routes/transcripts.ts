@@ -856,9 +856,6 @@ transcriptsRoutes.delete('/:id', async (c) => {
   }
 });
 
-// POST /api/transcripts/:id/summary — gerar / regenerar resumo via OpenRouter.
-// Anti-abuso: throttle 1/min por transcript + se já tem summary, exige
-// { force: true } pra não queimar tokens da OR num clique acidental.
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
   if (value === 'archived') return 'ARCHIVED';
   if (value === 'trash') return 'TRASH';

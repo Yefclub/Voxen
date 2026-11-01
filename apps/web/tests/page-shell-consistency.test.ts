@@ -8,13 +8,9 @@ const CLIENT_STYLES = join(import.meta.dir, '../src/client/index.css');
 const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> = {
   'admin-integracoes.tsx': 'workspace',
   'admin-usuarios.tsx': 'wide',
-  'automacoes.tsx': 'wide',
   'conta-mcp.tsx': 'wide',
-  'conta-plataformas.tsx': 'wide',
   'conta.tsx': 'wide',
   'extensao.tsx': 'wide',
-  'fila.tsx': 'wide',
-  'jobs-detalhe.tsx': 'workspace',
   'notas.tsx': 'workspace',
   'novidades.tsx': 'wide',
   'setup.tsx': 'workspace',
@@ -25,12 +21,9 @@ const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> 
 const CANONICAL_HEADER_PAGES = [
   'admin-integracoes.tsx',
   'admin-usuarios.tsx',
-  'automacoes.tsx',
   'conta-mcp.tsx',
-  'conta-plataformas.tsx',
   'conta.tsx',
   'extensao.tsx',
-  'fila.tsx',
   'notas.tsx',
   'novidades.tsx',
   'setup.tsx',
@@ -71,11 +64,6 @@ describe('consistência dos shells de página', () => {
       expect(source, file).not.toContain('<motion.');
       expect(source, file).not.toContain('<AnimatePresence');
     }
-  });
-
-  test('estados de carregamento preservam o mesmo shell e largura da página', () => {
-    const detail = readFileSync(join(PAGES_ROOT, 'jobs-detalhe.tsx'), 'utf8');
-    expect(detail.match(/<PageShell width="workspace"/gu)).toHaveLength(2);
   });
 
   test('animações utilitárias respeitam preferência por movimento reduzido', () => {

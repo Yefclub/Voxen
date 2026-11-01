@@ -251,6 +251,11 @@ app.get('*', async (c) => {
     );
   }
   const url = new URL(c.req.url);
+  // Removed Product 2 API surface must fail explicitly (spec 215): unknown
+  // /api/* paths never fall through to the SPA shell.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+    return c.json({ error: 'Endpoint não encontrado.' }, 404);
+  }
   const reqPath = url.pathname === '/' ? '/index.html' : url.pathname;
   const filePath = join(distDir, reqPath);
   // SPA fallback: qualquer rota desconhecida vira index.html (React Router)

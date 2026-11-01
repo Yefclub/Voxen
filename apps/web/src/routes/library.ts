@@ -160,8 +160,6 @@ libraryRoutes.patch('/folders/:id', async (c) => {
   return c.json({ folder });
 });
 
-// POST /api/library/reorganize — só transcripts ACTIVE com folderId null.
-// Processa em lotes (default 15) pra não estourar timeout do request.
 libraryRoutes.post('/folders/clear', async (c) => {
   const userId = c.get('userId');
   const folders = await db.libraryFolder.findMany({

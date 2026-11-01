@@ -13,8 +13,9 @@ const graphSearch = readFileSync(
 );
 
 describe('transcript graph search contract', () => {
-  test('places discovery before ingestion and identifies graph results', () => {
-    expect(page.indexOf('<LibrarySearch')).toBeLessThan(page.indexOf('<ContentIngestCard />'));
+  test('places discovery first and exposes no capture entrypoint', () => {
+    expect(page).toContain('<LibrarySearch');
+    expect(page).not.toContain('<ContentIngestCard');
     expect(search).toContain('aria-labelledby="library-search-title"');
     expect(page).toContain("translate('library.graphMatch')");
     expect(page).toContain('t.graphMatch');

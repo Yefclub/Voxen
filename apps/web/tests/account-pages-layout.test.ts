@@ -11,13 +11,12 @@ const nav = readFileSync(
 describe('account pages layout', () => {
   it('keeps all personal sections in one accessible navigation', () => {
     expect(nav).toContain("to: '/conta'");
-    expect(nav).toContain("to: '/conta/plataformas'");
     expect(nav).toContain("to: '/conta/mcp'");
     expect(nav).toContain('<NavLink');
     expect(nav).toContain("aria-label={t('account.eyebrow')}");
   });
 
-  for (const page of ['conta.tsx', 'conta-plataformas.tsx', 'conta-mcp.tsx']) {
+  for (const page of ['conta.tsx', 'conta-mcp.tsx']) {
     it(`${page} uses the common wide account layout`, () => {
       const source = readFileSync(resolve(root, `src/client/pages/${page}`), 'utf8');
       expect(source).toContain('<PageShell width="wide"');

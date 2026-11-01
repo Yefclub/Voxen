@@ -51,20 +51,11 @@ const AdminAutenticacaoPage = lazy(() =>
 const ContaPage = lazy(() =>
   import('./pages/conta').then(({ ContaPage }) => ({ default: ContaPage })),
 );
-const ContaPlataformasPage = lazy(() =>
-  import('./pages/conta-plataformas').then(({ ContaPlataformasPage }) => ({
-    default: ContaPlataformasPage,
-  })),
-);
 const ContaMcpPage = lazy(() =>
   import('./pages/conta-mcp').then(({ ContaMcpPage }) => ({ default: ContaMcpPage })),
 );
 const OAuthConsentPage = lazy(() =>
   import('./pages/oauth-consent').then(({ OAuthConsentPage }) => ({ default: OAuthConsentPage })),
-);
-const FilaPage = lazy(() => import('./pages/fila').then(({ FilaPage }) => ({ default: FilaPage })));
-const JobDetalhePage = lazy(() =>
-  import('./pages/jobs-detalhe').then(({ JobDetalhePage }) => ({ default: JobDetalhePage })),
 );
 const TranscricoesPage = lazy(() =>
   import('./pages/transcricoes').then(({ TranscricoesPage }) => ({ default: TranscricoesPage })),
@@ -74,14 +65,8 @@ const TranscricaoDetalhePage = lazy(() =>
     default: TranscricaoDetalhePage,
   })),
 );
-const SavedMediaPage = lazy(() =>
-  import('./pages/saved-media').then(({ SavedMediaPage }) => ({ default: SavedMediaPage })),
-);
 const NotasPage = lazy(() =>
   import('./pages/notas').then(({ NotasPage }) => ({ default: NotasPage })),
-);
-const AutomacoesPage = lazy(() =>
-  import('./pages/automacoes').then(({ AutomacoesPage }) => ({ default: AutomacoesPage })),
 );
 const GrafoPage = lazy(() =>
   import('./pages/grafo').then(({ GrafoPage }) => ({ default: GrafoPage })),
@@ -133,14 +118,6 @@ function FullscreenRouteLoading(): React.ReactElement {
 /** Redirect that preserves search/hash (legacy `/dashboard`, share-target query params). */
 function RedirectPreserveSearch({ to }: { to: string }): React.ReactElement {
   const location = useLocation();
-  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
-}
-
-/** `/jobs` list → queue; share-target query → library ingest. */
-function JobsIndexRedirect(): React.ReactElement {
-  const location = useLocation();
-  const shared = new URLSearchParams(location.search).get('shared') === '1';
-  const to = shared ? '/transcricoes' : '/fila';
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 }
 
@@ -204,18 +181,17 @@ function AppRoutes(): React.ReactElement {
           <Route path="autenticacao" element={<AdminAutenticacaoPage />} />
         </Route>
         <Route path="/conta" element={<ContaPage />} />
-        <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />
         <Route path="/conta/mcp" element={<ContaMcpPage />} />
         <Route path="/oauth/consent" element={<OAuthConsentPage />} />
-        <Route path="/fila" element={<FilaPage />} />
-        <Route path="/jobs" element={<JobsIndexRedirect />} />
-        <Route path="/jobs/:id" element={<JobDetalhePage />} />
+        <Route path="/fila" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/jobs" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/jobs/:id" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/transcricoes" element={<TranscricoesPage />} />
         <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
-        <Route path="/downloads" element={<SavedMediaPage />} />
+        <Route path="/downloads" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/notas" element={<NotasPage />} />
         <Route path="/notas/:id" element={<NotasPage />} />
-        <Route path="/automacoes" element={<AutomacoesPage />} />
+        <Route path="/automacoes" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/artefatos" element={<Navigate to="/" replace />} />
         <Route path="/guia" element={<GuiaPage />} />
         <Route path="/grafo" element={<GrafoPage />} />

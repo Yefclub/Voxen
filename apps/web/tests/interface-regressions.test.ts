@@ -39,13 +39,6 @@ describe('regressões de interface confirmadas em produção', () => {
     expect(notes).toContain('focusRefreshInFlight');
   });
 
-  test('detalhe de job volta para a fila e possui heading principal', () => {
-    const jobs = read('pages/jobs-detalhe.tsx');
-    expect(jobs).toContain('<Link to="/fila">');
-    expect(jobs).toContain('<h1');
-    expect(jobs).not.toContain('<Link to="/">');
-  });
-
   test('novidades não duplica retorno inline e flutuante no mobile', () => {
     const news = read('pages/novidades.tsx');
     expect(news).toContain('className="hidden md:inline-flex"');

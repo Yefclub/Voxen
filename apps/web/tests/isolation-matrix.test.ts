@@ -308,9 +308,8 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
     expect(tags.status).toBe(200);
     expect(await tags.text()).not.toContain(SECRET);
 
-    const jobs = await call('/api/jobs', withCookie(ownerBCookie));
-    expect(jobs.status).toBe(200);
-    expect(await jobs.text()).not.toContain(SECRET);
+    // Removed Product 2 route: fails closed without leaking cross-workspace data.
+    await expectSafeNotFound(await call('/api/jobs', withCookie(ownerBCookie)));
     await expectSafeNotFound(await call(`/api/jobs/${jobAId}`, withCookie(ownerBCookie)));
     await expectSafeNotFound(
       await call(`/api/jobs/${jobAId}/cancel`, { ...withCookie(ownerBCookie), method: 'POST' }),
