@@ -18,25 +18,25 @@ Product 1 is a self-hosted base where prepared content is injected, preserved, a
 - The system shall support source/type, title, language, author, publication dates, full text/Markdown, structured sections/blocks with stable IDs, page/line/time bounds, asset refs, checksums, supplied summaries/tags/entities/relations/provenance/coverage.
 - The system shall preserve existing IDs, source URLs, revisions, note anchors, tags/folders, accepted derived material, stored assets through forward migrations.
 - The system shall keep source content distinguishable from producer-supplied interpretation.
-- The system shall order search results deterministically under owner/status isolation.
+- The system shall order search results deterministically by score descending, then document/block identity ascending, under owner/status isolation.
 
 ### Event-driven
 
 - When a producer retries with the same idempotency key, the system shall return the original document/revision without creating a duplicate.
 - When a producer submits an update with the expected revision, the system shall apply it, preserve history, and invalidate affected anchors/index versions.
-- When a batch import runs, the system shall return per-item outcomes and stay within MCP request budgets with a documented large-payload path.
+- When a batch import runs, the system shall return per-item outcomes and enforce existing MCP input/output budgets with a documented large-payload bulk path.
 - When a search runs, the system shall return passages with document/block identity, exact location, source/revision, and retrieval origin.
-- When a narrow read repeats, the system shall use a bounded indexed/version-aware strategy instead of always loading full canonical content.
+- When a narrow read repeats, the system shall serve it through a version-aware cache scoped by owner, document identity, and source/correction revision that invalidates on write, caps entries and bytes, and preserves deterministic citations, instead of always loading and parsing full canonical content.
 - When canonical content is missing, the system shall report not-found, unavailable source, stale revision/cursor, or indexing pending explicitly.
 
 ### State-driven
 
-- While search filters are supported, source/type, language, dates, tags/collection, and document filters shall be available and validated.
-- While graph/evidence navigation exists, imported/manual relations with source anchors and provenance shall be preserved.
+- While search is available, the system shall make source/type, language, date, tag/collection, and document filters available and validated, and handle archived/deleted/stale material consistently.
+- While graph/evidence navigation exists, the system shall preserve imported/manual relations with source anchors and provenance.
 
 ### Optional
 
-- Where `pg_trgm` improves prefix/phrase/typo handling, the system shall enable it behind measured retrieval tests.
+- Where spelling tolerance and prefix/phrase matching are needed, the system shall provide explicit alias support and title/tag/heading weighting selected through representative questions, using `pg_trgm` only behind measured retrieval tests.
 
 ### Unwanted behavior
 
@@ -44,6 +44,8 @@ Product 1 is a self-hosted base where prepared content is injected, preserved, a
 - If an update supplies a stale expected revision, then the system shall reject it without creating a new revision.
 - If a write exceeds MCP budgets, then the system shall reject with an explicit budget error and point to the bulk path.
 - If no evidence supports a claim, then the system shall report no-evidence instead of synthesizing an answer.
+- If a retrieval improvement requires model execution, embedding inference, or LLM rewriting, then the system shall reject that approach.
+- If an external producer writes content, then the system shall accept it only through public HTTP/MCP interfaces, never through direct database writes, and never create a parallel unconnected corpus.
 
 ## Acceptance criteria
 
@@ -54,8 +56,10 @@ Product 1 is a self-hosted base where prepared content is injected, preserved, a
 - [ ] Repeated narrow reads use bounded strategy; unavailable structure reported explicitly.
 - [ ] Modern/legacy MCP behavior, budgets, signed cursors, revision safety covered or migrated.
 - [ ] Export/import and backup/restore preserve content, refs, revisions, relations, assets.
-- [ ] Reproducible Postgres/storage/MCP benchmark publishes quality/latency with baseline and regression thresholds.
+- [ ] Reproducible Postgres/storage/MCP benchmark covers Portuguese questions, phrases/aliases/typos, long documents, multi-source, conflicting, and no-evidence cases, and publishes recall/precision/ranking, citation-location checks, p50/p95/p99 latency and output size for search, outline, narrow reads, and MCP round trips, with documented hardware/corpus/warm-cold/concurrency/maintenance conditions, a measured baseline, regression thresholds, and simulated unit metrics reported separately from measured runtime results.
 - [ ] Library UI and MCP docs expose prepared-content workflows accurately.
+
+References: Fixes #895. Companion spec 215 removes built-in AI and Product 2.
 
 ## Out of scope
 

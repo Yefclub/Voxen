@@ -7,7 +7,7 @@ Voxen narrows to Product 1: a self-hosted knowledge base that stores prepared co
 ## Glossary
 
 - Product 1: storage, validation, deterministic indexing, retrieval, evidence, revisions, auth, maintenance.
-- Product 2: agentic chat, providers, transcription/scraping/OCR, automatic summaries/tags/research, Brain model extraction, capture jobs.
+- Product 2: agentic chat (routing, tool runtime, reconciliation, HITL approvals, UI/API), OpenRouter and other model clients, model selection, capability checks, fallback models, provider credentials/settings, model-cost UI, provider-dependent onboarding, built-in embedding inference and semantic-rescue execution, Mem0 conversational-memory integration, URL capture and source interpretation (web scraping, platform downloads, captions acquisition, transcription, OCR/vision/document analysis, recapture/freshness, media pipelines), platform cookies, extension flows, proxy/tunnel helpers, saved-media download/processing controls, automatic ingestion schedules, automatic titles/summaries/tags/diagrams/research artifacts, model-based Brain entity/claim/relation extraction and compilation scheduling, plus corresponding background jobs, startup hooks, MCP tools, REST routes, client controls, dependencies, build stages, CI jobs, settings, and docs existing only for the removed functionality.
 - Prepared content: externally produced text/Markdown, sections, assets, summaries, tags, relations supplied with provenance.
 
 ## Requirements
@@ -30,12 +30,16 @@ Voxen narrows to Product 1: a self-hosted knowledge base that stores prepared co
 
 ### State-driven
 
-- While Product 1 operates, the active MCP catalog, REST API, UI, startup routines, and job dispatch shall expose no Product 2 entrypoint.
-- While dependencies are pruned, no disabled-but-executable legacy AI/capture subsystem shall remain in images or CI.
+- While Product 1 operates, the system shall expose no Product 2 entrypoint in the active MCP catalog, REST API, UI, startup routines, or job dispatch.
+- While dependencies are pruned, the system shall retain no disabled-but-executable legacy AI/capture subsystem in images or CI.
 
 ### Optional
 
 - Where Redis remains useful for coordination, cache, rate-limit, or auth, the system shall keep it; removal is not required by this spec.
+
+### Inventory
+
+- The system shall publish a dependency inventory of routes, MCP tools, tables, jobs, settings, startup hooks, packages, and UI flows covered by the Product 2 boundary before each removal PR merges.
 
 ### Unwanted behavior
 
@@ -47,6 +51,7 @@ Voxen narrows to Product 1: a self-hosted knowledge base that stores prepared co
 
 - [ ] Fresh install completes onboarding and uses the base with no provider account/key/model config.
 - [ ] Startup, maintenance, reads, writes, retrieval perform no AI/model calls; missing summaries/tags never trigger inference.
+- [ ] Dependency inventory is published and each removal is verifiable (static check plus MCP catalog plus image/CI check).
 - [ ] Product 2 entrypoints are gone from MCP catalog, API, UI, startup, dispatch.
 - [ ] Provider/model/capture/analysis deps and build layers are removed; no dormant executable subsystem.
 - [ ] Prepared-content ingest, search, progressive reads, revisions, citations, graph, export, backup/restore work.
@@ -54,6 +59,8 @@ Voxen narrows to Product 1: a self-hosted knowledge base that stores prepared co
 - [ ] Upgrade tests cover preserved IDs/links/versions/annotations/relations/assets and outstanding jobs.
 - [ ] MCP modern/legacy conformance, owner isolation, OAuth/scopes, budgets, concurrency, credential safety remain covered.
 - [ ] Docker/Compose, CI, onboarding, docs describe the knowledge-base-only boundary.
+
+References: Fixes #894. Companion spec 216 defines the prepared-content contract.
 
 ## Out of scope
 
