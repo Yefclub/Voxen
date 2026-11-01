@@ -4,7 +4,7 @@ This guide covers production deployment. Voxen keeps development and production 
 
 ## Recommended Deployment: Home-Lab
 
-Voxen works best on a home-lab machine such as a mini PC, NAS, Proxmox host, or dedicated desktop at home. Residential IPs are less likely to trigger YouTube download soft-blocks than datacenter IPs. A VPS is supported, but media extraction may require routing downloads through the residential proxy agent (see the PT-BR guide section "Agente de proxy residencial" in `docs/DEPLOY.md`).
+Voxen works best on a home-lab machine such as a mini PC, NAS, Proxmox host, or dedicated desktop at home. Residential IPs are less likely to trigger YouTube download soft-blocks than datacenter IPs. A VPS is supported for serving the knowledge base.
 
 ## Common Requirements
 
@@ -106,8 +106,7 @@ Better Auth rejects signup/login requests with `Invalid origin`.
 > Note (spec 215, issue #894): media capture and extraction (downloads,
 > transcription, scraping, extraction proxying, and platform cookies) were
 > removed from Voxen. Content arrives as prepared material through versioned
-> HTTP/MCP contracts. The residential proxy agent section below remains only
-> until its dedicated service is removed.
+> HTTP/MCP contracts.
 
 ## Home-Lab
 
@@ -187,10 +186,7 @@ Image-based deployment is the recommended production path because secrets are
 supplied only at runtime.
 
 On a home lab, this single App is all the Voxen application infrastructure you
-need. On a VPS/datacenter, the optional
-`ghcr.io/yefclub/voxen-proxy-agent` runs separately on a residential/home-lab
-host only when media platforms block the VPS IP; it routes extraction traffic
-and does not replace or duplicate the Voxen App.
+need. No separate agent image is required.
 
 For SSE notifications behind Traefik/HTTP2, deploy a version with the
 HTTP2-safe SSE writer. It avoids `Connection` and `Transfer-Encoding` headers

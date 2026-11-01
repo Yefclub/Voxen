@@ -254,77 +254,10 @@ prisma generate --schema=/app/prisma/schema.prisma
 echo "[easypanel] applying migrations..."
 /prisma-migrate-deploy.sh /app/prisma/schema.prisma
 
-# ---------------------------------------------------------------------------
-# chisel — servidor de túnel reverso (opcional, dirigido por token).
-# Aceita conexões do agente residencial na porta de controle (CHISEL_PORT,
-# default 8088), que é exposta via domínio TLS no deploy. O SOCKS reverso
-# (127.0.0.1:1080) NÃO é publicado — reservado ao agente dedicado (spec futura).
-# O authfile é gerenciado em runtime pela app web (syncChiselAuthfile): começa
-# vazio ({}, recusa qualquer conexão) e é preenchido quando o admin gera o token.
-# O chisel faz hot-reload automático do authfile ao detectar mudança (sem sinal).
-# Best-effort: se o chisel falhar, logamos e seguimos — o boot do web
-# NÃO depende dele.
-# ---------------------------------------------------------------------------
-export CHISEL_PORT="${CHISEL_PORT:-8088}"
-export CHISEL_AUTHFILE="${CHISEL_AUTHFILE:-/run/voxen/chisel-auth.json}"
-export CHISEL_PIDFILE="${CHISEL_PIDFILE:-/run/voxen/chisel.pid}"
-export CHISEL_LOGFILE="${CHISEL_LOGFILE:-/run/voxen/chisel.log}"
-
-start_chisel() {
-  if ! command -v chisel >/dev/null 2>&1; then
-    echo "[easypanel] chisel não instalado — túnel de proxy desabilitado"
-    return 0
-  fi
-  mkdir -p \
-    "$(dirname "$CHISEL_AUTHFILE")" \
-    "$(dirname "$CHISEL_PIDFILE")" \
-    "$(dirname "$CHISEL_LOGFILE")" 2>/dev/null || true
-  # authfile inicial vazio: chisel falha se o arquivo não existir. {} = nega tudo
-  # até o admin gerar o token. A app web reescreve o arquivo in-place e o chisel
-  # faz hot-reload sozinho via fsnotify (NÃO usar SIGHUP — mata o chisel).
-  if [[ ! -f "$CHISEL_AUTHFILE" ]]; then
-    if echo '{}' > "$CHISEL_AUTHFILE"; then
-      chmod 600 "$CHISEL_AUTHFILE" 2>/dev/null || true
-    else
-      echo "[easypanel] AVISO: não foi possível criar $CHISEL_AUTHFILE — túnel desabilitado"
-      return 0
-    fi
-  fi
-  echo "[easypanel] starting chisel server on 0.0.0.0:${CHISEL_PORT} (reverse)..."
-  # A saída do chisel vai pro console E pra um arquivo de log (a app web lê as
-  # últimas linhas pra detectar "address already in use" = 2º agente). Decidimos o
-  # log-capture testando ANTES se o logfile é gravável: `if cmd & ; then` testaria
-  # o status do *backgrounding* (sempre 0) — o teste de gravabilidade é a condição
-  # REAL que escolhe o caminho. Truncar (`:>`) também limita o crescimento do log
-  # por boot. Em ambos os ramos o job em background é o PRÓPRIO chisel, então `$!`
-  # captura o PID do chisel (não o do tee) — preservando o terminate()/pidfile.
-  if { : > "$CHISEL_LOGFILE"; } 2>/dev/null; then
-    chmod 600 "$CHISEL_LOGFILE" 2>/dev/null || true
-    chisel server \
-      --reverse \
-      --keepalive 25s \
-      --authfile "$CHISEL_AUTHFILE" \
-      --port "${CHISEL_PORT}" > >(tee -a "$CHISEL_LOGFILE" 2>/dev/null) 2>&1 &
-  else
-    echo "[easypanel] AVISO: $CHISEL_LOGFILE não gravável — chisel sem arquivo de log (detecção de conflito desabilitada)"
-    chisel server \
-      --reverse \
-      --keepalive 25s \
-      --authfile "$CHISEL_AUTHFILE" \
-      --port "${CHISEL_PORT}" &
-  fi
-  echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
-}
-
-start_chisel || echo "[easypanel] AVISO: chisel server não iniciou (seguindo sem túnel)"
-
 terminate() {
   trap - TERM INT
   echo "[easypanel] stopping services..."
   kill -TERM "$web_pid" 2>/dev/null || true
-  if [[ -f "$CHISEL_PIDFILE" ]]; then
-    kill -TERM "$(cat "$CHISEL_PIDFILE" 2>/dev/null)" 2>/dev/null || true
-  fi
   wait "$web_pid" 2>/dev/null || true
 }
 

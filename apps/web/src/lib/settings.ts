@@ -19,8 +19,6 @@ import { DEFAULT_APP_TIMEZONE, normalizeAppTimezone } from './app-timezone';
 
 export type GlobalSettingKey =
   | 'app_language'
-  // Proxy opcional usado pelo túnel residencial do agente de proxy.
-  | 'yt_dlp_proxy_urls'
   /** IANA timezone da instância (spec 095). Default America/Sao_Paulo. */
   | 'app_timezone'
   | 'allow_signups'
@@ -32,15 +30,7 @@ export type GlobalSettingKey =
   /** Permite usuários aprovados emitirem seus próprios tokens MCP. */
   | 'mcp_user_tokens_enabled'
   /** OAuth 2.1 do MCP é opt-in e permanece fail-closed até ativação administrativa. */
-  | 'mcp_oauth_enabled'
-  // Token de conexão do agente de proxy residencial (chisel). Cifrado em DB.
-  // O agente residencial usa este token pra autenticar o túnel reverso.
-  // Apenas 1 token por instância no MVP. Ver spec 058.
-  | 'proxy_agent_token'
-  // Switch on/off do Agente de Proxy: 'true'/'false'. Controla se o worker
-  // roteia a extração pelo SOCKS do túnel (yt_dlp_proxy_urls). Independente do
-  // token — desligar não apaga o token nem exige reinstalar o agente.
-  | 'proxy_agent_enabled';
+  | 'mcp_oauth_enabled';
 
 /**
  * Segredos e preferências que pertencem à pessoa autenticada, nunca à
@@ -64,9 +54,7 @@ export type ConfigRevisionSummary = {
 
 /** A revisão registra a mudança, nunca o conteúdo de uma credencial. */
 export function isSecretGlobalSettingKey(key: string): boolean {
-  // A URL de proxy pode conter user:password@host e portanto não é segura
-  // para um diff administrativo, mesmo que não tenha "token" no nome.
-  return /(api[_-]?key|token|cookie|password|secret)|^yt_dlp_proxy_urls$/i.test(key);
+  return /(api[_-]?key|token|cookie|password|secret)/i.test(key);
 }
 
 export function normalizeAppLanguage(value: string | null | undefined): AppLanguage {

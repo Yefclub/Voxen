@@ -911,39 +911,6 @@ const ptBRMessages = {
   'admin.integrations.show': 'Ver',
   'admin.integrations.hide': 'Ocultar',
 
-  'admin.integrations.proxy.title': 'Agente de Proxy',
-  'admin.integrations.proxy.description':
-    'Roteie a extração de mídia por um agente residencial (IP de casa) quando o YouTube bloqueia downloads de datacenter. O token autentica o túnel e fica cifrado no banco.',
-  'admin.integrations.proxy.enableLabel': 'Rotear extração pelo agente',
-  'admin.integrations.proxy.enableHint':
-    'Quando ligado, o worker baixa via o agente residencial. Desligado, baixa direto pelo servidor. Não apaga o token nem desconecta o agente.',
-  'admin.integrations.proxy.configured': 'Token configurado',
-  'admin.integrations.proxy.notConfigured': 'Nenhum token configurado.',
-  'admin.integrations.proxy.generated': 'Token gerado. Copie agora — não será exibido novamente.',
-  'admin.integrations.proxy.revoked': 'Token do agente de proxy revogado.',
-  'admin.integrations.proxy.generateToken': 'Gerar token',
-  'admin.integrations.proxy.rotateToken': 'Rotacionar token',
-  'admin.integrations.proxy.saveNow': 'Salve agora — não será exibido novamente',
-  'admin.integrations.proxy.copyToken': 'Copiar token',
-  'admin.integrations.proxy.tunnelUrl': 'URL de conexão do túnel',
-  'admin.integrations.proxy.tunnelMissing':
-    'Configure APP_BASE_URL (a URL pública do Voxen) para derivar a URL do túnel automaticamente.',
-  'admin.integrations.proxy.tunnelFromOrigin':
-    'Auto-coletada da URL atual do Voxen. Para fixar no backend, configure APP_BASE_URL.',
-  'admin.integrations.proxy.installTitle': 'Instalação do agente (Docker)',
-  'admin.integrations.proxy.installHint':
-    'Rode este comando na máquina residencial. A URL é a do próprio Voxen — o agente conecta o túnel de volta.',
-  'admin.integrations.proxy.copySnippet': 'Copiar comando',
-  'admin.integrations.proxy.revokeTitle': 'Revogar token do agente de proxy?',
-  'admin.integrations.proxy.revokeDescription':
-    'O agente residencial perde a conexão até admin gerar um novo token.',
-  'admin.integrations.proxy.live.connected': 'Conectado e funcionando',
-  'admin.integrations.proxy.live.disconnected': 'Desconectado',
-  'admin.integrations.proxy.conflict':
-    'Múltiplos agentes detectados — rode apenas um. Só uma conexão de agente é permitida por vez.',
-  'admin.integrations.proxy.managedNote':
-    'O proxy de extração é gerenciado automaticamente pelo agente.',
-
   'admin.integrations.models.title': 'Modelos por finalidade',
   'admin.integrations.models.description':
     'A Voxen aplica um modelo padrão para cada finalidade. Sobrescreva individualmente quando quiser usar outro modelo do catálogo da sua chave OpenRouter.',
@@ -2288,39 +2255,6 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.revoke': 'Revoke',
   'admin.integrations.show': 'Show',
   'admin.integrations.hide': 'Hide',
-
-  'admin.integrations.proxy.title': 'Proxy Agent',
-  'admin.integrations.proxy.description':
-    'Route media extraction through a residential agent (home IP) when YouTube blocks datacenter downloads. The token authenticates the tunnel and is encrypted in the database.',
-  'admin.integrations.proxy.enableLabel': 'Route extraction through the agent',
-  'admin.integrations.proxy.enableHint':
-    'When on, the worker downloads via the residential agent. When off, it downloads directly from the server. Does not delete the token or disconnect the agent.',
-  'admin.integrations.proxy.configured': 'Token configured',
-  'admin.integrations.proxy.notConfigured': 'No token configured.',
-  'admin.integrations.proxy.generated': 'Token generated. Copy it now. It will not be shown again.',
-  'admin.integrations.proxy.revoked': 'Proxy agent token revoked.',
-  'admin.integrations.proxy.generateToken': 'Generate token',
-  'admin.integrations.proxy.rotateToken': 'Rotate token',
-  'admin.integrations.proxy.saveNow': 'Save it now. It will not be shown again',
-  'admin.integrations.proxy.copyToken': 'Copy token',
-  'admin.integrations.proxy.tunnelUrl': 'Tunnel connection URL',
-  'admin.integrations.proxy.tunnelMissing':
-    "Set APP_BASE_URL (Voxen's public URL) to derive the tunnel URL automatically.",
-  'admin.integrations.proxy.tunnelFromOrigin':
-    "Auto-collected from Voxen's current URL. To pin it on the backend, set APP_BASE_URL.",
-  'admin.integrations.proxy.installTitle': 'Agent installation (Docker)',
-  'admin.integrations.proxy.installHint':
-    "Run this command on the home machine. The URL is Voxen's own — the agent connects the tunnel back.",
-  'admin.integrations.proxy.copySnippet': 'Copy command',
-  'admin.integrations.proxy.revokeTitle': 'Revoke proxy agent token?',
-  'admin.integrations.proxy.revokeDescription':
-    'The residential agent loses its connection until an admin generates a new token.',
-  'admin.integrations.proxy.live.connected': 'Connected and working',
-  'admin.integrations.proxy.live.disconnected': 'Disconnected',
-  'admin.integrations.proxy.conflict':
-    'Multiple agents detected — run only one. Only a single agent connection is allowed at a time.',
-  'admin.integrations.proxy.managedNote':
-    'The extraction proxy is managed automatically by the agent.',
 
   'admin.integrations.models.title': 'Models per purpose',
   'admin.integrations.models.description':

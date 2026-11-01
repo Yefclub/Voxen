@@ -106,8 +106,7 @@ the build and can expose secrets through build arguments or logs. Prefer image
 deployment so application secrets are supplied only at runtime. Provision
 PostgreSQL and Redis, and mount a persistent volume at `/data/storage` in the
 Voxen App. MinIO/S3 is an optional advanced topology for external or multi-host
-storage; the residential proxy agent is optional and only needed when a VPS
-must extract media through a home-network IP.
+storage.
 
 A minimal Docker Compose deployment starts with:
 

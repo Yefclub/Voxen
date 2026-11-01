@@ -303,8 +303,6 @@ app.get('*', async (c) => {
 // O default precisa ter `{ port, fetch }` (formato BunServeOptions).
 const port = Number(process.env.PORT ?? 3000);
 
-// Sincroniza o authfile do chisel embutido com o `proxy_agent_token` no boot
-// (uma vez). Best-effort: roda fora do path de serve e nunca quebra o startup.
 // Só em produção (entrypoint seta NODE_ENV=production): em dev/test o import de
 // `../src/index` pelos testes não deve tocar /run/voxen nem DB.
 if (process.env.NODE_ENV === 'production') {
@@ -324,12 +322,6 @@ if (process.env.NODE_ENV === 'production') {
         error,
       ),
     );
-  void import('./lib/proxy-agent-tunnel')
-    .then(({ syncChiselAuthfile }) => syncChiselAuthfile())
-    .catch((err) => {
-      structuredDiagnostic('warning', 'proxy-agent-sync-failed', 'PROXY_AGENT_SYNC_FAILED', err);
-    });
-
   // Knowledge deletions are retained Product 1 maintenance (spec 215): the web
   // process drains DELETE_KNOWLEDGE jobs so they complete and recover after
   // restart without the analysis worker. Fresh jobs wait out a short
@@ -383,10 +375,6 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
-// Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do
-// path do túnel (default /_tunnel) e encaminhar pro chisel server local. Só
-// intercepta o path EXATO do túnel; qualquer outra rota segue pro Hono normal.
-import { tryUpgradeTunnel, tunnelWebSocketHandler } from './lib/tunnel-proxy';
 import type { Server } from 'bun';
 
 function isLongLivedStreamRequest(req: Request): boolean {
@@ -404,25 +392,18 @@ export default {
   // 255s é o máximo da API; streams longos desabilitam o timeout por request.
   idleTimeout: 255,
   // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
-  // `app.fetch(req)` direto (sem server) — por isso é opcional: sem server não há
-  // como fazer `server.upgrade`, então pulamos o proxy e seguimos pro Hono.
+  // `app.fetch(req)` direto (sem server) — por isso é opcional.
   // Tipamos o retorno como `Response | Promise<Response>` pra não poluir os
-  // callers de teste (que fazem `const res = await app.fetch(req)`); no upgrade
-  // bem-sucedido o Bun aceita `undefined` em runtime — encapsulamos com cast.
+  // callers de teste (que fazem `const res = await app.fetch(req)`).
   fetch(req: Request, server?: Server<unknown>): Response | Promise<Response> {
     if (server) {
       if (isLongLivedStreamRequest(req)) {
         // 0 = sem idle timeout nesta request (docs Bun: SSE / long streams).
         server.timeout(req, 0);
       }
-      const upgraded = tryUpgradeTunnel(req, server);
-      // `tryUpgradeTunnel`: `undefined` = upgrade aceito (o Bun assume a resposta);
-      // `Response` = interceptou e recusou; `null` = não é o path do túnel.
-      if (upgraded !== null) return upgraded as unknown as Response;
     }
     return app.fetch(req, server ? { server } : undefined);
   },
-  websocket: tunnelWebSocketHandler,
 };
 
 // Em testes, importadores fazem `import app from '../src/index'` e Bun NÃO
