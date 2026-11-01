@@ -171,6 +171,18 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
     await db.transcriptTag.create({
       data: { transcriptId: tornoDoc.id, tagId: tagMecanica.id },
     });
+    const pastaSerralheria = await db.libraryFolder.create({
+      data: { userId, name: 'Serralheria' },
+    });
+    const bancadaDoc = await put(
+      'colecao-exclusiva',
+      '# Bancada de trabalho\n\nInstruções de organização da bancada.',
+      { title: 'Bancada de trabalho' },
+    );
+    await db.transcript.update({
+      where: { id: bancadaDoc.id },
+      data: { folderId: pastaSerralheria.id },
+    });
   });
 
   afterAll(async () => {
@@ -214,6 +226,22 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
     const tagOnly = await searchKnowledgeBase(userId, 'torno', 8);
     expect(tagOnly.map((item) => item.id)).toContain(ids['etiqueta-exclusiva']!);
     expect(tagOnly[0]?.id).toBe(ids['etiqueta-exclusiva']);
+
+    // Folder-only terms (absent from title and body) must retrieve documents
+    // in the matching collection: folder names are indexed like tags (§5).
+    const folderOnly = await searchKnowledgeBase(userId, 'serralheria', 8);
+    expect(folderOnly.map((item) => item.id)).toContain(ids['colecao-exclusiva']!);
+    expect(folderOnly[0]?.id).toBe(ids['colecao-exclusiva']);
+
+    // Renaming the collection refreshes the index through the same trigger.
+    await db.libraryFolder.updateMany({
+      where: { userId, name: 'Serralheria' },
+      data: { name: 'Arquivo' },
+    });
+    const renamed = await searchKnowledgeBase(userId, 'arquivo', 8);
+    expect(renamed.map((item) => item.id)).toContain(ids['colecao-exclusiva']!);
+    const stale = await searchKnowledgeBase(userId, 'serralheria', 8);
+    expect(stale.map((item) => item.id)).not.toContain(ids['colecao-exclusiva']!);
 
     const none = await searchKnowledgeBase(userId, 'xqzt jogo de tabuleiro inexistente', 8);
     expect(none).toEqual([]);
