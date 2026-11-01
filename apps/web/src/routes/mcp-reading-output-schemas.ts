@@ -60,6 +60,11 @@ export const MCP_READING_OUTPUT_SHAPES = {
         .object({ id: z.string(), title: z.string(), kind: z.string(), reason: z.string() })
         .passthrough(),
     ),
+    truncated: z
+      .boolean()
+      .describe(
+        'true quando há mais candidatos que o limite; refine a consulta em vez de presumir enumeração completa.',
+      ),
   },
   voxen_verify_citations: {
     results: z.array(
