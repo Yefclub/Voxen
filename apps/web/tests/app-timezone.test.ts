@@ -80,16 +80,6 @@ describe('formatUtcOffset', () => {
 });
 
 describe('wiring (source contracts)', () => {
-  test('runtime injects clock into stream instructions', () => {
-    const runtime = readFileSync(join(import.meta.dir, '../src/lib/chat/runtime.ts'), 'utf8');
-    expect(runtime).toContain('buildAgentClockInstructions');
-    expect(runtime).toContain('getAppTimezone');
-    expect(runtime).toContain('AGENT_INSTRUCTIONS +');
-    expect(runtime).toContain('clock +');
-    expect(runtime).toContain('suggestions +');
-    expect(runtime).toContain('personalInstructions +');
-  });
-
   test('settings key app_timezone exists', () => {
     const settings = readFileSync(join(import.meta.dir, '../src/lib/settings.ts'), 'utf8');
     expect(settings).toContain("'app_timezone'");

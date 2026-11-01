@@ -339,8 +339,10 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
 
   it('mantém chat, recuperação auxiliar, Brain e custos sem bypass de workspace', async () => {
     const { ownerBCookie, ownerBId, transcriptAId, messageAId } = fixture;
+    // Product 2 chat removed (spec 215): the route is gone, which trivially
+    // leaks nothing cross-workspace.
     const chat = await call('/api/chat', withCookie(ownerBCookie));
-    expect(chat.status).toBe(200);
+    expect(chat.status).toBe(404);
     expect(await chat.text()).not.toContain(SECRET);
     await expectSafeNotFound(
       await call(`/api/chat/messages/${messageAId}/versions`, {

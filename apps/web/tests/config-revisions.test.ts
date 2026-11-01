@@ -1,6 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
-import { createChatTurn } from '../src/lib/chat/turn-runtime';
 import { db } from '../src/lib/db';
 import {
   getCurrentConfigRevisionId,
@@ -205,7 +204,7 @@ describeIfDb('configuração global auditável', () => {
     );
   });
 
-  it('vincula jobs e turnos novos à revisão vigente', async () => {
+  it('vincula jobs novos à revisão vigente', async () => {
     const admin = await createUser('admin-execucoes@voxen.local');
     await setSettings({ app_language: 'en' }, { actorUserId: admin.id });
     const revisionId = await getCurrentConfigRevisionId();
@@ -220,13 +219,6 @@ describeIfDb('configuração global auditável', () => {
       },
       select: { configRevisionId: true },
     });
-    const turn = await createChatTurn(admin.id, 'Qual revisão está ativa?');
-    const persistedTurn = await db.chatTurn.findUniqueOrThrow({
-      where: { id: turn.id },
-      select: { configRevisionId: true },
-    });
-
     expect(job.configRevisionId).toBe(revisionId);
-    expect(persistedTurn.configRevisionId).toBe(revisionId);
   });
 });
