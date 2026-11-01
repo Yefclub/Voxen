@@ -23,9 +23,8 @@ import {
 } from '../lib/note-anchors';
 import { noteContentChecksum } from '../lib/note-revisions';
 import {
-  createPreparedNote,
+  createPreparedNoteForHttp,
   PreparedIngestContractError,
-  type PreparedNoteResult,
 } from '../lib/prepared-note-ingest';
 import {
   NoteNotFoundError,
@@ -252,9 +251,9 @@ notesRoutes.post('/', async (c) => {
   }
 
   if (kind === 'NOTE') {
-    let result: PreparedNoteResult;
+    let created;
     try {
-      result = await createPreparedNote(userId, {
+      created = await createPreparedNoteForHttp(userId, {
         title,
         content,
         parentId: parentId ?? null,
@@ -272,20 +271,7 @@ notesRoutes.post('/', async (c) => {
       }
       throw error;
     }
-    const graphSync = result.duplicate ? 'DUPLICATE' : await syncNoteGraph(userId, result.id);
-    const full = await db.note.findFirst({
-      where: { id: result.id, userId },
-    });
-    if (!full) return c.json({ error: 'Nota não encontrada.' }, 404);
-    return c.json(
-      {
-        note: full,
-        checksum: result.checksum,
-        graphSync,
-        duplicate: result.duplicate,
-      },
-      result.duplicate ? 200 : 201,
-    );
+    return c.json(created, created.duplicate ? 200 : 201);
   }
 
   const note = await db.$transaction(async (tx) => {

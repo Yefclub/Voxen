@@ -18,7 +18,7 @@ import {
 export { PreparedIngestContractError };
 import type { ValidatedNoteAnchor } from './note-anchors';
 import { noteSourceCreateData } from './note-anchors';
-import { recordInitialNoteRevision } from './note-versioning';
+import { recordInitialNoteRevision, syncNoteGraph } from './note-versioning';
 
 export type PreparedNoteInput = {
   title: string;
@@ -119,4 +119,22 @@ export async function createPreparedNote(
     }
     throw error;
   }
+}
+
+export type PreparedNoteHttpResult = {
+  note: { id: string };
+  checksum: string;
+  graphSync: string;
+  duplicate: boolean;
+};
+
+export async function createPreparedNoteForHttp(
+  userId: string,
+  input: PreparedNoteInput,
+): Promise<PreparedNoteHttpResult> {
+  const result = await createPreparedNote(userId, input);
+  const graphSync = result.duplicate ? 'DUPLICATE' : await syncNoteGraph(userId, result.id);
+  const full = await db.note.findFirst({ where: { id: result.id, userId } });
+  if (!full) throw new PreparedIngestContractError('Nota não encontrada.');
+  return { note: full, checksum: result.checksum, graphSync, duplicate: result.duplicate };
 }
