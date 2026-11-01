@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793571379",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explicit truncation on related documents",
+    "body": "### Added\n- `voxen_related` returns an explicit `truncated` flag over the fused graph + FTS candidate set; a full page never implies complete enumeration.",
+    "pr": 983,
+    "author": "Kalyel",
+    "date": "2026-11-01T19:16:07-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/983"
+  },
+  {
     "version": "0.15.1-dev.1793570309",
     "channel": "dev",
     "type": "feat",
