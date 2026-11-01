@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.15.1-dev.1793515974 — 2026-11-01 · Dev
+
+### 🧹 Remove server-side agentic chat runtime and API
+
+### Removed
+- The built-in agentic chat runtime is gone from the server: no more /api/chat routes, turn reconciliation, model routing, HITL approvals, or chat tool execution.
+- Chat history tables stay untouched in this step and will be archived and dropped in a dedicated migration. The chat UI shell will be removed separately.
+
+## v0.15.1-dev.1793515974 — 2026-11-01 · Dev
+
+### 🧹 Remove built-in embedding inference and semantic rescue
+
+### Removed
+- Built-in embedding inference and semantic-rescue reranking are gone: retrieval is deterministic full-text search, and no model calls happen on reads.
+- Removed the embedding settings, capability probe, hybrid benchmark path, and the worker embedding writer. Stored vectors from earlier versions are ignored and cleaned by existing metadata maintenance.
+
 ## v0.15.1-dev.1793513605 — 2026-11-01 · Dev
 
 ### 🧹 Remove Mem0 conversational-memory integration
