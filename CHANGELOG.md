@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793571379 — 2026-11-01 · Dev
+
+### ✨ Explicit truncation on related documents
+
+### Added
+- `voxen_related` returns an explicit `truncated` flag over the fused graph + FTS candidate set; a full page never implies complete enumeration.
+
 ## v0.15.1-dev.1793570309 — 2026-11-01 · Dev
 
 ### ✨ Explicit enumeration completion on list tools
