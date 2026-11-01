@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793575738 — 2026-11-01 · Dev
+
+### 🧹 Security-audit verdict fixtures
+
+### Added
+- Sanitized `security-audit` fixtures for confirmed, refuted, missing-evidence, partial-inventory, and zero-findings-unverified classes, mirrored to `.agents/` and covered by `scripts/security-audit-fixtures.test.mjs`.
+
 ## v0.15.1-dev.1793574808 — 2026-11-01 · Dev
 
 ### 🧹 Read-only agent doctor diagnostics
