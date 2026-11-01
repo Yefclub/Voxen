@@ -392,7 +392,11 @@ export async function deleteDefaultXAnalysisModel(): Promise<void> {
 
 export async function isSetupComplete(): Promise<boolean> {
   const rows = await db.setting.findMany({
-    where: { scope: 'GLOBAL', userId: null, key: { in: ['onboarding_done', 'openrouter_api_key'] } },
+    where: {
+      scope: 'GLOBAL',
+      userId: null,
+      key: { in: ['onboarding_done', 'openrouter_api_key'] },
+    },
     select: { key: true, valueEnc: true },
   });
   // Knowledge-base readiness comes from onboarding_done. A stored provider key

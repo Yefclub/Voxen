@@ -189,7 +189,7 @@ describeIfDb('setup flow', () => {
     };
     expect(status.complete).toBe(true);
 
-    await setSettings({ onboarding_done: 'true' }, { actorUserId: 'test' });
+    await setSettings({ onboarding_done: 'true' });
     const doneRes = await app.fetch(
       new Request('http://localhost/api/setup', { headers: { cookie } }),
     );
@@ -811,7 +811,7 @@ describeIfDb('setup flow', () => {
     const b2b = (await r2b.json()) as { setupComplete: boolean };
     expect(b2b.setupComplete).toBe(false);
 
-    await setSettings({ onboarding_done: 'true' }, { actorUserId: 'test' });
+    await setSettings({ onboarding_done: 'true' });
     const r3 = await app.fetch(new Request('http://localhost/api/me', { headers: { cookie } }));
     const b3 = (await r3.json()) as { setupComplete: boolean };
     expect(b3.setupComplete).toBe(true);
