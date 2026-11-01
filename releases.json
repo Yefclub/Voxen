@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.15.1-dev.1793528658",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Remove browser extension capture surface",
+    "body": "### Removed\n- The Chromium extension (platform cookie capture, job submission and tracking) is gone, with its tests, packaging, and CI/docs references.\n- The extension download page, version endpoint, and bundled ZIP are removed; remaining references redirect to the library.",
+    "pr": 924,
+    "author": "Kalyel",
+    "date": "2026-11-01T07:24:05-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/924"
+  },
+  {
+    "version": "0.15.1-dev.1793528658",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Drop unused AI, provider, and 3D packages",
+    "body": "### Removed\n- Unused runtime dependencies are gone: the `ai` SDK, the OpenRouter AI SDK provider, and `three` (kept only as a transitive dependency of the graph renderer).",
+    "pr": 921,
+    "author": "Kalyel",
+    "date": "2026-11-01T06:45:11-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/921"
+  },
+  {
     "version": "0.15.1-dev.1793525429",
     "channel": "dev",
     "type": "chore",
