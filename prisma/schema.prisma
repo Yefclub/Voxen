@@ -68,16 +68,10 @@ model User {
   savedMedia                    SavedMedia[]
   jobs                          Job[]
   sourceContentVersions         SourceContentVersion[]
-  researchArtifacts             ResearchArtifact[]
   transcriptEnrichments         TranscriptEnrichment[]
   transcriptCorrectionRevisions TranscriptCorrectionRevision[]
   interestEvents                InterestEvent[]
   interestProjections           InterestProjection[]
-  costEvents                    CostEvent[]
-  conversations                 Conversation[]
-  chatApprovals                 ChatApproval[]
-  chatTurns                     ChatTurn[]
-  chatStreamLease               ChatStreamLease?
   notes                         Note[]
   noteRevisions                 NoteRevision[]
   libraryFolders                LibraryFolder[]
@@ -88,8 +82,6 @@ model User {
   brainEntityAliases            BrainEntityAlias[]
   brainCompilations             BrainCompilation[]
   telegramLink                  TelegramLink?
-  automations                   Automation[]
-  automationRuns                AutomationRun[]
   tags                          Tag[]
   mcpTokens                     McpToken[]
   oauthClients                  OauthClient[]
@@ -102,40 +94,6 @@ model User {
   @@index([role])
 }
 
-// Persistent fencing token for optional external conversational memory.
-// A row blocks every replica from writing while account deletion is in flight.
-model MemoryShadowFence {
-  userId    String   @id
-  owner     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model MemoryShadowWriter {
-  id        String   @id
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, updatedAt])
-}
-
-model MemoryShadowSubject {
-  userId    String   @id
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model MemoryShadowConfig {
-  id               String   @id
-  scopeFingerprint String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-}
-
-// Vínculo Telegram chat_id ↔ Voxen userId.
-// Setup feito via código de 6 dígitos gerado em /conta → user envia /start
-// <código> no bot → worker resolve e cria o link.
 model TelegramLink {
   id       String   @id @default(cuid())
   userId   String   @unique
@@ -447,8 +405,6 @@ model ConfigRevision {
   actor                 User?                  @relation("ConfigRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   changes               ConfigRevisionChange[]
   jobs                  Job[]
-  chatTurns             ChatTurn[]
-  researchArtifacts     ResearchArtifact[]
   transcriptEnrichments TranscriptEnrichment[]
 
   @@index([createdAt(sort: Desc)])
@@ -467,38 +423,6 @@ model ConfigRevisionChange {
   @@unique([revisionId, key])
   @@index([key])
 }
-
-enum ResearchArtifactType {
-  BRIEFING
-  FAQ
-  STUDY_GUIDE
-  TIMELINE
-  MIND_MAP
-}
-
-// Derivado privado: conteúdo sintetizado nunca é usado como fonte de busca.
-model ResearchArtifact {
-  id                 String               @id @default(cuid())
-  userId             String
-  type               ResearchArtifactType
-  title              String
-  content            String               @db.Text
-  citations          Json                 @default("[]")
-  scope              Json                 @default("{}")
-  unavailableSources Json                 @default("[]")
-  configRevisionId   String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @default(now()) @updatedAt
-  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  configRevision     ConfigRevision?      @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
-
-  @@index([userId, createdAt(sort: Desc)])
-  @@index([configRevisionId])
-}
-
-// ============================================================================
-// TRANSCRIPTS (corpo no Garage; texto + frontmatter espelhado aqui)
-// ============================================================================
 
 enum TranscriptSource {
   YOUTUBE
@@ -645,7 +569,6 @@ model Transcript {
   job                      Job?
   sourceRefreshJobs        Job[]                          @relation("SourceRefreshJobs")
   sourceVersions           SourceContentVersion[]
-  conversations            Conversation[]
   tags                     TranscriptTag[]
   noteSources              NoteTranscriptSource[]
   transcriptEnrichments    TranscriptEnrichment[]
@@ -1173,237 +1096,6 @@ model JobProgressEvent {
 // COST EVENTS (painel de custos)
 // ============================================================================
 
-enum CostEventKind {
-  CHAT
-  WEB_SEARCH
-  TRANSCRIBE
-  DOCUMENT
-  X_SEARCH
-  EMBED // não usado no MVP (sem embeddings), mas reservado
-}
-
-model CostEvent {
-  id        String        @id @default(cuid())
-  userId    String
-  ts        DateTime      @default(now())
-  kind      CostEventKind
-  model     String
-  tokensIn  Int           @default(0)
-  tokensOut Int           @default(0)
-  costUsd   Decimal       @db.Decimal(10, 6)
-  jobId     String?
-  meta      Json?
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, ts(sort: Desc)])
-  @@index([ts])
-  @@index([kind])
-}
-
-// Diagnósticos administrativos de falha por capacidade. Não armazena prompt,
-// resposta, segredo ou conteúdo de workspace — só o resultado seguro do probe.
-model AiCapabilityCheck {
-  id           String   @id @default(cuid())
-  capability   String
-  model        String
-  success      Boolean
-  errorMessage String?
-  latencyMs    Int?
-  checkedAt    DateTime @default(now())
-
-  @@index([capability, success, checkedAt(sort: Desc)])
-}
-
-// ============================================================================
-// CHAT (conversas persistidas)
-// ============================================================================
-
-model Conversation {
-  id                 String               @id @default(cuid())
-  // Uma linha do tempo canônica por workspace. Contextos de transcrição
-  // entram como referências/mensagens, nunca como outra sessão.
-  userId             String               @unique
-  title              String               @default("Vox")
-  thinking           Boolean              @default(false)
-  // Conversa contextual de uma transcrição (chat por transcrição). Null = chat
-  // geral. SetNull no delete da transcrição: a conversa sobrevive como geral.
-  transcriptId       String?
-  archivedAt         DateTime?
-  // Quantas vezes a conversa já foi compactada. Útil pra debug + UI exibir
-  // "compactada N vezes" quando relevante.
-  compactionCount    Int                  @default(0)
-  // Folha da trilha ativa (spec 127). A conversa é uma ÁRVORE: versionar uma
-  // mensagem cria um ramo irmão, e este ponteiro diz qual ramo está em uso.
-  // Null = conversa nunca ramificada; a trilha é a linha do tempo inteira.
-  //
-  // Sem chave estrangeira de propósito: Conversation -> ChatMessage ->
-  // Conversation fecharia um ciclo de relação no Prisma só para garantir algo
-  // que a leitura já trata — ponteiro pendurado cai na última mensagem
-  // (`resolveActiveTrail`), e `clearConversation` zera o ponteiro na mesma
-  // transação que apaga as mensagens.
-  activeLeafId       String?
-  // A conversa já é uma árvore de verdade (spec 127): toda mensagem exceto a
-  // raiz tem antecessor registrado. Marcada na primeira escrita estrutural.
-  //
-  // Precisa ser explícito, não inferido de "quantas mensagens estão sem
-  // antecessor": com inferência, versionar a PRIMEIRA mensagem cria uma
-  // segunda raiz legítima e a leitura confundiria isso com dados legados —
-  // prependendo a versão abandonada no histórico enviado ao modelo.
-  messagesLinearized Boolean              @default(false)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript         Transcript?          @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
-  messages           ChatMessage[]
-  approvals          ChatApproval[]
-  turns              ChatTurn[]
-  compactionLease    ChatCompactionLease?
-
-  @@index([updatedAt(sort: Desc)])
-  @@index([transcriptId])
-}
-
-enum ChatApprovalStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  EXPIRED
-}
-
-model ChatApproval {
-  id                 String             @id @default(cuid())
-  userId             String
-  conversationId     String
-  providerApprovalId String
-  action             String
-  payload            Json
-  status             ChatApprovalStatus @default(PENDING)
-  /// Null = no wall-clock TTL (spec 090). Legacy rows may still have a timestamp.
-  expiresAt          DateTime?
-  createdAt          DateTime           @default(now())
-  decidedAt          DateTime?
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversation       Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, providerApprovalId])
-  @@index([userId, status, expiresAt])
-  @@index([conversationId, createdAt])
-}
-
-model ChatCompactionLease {
-  conversationId String       @id
-  ownerId        String
-  expiresAt      DateTime
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@index([expiresAt])
-}
-
-model ChatStreamLease {
-  userId    String   @id
-  ownerId   String
-  expiresAt DateTime
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([expiresAt])
-}
-
-enum ChatTurnStatus {
-  PENDING
-  RUNNING
-  DONE
-  FAILED
-  CANCELLED
-}
-
-model ChatTurn {
-  id                 String          @id @default(cuid())
-  userId             String
-  conversationId     String
-  userMessageId      String          @unique
-  assistantMessageId String          @unique
-  configRevisionId   String?
-  status             ChatTurnStatus  @default(PENDING)
-  errorMsg           String?         @db.Text
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  finishedAt         DateTime?
-  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversation       Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  configRevision     ConfigRevision? @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
-
-  @@index([userId, status, updatedAt])
-  @@index([conversationId, createdAt(sort: Desc)])
-  @@index([status, updatedAt])
-  @@index([configRevisionId])
-}
-
-enum ChatRole {
-  USER
-  ASSISTANT
-  // SYSTEM: mensagens auto-geradas pelo Voxen (resumo de compactação,
-  // resultado de job de automação, etc). Não foram digitadas pelo user
-  // nem geradas pelo agente em resposta direta.
-  SYSTEM
-}
-
-enum ChatMessageKind {
-  NORMAL
-  COMPACTION_SUMMARY
-  HITL_RESPONSE
-}
-
-model ChatMessage {
-  id             String          @id @default(cuid())
-  conversationId String
-  role           ChatRole
-  // NORMAL = mensagem regular do chat
-  // COMPACTION_SUMMARY = mensagem-resumo que substitui um lote de mensagens
-  //   antigas após compactação automática de memória. Tem role=SYSTEM.
-  kind           ChatMessageKind @default(NORMAL)
-  content        String          @db.Text
-  // tools usadas pela resposta (array de {name, args, preview}) — JSONB
-  tools          Json?
-  // Linha do tempo visual do turno (raciocínio + grupos de tools). Nunca é
-  // reenviada ao modelo; serve para restaurar a UI após reload.
-  segments       Json?
-  // Evidências estruturadas extraídas exclusivamente de verify_citations.
-  // Mensagens legadas permanecem null e degradam sem selo de verificação.
-  citations      Json?
-  // Anexos vinculados à mensagem do usuário (array de {jobId, name, kind}) —
-  // JSONB. Preenchido pelo servidor a partir de jobs de upload do PRÓPRIO
-  // usuário; nunca copiado cru do payload do cliente (spec 126).
-  attachments    Json?
-  // Quando setado, esta mensagem foi "compactada" — significa que seu
-  // conteúdo já foi substituído por uma COMPACTION_SUMMARY mais recente.
-  // Fica no DB pra histórico (user pode expandir e ver), mas NÃO é enviada
-  // mais no contexto da próxima chamada ao modelo.
-  compactedAt    DateTime?
-  // Antecessor na árvore da conversa (spec 127). A trilha exibida e enviada ao
-  // modelo é a caminhada da folha ativa até a raiz — numa árvore, `createdAt`
-  // deixa de definir a sequência, porque uma versão criada depois pode estar
-  // acima na trilha.
-  //
-  // Null significa raiz OU mensagem anterior ao versionamento. Os dados legados
-  // fica todo nulo e continua legível como trilha linear contínua, sem
-  // migração de dados obrigatória.
-  parentId       String?
-  createdAt      DateTime        @default(now())
-  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  parent         ChatMessage?    @relation("ChatMessageBranch", fields: [parentId], references: [id], onDelete: SetNull)
-  children       ChatMessage[]   @relation("ChatMessageBranch")
-
-  @@index([conversationId, createdAt])
-  @@index([conversationId, compactedAt])
-  @@index([conversationId, parentId])
-}
-
-// ============================================================================
-// NOTES — KB manual escrita pelo user ou pela Vox (via tools)
-// ============================================================================
-// Estrutura em árvore: kind=FOLDER agrupa, kind=NOTE tem conteúdo markdown.
-// FTS via tsvector na coluna `searchVector` (mantida por trigger SQL).
-
 enum NoteKind {
   NOTE
   FOLDER
@@ -1593,85 +1285,6 @@ model TranscriptEnrichment {
 // ============================================================================
 // AUTOMAÇÕES (jobs periódicos com continuidade — spec .specs/008-automacoes.md)
 // ============================================================================
-
-enum AutomationType {
-  PERIODIC_SUMMARY // resumo periódico (puxa transcrições/notas via tools)
-  WEB_RESEARCH // pesquisa web sobre um tema e cria nota
-}
-
-enum AutomationFrequency {
-  DAILY
-  WEEKLY
-  MONTHLY
-}
-
-enum AutomationStatus {
-  ACTIVE
-  PAUSED
-}
-
-enum AutomationDelivery {
-  IN_APP
-  TELEGRAM
-  BOTH
-}
-
-enum AutomationRunStatus {
-  PENDING
-  RUNNING
-  SUCCESS
-  FAILED
-}
-
-model Automation {
-  id         String              @id @default(cuid())
-  userId     String
-  name       String
-  type       AutomationType
-  prompt     String              @db.Text
-  frequency  AutomationFrequency
-  hour       Int // 0-23 (no timezone do automation)
-  minute     Int // 0-59
-  dayOfWeek  Int? // 0=segunda..6=domingo (só WEEKLY)
-  dayOfMonth Int? // 1-31 (só MONTHLY; clampa último dia do mês)
-  timezone   String              @default("America/Sao_Paulo")
-  delivery   AutomationDelivery  @default(IN_APP)
-  status     AutomationStatus    @default(ACTIVE)
-  lastRunAt  DateTime?
-  nextRunAt  DateTime?
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @default(now()) @updatedAt
-
-  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  runs AutomationRun[]
-
-  @@index([userId])
-  @@index([status, nextRunAt])
-}
-
-model AutomationRun {
-  id           String              @id @default(cuid())
-  automationId String
-  userId       String // duplicado p/ scoping rápido em queries de tool
-  status       AutomationRunStatus @default(PENDING)
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  outputMd     String?             @db.Text
-  errorMessage String?             @db.Text
-  tokensIn     Int                 @default(0)
-  tokensOut    Int                 @default(0)
-  costUsd      Decimal             @default(0) @db.Decimal(12, 6)
-  noteId       String? // se WEB_RESEARCH criou nota
-  telegramSent Boolean             @default(false)
-  triggeredBy  String              @default("scheduler") // scheduler | manual
-  createdAt    DateTime            @default(now())
-
-  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([automationId, createdAt(sort: Desc)])
-  @@index([userId, createdAt(sort: Desc)])
-}
 
 model OauthResource {
   id                            String                @id @default(cuid())

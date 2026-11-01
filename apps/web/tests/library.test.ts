@@ -6,7 +6,6 @@ const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
 
 async function wipeDb(): Promise<void> {
-  await db.costEvent.deleteMany();
   await db.job.deleteMany();
   await db.transcript.deleteMany();
   await db.libraryFolder.deleteMany();

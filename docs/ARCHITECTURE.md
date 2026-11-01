@@ -46,6 +46,11 @@ tentativas. Leases expirados são retomados pelo drain de startup e pelo
 intervalo periódico. Conteúdo preparado chega por contratos versionados
 HTTP/MCP; a Voxen nunca executa modelos, transcrição ou scraping.
 
+Tabelas aposentadas do Produto 2 (chat, aprovações, custos, automações,
+pesquisa, memória) foram removidas por migrations forward com o histórico
+preservado. Antes de dropar tabelas conversacionais, exporte o arquivo:
+`DATABASE_URL=... ./scripts/export-chat-archive.sh ./backups`.
+
 ## Fluxos principais
 
 ### Primeira configuração

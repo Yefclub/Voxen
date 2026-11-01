@@ -27,7 +27,6 @@ type Fixture = {
   noteFolderAId: string;
   folderAId: string;
   jobAId: string;
-  messageAId: string;
   mcpTokenA: string;
 };
 
@@ -150,7 +149,7 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
         frontmatter: {},
       },
     });
-    const [noteFolderA, noteA, noteB, jobA, conversationA] = await Promise.all([
+    const [noteFolderA, noteA, noteB, jobA] = await Promise.all([
       db.note.create({
         data: { userId: ownerA.id, kind: 'FOLDER', title: `${SECRET} — pasta de notas` },
       }),
@@ -168,25 +167,16 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
           sourceUrl: `https://example.com/isolation-job-a-${suffix}`,
         },
       }),
-      db.conversation.create({ data: { userId: ownerA.id } }),
     ]);
-    const messageA = await db.chatMessage.create({
-      data: { conversationId: conversationA.id, role: 'USER', content: SECRET },
+    await db.brainNode.create({
+      data: {
+        userId: ownerA.id,
+        key: `MANUAL:isolation-${suffix}`,
+        type: 'TOPIC',
+        label: SECRET,
+        sourceType: 'MANUAL',
+      },
     });
-    await Promise.all([
-      db.brainNode.create({
-        data: {
-          userId: ownerA.id,
-          key: `MANUAL:isolation-${suffix}`,
-          type: 'TOPIC',
-          label: SECRET,
-          sourceType: 'MANUAL',
-        },
-      }),
-      db.costEvent.create({
-        data: { userId: ownerA.id, kind: 'CHAT', model: `model-${SECRET}`, costUsd: '0.010000' },
-      }),
-    ]);
     const mcpTokenA = `isolation-mcp-${crypto.randomUUID().replaceAll('-', '')}`;
     await db.mcpToken.create({
       data: {
@@ -211,7 +201,6 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
       noteFolderAId: noteFolderA.id,
       folderAId: folderA.id,
       jobAId: jobA.id,
-      messageAId: messageA.id,
       mcpTokenA,
     };
   });
@@ -336,15 +325,15 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
     });
   });
 
-  it('mantém chat, recuperação auxiliar, Brain e custos sem bypass de workspace', async () => {
-    const { ownerBCookie, ownerBId, transcriptAId, messageAId } = fixture;
-    // Product 2 chat removed (spec 215): the route is gone, which trivially
+  it('mantém recuperação auxiliar, Brain e custos sem bypass de workspace', async () => {
+    const { ownerBCookie, ownerBId, transcriptAId } = fixture;
+    // Product 2 chat removed (spec 215): the routes are gone, which trivially
     // leaks nothing cross-workspace.
     const chat = await call('/api/chat', withCookie(ownerBCookie));
     expect(chat.status).toBe(404);
     expect(await chat.text()).not.toContain(SECRET);
     await expectSafeNotFound(
-      await call(`/api/chat/messages/${messageAId}/versions`, {
+      await call('/api/chat/messages/missing/versions', {
         ...withCookie(ownerBCookie, { content: 'não criar versão alheia' }),
         method: 'POST',
       }),

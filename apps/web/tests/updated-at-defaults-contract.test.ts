@@ -3,14 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const models = [
-  'Automation',
   'BrainCompilation',
   'BrainCompilationSegment',
   'BrainEdge',
   'BrainNode',
   'LibraryFolder',
   'Note',
-  'ResearchArtifact',
   'Tag',
 ] as const;
 

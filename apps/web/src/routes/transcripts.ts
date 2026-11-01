@@ -489,18 +489,10 @@ transcriptsRoutes.get('/:id', async (c) => {
     return c.json({ error: 'Transcrição não encontrada.' }, 404);
   }
 
-  // Soma custos relacionados (summary é registrado em CostEvent.meta com
-  // {transcript_id}; STT remoto pode não vir com cost confiável da OR, mas o Decimal
-  // do Transcript pode conter). totalCostUsd reflete o custo *real* do user.
-  const summaryCosts = await db.$queryRaw<{ total: string | null }[]>`
-    SELECT COALESCE(SUM("costUsd"), 0)::text AS total
-    FROM "CostEvent"
-    WHERE "userId" = ${userId}
-      AND meta->>'transcript_id' = ${transcript.id}
-  `;
-  const summarySum = parseFloat(summaryCosts[0]?.total ?? '0');
+  // Stored transcript cost only (spec 215): no model execution remains to
+  // append CostEvent rows, so there is nothing else to sum.
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
-  const totalCostUsd = (baseCost + summarySum).toFixed(6);
+  const totalCostUsd = baseCost.toFixed(6);
 
   const { markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript);
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];

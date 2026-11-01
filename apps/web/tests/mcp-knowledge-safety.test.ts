@@ -355,7 +355,7 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP current knowledge', () => {
     expect(sources.structuredContent!.sources.map((item) => item.id)).toContain(source.id);
   });
 
-  test('retains existing owned folders, completed jobs and unarchived conversations', async () => {
+  test('retains existing owned folders and completed jobs', async () => {
     const noteFolder = await db.note.create({
       data: { userId: ownerId, kind: 'FOLDER', title: 'Note folder' },
     });
@@ -370,19 +370,13 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP current knowledge', () => {
         sourceUrl: 'https://example.test/finished',
       },
     });
-    const conversation = await db.conversation.create({ data: { userId: ownerId } });
     const inputs = [
       { sourceType: 'FOLDER' as const, sourceId: noteFolder.id },
       { sourceType: 'FOLDER' as const, sourceId: libraryFolder.id },
       { sourceType: 'JOB' as const, sourceId: job.id },
-      { sourceType: 'CHAT' as const, sourceId: conversation.id },
     ];
     expect(await keepCurrentOwnedSources(ownerId, inputs)).toEqual(inputs);
     await db.job.update({ where: { id: job.id }, data: { status: 'CANCELLED' } });
-    await db.conversation.update({
-      where: { id: conversation.id },
-      data: { archivedAt: new Date() },
-    });
     expect(await keepCurrentOwnedSources(ownerId, inputs)).toEqual(inputs.slice(0, 2));
   });
 });
