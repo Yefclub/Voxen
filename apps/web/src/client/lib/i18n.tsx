@@ -1379,11 +1379,10 @@ const ptBRMessages = {
   'setup.badge.edit': 'Configurações',
   'setup.title.initialPrefix': 'Conecte com a ',
   'setup.title.initialSuffix': '',
+  'setup.title.initial': 'Configuração inicial',
   'setup.title.edit': 'Configurações da instância',
-  'setup.subtitle.initial':
-    'Uma chave da OpenRouter habilita chat, transcrição, imagens e documentos com os padrões seguros da Voxen.',
-  'setup.subtitle.edit':
-    'Atualize idioma e fuso ou substitua a chave da OpenRouter; novos modelos são aplicados automaticamente.',
+  'setup.subtitle.initial': 'Defina o idioma e o fuso horário da instância.',
+  'setup.subtitle.edit': 'Atualize o idioma e o fuso horário da instância.',
   'setup.validationTitle': 'Não consegui validar',
   'setup.saved': 'Configurações salvas.',
   'setup.doneTitle': 'Salvo.',
@@ -2752,11 +2751,10 @@ const enMessages: Record<I18nKey, string> = {
   'setup.badge.edit': 'Settings',
   'setup.title.initialPrefix': 'Connect ',
   'setup.title.initialSuffix': '',
+  'setup.title.initial': 'Initial setup',
   'setup.title.edit': 'Instance settings',
-  'setup.subtitle.initial':
-    'An OpenRouter key enables chat, transcription, images, and documents with Voxen’s safe defaults.',
-  'setup.subtitle.edit':
-    'Update language and timezone or replace the OpenRouter key; new defaults are applied automatically.',
+  'setup.subtitle.initial': 'Set the instance language and timezone.',
+  'setup.subtitle.edit': 'Update the instance language and timezone.',
   'setup.validationTitle': 'Could not validate',
   'setup.saved': 'Settings saved.',
   'setup.doneTitle': 'Saved.',

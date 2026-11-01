@@ -371,8 +371,10 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
       uploadObjectKey(ownerBId, 'upload-1', 'aula.mp4'),
     );
 
+    // Product 2 cost UI removed (spec 215): the route is gone, which
+    // trivially leaks nothing cross-workspace.
     const nonAdminCosts = await call('/api/admin/custos', withCookie(ownerBCookie));
-    expect(nonAdminCosts.status).toBe(403);
+    expect(nonAdminCosts.status).toBe(404);
     expect(await nonAdminCosts.text()).not.toContain(SECRET);
     const adminUsers = await call('/api/admin/usuarios', withCookie(fixture.adminCookie));
     expect(adminUsers.status).toBe(200);

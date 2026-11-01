@@ -28,7 +28,6 @@ describe('isBottomNavTab', () => {
     '/setup',
     '/conta',
     '/admin/usuarios',
-    '/admin/custos',
     '/admin/integracoes',
   ])('NÃO trata %s como aba de topo', (path) => {
     expect(isBottomNavTab(path)).toBe(false);
@@ -55,7 +54,6 @@ describe('showsMobileBack', () => {
     '/setup',
     '/conta',
     '/admin/usuarios',
-    '/admin/custos',
     '/admin/integracoes',
   ])('sub-páginas (%s) mostram voltar', (path) => {
     expect(showsMobileBack(path)).toBe(true);

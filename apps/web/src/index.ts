@@ -11,10 +11,8 @@ import { auth } from './lib/auth';
 import { db } from './lib/db';
 import { getAppLanguage, getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
-import { adminModelsRoutes } from './routes/admin-models';
 import { adminConfigRevisionRoutes } from './routes/admin-config-revisions';
 import { integrationCookieRoutes } from './routes/integration-cookies';
-import { getPublicActiveCapabilities } from './lib/capabilities';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -22,7 +20,6 @@ import { transcriptsRoutes } from './routes/transcripts';
 import { savedMediaRoutes } from './routes/saved-media';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
-import { costRoutes } from './routes/cost';
 import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
@@ -112,15 +109,6 @@ app.get('/health/deep', async (c) => {
 app.route('/', mcpOAuthDiscoveryRoutes);
 app.route('/', publicAuthenticationRoutes);
 
-// Capabilities: features opcionais que o admin pode habilitar/desabilitar.
-// UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
-// se admin configurou modelo de visão).
-app.get('/api/capabilities', async (c) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  if (!session) return c.json({ error: 'Não autenticado.' }, 401);
-  return c.json(await getPublicActiveCapabilities());
-});
-
 // /api/me — devolve session corrente + flag de setupComplete (sempre exposta)
 app.get('/api/me', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -169,7 +157,6 @@ app.route('/api/setup', setupRoutes);
 app.route('/api/admin', adminRoutes);
 
 // Seleção manual de modelos por finalidade (spec 123, admin only)
-app.route('/api/admin/models', adminModelsRoutes);
 
 app.route('/api/admin/config-revisions', adminConfigRevisionRoutes);
 
@@ -189,9 +176,6 @@ app.route('/api/onboarding', onboardingRoutes);
 
 // Conta do user (perfil + senha)
 app.route('/api/account', accountRoutes);
-
-// Painel de custos (admin)
-app.route('/api/admin/custos', costRoutes);
 
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);

@@ -1,9 +1,8 @@
 // ============================================================================
-// Voxen — configuração unificada da OpenRouter
+// Voxen — knowledge-base setup (Product 1, spec 215)
 // ============================================================================
-// A superfície administrativa recebe somente a chave. Depois de validar a
-// chave e os recursos canônicos, chave + seis defaults são persistidos em uma
-// única transação cifrada.
+// No model-provider account, key, or model configuration. Fresh installs
+// complete onboarding with instance preferences only.
 // ============================================================================
 
 import { Hono } from 'hono';
@@ -12,23 +11,9 @@ import { auth } from '../lib/auth';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { db } from '../lib/db';
 import {
-  DEFAULT_OPENROUTER_MODELS,
-  getModelCompatibilityFailures,
-  fallbackSettingForPurpose,
-  isFallbackCompatible,
-  isModelCompatibleWithPurpose,
-  isModelPurpose,
-  MODEL_PURPOSES,
-  MODEL_FALLBACK_SETTINGS,
-  suggestFallbackForPurpose,
-  type ModelPurpose,
-} from '../lib/model-defaults';
-import { inspectOpenRouterAccount, OpenrouterError } from '../lib/openrouter';
-import {
   getAppLanguage,
   getAppTimezone,
   getSetting,
-  getSettings,
   isSetupComplete,
   setSettings,
 } from '../lib/settings';
@@ -55,16 +40,13 @@ setupRoutes.use('*', async (c, next) => {
 });
 
 setupRoutes.get('/', async (c) => {
-  const [onboardingDone, apiKey, language, timezone] = await Promise.all([
+  const [onboardingDone, language, timezone] = await Promise.all([
     getSetting('onboarding_done').catch(() => null),
-    getSetting('openrouter_api_key').catch(() => null),
     getAppLanguage(),
     getAppTimezone(),
   ]);
-  const complete = onboardingDone === 'true' || Boolean(apiKey);
   return c.json({
-    complete,
-    hasApiKey: Boolean(apiKey),
+    complete: onboardingDone === 'true',
     language,
     timezone,
   });
@@ -72,18 +54,15 @@ setupRoutes.get('/', async (c) => {
 
 const SaveBody = z
   .object({
-    openrouter_api_key: z.string().trim().min(20).max(512).optional(),
     // O onboarding coleta estes valores em etapas próprias. Eles continuam no
     // mesmo POST para que a primeira configuração seja atômica.
     app_language: z.enum(['pt-BR', 'en']).optional(),
     app_timezone: z.string().trim().min(1).max(64).optional(),
-    model_replacements: z.record(z.string(), z.string().trim().min(1).max(200)).optional(),
     reason: z.string().trim().max(500).optional(),
   })
   .strict()
   .refine(
-    ({ openrouter_api_key, app_language, app_timezone }) =>
-      openrouter_api_key !== undefined || app_language !== undefined || app_timezone !== undefined,
+    ({ app_language, app_timezone }) => app_language !== undefined || app_timezone !== undefined,
   );
 
 setupRoutes.post('/', async (c) => {
@@ -92,96 +71,18 @@ setupRoutes.post('/', async (c) => {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
 
-  const { openrouter_api_key, app_language, app_timezone, model_replacements, reason } =
-    parsed.data;
+  const { app_language, app_timezone, reason } = parsed.data;
   const metadata = { actorUserId: c.get('adminUserId'), reason };
   if (app_timezone !== undefined && !isValidIanaTimezone(app_timezone)) {
     return c.json({ error: 'Timezone IANA inválido.' }, 400);
   }
 
-  const preferences = {
-    ...(app_language !== undefined ? { app_language } : {}),
-    ...(app_timezone !== undefined ? { app_timezone: normalizeAppTimezone(app_timezone) } : {}),
-  };
-  if (openrouter_api_key === undefined) {
-    if (model_replacements !== undefined) {
-      return c.json({ error: 'Substituições de modelo exigem uma nova chave da OpenRouter.' }, 400);
-    }
-    await setSettings(preferences, metadata);
-    const [complete, apiKey] = await Promise.all([
-      isSetupComplete(),
-      getSetting('openrouter_api_key').catch(() => null),
-    ]);
-    return c.json({ complete, hasApiKey: Boolean(apiKey) });
-  }
-
-  if (
-    model_replacements !== undefined &&
-    Object.keys(model_replacements).some((purpose) => !isModelPurpose(purpose))
-  ) {
-    return c.json({ error: 'Finalidade de modelo inválida.' }, 400);
-  }
-
-  const inspection = await inspectOpenRouterAccount(openrouter_api_key).catch((err) => {
-    if (err instanceof OpenrouterError) return null;
-    throw err;
-  });
-  if (inspection === null) {
-    return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
-  }
-  if (!inspection.valid) {
-    return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
-  }
-  // Uma finalidade ganha o canônico no primeiro setup e preserva o valor
-  // efetivo nas trocas seguintes. A chave candidata só pode ser persistida se
-  // os seis valores (ou substituições explícitas) estiverem no catálogo dela.
-  const existingModels = await getSettings([...MODEL_PURPOSES, ...MODEL_FALLBACK_SETTINGS]);
-  const effectiveModels = Object.fromEntries(
-    MODEL_PURPOSES.map((purpose) => [
-      purpose,
-      model_replacements?.[purpose] ??
-        existingModels[purpose] ??
-        DEFAULT_OPENROUTER_MODELS[purpose],
-    ]),
-  ) as Record<ModelPurpose, string>;
-  const failures = getModelCompatibilityFailures(effectiveModels, inspection.models);
-  if (failures.length > 0) {
-    return c.json(
-      {
-        error:
-          'Alguns modelos configurados não estão disponíveis ou não são compatíveis com a nova chave. Selecione substituições autorizadas antes de salvar.',
-        incompatible: failures.map((failure) => ({
-          ...failure,
-          compatibleModels: inspection.models
-            .filter((model) => isModelCompatibleWithPurpose(failure.purpose, model))
-            .map((model) => ({ id: model.id, name: model.name ?? model.id })),
-        })),
-      },
-      422,
-    );
-  }
-
-  const effectiveFallbacks = Object.fromEntries(
-    MODEL_PURPOSES.map((purpose) => {
-      const setting = fallbackSettingForPurpose(purpose);
-      const stored = existingModels[setting];
-      const primary = effectiveModels[purpose];
-      const fallback = isFallbackCompatible(purpose, primary, stored, inspection.models)
-        ? stored
-        : suggestFallbackForPurpose(purpose, primary, inspection.models);
-      return [setting, fallback];
-    }),
-  );
-
   await setSettings(
     {
-      openrouter_api_key,
-      ...effectiveModels,
-      ...effectiveFallbacks,
-      ...preferences,
+      ...(app_language !== undefined ? { app_language } : {}),
+      ...(app_timezone !== undefined ? { app_timezone: normalizeAppTimezone(app_timezone) } : {}),
     },
     metadata,
   );
-
-  return c.json({ complete: await isSetupComplete(), hasApiKey: true });
+  return c.json({ complete: await isSetupComplete() });
 });

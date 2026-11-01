@@ -12,7 +12,6 @@ import {
   Network,
   RotateCcw,
   RotateCw,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
 } from '@/components/ui/icons';
@@ -23,16 +22,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
 import { Switch } from '../components/ui/switch';
-import { api, ApiError, apiDelete, apiGet, apiPatch, apiPost } from '../lib/api';
+import { api, ApiError, apiGet, apiPost } from '../lib/api';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
-import { ModelPickerDialog } from '../components/model-picker-dialog';
 import { ResearchPolicySection } from '../components/admin/research-policy-section';
-import { AdminModelPurposeRow } from '../components/admin/model-purpose-row';
 import { McpTokenAdminSection } from '../components/admin/mcp-token-admin-section';
 import { writeClipboardText } from '../lib/clipboard';
 import { useI18n } from '../lib/i18n';
-import type { ModelPurpose, ModelPurposeStatus, OrModel } from '../lib/types';
 
 // Path do proxy de WebSocket do túnel na web do Voxen. Deve casar com o default
 // do backend (PROXY_TUNNEL_PATH). Usado só como fallback de EXIBIÇÃO quando o
@@ -89,7 +85,6 @@ export function AdminIntegracoesPage(): React.ReactElement {
           description={t('admin.integrations.description')}
         />
 
-        <ModelsSection />
         <ResearchPolicySection />
         <ConfigRevisionSection />
         <McpTokenAdminSection />
@@ -264,205 +259,6 @@ function ConfigRevisionSection(): React.ReactElement {
         onConfirm={rollback}
         loading={rollingBack}
       />
-    </motion.div>
-  );
-}
-
-const PURPOSE_LABEL_KEYS: Record<ModelPurpose, Parameters<ReturnType<typeof useI18n>['t']>[0]> = {
-  default_chat_model: 'admin.integrations.models.purpose.chat',
-  default_transcription_model: 'admin.integrations.models.purpose.transcription',
-  default_web_search_model: 'admin.integrations.models.purpose.webSearch',
-  default_vision_model: 'admin.integrations.models.purpose.vision',
-  default_document_model: 'admin.integrations.models.purpose.document',
-  default_x_analysis_model: 'admin.integrations.models.purpose.xAnalysis',
-};
-
-interface ModelsStatusResponse {
-  purposes: ModelPurposeStatus[];
-  hasApiKey: boolean;
-}
-
-interface ModelCatalogResponse {
-  models: OrModel[];
-}
-
-function ModelsSection(): React.ReactElement {
-  const { t } = useI18n();
-  const [status, setStatus] = useState<ModelsStatusResponse | null>(null);
-  const [dialogPurpose, setDialogPurpose] = useState<ModelPurpose | null>(null);
-  const [dialogKind, setDialogKind] = useState<'primary' | 'fallback'>('primary');
-  const [catalog, setCatalog] = useState<OrModel[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [resettingPurpose, setResettingPurpose] = useState<ModelPurpose | null>(null);
-  const [clearingFallback, setClearingFallback] = useState<ModelPurpose | null>(null);
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh(): Promise<void> {
-    try {
-      const s = await apiGet<ModelsStatusResponse>('/api/admin/models');
-      setStatus(s);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('admin.integrations.models.loadError'));
-    }
-  }
-
-  function openDialog(purpose: ModelPurpose, kind: 'primary' | 'fallback'): void {
-    setDialogPurpose(purpose);
-    setDialogKind(kind);
-    setCatalog([]);
-    setCatalogError(null);
-    setCatalogLoading(true);
-    apiGet<ModelCatalogResponse>(`/api/admin/models/catalog/${purpose}`)
-      .then((res) => setCatalog(res.models))
-      .catch((err) => {
-        setCatalogError(
-          err instanceof ApiError ? err.message : t('admin.integrations.models.catalogUnavailable'),
-        );
-      })
-      .finally(() => setCatalogLoading(false));
-  }
-
-  async function selectModel(modelId: string): Promise<void> {
-    if (!dialogPurpose) return;
-    setSaving(true);
-    try {
-      const suffix = dialogKind === 'fallback' ? '/fallback' : '';
-      const updated = await apiPatch<ModelPurposeStatus>(
-        `/api/admin/models/${dialogPurpose}${suffix}`,
-        { modelId },
-      );
-      setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              purposes: prev.purposes.map((p) => (p.purpose === updated.purpose ? updated : p)),
-            }
-          : prev,
-      );
-      toast.success(t('admin.integrations.models.changeSuccess'));
-      setDialogPurpose(null);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('common.error'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function clearFallback(purpose: ModelPurpose): Promise<void> {
-    setClearingFallback(purpose);
-    try {
-      const updated = await apiDelete<ModelPurposeStatus>(`/api/admin/models/${purpose}/fallback`);
-      setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              purposes: prev.purposes.map((p) => (p.purpose === updated.purpose ? updated : p)),
-            }
-          : prev,
-      );
-      toast.success(t('admin.integrations.models.changeSuccess'));
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('common.error'));
-    } finally {
-      setClearingFallback(null);
-    }
-  }
-
-  async function resetPurpose(purpose: ModelPurpose): Promise<void> {
-    setResettingPurpose(purpose);
-    try {
-      const updated = await apiDelete<ModelPurposeStatus>(`/api/admin/models/${purpose}`);
-      setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              purposes: prev.purposes.map((p) => (p.purpose === updated.purpose ? updated : p)),
-            }
-          : prev,
-      );
-      toast.success(t('admin.integrations.models.resetSuccess'));
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('common.error'));
-    } finally {
-      setResettingPurpose(null);
-    }
-  }
-
-  if (!status) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Spinner />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const dialogStatus = status.purposes.find((p) => p.purpose === dialogPurpose) ?? null;
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-      <Card elevated>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display">
-            <SlidersHorizontal className="h-4 w-4 text-amber-400" />
-            {t('admin.integrations.models.title')}
-          </CardTitle>
-          <CardDescription>{t('admin.integrations.models.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {!status.hasApiKey && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
-              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-200/90">{t('admin.integrations.models.noApiKey')}</p>
-            </div>
-          )}
-
-          {status.purposes.map((p) => (
-            <AdminModelPurposeRow
-              key={p.purpose}
-              status={p}
-              label={t(PURPOSE_LABEL_KEYS[p.purpose])}
-              disabled={!status.hasApiKey}
-              resetting={resettingPurpose === p.purpose}
-              clearingFallback={clearingFallback === p.purpose}
-              onChange={() => openDialog(p.purpose, 'primary')}
-              onChangeFallback={() => openDialog(p.purpose, 'fallback')}
-              onClearFallback={() => void clearFallback(p.purpose)}
-              onReset={() => void resetPurpose(p.purpose)}
-            />
-          ))}
-        </CardContent>
-      </Card>
-
-      {dialogStatus && (
-        <ModelPickerDialog
-          open={dialogPurpose !== null}
-          onOpenChange={(next) => {
-            if (!next) setDialogPurpose(null);
-          }}
-          title={
-            dialogKind === 'fallback'
-              ? `Fallback — ${t(PURPOSE_LABEL_KEYS[dialogStatus.purpose])}`
-              : t(PURPOSE_LABEL_KEYS[dialogStatus.purpose])
-          }
-          models={
-            dialogKind === 'fallback'
-              ? catalog.filter((model) => model.id !== dialogStatus.effective)
-              : catalog
-          }
-          loading={catalogLoading}
-          error={catalogError}
-          value={dialogKind === 'fallback' ? (dialogStatus.fallback ?? '') : dialogStatus.effective}
-          saving={saving}
-          onSelect={(modelId) => void selectModel(modelId)}
-        />
-      )}
     </motion.div>
   );
 }
