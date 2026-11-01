@@ -371,7 +371,8 @@ if (process.env.NODE_ENV === 'production') {
 
   // Knowledge deletions are retained Product 1 maintenance (spec 215): the web
   // process drains DELETE_KNOWLEDGE jobs so they complete and recover after
-  // restart without the analysis worker.
+  // restart without the analysis worker. Fresh jobs wait out a short
+  // cancellation window before the drain picks them up.
   void import('./lib/knowledge-deletion-executor')
     .then(({ drainPendingKnowledgeDeletions }) => {
       const drain = (): void => {
@@ -385,7 +386,7 @@ if (process.env.NODE_ENV === 'production') {
         });
       };
       drain();
-      setInterval(drain, 30_000).unref();
+      setInterval(drain, 15_000).unref();
     })
     .catch((err) => {
       structuredDiagnostic(

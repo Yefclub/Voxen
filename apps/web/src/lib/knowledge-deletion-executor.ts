@@ -28,6 +28,9 @@ const HEARTBEAT_MS = 20_000;
 const MAX_ATTEMPTS = 3;
 const GRAPH_LEASE_ATTEMPTS = 5;
 const WORKER_ID_PREFIX = 'web-executor';
+// Grace period before the drain picks up a fresh deletion: doubles as a
+// cancellation window and keeps enqueue-only test semantics deterministic.
+const DRAIN_MIN_AGE_MS = 10_000;
 const INTERRUPTED_MESSAGE = 'Knowledge deletion was interrupted and will be retried.';
 
 const GRAPH_SOURCE_TYPE: Partial<Record<KnowledgeDeletionTargetType, string>> = {
@@ -668,10 +671,14 @@ export async function runKnowledgeDeletionJob(jobId: string): Promise<boolean> {
 }
 
 export async function drainPendingKnowledgeDeletions(limit = 10): Promise<{ processed: number }> {
+  const now = new Date();
   const candidates = await db.job.findMany({
     where: {
       type: 'DELETE_KNOWLEDGE',
-      OR: [{ status: 'QUEUED' }, { status: 'RUNNING', leaseExpiresAt: { lt: new Date() } }],
+      OR: [
+        { status: 'QUEUED', queuedAt: { lt: new Date(now.getTime() - DRAIN_MIN_AGE_MS) } },
+        { status: 'RUNNING', leaseExpiresAt: { lt: now } },
+      ],
     },
     orderBy: { queuedAt: 'asc' },
     take: limit,
