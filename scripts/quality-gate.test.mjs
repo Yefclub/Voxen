@@ -8,12 +8,11 @@ import {
   isProductionSource,
   parseJscpdReport,
   parseLcov,
-  parsePythonCoverage,
 } from "./quality-gate-lib.mjs";
 
 const baseline = {
   schemaVersion: 1,
-  coverageMinimum: { web: 70, worker: 80 },
+  coverageMinimum: { web: 70 },
   duplicationMaximum: 2.5,
   fileLineLimit: 500,
   oversizedFileAllowance: { "apps/web/src/legacy.ts": 700 },
@@ -22,7 +21,6 @@ const baseline = {
 const metrics = {
   coverage: {
     web: { percent: 70, coveredLines: 70, totalLines: 100 },
-    worker: { percent: 81, coveredLines: 81, totalLines: 100 },
   },
   duplication: {
     percent: 2.5,
@@ -51,12 +49,6 @@ test("coverage parsers normalize LCOV and coverage.py JSON", () => {
     totalLines: 10,
     percent: 70,
   });
-  assert.deepEqual(
-    parsePythonCoverage(
-      JSON.stringify({ totals: { covered_lines: 8, num_statements: 10 } }),
-    ),
-    { coveredLines: 8, totalLines: 10, percent: 80 },
-  );
 });
 
 test("web coverage fails safe for source files absent from Bun LCOV", () => {
@@ -92,11 +84,9 @@ test("duplication parser uses jscpd aggregate evidence", () => {
 });
 
 test("production source selection excludes tests and generated files", () => {
-  assert.equal(isProductionSource("apps/web/src/routes/jobs.ts"), true);
-  assert.equal(isProductionSource("apps/worker/src/pipeline.py"), true);
+  assert.equal(isProductionSource("apps/web/src/routes/notes.ts"), true);
   assert.equal(isProductionSource("apps/extension/popup.css"), true);
-  assert.equal(isProductionSource("apps/web/src/routes/jobs.test.ts"), false);
-  assert.equal(isProductionSource("apps/worker/tests/test_pipeline.py"), false);
+  assert.equal(isProductionSource("apps/web/src/routes/notes.test.ts"), false);
   assert.equal(
     isProductionSource("apps/web/src/prisma-generated/client.ts"),
     false,
@@ -128,7 +118,6 @@ test("ratchet accepts equality and improvements", () => {
 test("ratchet reports coverage, duplication, legacy growth, and new large files", () => {
   const regressed = structuredClone(metrics);
   regressed.coverage.web.percent = 69.99;
-  regressed.coverage.worker.percent = 79.99;
   regressed.duplication.percent = 2.51;
   regressed.files.oversized = [
     { path: "apps/web/src/legacy.ts", lines: 701 },
@@ -138,7 +127,6 @@ test("ratchet reports coverage, duplication, legacy growth, and new large files"
     compareMetrics(regressed, baseline).map(({ code }) => code),
     [
       "coverage-web",
-      "coverage-worker",
       "duplication",
       "oversized-file-growth",
       "new-oversized-file",
@@ -179,22 +167,6 @@ test("malformed evidence fails closed", () => {
   assert.throws(() =>
     parseLcov(
       "SF:src/duplicate.ts\nLF:1\nLH:1\nend_of_record\nSF:src/duplicate.ts\nLF:1\nLH:1\nend_of_record",
-    ),
-  );
-  assert.throws(() => parsePythonCoverage("{}"));
-  assert.throws(() =>
-    parsePythonCoverage(
-      JSON.stringify({ totals: { covered_lines: 20, num_statements: 10 } }),
-    ),
-  );
-  assert.throws(() =>
-    parsePythonCoverage(
-      JSON.stringify({ totals: { covered_lines: -1, num_statements: 10 } }),
-    ),
-  );
-  assert.throws(() =>
-    parsePythonCoverage(
-      JSON.stringify({ totals: { covered_lines: "8", num_statements: 10 } }),
     ),
   );
   assert.throws(() => parseJscpdReport("{}"));

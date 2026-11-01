@@ -56,14 +56,15 @@ credentials, private content, or unredacted logs in a public report.
 - **Web/API:** Bun, Hono, Vite, React, Tailwind CSS v4, and shadcn/ui
 - **MCP:** user-scoped Streamable HTTP at `/mcp`; see the
   [client setup and compatibility guide](docs/en/MCP.md)
-- **Worker:** Python asyncio, `yt-dlp`, and `ffmpeg`
 - **Authentication:** Better Auth with email/password, optional OIDC SSO, and
   administrator approval
 - **Database:** PostgreSQL 17, Prisma, and full-text search
 - **Queue:** durable PostgreSQL jobs with leases and heartbeats; Redis is used
   for wakeups and realtime events
 - **Storage:** shared local volume by default; optional MinIO/S3-compatible driver
-- **Models:** OpenRouter, configured centrally by an administrator
+- **Content:** prepared documents, notes, and assets are ingested through versioned
+  HTTP/MCP contracts; retrieval is deterministic full-text search with
+  progressive reads — no built-in model execution
 
 ## Local quick start
 
@@ -76,11 +77,11 @@ make dev
 ```
 
 Open `http://localhost:3000`. The first account becomes the administrator and
-enters onboarding. Add an OpenRouter key; Voxen validates it and applies the
-canonical model configuration for the instance.
+enters onboarding. No model-provider account or key is required: setup only
+asks for instance language and timezone.
 
 `make dev` creates or completes `.env` when necessary and starts PostgreSQL,
-Redis, the web app, and the worker. Canonical Markdown and media use the shared
+Redis, and the web app. Canonical Markdown and media use the shared
 `storage_data` volume; MinIO is no longer required for a new single-host install.
 Use `make dev-s3` with [`.env.s3.example`](.env.s3.example) only when you
 deliberately want MinIO or another S3-compatible backend.
@@ -94,7 +95,7 @@ supported. See the [deployment guide](docs/en/DEPLOY.md) for the complete
 instructions.
 
 For Easypanel, prefer the combined published image. One Voxen App already runs
-the web/API, worker, and integrated chat runtime:
+the web/API:
 
 ```text
 ghcr.io/yefclub/voxen:latest

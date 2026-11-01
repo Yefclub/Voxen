@@ -123,75 +123,10 @@ jobs:
           path: apps/web/coverage/lcov.info
           retention-days: 7
 
-  lint-py-worker:
-    name: Lint Python (apps/worker)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@v8.1.0
-      - run: uv sync --frozen
-        working-directory: apps/worker
-      - run: uv run ruff check .
-        working-directory: apps/worker
-      - run: uv run ruff format --check .
-        working-directory: apps/worker
-      - run: uv run mypy src
-        working-directory: apps/worker
-
-  test-py-worker:
-    name: Test Python (apps/worker)
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: voxen_worker_test
-          POSTGRES_USER: voxen
-          POSTGRES_PASSWORD: dev
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U voxen"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_worker_test
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.2.x
-      - uses: pnpm/action-setup@v6
-      - run: pnpm install --frozen-lockfile
-      - name: Prisma migrate deploy
-        run: pnpm exec prisma migrate deploy --schema=../../prisma/schema.prisma
-        working-directory: apps/web
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@v8.1.0
-      - run: uv sync --frozen
-        working-directory: apps/worker
-      - name: Test with coverage
-        run: |
-          mkdir -p coverage
-          uv run pytest --cov=src --cov-report=term --cov-report=json:coverage/coverage.json
-        working-directory: apps/worker
-      - name: Upload worker coverage
-        uses: actions/upload-artifact@v7
-        with:
-          name: worker-coverage
-          path: apps/worker/coverage/coverage.json
-          retention-days: 7
-
   quality-gate:
     name: Quality Gate
     runs-on: ubuntu-latest
-    needs: [test-ts, test-py-worker]
+    needs: [test-ts]
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@v6
@@ -211,12 +146,6 @@ jobs:
         with:
           name: web-coverage
           path: quality-gate/input/web
-      - name: Download worker coverage
-        if: ${{ always() }}
-        uses: actions/download-artifact@v8
-        with:
-          name: worker-coverage
-          path: quality-gate/input/worker
       - name: Preserve raw coverage evidence
         if: ${{ always() }}
         run: |
@@ -226,12 +155,6 @@ jobs:
             cp quality-gate/input/web/lcov.info quality-gate/output/raw/web-lcov.info
           else
             echo "Web coverage artifact is missing."
-            missing=1
-          fi
-          if [ -f quality-gate/input/worker/coverage.json ]; then
-            cp quality-gate/input/worker/coverage.json quality-gate/output/raw/worker-coverage.json
-          else
-            echo "Worker coverage artifact is missing."
             missing=1
           fi
           exit "$missing"
@@ -300,15 +223,13 @@ jobs:
           if-no-files-found: error
 
   # ==========================================================================
-  # As três imagens são construídas em PARALELO. Antes eram três passos
-  # sequenciais num job só, e o job custava o tempo somado: web 3m57s +
-  # worker 3m01s + Easypanel 2m47s = 10m40s, o caminho crítico do CI inteiro
-  # (o segundo job mais lento leva 2m10s). Como `version-dev` abre PR e espera
-  # estes mesmos checks para mergear o bump, todo commit de versão pagava os
-  # dez minutos.
+  # As duas imagens são construídas em PARALELO. Antes eram passos
+  # sequenciais num job só, e o job custava o tempo somado. Como o
+  # `version-dev` abre PR e espera estes mesmos checks para mergear o bump,
+  # todo commit de versão pagava o caminho crítico inteiro.
   #
   # `scope` distinto por imagem é obrigatório, não cosmético: o cache
-  # `type=gha` usa um escopo único por padrão, então três builds concorrentes
+  # `type=gha` usa um escopo único por padrão, então builds concorrentes
   # com `mode=max` sobrescreveriam o cache um do outro a cada run.
   # ==========================================================================
   docker-build-web:
@@ -325,21 +246,6 @@ jobs:
           push: false
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
-
-  docker-build-worker:
-    name: Docker build (worker)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - name: Build worker
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/worker/Dockerfile
-          push: false
-          cache-from: type=gha,scope=worker
-          cache-to: type=gha,mode=max,scope=worker
 
   docker-build-easypanel:
     name: Docker build (Easypanel App)
@@ -424,18 +330,17 @@ jobs:
     name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest
     if: always()
-    needs: [docker-build-web, docker-build-worker, docker-build-easypanel]
+    needs: [docker-build-web, docker-build-easypanel]
     steps:
       - name: Assert image builds succeeded
         env:
           WEB: ${{ needs.docker-build-web.result }}
-          WORKER: ${{ needs.docker-build-worker.result }}
           EASYPANEL: ${{ needs.docker-build-easypanel.result }}
         run: |
           set -eu
-          echo "web=$WEB worker=$WORKER easypanel=$EASYPANEL"
+          echo "web=$WEB easypanel=$EASYPANEL"
           failed=0
-          for pair in "web:$WEB" "worker:$WORKER" "easypanel:$EASYPANEL"; do
+          for pair in "web:$WEB" "easypanel:$EASYPANEL"; do
             if [ "${pair#*:}" != "success" ]; then
               echo "::error::Image build ${pair%%:*} did not pass (${pair#*:})."
               failed=1

@@ -38,7 +38,7 @@ Aguarde a propagação (`dig voxen.seudominio.com` deve retornar o IP).
 
 - Ubuntu 22.04+ / Debian 12+ / qualquer Linux com kernel 5.x+
 - Docker Engine **24+** e Docker Compose **v2**
-- 2 GB RAM mínimo, 4 GB recomendado (worker + ffmpeg + runtime de chat)
+- 2 GB RAM mínimo, 4 GB recomendado
 - 20 GB de disco (DB + storage persistente + imagens)
 - Portas 80 e 443 livres (se for usar HTTPS direto)
 
@@ -77,7 +77,7 @@ STORAGE_LOCAL_PATH=/data/storage
 ### Drivers de storage e atualização segura
 
 Instalações novas em um único host usam o volume compartilhado
-`storage_data`, montado em `/data/storage` no web e no worker. O banco continua
+`storage_data`, montado em `/data/storage` no web. O banco continua
 armazenando apenas chaves relativas e nunca paths do host. Esse é o caminho
 recomendado para home-lab, VPS, Compose e Easypanel.
 Os entrypoints de produção recusam iniciar o driver local quando esse caminho
@@ -103,7 +103,7 @@ atual configurado, pare os dois escritores e prepare `.env.s3` com as variáveis
 S3 da origem/destino. Para copiar do volume local para S3:
 
 ```bash
-docker compose stop web worker
+docker compose stop web
 docker run --rm --network voxen_voxen-net --env-file .env.s3 \
   -v voxen_storage_data:/data:ro --entrypoint sh amazon/aws-cli:2 -c '
   export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" AWS_DEFAULT_REGION="$S3_REGION"
@@ -114,7 +114,7 @@ docker run --rm --network voxen_voxen-net --env-file .env.s3 \
 Para S3 → local, monte o volume como `:/data` (leitura e escrita) e inverta os
 dois últimos argumentos do `sync`. Confira quantidade de objetos/arquivos e
 bytes totais, preserve o backup de origem, só então altere `STORAGE_DRIVER` e
-suba web/worker. Valide transcrições antigas, ranges de mídia e
+suba o web. Valide documentos, ranges de mídia e
 `GET /health/deep` antes de remover a origem. Nunca troque o driver com algum
 escritor ativo: não existe dual-write online nem rollback automático.
 
@@ -413,7 +413,6 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 ### Troubleshooting LXC
 
 - **Docker não inicia**: confira `nesting=1` nas features do CT. Se for unprivileged, talvez precise habilitar `keyctl=1` também.
-- **ffmpeg lento**: aumente CPU/RAM do CT. Worker faz chunking + transcrição em paralelo, gosta de cores.
 - **Storage não persiste**: cheque se o volume `storage_data` está no rootfs do CT e montado em `/data/storage` nos dois serviços.
 
 ---
@@ -423,9 +422,9 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. O
 caminho recomendado é **um único App via Source → Docker image**, com Postgres,
 Redis e um volume persistente do App montado em `/data/storage`. A
-imagem combinada do Voxen executa `web/API`, `worker` e o runtime de chat
+imagem combinada do Voxen executa o `web/API`
 integrado no mesmo App; não crie serviços atuais separados para `voxen-web`,
-`voxen-worker` ou `voxen-chat`.
+`voxen-web`.
 
 ### 1. Provisionar dependências
 
@@ -454,7 +453,7 @@ Image` para a tag `vX.Y.Z` e atualiza também `latest`. Em `dev`, a imagem é
 publicada somente depois que o PR automático de versão passa pelo CI e é
 mesclado; assim a tag `dev` acompanha o código versionado sem publicar commits
 intermediários. A execução manual do mesmo workflow continua disponível. A
-imagem já contém `web/API`, `worker` e runtime de chat integrado.
+imagem já contém o `web/API`.
 
 Por que essa é a opção recomendada: no Source **GitHub repository**, o Easypanel
 constrói a imagem no servidor e, conforme a
@@ -534,7 +533,7 @@ Easypanel UI → Domains. Adicione `voxen.seudominio.com` apontando para a porta
 Easypanel UI → Deploy. Acompanhe os logs.
 
 No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe o
-`web/API`, `worker` e runtime de chat integrado no mesmo container. Antes disso
+`web/API` no mesmo container. Antes disso
 ela valida Postgres, Redis e o driver de storage selecionado, incluindo uma
 escrita e leitura de diagnóstico.
 
@@ -560,7 +559,7 @@ Configure backups de:
 ## Easypanel Compose (alternativo)
 
 O Compose atual também funciona e, por padrão, sobe Postgres, Redis, o volume
-local, web/API, worker e runtime de chat integrado. No Easypanel, porém, prefira
+local e o `web/API`. No Easypanel, porém, prefira
 **Easypanel App**: o painel gerencia melhor porta, domínio, logs e serviços
 separados.
 
@@ -636,12 +635,12 @@ interno com alias diferente de `minio`, defina
 `VOXEN_S3_BACKUP_MODE=compose-minio`; para S3 externo ele falha de propósito,
 mesmo se houver um volume residual: configure snapshots, versionamento ou backup
 no provedor e verifique a restauração separadamente.
-Durante o backup local, web e worker são pausados e somente os serviços que já
+Durante o backup local, o web é pausado e somente os serviços que já
 estavam ativos são retomados. Artefatos finais só são publicados depois que
 `pg_dump`, master key e storage terminam com sucesso.
 `make restore-storage BACKUP=... RESTORE_CONFIRM=restore` restaura somente o
 storage e é destrutivo. Rode via cron diário. **A master key é o mais crítico**
-— sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
+— sem ela, os secrets cifrados viram lixo.
 
 ---
 
@@ -678,11 +677,11 @@ e o erro no check correspondente — perfeito pra alerta automático.
 Outras ferramentas:
 
 - `docker compose ps` — status dos containers
-- `docker compose logs -f web worker` — logs ao vivo
+- `docker compose logs -f web` — logs ao vivo
 
 ### Logs estruturados e coleta de incidentes
 
-Web e worker emitem eventos JSON de uma linha com `service`, `event`, `level`,
+O web emite eventos JSON de uma linha com `service`, `event`, `level`,
 `timestamp` e, quando aplicável, `request_id`, `job_id` e `error_code`. O web
 também devolve `x-request-id` em cada resposta. Payloads, mensagens externas,
 cookies, tokens e secrets não entram nesses eventos.
@@ -691,7 +690,7 @@ O coletor ignora linhas legadas ou prefixos do Docker/Easypanel e aceita filtros
 combináveis:
 
 ```bash
-docker compose logs --since 2h web worker 2>&1 \
+docker compose logs --since 2h web 2>&1 \
   | node scripts/collect-voxen-logs.mjs --level error
 
 docker service logs yefclub_voxen-app --since 2h 2>&1 \
@@ -785,47 +784,13 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
 | IP fixo / portas 80-443    | Geralmente não — use Cloudflare Tunnel | Sim, padrão                |
 | Hardware                   | Você compra/reaproveita                | Provisionado pelo provedor |
 
-### Mitigações em VPS quando home-lab não é opção
+### Captura de mídia removida
 
-1. **Upload manual**: continua funcionando 100%. Quando um link do YouTube
-   for bloqueado, o usuário baixa pelo navegador (com ferramenta local de
-   sua preferência) e faz upload pelo Voxen.
-2. **Agente de proxy residencial (recomendado)**: rode o
-   [Agente de proxy residencial](#agente-de-proxy-residencial) num host com IP
-   de casa (mini-PC, NAS, Raspberry Pi). O Voxen abre um túnel reverso pra esse
-   agente e o worker passa a baixar saindo pela sua internet residencial — sem
-   abrir portas no roteador de casa, sem contratar proxy pago. É o jeito de ter
-   o IP residencial mesmo com a aplicação rodando numa VPS.
-3. **Transcript/legendas primeiro**: o worker tenta obter legendas do YouTube
-   antes de baixar áudio. Quando há transcript acessível, a transcrição não
-   consome OpenRouter e evita o download de mídia; quando não há, o fluxo cai
-   nos fallbacks normais (`yt-dlp` legendas → áudio → upload manual).
-4. **PO token/bgutil opt-in**: se você opera um provider HTTP bgutil próprio,
-   defina `YTDLP_BGUTIL_BASE_URL=http://host:4416` no ambiente do worker. O
-   Voxen então passa esse provider ao `yt-dlp` e prefere o client `mweb`. Não
-   use providers públicos; isso é mitigação frágil, não garantia de download.
-5. **Híbrido**: rode Voxen no VPS (uptime, HTTPS gerenciado) e direcione o
-   tráfego do worker por um IP residencial. O caminho suportado pra isso é o
-   [Agente de proxy residencial](#agente-de-proxy-residencial) (item 2); ele
-   resolve o "híbrido" sem configuração de rede manual nem VPN.
-6. **Impersonation de browser (TikTok/Instagram)**: o worker já inclui o
-   backend `curl_cffi`, e extractors como o do TikTok pedem impersonation de
-   browser (TLS/JA3) automaticamente. Se uma plataforma quebrar com o padrão,
-   force um alvo definindo `YTDLP_IMPERSONATE` no ambiente do worker (ex.:
-   `chrome` ou `chrome-124:windows-10`). Vazio = auto-seleção pelo extractor.
-7. **Cookies do yt-dlp (extração autenticada)**: alguns conteúdos só vêm
-   completos com uma sessão logada. O **Instagram** serve um rendition só-vídeo
-   (sem áudio) quando não há login — o download de áudio então falha; o
-   **YouTube** às vezes dispara o anti-bot ("Sign in to confirm you're not a
-   bot"). Em **Admin → Integrações → Cookies do yt-dlp**, cole o conteúdo de um
-   `cookies.txt` (formato Netscape) exportado por uma extensão de browser (ex.:
-   "Get cookies.txt LOCALLY") estando logado na conta. O worker passa esses
-   cookies ao `yt-dlp` em todos os caminhos (probe, áudio, legendas). O valor é
-   **cifrado em DB** com a master key, nunca é reexibido nem logado, e o worker o
-   materializa só num arquivo temporário `600` de vida curta. Trade-offs:
-   cookies **expiram** (reexporte quando pararem de funcionar), são da **conta do
-   próprio owner**, e o uso deve **respeitar os termos de uso** de cada
-   plataforma. Combine com proxy residencial quando o bloqueio for por IP.
+> Nota (spec 215, issue #894): a captura e extração de mídia (downloads,
+> transcrição, scraping, proxy de extração e cookies de plataforma) foram
+> removidas do Voxen. O conteúdo chega como material preparado através de
+> contratos versionados HTTP/MCP; a seção abaixo sobre o agente de proxy
+> permanece apenas até a remoção do serviço dedicado.
 
 ### Decisão arquitetural
 

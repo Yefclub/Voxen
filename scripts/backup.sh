@@ -80,7 +80,7 @@ trap cleanup EXIT
 running_services="$(docker compose ps --status running --services)"
 while IFS= read -r service; do
   case "$service" in
-    web | worker) resume_services+=("$service") ;;
+    web) resume_services+=("$service") ;;
   esac
 done <<<"$running_services"
 

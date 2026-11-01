@@ -30,17 +30,15 @@ plataforma e credenciais MCP pertencem ao usuário autenticado em `/conta/*`.
 ## Isolamento de usuários
 
 - Derivar `userId` da sessão, nunca de body ou query.
-- Filtrar transcrições, notas, jobs, grafo, custos, conversas, integrações e
-  ferramentas do agente por esse `userId`.
+- Filtrar transcrições, notas, jobs, grafo e custos por esse `userId`.
 - Manter visões globais do admin explícitas e protegidas.
-- Compartilhar modelos da plataforma sem compartilhar dados ou sessões de
+- Compartilhar configurações da plataforma sem compartilhar dados ou sessões de
   contas pessoais.
 
 ## Secrets
 
-Secrets de infraestrutura ficam somente no `.env` da raiz. Chaves OpenRouter,
-OIDC e outros settings de aplicação são cifrados com AES-256-GCM usando
-`MASTER_KEY`.
+Secrets de infraestrutura ficam somente no `.env` da raiz. OIDC e outros
+settings de aplicação são cifrados com AES-256-GCM usando `MASTER_KEY`.
 
 ```bash
 openssl rand -base64 32
@@ -52,9 +50,8 @@ cookies ou a master key.
 ## Segurança de rede e conteúdo
 
 - O web é a única aplicação exposta.
-- Subprocessos do worker usam arrays de argumentos, timeout, diretórios
-  isolados e nunca interpolação de shell.
-- URLs remotas são validadas antes das ferramentas de mídia.
+- URLs remotas de origem são tratadas como metadados; a Voxen nunca
+  busca, transcreve ou analisa conteúdo automaticamente.
 - Storage local rejeita chaves absolutas/traversal e symlinks, usa permissões
   restritivas, escrita atômica e nunca é servido como diretório estático público.
 - Credenciais S3 opcionais devem acessar somente o bucket da Voxen.

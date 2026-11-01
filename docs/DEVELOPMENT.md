@@ -7,8 +7,7 @@ Este guia cobre ambiente local, validação e contribuição segura.
 - Docker e Docker Compose v2
 - Git
 
-Opcional para tooling fora dos containers: Bun 1.2+, Node.js 22 com pnpm 9+ e
-Python 3.13 com `uv`.
+Opcional para tooling fora dos containers: Bun 1.2+ e Node.js 22 com pnpm 9+.
 
 ## Ambiente local
 
@@ -18,8 +17,8 @@ cd Voxen
 make dev
 ```
 
-`make dev` cria ou completa o `.env` da raiz e inicia Postgres, Redis, o volume local,
-web e worker. Acesse `http://localhost:3000`; a primeira conta se torna admin.
+`make dev` cria ou completa o `.env` da raiz e inicia Postgres, Redis, o volume local
+e o web. Acesse `http://localhost:3000`; a primeira conta se torna admin.
 
 ## Comandos
 
@@ -30,12 +29,11 @@ make update        # rebuild sem remover dados
 make logs          # acompanha logs
 make ps            # mostra serviços
 
-make test          # scripts, web, extensão e worker
+make test          # scripts, web e extensão
 make test-ts       # testes do web
-make test-py       # testes do worker
-make lint          # ESLint e Ruff
-make format-check  # Prettier e Ruff
-make typecheck     # TypeScript e mypy
+make lint          # ESLint
+make format-check  # Prettier
+make typecheck     # TypeScript
 make build         # build das imagens Compose
 
 make migrate       # aplica migrations Prisma

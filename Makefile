@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev dev-s3 update build down restart logs ps test test-scripts test-ts test-extension test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup restore-storage clean
+.PHONY: help ensure-env dev dev-s3 update build down restart logs ps test test-scripts test-ts test-extension lint lint-ts format format-ts format-check format-check-ts typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup restore-storage clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -19,7 +19,7 @@ export VOXEN_BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 ensure-env: ## Cria/completa .env local sem sobrescrever secrets existentes
 	@scripts/ensure-env.sh
 
-dev: ensure-env ## Starts PostgreSQL, Redis, web, and worker with local storage
+dev: ensure-env ## Starts PostgreSQL, Redis, and web with local storage
 	docker compose up -d --build
 	@echo ""
 	@echo "✓ Voxen rodando em http://localhost:3000 (v$(VOXEN_VERSION))"
@@ -28,7 +28,7 @@ dev: ensure-env ## Starts PostgreSQL, Redis, web, and worker with local storage
 
 dev-s3: ensure-env ## Starts the optional MinIO/S3 profile (requires .env S3 values)
 	STORAGE_DRIVER=s3 docker compose --profile s3 up -d minio minio-init
-	STORAGE_DRIVER=s3 docker compose --profile s3 up -d --build web worker
+	STORAGE_DRIVER=s3 docker compose --profile s3 up -d --build web
 	@echo "✓ Voxen S3 profile running at http://localhost:3000"
 	@echo "  MinIO Console: http://localhost:9001"
 
@@ -55,7 +55,7 @@ ps: ## Status dos serviços
 	docker compose ps
 
 # --- Testes ---
-test: test-scripts test-ts test-extension test-py ## Roda todos os testes (scripts + TS + extensão + Python)
+test: test-scripts test-ts test-extension ## Roda todos os testes (scripts + TS + extensão)
 
 test-scripts: ## Testes dos scripts de automação (Node.js)
 	node --test scripts/*.test.mjs
@@ -66,37 +66,24 @@ test-ts: ## Testes do apps/web (Bun)
 test-extension: ## Testes da extensão MV3 (Bun)
 	cd apps/web && bun run test:extension
 
-test-py: ## Testes do worker (pytest via uv)
-	cd apps/worker && uv run pytest
-
 # --- Lint / format / typecheck ---
-lint: lint-ts lint-py ## Lint completo
+lint: lint-ts ## Lint completo
 
 lint-ts:
 	cd apps/web && bun run lint
 
-lint-py:
-	cd apps/worker && uv run ruff check .
-
-format: format-ts format-py ## Aplica formatacao (Prettier + Ruff)
+format: format-ts ## Aplica formatacao (Prettier)
 
 format-ts:
 	cd apps/web && bun run format
 
-format-py:
-	cd apps/worker && uv run ruff format .
-
-format-check: format-check-ts format-check-py ## Verifica formatacao sem alterar arquivos
+format-check: format-check-ts ## Verifica formatacao sem alterar arquivos
 
 format-check-ts:
 	cd apps/web && bun run format:check
 
-format-check-py:
-	cd apps/worker && uv run ruff format --check .
-
 typecheck:
 	cd apps/web && bun run typecheck
-	cd apps/worker && uv run mypy src
 
 # --- DB ---
 migrate: ## Aplica migrations Prisma

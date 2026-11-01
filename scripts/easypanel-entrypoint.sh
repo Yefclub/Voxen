@@ -321,21 +321,14 @@ start_chisel || echo "[easypanel] AVISO: chisel server não iniciou (seguindo se
 terminate() {
   trap - TERM INT
   echo "[easypanel] stopping services..."
-  kill -TERM "$worker_pid" "$web_pid" 2>/dev/null || true
+  kill -TERM "$web_pid" 2>/dev/null || true
   if [[ -f "$CHISEL_PIDFILE" ]]; then
     kill -TERM "$(cat "$CHISEL_PIDFILE" 2>/dev/null)" 2>/dev/null || true
   fi
-  wait "$worker_pid" "$web_pid" 2>/dev/null || true
+  wait "$web_pid" 2>/dev/null || true
 }
 
 trap terminate TERM INT
-
-echo "[easypanel] starting worker..."
-(
-  cd /app/apps/worker
-  exec .venv/bin/python -m src.main
-) &
-worker_pid=$!
 
 echo "[easypanel] starting web on 0.0.0.0:${PORT}..."
 (
@@ -345,7 +338,7 @@ echo "[easypanel] starting web on 0.0.0.0:${PORT}..."
 web_pid=$!
 
 set +e
-wait -n "$worker_pid" "$web_pid"
+wait "$web_pid"
 status=$?
 set -e
 
