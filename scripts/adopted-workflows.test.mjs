@@ -26,6 +26,7 @@ for (const name of [
   "issue-plan",
   "debug",
   "security-audit",
+  "browser-validation",
 ]) {
   test(`adopted workflow ${name} is discoverable with explicit contract`, () => {
     const path = `.claude/skills/${name}/SKILL.md`;
@@ -75,4 +76,8 @@ test("adopted workflows complement review without duplicating it", () => {
     secaudit,
     /N[aã]o declara "seguro"|nunca com relato|sem segredos/i,
   );
+  const browser = read(".claude/skills/browser-validation/SKILL.md");
+  assert.match(browser, /headless/i);
+  assert.match(browser, /revis[aã]o carregada/i);
+  assert.match(browser, /N[aã]o redesenha UI|n[aã]o publica/i);
 });
