@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793576623 — 2026-11-01 · Dev
+
+### ✨ Heading recall without schema change
+
+### Fixed
+- Proved heading-only terms are retrievable at body weight through the real plain-text path; a title-like boost for headings stays explicitly deferred without a measured benefit and without a new column.
+
 ## v0.15.1-dev.1793575738 — 2026-11-01 · Dev
 
 ### 🧹 Security-audit verdict fixtures
