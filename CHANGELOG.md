@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793557951 — 2026-11-01 · Dev
+
+### 🧹 Unify agent policy and read-only reviewer role
+
+### Fixed
+- Single authorization rule: dev merges after independent review + green CI; only main releases wait for the owner.
+- Code reviewer is now read-only with explicit verdicts and current architecture; spec author points at real docs.
+
 ## v0.15.1-dev.1793557056 — 2026-11-01 · Dev
 
 ### ✨ Explicit truncation on ranked search

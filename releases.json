@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793557951",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Unify agent policy and read-only reviewer role",
+    "body": "### Fixed\n- Single authorization rule: dev merges after independent review + green CI; only main releases wait for the owner.\n- Code reviewer is now read-only with explicit verdicts and current architecture; spec author points at real docs.",
+    "pr": 956,
+    "author": "Kalyel",
+    "date": "2026-11-01T15:32:02-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/956"
+  },
+  {
     "version": "0.15.1-dev.1793557056",
     "channel": "dev",
     "type": "feat",
