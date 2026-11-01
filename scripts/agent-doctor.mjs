@@ -4,7 +4,7 @@
 // and observed execution (explicitly unverified here). Never prints secrets,
 // tokens, transcripts, or environment values. Exit 0 on success; exit 2 when
 // invoked with --strict and any check is not verified.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
