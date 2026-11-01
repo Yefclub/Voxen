@@ -369,6 +369,33 @@ if (process.env.NODE_ENV === 'production') {
       structuredDiagnostic('warning', 'proxy-agent-sync-failed', 'PROXY_AGENT_SYNC_FAILED', err);
     });
 
+  // Knowledge deletions are retained Product 1 maintenance (spec 215): the web
+  // process drains DELETE_KNOWLEDGE jobs so they complete and recover after
+  // restart without the analysis worker.
+  void import('./lib/knowledge-deletion-executor')
+    .then(({ drainPendingKnowledgeDeletions }) => {
+      const drain = (): void => {
+        void drainPendingKnowledgeDeletions().catch((err) => {
+          structuredDiagnostic(
+            'warning',
+            'knowledge-deletion-drain-failed',
+            'KNOWLEDGE_DELETION_DRAIN_FAILED',
+            err,
+          );
+        });
+      };
+      drain();
+      setInterval(drain, 30_000).unref();
+    })
+    .catch((err) => {
+      structuredDiagnostic(
+        'warning',
+        'knowledge-deletion-executor-unavailable',
+        'KNOWLEDGE_DELETION_EXECUTOR_UNAVAILABLE',
+        err,
+      );
+    });
+
   // Turnos do chat são duráveis: Redis impede execução duplicada e esta
   // reconciliação retoma o que ficou pendente após restart/deploy.
   void import('./lib/chat/turn-runtime')

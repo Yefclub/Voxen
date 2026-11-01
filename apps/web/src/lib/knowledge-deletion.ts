@@ -217,7 +217,15 @@ export async function enqueueKnowledgeDeletion(args: {
   allowAllLibraryFolders?: boolean;
 }): Promise<{ job: KnowledgeDeletionJob; target: KnowledgeDeletionTarget; created: boolean }> {
   const result = await db.$transaction((tx) => enqueueKnowledgeDeletionInTransaction(tx, args));
-  if (result.created) await publishKnowledgeDeletionJob(args.userId, result.job.id);
+  if (result.created) {
+    await publishKnowledgeDeletionJob(args.userId, result.job.id);
+    // Retained maintenance runs in-process (spec 215): trigger the web
+    // executor without blocking the request. Dynamic import avoids a
+    // module cycle with knowledge-deletion-executor.
+    void import('./knowledge-deletion-executor')
+      .then(({ runKnowledgeDeletionJob }) => runKnowledgeDeletionJob(result.job.id))
+      .catch(() => {});
+  }
   return result;
 }
 
