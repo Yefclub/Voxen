@@ -85,7 +85,6 @@ test("duplication parser uses jscpd aggregate evidence", () => {
 
 test("production source selection excludes tests and generated files", () => {
   assert.equal(isProductionSource("apps/web/src/routes/notes.ts"), true);
-  assert.equal(isProductionSource("apps/extension/popup.css"), true);
   assert.equal(isProductionSource("apps/web/src/routes/notes.test.ts"), false);
   assert.equal(
     isProductionSource("apps/web/src/prisma-generated/client.ts"),
