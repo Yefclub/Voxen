@@ -23,6 +23,10 @@ const GRAPH_PAGE_SOURCE = readFileSync(
   new URL('../src/client/pages/grafo.tsx', import.meta.url),
   'utf8',
 );
+const SIGMA_CANVAS_SOURCE = readFileSync(
+  new URL('../src/client/components/graph/knowledge-graph-canvas.tsx', import.meta.url),
+  'utf8',
+);
 const REAGRAPH_PATCH_SOURCE = readFileSync(
   new URL('../../../patches/reagraph@4.32.0.patch', import.meta.url),
   'utf8',
@@ -381,8 +385,8 @@ describe('graph renderer lifecycle contracts', () => {
   });
 
   test('reuses Sigma and applies caller WebGL options after Reagraph defaults', () => {
-    expect(GRAPH_PAGE_SOURCE).toContain('renderer.setGraph(model.graph)');
-    expect(GRAPH_PAGE_SOURCE).toContain(
+    expect(SIGMA_CANVAS_SOURCE).toContain('renderer.setGraph(model.graph)');
+    expect(SIGMA_CANVAS_SOURCE).toContain(
       '[SigmaConstructor, hasModel, onOpen, onSelect, webglFailed]',
     );
     expect(REAGRAPH_PATCH_SOURCE.indexOf('+\t\t...GL_DEFAULTS')).toBeLessThan(

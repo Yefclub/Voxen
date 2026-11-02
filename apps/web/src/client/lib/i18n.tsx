@@ -1037,6 +1037,8 @@ const ptBRMessages = {
   'graph.zoomIn': 'Aproximar',
   'graph.zoomOut': 'Afastar',
   'graph.fitView': 'Reenquadrar grafo',
+  'graph.focusSelection': 'Focar seleção',
+  'graph.zoomLevel': 'Nível de zoom',
   'graph.focusCore': 'Focar núcleo',
   'graph.fitAll': 'Mostrar tudo',
   'graph.emptyDescription':
@@ -2175,6 +2177,8 @@ const enMessages: Record<I18nKey, string> = {
   'graph.zoomIn': 'Zoom in',
   'graph.zoomOut': 'Zoom out',
   'graph.fitView': 'Fit graph to view',
+  'graph.focusSelection': 'Focus selection',
+  'graph.zoomLevel': 'Zoom level',
   'graph.focusCore': 'Focus core',
   'graph.fitAll': 'Show all',
   'graph.emptyDescription': 'Add notes or library content to start building your knowledge map.',
