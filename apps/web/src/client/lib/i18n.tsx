@@ -74,6 +74,7 @@ const ptBRMessages = {
   'shell.openMenu': 'Abrir menu',
   'shell.closeMenu': 'Fechar menu',
   'shell.collapse': 'Recolher',
+  'shell.currentSection': 'Localização atual',
   'shell.userMenu': 'Menu do usuário',
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Contexto: {tokens} / {limit} tokens',
@@ -235,6 +236,7 @@ const ptBRMessages = {
   'shell.signOut': 'Sair',
 
   'theme.label': 'Tema',
+  'theme.appearance': 'Aparência',
   // Identificador técnico segue `linear` (persistido por usuário e espelhado
   // pela extensão); só o rótulo exibido virou "Voxen".
   'theme.linear': 'Voxen',
@@ -1218,6 +1220,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.openMenu': 'Open menu',
   'shell.closeMenu': 'Close menu',
   'shell.collapse': 'Collapse',
+  'shell.currentSection': 'Current location',
   'shell.userMenu': 'User menu',
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Context: {tokens} / {limit} tokens',
@@ -1376,6 +1379,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.signOut': 'Sign out',
 
   'theme.label': 'Theme',
+  'theme.appearance': 'Appearance',
   'theme.linear': 'Voxen',
   'theme.zinc': 'Zinc',
   'theme.emerald': 'Emerald',

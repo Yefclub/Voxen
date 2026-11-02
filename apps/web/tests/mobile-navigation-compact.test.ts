@@ -6,23 +6,19 @@ function readClientSource(relativePath: string): string {
 }
 
 describe('chrome de navegação mobile compacto', () => {
-  test('topbar preserva alvos móveis de 40 px e compacta o chrome desktop para 32 px', () => {
+  test('topbar é uma fileira persistente com seção, aparência e conta separadas', () => {
     const source = readClientSource('components/layout/topbar.tsx');
 
-    expect(source).toContain('right-2');
-    expect(source).toContain('md:right-9');
-    expect(source).not.toContain('md:right-7');
-    expect(source).not.toContain('md:right-5');
-    expect(source).toContain('bg-transparent');
-    expect(source).toContain('md:bg-[var(--color-app-bg-elevated)]/85');
-    expect(source).toContain('top-[calc(env(safe-area-inset-top)+0.5rem)]');
-    expect(source).toContain('md:top-[calc(env(safe-area-inset-top)+1.25rem)]');
+    expect(source).toContain('data-app-header');
+    expect(source).toContain('md:h-14');
+    expect(source).toContain("aria-label={t('shell.currentSection')}");
+    expect(source).toContain('data-sidebar-toggle');
+    expect(source).toContain('aria-controls="desktop-sidebar"');
+    expect(source).toContain('<AppearanceMenu />');
+    expect(source).toContain('theme.appearance');
+    expect(source).not.toContain('toggleAppearance()');
     expect(source).toContain('h-10 w-10');
     expect(source).toContain('md:h-8 md:w-8');
-    expect(source).toContain('md:gap-2');
-    expect(source).toContain('md:px-2 md:py-1.5');
-    expect(source).toContain('bg-[var(--color-app-bg)]/75');
-    expect(source).not.toContain('sm:inline-flex');
   });
 
   test('reduz o botão que abre a sidebar e mantém o alvo acessível de 32 px', () => {
