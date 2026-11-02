@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793603107 — 2026-11-02 · Dev
+
+### ✨ Open reading sections with preserved note drafts
+
+### Changed
+- Prepared transcript content renders on an open `75ch` reading surface instead of inside a card; the local graph remounts per transcript.
+- The linked-note composer hides via `hidden` (DOM preserved, draft kept) with an explicit toggle, opens on text annotation, and resets per transcript; the notes list scrolls within a bounded pane.
+
 ## v0.15.1-dev.1793601806 — 2026-11-02 · Dev
 
 ### ✨ Local transcript graph on the shared canvas with combobox search
