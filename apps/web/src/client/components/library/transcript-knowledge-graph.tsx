@@ -1,21 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, FileText, Loader2, Network } from '@/components/ui/icons';
-import { Card, CardContent } from '../ui/card';
+import { ArrowLeft, ExternalLink, FileText, Loader2, Network, Search } from '@/components/ui/icons';
 import { Button } from '../ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { KnowledgeGraphCanvas } from '../graph/knowledge-graph-canvas';
 import { useFetch } from '../../lib/hooks';
 import { useI18n } from '../../lib/i18n';
-import { cn } from '../../lib/utils';
+import { useTheme } from '../../lib/theme-provider';
 import {
-  buildGraphLayout,
-  EDGE_COLORS,
-  edgePath,
-  NODE_COLORS,
+  buildSigmaGraphModel,
+  resolveGraphPalette,
   type GraphEdge,
   type GraphNode,
   type GraphResp,
 } from '../../lib/graph-model';
-
 type TranscriptGraphScope = 'content' | 'connections';
 type TranscriptGraphState = 'NOT_INDEXED' | 'INDEXING' | 'PARTIAL' | 'FAILED' | 'READY';
 
@@ -49,218 +47,125 @@ interface TranscriptGraphResponse extends GraphResp {
   } | null;
 }
 
-const VIEWBOX = { width: 1_000, height: 440 };
-
 export function TranscriptKnowledgeGraph({
   transcriptId,
 }: {
   transcriptId: string;
 }): React.ReactElement {
   const { t } = useI18n();
+  const { theme } = useTheme();
   const [scope, setScope] = useState<TranscriptGraphScope>('content');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data, loading, error, refresh } = useFetch<TranscriptGraphResponse>(
     `/api/transcripts/${transcriptId}/graph?scope=${scope}&hops=${scope === 'connections' ? 2 : 1}`,
   );
-  const graphData = useMemo<GraphResp | null>(
-    () =>
-      data
-        ? {
-            nodes: data.nodes,
-            edges: data.edges,
-            totalNodes: data.nodes.length,
-            totalEdges: data.edges.length,
-          }
-        : null,
-    [data],
-  );
-  const layout = useMemo(
-    () => (graphData ? buildGraphLayout(graphData, { viewBox: VIEWBOX }) : null),
-    [graphData],
+  const palette = useMemo(() => resolveGraphPalette(theme), [theme]);
+  const model = useMemo(
+    () => (data ? buildSigmaGraphModel(data, t, {}, palette) : null),
+    [data, palette, t],
   );
   const selectedNode = data?.nodes.find((node) => node.id === selectedId) ?? null;
+  const selectNode = useCallback((id: string | null) => setSelectedId(id), []);
+  const openNode = useCallback((node: GraphNode) => setSelectedId(node.id), []);
   const selectedEdges = useMemo(
     () => data?.edges.filter((edge) => edge.from === selectedId || edge.to === selectedId) ?? [],
-    [data?.edges, selectedId],
+    [data, selectedId],
   );
   const selectedEvidence = useMemo(() => {
-    if (!data || !selectedId) return [];
-    const edgeIds = new Set(selectedEdges.map((edge) => edge.id));
-    return data.evidence.filter(
-      (evidence) =>
-        evidence.nodeId === selectedId || Boolean(evidence.edgeId && edgeIds.has(evidence.edgeId)),
+    const ids = new Set(selectedEdges.map((edge) => edge.id));
+    return (
+      data?.evidence.filter(
+        (item) => item.nodeId === selectedId || Boolean(item.edgeId && ids.has(item.edgeId)),
+      ) ?? []
     );
   }, [data, selectedEdges, selectedId]);
-
-  useEffect(() => {
-    if (!data) return;
-    setSelectedId((current) =>
-      current && data.nodes.some((node) => node.id === current)
-        ? current
-        : (data.focusId ?? data.nodes[0]?.id ?? null),
-    );
-  }, [data]);
-
   function openEvidence(anchor: string): void {
-    if (window.location.hash === anchor) {
-      window.dispatchEvent(new HashChangeEvent('hashchange'));
-    } else {
-      window.location.hash = anchor;
-    }
+    if (window.location.hash === anchor) window.dispatchEvent(new HashChangeEvent('hashchange'));
+    else window.location.hash = anchor;
   }
-
   return (
-    <section className="space-y-3" data-testid="transcript-knowledge-graph">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h2 className="flex items-center gap-2 font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
-            <Network className="h-4 w-4 text-[var(--color-accent-primary)]" />
-            {t('library.localGraph.title')}
-          </h2>
-          <p className="max-w-2xl text-xs leading-relaxed text-[var(--color-app-muted)]">
-            {t('library.localGraph.description')}
-          </p>
-        </div>
-        {data?.focusId && (
-          <Button asChild size="sm" variant="outline" className="shrink-0">
-            <Link to={`/grafo?focus=${encodeURIComponent(data.focusId)}`}>
-              {t('library.localGraph.openGlobal')}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        )}
-      </div>
-
-      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
-        <div className="flex flex-wrap gap-1 border-b border-[var(--color-app-border)] px-3 py-3 sm:px-4">
-          {(['content', 'connections'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={scope === value}
-              onClick={() => setScope(value)}
-              className={cn(
-                'min-h-9 rounded-md px-3 text-xs font-medium transition-colors',
-                scope === value
-                  ? 'bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/25'
-                  : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
-              )}
+    <section
+      data-testid="transcript-knowledge-graph"
+      aria-labelledby="content-graph-heading"
+      className="local-graph-shell min-w-0 space-y-3"
+    >
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h2
+          id="content-graph-heading"
+          className="flex min-w-0 items-center gap-2 text-sm font-semibold"
+        >
+          <Network className="h-4 w-4 shrink-0 text-[var(--color-app-muted)]" />
+          <span>{t('library.localGraph.title')}</span>
+          {data && (
+            <span className="text-xs font-normal tabular-nums text-[var(--color-app-muted)]">
+              {data.nodes.length} {t('graph.nodes')}
+            </span>
+          )}
+        </h2>
+        <div className="flex min-w-0 items-center gap-1">
+          <Select value={scope} onValueChange={(value) => setScope(value as TranscriptGraphScope)}>
+            <SelectTrigger
+              aria-label={t('library.localGraph.scope')}
+              className="h-8 w-auto gap-2 border-transparent bg-transparent px-2 text-xs shadow-none"
             >
-              {t(
-                value === 'content'
-                  ? 'library.localGraph.contentScope'
-                  : 'library.localGraph.connectionsScope',
-              )}
-            </button>
-          ))}
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="content">{t('library.localGraph.contentScope')}</SelectItem>
+              <SelectItem value="connections">
+                {t('library.localGraph.connectionsScope')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {data?.focusId && (
+            <Button asChild variant="ghost" size="sm" className="text-xs">
+              <Link to={`/grafo?focus=${encodeURIComponent(data.focusId)}`}>
+                <span className="hidden sm:inline">{t('library.localGraph.openGlobal')}</span>
+                <span className="sr-only sm:hidden">{t('library.localGraph.openGlobal')}</span>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          )}
         </div>
-
-        <GraphStatus data={data} loading={loading} error={error} onRetry={refresh} />
-
-        {data && data.nodes.length > 0 && layout && (
-          <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="min-w-0 space-y-3">
-              <div className="overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]">
-                <svg
-                  viewBox={`0 0 ${VIEWBOX.width} ${VIEWBOX.height}`}
-                  role="img"
-                  aria-label={t('library.localGraph.canvasLabel')}
-                  className="block aspect-[16/7] min-h-[260px] w-full"
-                >
-                  {layout.edges.map((edge) => (
-                    <path
-                      key={edge.id}
-                      d={edgePath(edge)}
-                      fill="none"
-                      stroke={EDGE_COLORS[edge.kind]}
-                      strokeWidth={
-                        edge.id && selectedEdges.some((item) => item.id === edge.id) ? 3 : 1.5
-                      }
-                      opacity={
-                        selectedId && !selectedEdges.some((item) => item.id === edge.id)
-                          ? 0.22
-                          : 0.72
-                      }
-                    />
-                  ))}
-                  {layout.nodes.map((node) => {
-                    const selected = node.id === selectedId;
-                    return (
-                      <g
-                        key={node.id}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`${node.label} — ${node.type}`}
-                        onClick={() => setSelectedId(node.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') setSelectedId(node.id);
-                        }}
-                        className="cursor-pointer outline-none"
-                      >
-                        <circle
-                          cx={node.x}
-                          cy={node.y}
-                          r={selected ? node.radius + 5 : node.radius}
-                          fill={NODE_COLORS[node.type]}
-                          stroke={selected ? '#ffffff' : 'rgba(255,255,255,0.3)'}
-                          strokeWidth={selected ? 3 : 1.5}
-                        />
-                        <text
-                          x={node.x}
-                          y={node.y + node.radius + 18}
-                          textAnchor="middle"
-                          fill="currentColor"
-                          className="fill-[var(--color-app-subtle)] text-[12px] font-medium"
-                        >
-                          {node.labelLines[0]}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              </div>
-
-              <details className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2">
-                <summary className="cursor-pointer text-xs font-medium text-[var(--color-app-subtle)]">
-                  {t('library.localGraph.nodes')} ({data.nodes.length})
-                </summary>
-                <div className="mt-2 grid gap-1 sm:grid-cols-2">
-                  {data.nodes.map((node) => (
-                    <button
-                      key={node.id}
-                      type="button"
-                      onClick={() => setSelectedId(node.id)}
-                      className={cn(
-                        'rounded-md px-2 py-2 text-left text-xs transition-colors',
-                        node.id === selectedId
-                          ? 'bg-violet-500/15 text-violet-100'
-                          : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
-                      )}
-                    >
-                      <span className="block truncate font-medium">{node.label}</span>
-                      <span className="uppercase tracking-wider opacity-70">{node.type}</span>
-                    </button>
-                  ))}
-                </div>
-              </details>
-            </div>
-
+      </header>
+      <GraphStatus data={data} loading={loading} error={error} onRetry={refresh} />
+      {model && data && data.nodes.length > 0 && (
+        <div
+          data-local-graph-workspace
+          className="local-graph-workspace grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-[var(--color-app-border)]"
+        >
+          <div
+            data-local-graph-map
+            className="local-graph-map relative h-[300px] min-h-0 min-w-0 bg-[var(--color-app-bg)]"
+          >
+            <KnowledgeGraphCanvas
+              model={model}
+              selectedId={selectedNode?.id ?? null}
+              palette={palette}
+              translate={t}
+              onSelect={selectNode}
+              onOpen={openNode}
+            />
+          </div>
+          <div
+            data-local-graph-inspector
+            className="local-graph-inspector h-[260px] min-h-0 overflow-hidden border-t border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]"
+          >
             <GraphInspector
               transcriptId={transcriptId}
               node={selectedNode}
               edges={selectedEdges}
               allNodes={data.nodes}
               evidence={selectedEvidence}
-              onSelect={setSelectedId}
+              onSelect={selectNode}
               onOpenEvidence={openEvidence}
             />
-          </CardContent>
-        )}
-      </Card>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
-
 function GraphStatus({
   data,
   loading,
@@ -283,7 +188,7 @@ function GraphStatus({
   }
   if (error && !data) {
     return (
-      <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 text-center text-sm text-red-300">
+      <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 text-center text-sm text-[var(--color-app-danger)]">
         <p>{t('library.localGraph.error')}</p>
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           {t('common.fetchErrorRetry')}
@@ -305,7 +210,7 @@ function GraphStatus({
   return (
     <>
       {(statusKey || data.truncated) && (
-        <div className="space-y-1 border-b border-[var(--color-app-border)] bg-violet-500/[0.04] px-4 py-3 text-xs text-[var(--color-app-muted)]">
+        <div className="space-y-1 rounded-lg bg-[var(--color-app-surface)] px-3 py-2 text-xs text-[var(--color-app-muted)]">
           {statusKey && <p>{t(statusKey)}</p>}
           {data.compilation && data.compilation.totalSegments > 0 && data.state !== 'READY' && (
             <p className="font-mono text-[11px]">
@@ -345,92 +250,194 @@ function GraphInspector({
   edges: GraphEdge[];
   allNodes: GraphNode[];
   evidence: TranscriptGraphEvidence[];
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onOpenEvidence: (anchor: string) => void;
 }): React.ReactElement {
   const { t } = useI18n();
-  if (!node) {
-    return (
-      <aside className="rounded-xl border border-[var(--color-app-border)] p-4 text-xs text-[var(--color-app-muted)]">
-        {t('library.localGraph.selectNode')}
-      </aside>
-    );
+  const [query, setQuery] = useState('');
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<'details' | 'nodes' | null>(null);
+  const returnNode = useRef<string | null>(null);
+  useEffect(() => {
+    const destination = pendingFocus.current;
+    pendingFocus.current = null;
+    if (destination === 'details') headingRef.current?.focus({ preventScroll: true });
+    if (destination === 'nodes') {
+      const target = Array.from(
+        listRef.current?.querySelectorAll<HTMLButtonElement>('[data-node-id]') ?? [],
+      ).find((button) => button.dataset.nodeId === returnNode.current);
+      (target ?? listRef.current?.querySelector('input'))?.focus({ preventScroll: true });
+    }
+  }, [node]);
+  function chooseNode(id: string): void {
+    pendingFocus.current = 'details';
+    onSelect(id);
   }
   const byId = new Map(allNodes.map((item) => [item.id, item]));
+  const filteredNodes = allNodes.filter((item) =>
+    item.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+  );
   return (
-    <aside className="min-w-0 space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-4">
-      <div className="space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
-          {t('library.localGraph.inspector')}
-        </p>
-        <h3 className="break-words text-sm font-semibold text-[var(--color-app-fg)]">
-          {node.label}
-        </h3>
-        <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]">
-          {node.type}
-        </p>
-        {node.description && (
-          <p className="line-clamp-5 text-xs leading-relaxed text-[var(--color-app-muted)]">
-            {node.description}
-          </p>
+    <section
+      aria-label={t('library.localGraph.inspector')}
+      className="flex h-full min-h-0 flex-col"
+    >
+      <header className="flex h-12 shrink-0 items-center border-b border-[var(--color-app-border)] px-3">
+        {node ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              returnNode.current = node.id;
+              pendingFocus.current = 'nodes';
+              onSelect(null);
+            }}
+            className="-ml-1 gap-1.5 text-xs"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t('library.localGraph.backToNodes')}
+          </Button>
+        ) : (
+          <h3 className="flex w-full items-center justify-between text-xs font-medium">
+            {t('library.localGraph.nodes')}
+            <span className="font-normal tabular-nums text-[var(--color-app-muted)]">
+              {allNodes.length}
+            </span>
+          </h3>
         )}
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
-          {t('library.localGraph.relations')} ({edges.length})
-        </p>
-        {edges.slice(0, 8).map((edge) => {
-          const neighborId = edge.from === node.id ? edge.to : edge.from;
-          const neighbor = byId.get(neighborId);
-          if (!neighbor) return null;
-          return (
-            <button
-              key={edge.id}
-              type="button"
-              onClick={() => onSelect(neighbor.id)}
-              className="block w-full rounded-md border border-[var(--color-app-border)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-app-surface-hover)]"
-            >
-              <span className="block truncate text-xs text-[var(--color-app-subtle)]">
-                {neighbor.label}
-              </span>
-              <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]">
-                {edge.kind.replaceAll('_', ' ')} · {Math.round(Number(edge.confidence) * 100)}%
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
-          {t('library.localGraph.evidence')} ({evidence.length})
-        </p>
-        {evidence.length === 0 && (
-          <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
-            {t('library.localGraph.noEvidence')}
-          </p>
-        )}
-        {evidence.slice(0, 6).map((item) => (
-          <div key={item.id} className="rounded-md border border-[var(--color-app-border)] p-2.5">
-            {item.excerpt && (
-              <p className="line-clamp-4 text-xs leading-relaxed text-[var(--color-app-subtle)]">
-                “{item.excerpt}”
-              </p>
+      </header>
+      <div
+        ref={listRef}
+        key={node?.id ?? 'nodes'}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
+      >
+        {!node ? (
+          <>
+            <div className="relative mb-3">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+              <input
+                aria-label={t('library.localGraph.searchNodes')}
+                placeholder={t('library.localGraph.searchNodes')}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-transparent pl-8 pr-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+              />
+            </div>
+            <div className="space-y-0.5">
+              {filteredNodes.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="ghost"
+                  data-node-id={item.id}
+                  onClick={() => chooseNode(item.id)}
+                  className="h-auto w-full justify-start whitespace-normal px-2 py-2 text-left text-xs font-normal active:scale-100"
+                >
+                  <span className="min-w-0 break-words">
+                    <span className="line-clamp-2">{item.label}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--color-app-muted)]">
+                      {t(`graph.node.${item.type}`)}
+                    </span>
+                  </span>
+                </Button>
+              ))}
+            </div>
+            {filteredNodes.length === 0 && (
+              <p className="py-4 text-xs text-[var(--color-app-muted)]">{t('graph.noMatches')}</p>
             )}
-            {item.anchor && item.sourceType === 'TRANSCRIPT' && item.sourceId === transcriptId && (
-              <button
-                type="button"
-                onClick={() => onOpenEvidence(item.anchor!)}
-                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-violet-300 hover:text-violet-200"
+          </>
+        ) : (
+          <div className="space-y-5">
+            <div>
+              <h3
+                ref={headingRef}
+                tabIndex={-1}
+                className="break-words text-sm font-semibold leading-relaxed outline-none"
               >
-                <FileText className="h-3 w-3" />
-                {t('library.localGraph.openEvidence')}
-              </button>
-            )}
+                {node.label}
+              </h3>
+              <p className="mt-1 text-xs text-[var(--color-app-muted)]">
+                {t(`graph.node.${node.type}`)}
+              </p>
+              {node.description && (
+                <p className="mt-3 break-words text-xs leading-relaxed text-[var(--color-app-subtle)]">
+                  {node.description}
+                </p>
+              )}
+            </div>
+            <section
+              className="border-t border-[var(--color-app-border)] pt-4"
+              aria-label={t('library.localGraph.relations')}
+            >
+              <h4 className="mb-2 flex items-center justify-between text-xs font-medium">
+                {t('library.localGraph.relations')}
+                <span className="font-normal tabular-nums text-[var(--color-app-muted)]">
+                  {edges.length}
+                </span>
+              </h4>
+              {edges.map((edge) => {
+                const neighbor = byId.get(edge.from === node.id ? edge.to : edge.from);
+                return neighbor ? (
+                  <Button
+                    key={edge.id}
+                    variant="ghost"
+                    onClick={() => chooseNode(neighbor.id)}
+                    className="h-auto w-full justify-start whitespace-normal px-0 py-2 text-left text-xs font-normal active:scale-100"
+                  >
+                    <span className="min-w-0 break-words">
+                      <span className="block">{neighbor.label}</span>
+                      <span className="mt-0.5 block text-[11px] text-[var(--color-app-muted)]">
+                        {t(`graph.edge.${edge.kind}`)} · {Math.round(Number(edge.confidence) * 100)}
+                        %
+                      </span>
+                    </span>
+                  </Button>
+                ) : null;
+              })}
+            </section>
+            <section
+              className="border-t border-[var(--color-app-border)] pt-4"
+              aria-label={t('library.localGraph.evidence')}
+            >
+              <h4 className="mb-3 flex items-center justify-between text-xs font-medium">
+                {t('library.localGraph.evidence')}
+                <span className="font-normal tabular-nums text-[var(--color-app-muted)]">
+                  {evidence.length}
+                </span>
+              </h4>
+              {evidence.length === 0 && (
+                <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
+                  {t('library.localGraph.noEvidence')}
+                </p>
+              )}
+              <div className="divide-y divide-[var(--color-app-border)]">
+                {evidence.map((item) => (
+                  <div key={item.id} className="py-3 first:pt-0">
+                    {item.excerpt && (
+                      <blockquote className="break-words text-xs leading-relaxed text-[var(--color-app-subtle)]">
+                        {item.excerpt}
+                      </blockquote>
+                    )}
+                    {item.anchor &&
+                      item.sourceType === 'TRANSCRIPT' &&
+                      item.sourceId === transcriptId && (
+                        <Button
+                          size="sm"
+                          variant="link"
+                          onClick={() => onOpenEvidence(item.anchor!)}
+                          className="mt-2 text-xs"
+                        >
+                          <FileText className="h-3 w-3" />
+                          {t('library.localGraph.openEvidence')}
+                        </Button>
+                      )}
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
-        ))}
+        )}
       </div>
-    </aside>
+    </section>
   );
 }
