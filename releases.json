@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793604294",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Integrated visual and accessibility verification",
+    "body": "### Added\n- `visual-verification-contract` test pins the acceptance matrix in-repo: four readable theme palettes, zero-duration camera motion under reduced motion, 680/720 container breakpoints with coarse-pointer sizing, labeled viewport controls, keyboard-operable WebGL fallback with 2D fallback chain, and no Product 2 dependencies.\n- Local graph status coverage pinned: every compilation state plus truncated and empty states without hiding materialized data.",
+    "pr": 1027,
+    "author": "Kalyel",
+    "date": "2026-11-02T04:24:43-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1027"
+  },
+  {
     "version": "0.15.1-dev.1793603107",
     "channel": "dev",
     "type": "feat",
