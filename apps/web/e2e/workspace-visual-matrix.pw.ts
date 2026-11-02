@@ -77,4 +77,31 @@ test.describe('workspace visual matrix (spec 219)', () => {
       await cleanupWorkspace(seed.userId);
     }
   });
+
+  test('accepts touch taps for node selection on a coarse pointer', async ({
+    browser,
+  }, testInfo) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 390, height: 844 },
+    });
+    const touchPage = await context.newPage();
+    const seed = await seedWorkspace(touchPage, 'touch');
+    try {
+      expect(await touchPage.evaluate(() => window.matchMedia('(pointer: coarse)').matches)).toBe(
+        true,
+      );
+      await touchPage.goto(`/transcricoes/${seed.transcriptId}`);
+      const graphSection = touchPage.getByTestId('transcript-knowledge-graph');
+      await expect(graphSection.getByText('Grafo deste conteúdo')).toBeVisible();
+      const inspector = graphSection.getByRole('region', { name: 'Detalhes do nó' });
+      await inspector.getByRole('button', { name: new RegExp(seed.topicLabel) }).tap();
+      await expect(inspector.getByText(`${seed.topicLabel} appears in this source.`)).toBeVisible();
+      await touchPage.screenshot({ path: testInfo.outputPath('matrix-touch-tap.png') });
+    } finally {
+      await cleanupWorkspace(seed.userId);
+      await context.close();
+    }
+  });
 });
