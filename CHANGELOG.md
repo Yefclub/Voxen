@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.15.1-dev.1793590144 — 2026-11-02 · Dev
+
+### ✨ Single-interface shell without mode selector
+
+### Removed
+- Classic/focused interface selector UI and provider (single edge-to-edge interface; persisted preference untouched).
+- Collapsed icon rail and sidebar spacer in favor of a stationary sidebar covered by the moving page surface.
+
+### Fixed
+- Page surface now covers/reveals the sidebar with the documented 16px left connection and 480ms transition.
+
+## v0.15.1-dev.1793590144 — 2026-11-01 · Dev
+
+### 🧹 EARS spec for the knowledge-workspace UI port
+
+### Added
+- Spec 219 defining the edge-to-edge shell, open reading sections, and tab-free graph port with verified reference integrity and porting boundary.
+
+## v0.15.1-dev.1793590144 — 2026-11-01 · Dev
+
+### ✨ Benchmark reports resource usage
+
+### Added
+- Retrieval benchmark now reports heap/rss and database bytes alongside latencies, without failure thresholds on resource figures.
+
 ## v0.15.1-dev.1793583161 — 2026-11-01 · Dev
 
 ### 🧹 Harden stdlib guard against dynamic loading
