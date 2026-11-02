@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Loader2, NotebookPen } from '@/components/ui/icons';
+import { Loader2, NotebookPen, Plus } from '@/components/ui/icons';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -45,10 +45,12 @@ export function LinkedNotesCard({
   content,
   anchor,
   creating,
+  composerOpen,
   locale,
   onTitleChange,
   onContentChange,
   onAnchorChange,
+  onComposerOpenChange,
   onCreate,
   t,
 }: {
@@ -58,10 +60,12 @@ export function LinkedNotesCard({
   content: string;
   anchor: LinkedNoteAnchorDraft | null;
   creating: boolean;
+  composerOpen: boolean;
   locale: Locale;
   onTitleChange: (value: string) => void;
   onContentChange: (value: string) => void;
   onAnchorChange: (value: LinkedNoteAnchorDraft | null) => void;
+  onComposerOpenChange: (open: boolean) => void;
   onCreate: () => void;
   t: TranslateFn;
 }): React.ReactElement {
@@ -71,14 +75,27 @@ export function LinkedNotesCard({
       ((anchor.startLine !== undefined && anchor.endLine !== undefined) ||
         (anchor.startSec !== undefined && anchor.endSec !== undefined)));
   return (
-    <Card id="linked-notes-card" elevated>
+    <Card id="linked-notes-card" elevated className="order-5 lg:order-none">
       <CardContent className="pt-5 pb-5 space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-          <NotebookPen className="h-3.5 w-3.5 text-emerald-400" />
-          {t('library.linkedNotes')}
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-xs font-medium">
+            <NotebookPen className="h-3.5 w-3.5 text-emerald-400" />
+            {t('library.linkedNotes')}
+          </h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => onComposerOpenChange(!composerOpen)}
+            aria-expanded={composerOpen}
+            aria-controls="linked-note-composer"
+          >
+            {!composerOpen && <Plus className="h-3 w-3" />}
+            {t(composerOpen ? 'common.close' : 'shell.newNote')}
+          </Button>
         </div>
 
-        <div className="space-y-2">
+        <div id="linked-note-composer" hidden={!composerOpen} className="space-y-2">
           <input
             type="text"
             value={title}
@@ -175,7 +192,7 @@ export function LinkedNotesCard({
           </Button>
         </div>
 
-        <div className="space-y-2">
+        <div className="max-h-80 space-y-2 overflow-y-auto overscroll-contain">
           {loading && (
             <>
               <Skeleton className="h-16 w-full rounded-lg" />
@@ -183,7 +200,7 @@ export function LinkedNotesCard({
             </>
           )}
           {!loading && notes.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
+            <p className="py-1 text-xs leading-relaxed text-[var(--color-app-muted)]">
               {t('library.linkedNotesEmpty')}
             </p>
           )}
