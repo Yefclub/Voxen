@@ -1,12 +1,4 @@
-import {
-  Component,
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { Component, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   GraphCanvas as GraphCanvasType,
