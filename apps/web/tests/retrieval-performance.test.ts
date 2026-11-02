@@ -339,4 +339,23 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
     expect(page2.last.dataChunk).toBe(serialized.slice(10, 10 + page2.last.dataChunk.length));
     expect(getResultReuseStats().hits).toBeGreaterThan(hitsBefore);
   });
+
+  it('relata uso de recursos junto às medições', async () => {
+    const memBefore = process.memoryUsage();
+    const rows = await db.$queryRaw<Array<{ size: bigint }>>`
+      SELECT pg_database_size(current_database()) AS size
+    `;
+    const dbBytes = Number(rows[0]?.size ?? 0);
+    const memAfter = process.memoryUsage();
+    expect(dbBytes).toBeGreaterThan(0);
+    expect(memBefore.heapUsed).toBeGreaterThan(0);
+    expect(memAfter.rss).toBeGreaterThan(0);
+    // Relatório em condições documentadas (Postgres/Redis locais de teste):
+    // latências acima usam orçamentos generosos; recursos são registrados sem
+    // limiar para não transformar ruído de ambiente em falha.
+    process.stdout.write(
+      `resources heapUsed=${Math.round(memAfter.heapUsed / 1024)}KiB ` +
+        `rss=${Math.round(memAfter.rss / 1024)}KiB dbBytes=${dbBytes}\n`,
+    );
+  });
 });
