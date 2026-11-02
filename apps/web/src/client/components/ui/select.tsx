@@ -14,7 +14,7 @@ export const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-11 w-full items-center justify-between rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3.5 py-2 text-sm text-[var(--color-app-fg)]',
+      'flex h-11 w-full items-center justify-between rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3.5 py-2 text-sm text-[var(--color-app-fg)]',
       'placeholder:text-[var(--color-app-muted)]',
       'transition-colors duration-150',
       'hover:border-[var(--color-app-border-strong)]',
@@ -44,8 +44,8 @@ export const SelectContent = React.forwardRef<
       sideOffset={6}
       className={cn(
         'relative z-50 max-h-[--radix-select-content-available-height] min-w-[--radix-select-trigger-width] overflow-hidden',
-        'rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] backdrop-blur-md text-[var(--color-app-fg)] shadow-2xl shadow-black/40',
-        'data-[state=open]:anim-in',
+        'rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] shadow-lg',
+        'app-overlay origin-[var(--radix-select-content-transform-origin)]',
         className,
       )}
       {...props}
@@ -73,7 +73,7 @@ export const SelectItem = React.forwardRef<
     className={cn(
       'relative flex w-full cursor-pointer select-none items-center rounded-md pl-3 pr-8 py-2 text-sm text-[var(--color-app-subtle)] outline-none',
       'focus:bg-[var(--color-app-surface-hover)] focus:text-[var(--color-app-fg)]',
-      'data-[state=checked]:text-emerald-300 data-[state=checked]:bg-emerald-500/8',
+      'data-[state=checked]:text-[var(--color-app-fg)] data-[state=checked]:bg-[var(--color-app-surface-hover)]',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       'transition-colors duration-100',
       className,
@@ -83,7 +83,7 @@ export const SelectItem = React.forwardRef<
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     <span className="absolute right-2 inline-flex h-5 w-5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check className="h-3.5 w-3.5 text-emerald-400" />
+        <Check className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
       </SelectPrimitive.ItemIndicator>
     </span>
   </SelectPrimitive.Item>

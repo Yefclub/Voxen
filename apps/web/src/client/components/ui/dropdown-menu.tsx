@@ -14,8 +14,8 @@ export const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 min-w-[12rem] overflow-hidden rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-1 text-[var(--color-app-fg)] shadow-xl',
-        'data-[state=open]:anim-in',
+        'z-50 min-w-[12rem] overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-1 text-[var(--color-app-fg)] shadow-xl',
+        'app-overlay origin-[var(--radix-dropdown-menu-content-transform-origin)]',
         className,
       )}
       {...props}
@@ -33,7 +33,9 @@ export const DropdownMenuItem = React.forwardRef<
     className={cn(
       'relative flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 text-sm outline-none transition-colors',
       'focus:bg-[var(--color-app-surface-hover)]',
-      destructive ? 'text-red-300 focus:text-red-200' : 'text-[var(--color-app-subtle)]',
+      destructive
+        ? 'text-[var(--color-app-danger)] focus:text-[var(--color-app-danger)]'
+        : 'text-[var(--color-app-subtle)]',
       className,
     )}
     {...props}

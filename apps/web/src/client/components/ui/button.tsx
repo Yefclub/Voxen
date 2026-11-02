@@ -10,7 +10,7 @@ const buttonVariants = cva(
     'transition-[transform,background-color,border-color,color] duration-200 ease-out',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg)]',
     'disabled:pointer-events-none disabled:opacity-50',
-    'active:scale-[0.97]',
+    'active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none',
   ].join(' '),
   {
     variants: {
@@ -25,12 +25,15 @@ const buttonVariants = cva(
           'border border-[var(--color-app-border-strong)] bg-transparent text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)]',
         ghost:
           'bg-transparent text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
-        destructive: 'bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20',
+        disclosure:
+          'rounded-none bg-transparent text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] active:scale-100 focus-visible:ring-inset focus-visible:ring-offset-0',
+        destructive:
+          'bg-rose-500/10 text-[var(--color-app-danger)] border border-rose-500/30 hover:bg-rose-500/20',
         link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-emerald-400',
       },
       size: {
         default: 'h-9 px-4',
-        sm: 'h-8 px-3 text-xs rounded-md',
+        sm: 'h-8 px-3 text-xs rounded-lg',
         lg: 'h-10 px-5',
         xl: 'h-12 px-7 text-base rounded-xl',
         icon: 'h-9 w-9',
