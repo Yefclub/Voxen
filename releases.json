@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793596903",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Shared controls, overlay motion and direct library search",
+    "body": "### Changed\n- Shared controls use consistent radii, danger tokens, and open/close overlay motion (220ms in / 160ms out) with reduced-motion support; sidebar icons stay static during layout changes.\n- Library search is direct, without the icon-tile header card.",
+    "pr": 1017,
+    "author": "Kalyel",
+    "date": "2026-11-02T02:21:30-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1017"
+  },
+  {
     "version": "0.15.1-dev.1793594689",
     "channel": "dev",
     "type": "feat",
