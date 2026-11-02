@@ -3,6 +3,7 @@ import type { GraphCommunityDetection } from '../../shared/graph-community';
 import { communitySelectionId } from './graph-community-model';
 import {
   buildGraphCommunities,
+  buildSigmaGraphModel,
   filterGraphData,
   type GraphEdge,
   type GraphNode,
@@ -126,5 +127,23 @@ describe('graph community projection', () => {
       expect.objectContaining({ nodeIds: ['a', 'b'], internalWeight: 1 }),
       expect.objectContaining({ nodeIds: ['c', 'd'], internalWeight: 1 }),
     ]);
+  });
+});
+
+describe('stable graph refresh identity', () => {
+  test('keeps camera identity for equivalent responses in different orders', () => {
+    const initial = response();
+    const reordered = {
+      ...initial,
+      nodes: [...initial.nodes].reverse(),
+      edges: [...initial.edges].reverse(),
+    };
+    expect(buildSigmaGraphModel(initial).topologyKey).toBe(
+      buildSigmaGraphModel(reordered).topologyKey,
+    );
+    const changed = { ...initial, edges: initial.edges.slice(1) };
+    expect(buildSigmaGraphModel(initial).topologyKey).not.toBe(
+      buildSigmaGraphModel(changed).topologyKey,
+    );
   });
 });
