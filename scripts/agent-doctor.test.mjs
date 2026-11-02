@@ -14,6 +14,12 @@ test("doctor separates declared, effective, and observed without claiming succes
   assert.equal(report.effectiveLoaded, "unverified");
   assert.equal(report.observedExecution, "unverified");
   assert.ok(!("success" in report) && !("passed" in report));
+  assert.ok(Array.isArray(report.declared.hooksEvents));
+  assert.equal(report.declared.hooksWithSecretLikeCommand, 0);
+  assert.ok(
+    report.notes.some((note) => /hook/i.test(note)),
+    "hook mapping limits must be an explicit note",
+  );
 });
 
 test("doctor output contains no secrets", () => {
