@@ -11,6 +11,8 @@ import {
   clearTranscriptReadCache,
 } from '../src/lib/transcript-content';
 import { parseOutline, readLinesFromMd, searchKnowledgeBase } from '../src/lib/retrieval';
+import { contentCursor, resultDigest } from '../src/routes/mcp-content-cursor';
+import { getResultReuseStats } from '../src/routes/mcp-result-reuse';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -292,5 +294,49 @@ describeIfDb('reproducible retrieval benchmark (Postgres + storage)', () => {
       totalLines: number;
     };
     expect(outline.totalLines).toBeGreaterThan(100);
+  });
+
+  it('mede continuação com reuso (page 2 via content_cursor)', async () => {
+    const call = async (args: unknown, id: number): Promise<unknown> => {
+      const res = await mcpCall(
+        {
+          jsonrpc: '2.0',
+          id,
+          method: 'tools/call',
+          params: { name: 'voxen_search_knowledge', arguments: args },
+        },
+        TOKEN,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        result?: { structuredContent?: unknown };
+        error?: unknown;
+      };
+      expect(body.error ?? null).toBeNull();
+      return body.result?.structuredContent;
+    };
+    const args = { query: 'protocolo Aurora', limit: 5 };
+    const first = (await call(args, 201)) as Record<string, unknown>;
+    const serialized = JSON.stringify(first);
+    const digest = resultDigest(serialized);
+    const hitsBefore = getResultReuseStats().hits;
+
+    const page2 = await measure(async () => {
+      const cursor = contentCursor(
+        10,
+        digest,
+        { userId, tool: 'voxen_search_knowledge', args, requestId: 'bench-continuation' },
+        Date.now(),
+      );
+      return (await call({ ...args, content_cursor: cursor }, 202)) as {
+        dataChunk: string;
+        _mcp: { resultChecksum: string };
+      };
+    });
+    expect(page2.p95).toBeLessThan(BUDGET.mcpP95Ms);
+    // Mesmo checksum do resultado preparado: a página veio do reuso, sem recomputar.
+    expect(page2.last._mcp.resultChecksum).toBe(digest);
+    expect(page2.last.dataChunk).toBe(serialized.slice(10, 10 + page2.last.dataChunk.length));
+    expect(getResultReuseStats().hits).toBeGreaterThan(hitsBefore);
   });
 });
