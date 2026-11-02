@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793579339 — 2026-11-01 · Dev
+
+### 🧹 Explicit role and review-route matrix
+
+### Added
+- `AGENTS.md` documents the versioned role/review-route matrix (orchestrator, Codex implementer/reviewer pins, auditors, visual-only rule, Claude-authored fallback route), locked by `scripts/role-matrix.test.mjs`.
+
 ## v0.15.1-dev.1793578441 — 2026-11-01 · Dev
 
 ### 🧹 Agent permission guard contract
