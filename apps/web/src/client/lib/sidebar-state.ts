@@ -5,17 +5,21 @@ const KEY = 'voxen:sidebar-collapsed';
 /**
  * Resolve o estado inicial de colapso a partir do valor bruto salvo no
  * localStorage (ou `null` quando não há preferência). Pura e testável sem
- * DOM: o rail colapsado é o padrão em todas as páginas desktop — só `'0'`
- * explícito (usuário expandiu e essa escolha foi persistida) reabre a sidebar
- * cheia por padrão. `'1'` ou qualquer valor inesperado mantém collapsed=true.
+ * DOM.
+ *
+ * INTERINO (spec 219 §1): sem o controle de abrir no header, o padrão
+ * colapsado seria uma armadilha one-way (sem rail, nada reexpande). Por
+ * isso o padrão é expandido até o header ganhar o controle de abrir —
+ * quando o padrão colapsado do preview volta com ele.
+ * `'1'` explícito (usuário recolheu e persistiu) mantém collapsed=true.
  */
 export function resolveInitialCollapsed(stored: string | null): boolean {
-  if (stored === '0') return false;
-  return true;
+  if (stored === '1') return true;
+  return false;
 }
 
 // Store singleton — múltiplas instâncias de useSidebarCollapsed compartilham
-// o mesmo state. Sem isso, Sidebar e SidebarSpacer ficariam dessincronizados.
+// o mesmo state. Sem isso, leituras concorrentes do colapso divergiriam.
 const subscribers = new Set<(v: boolean) => void>();
 let current: boolean =
   typeof window === 'undefined' ? false : resolveInitialCollapsed(window.localStorage.getItem(KEY));

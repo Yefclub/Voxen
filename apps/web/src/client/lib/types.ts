@@ -1,11 +1,12 @@
 import type { AppTheme } from './theme';
-import type { AppInterfaceMode } from './interface-mode';
 
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 export type UserRole = 'ADMIN' | 'USER';
 export type AppLanguage = 'pt-BR' | 'en';
+// Interface única (spec 219): o modo classic/focus saiu da UI, mas o valor
+// persistido continua no perfil para compatibilidade.
+export type AppInterfaceMode = 'classic' | 'focus';
 export type { AppTheme };
-export type { AppInterfaceMode };
 
 export interface MeUser {
   id: string;

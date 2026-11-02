@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { NAV, isNavItemActive } from './sidebar';
+import * as sidebarModule from './sidebar';
+
+describe('single knowledge-workspace interface (spec 219)', () => {
+  it('does not export the removed collapsed rail, spacer, or mode switch', () => {
+    for (const removed of ['SidebarRail', 'SidebarSpacer', 'SidebarInterfaceModeButton']) {
+      expect(removed in sidebarModule).toBe(false);
+    }
+  });
+
+  it('does not keep the removed interface-mode module', () => {
+    for (const file of ['interface-mode.ts', 'interface-mode-provider.tsx']) {
+      expect(existsSync(resolve(import.meta.dirname, '..', 'lib', file))).toBe(false);
+    }
+  });
+});
 
 describe('application navigation domains', () => {
   it('keeps one administration entry outside personal and workspace destinations', () => {

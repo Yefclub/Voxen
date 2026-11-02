@@ -1,7 +1,7 @@
 import { Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useOutlet } from 'react-router-dom';
-import { useMotionValue } from 'motion/react';
-import { Sidebar, SidebarSpacer } from './sidebar';
+import { motion, useMotionValue, useReducedMotion } from 'motion/react';
+import { Sidebar, SIDEBAR_WIDTH } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
@@ -21,12 +21,14 @@ import {
 import { MobileBackButton } from './mobile-back-button';
 import { MobileMenuButton } from './mobile-menu-button';
 import { SessionUnavailable } from '../session-unavailable';
-import { useInterfaceMode } from '../../lib/interface-mode-provider';
-import { cn } from '../../lib/utils';
+import { useSidebarCollapsed } from '../../lib/sidebar-state';
+
+const SURFACE_CORNER_RADIUS = 16;
 
 export function AppLayout(): React.ReactElement {
   const { data, loading, error, refresh } = useMe();
-  const { interfaceMode } = useInterfaceMode();
+  const { collapsed } = useSidebarCollapsed();
+  const reduceMotion = useReducedMotion();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   // Navegação mobile (<md): o Topbar flutuante não hospeda navegação — quem
@@ -51,7 +53,6 @@ export function AppLayout(): React.ReactElement {
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);
   const sectionKey = getSectionKey(location.pathname);
-  const focusInterface = interfaceMode === 'focus';
 
   // O scroll vive no <main>. Trocas dentro da mesma seção preservam a posição
   // (notas/detalhes); seções novas voltam ao topo antes da pintura, sem salto.
@@ -163,7 +164,7 @@ export function AppLayout(): React.ReactElement {
     <>
       <UpdateModal monitor={versionMonitor} />
       <div
-        data-interface-mode={interfaceMode}
+        data-interface-mode="focus"
         className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]"
       >
         <Sidebar user={data.user} />
@@ -174,13 +175,24 @@ export function AppLayout(): React.ReactElement {
           onClose={() => setMobileNavOpen(false)}
           onPresenceChange={setMobileNavPresent}
         />
-        <SidebarSpacer />
-        <div
-          className={cn(
-            'relative flex min-h-0 min-w-0 flex-1 flex-col',
-            focusInterface &&
-              'md:m-2 md:overflow-hidden md:rounded-2xl md:border md:border-[var(--color-app-border-strong)] md:bg-[var(--color-app-bg-elevated)] md:shadow-xl md:shadow-black/10',
-          )}
+        <motion.div
+          data-app-surface
+          initial={false}
+          animate={{
+            // Move a borda curva para fora da viewport em vez de achatá-la
+            // durante a transição. O padding mantém o conteúdo fechado em x=0.
+            marginLeft: isDesktop ? (collapsed ? -SURFACE_CORNER_RADIUS : SIDEBAR_WIDTH) : 0,
+            paddingLeft: isDesktop && collapsed ? SURFACE_CORNER_RADIUS : 0,
+          }}
+          style={{
+            borderTopLeftRadius: isDesktop ? SURFACE_CORNER_RADIUS : 0,
+            borderBottomLeftRadius: isDesktop ? SURFACE_CORNER_RADIUS : 0,
+          }}
+          transition={{
+            duration: reduceMotion || !isDesktop ? 0 : 0.48,
+            ease: [0.4, 0, 0.2, 1],
+          }}
+          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden md:bg-[var(--color-app-bg-elevated)]"
           inert={mobileNavPresent ? true : undefined}
         >
           <Topbar user={data.user} />
@@ -190,7 +202,7 @@ export function AppLayout(): React.ReactElement {
             <AnimatedOutlet />
           </main>
           {!hideBottomNav && <MobileBottomNav user={data.user} />}
-        </div>
+        </motion.div>
       </div>
     </>
   );
