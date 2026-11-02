@@ -120,18 +120,26 @@ describe('graph label collisions', () => {
   });
 });
 
-describe('graph label wiring (spec 219 §6)', () => {
+describe('graph label wiring (spec 219)', () => {
   test('full-graph page routes Sigma label passes through the measured renderer', async () => {
     const { readFile } = await import('node:fs/promises');
-    const source = await readFile(new URL('../pages/grafo.tsx', import.meta.url), 'utf8');
-    // Settings hand the buffered renderer to Sigma; the frame loop resets
-    // before render and flushes obstacles + reserved controls after render —
-    // otherwise draw() would only accumulate and never paint.
-    expect(source).toContain('defaultDrawNodeLabel: labelRenderer');
-    expect(source).toContain("renderer.on('beforeRender'");
-    expect(source).toContain("renderer.on('afterRender'");
-    expect(source).toContain('labelRendererRef.current.reset()');
-    expect(source).toContain('labelRendererRef.current.flush(');
-    expect(source).toContain('data-graph-controls');
+    const [page, lib] = await Promise.all([
+      readFile(new URL('../pages/grafo.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('./graph-renderer.ts', import.meta.url), 'utf8'),
+    ]);
+    // Settings hand the buffered renderer to Sigma; the attach helper resets
+    // before render and flushes obstacles plus reserved controls after render.
+    expect(lib).toContain('defaultDrawNodeLabel: labelRenderer');
+    expect(lib).toContain("renderer.on('beforeRender'");
+    expect(lib).toContain("renderer.on('afterRender'");
+    expect(lib).toContain('getLabelRenderer().reset()');
+    expect(lib).toContain('getLabelRenderer().flush(');
+    expect(page).toContain(
+      'attachMeasuredLabelLayer(renderer, container, () => labelRendererRef.current)',
+    );
+    expect(page).toContain(
+      'sigmaRendererSettings(initialModel, initialPalette, labelRendererRef.current)',
+    );
+    expect(page).toContain('data-graph-controls');
   });
 });

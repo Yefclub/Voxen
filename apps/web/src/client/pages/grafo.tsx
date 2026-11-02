@@ -67,8 +67,9 @@ import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
-  createSigmaNodeHoverRenderer,
+  attachMeasuredLabelLayer,
   createSigmaNodeLabelRenderer,
+  sigmaRendererSettings,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
   type GraphMode,
@@ -1353,35 +1354,7 @@ function BrainGraph2DCanvas({
         sigmaRendererSettings(initialModel, initialPalette, labelRendererRef.current),
       );
       rendererRef.current = renderer;
-      renderer.on('beforeRender', () => labelRendererRef.current.reset());
-      renderer.on('afterRender', () => {
-        if (!renderer) return;
-        const { width, height } = renderer.getDimensions();
-        const obstacles: { x: number; y: number; size: number }[] = [];
-        renderer.getGraph().forEachNode((id) => {
-          const data = renderer?.getNodeDisplayData(id);
-          if (!renderer || !data || data.hidden) return;
-          const point = renderer.framedGraphToViewport(data);
-          if (point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height)
-            obstacles.push({ ...point, size: renderer.scaleSize(data.size) });
-        });
-        const controls = container.parentElement?.querySelector('[data-graph-controls]');
-        const bounds = controls?.getBoundingClientRect();
-        const canvas = container.getBoundingClientRect();
-        labelRendererRef.current.flush(
-          obstacles,
-          bounds
-            ? [
-                {
-                  left: bounds.left - canvas.left - 4,
-                  top: bounds.top - canvas.top - 4,
-                  right: bounds.right - canvas.left + 4,
-                  bottom: bounds.bottom - canvas.top + 4,
-                },
-              ]
-            : [],
-        );
-      });
+      attachMeasuredLabelLayer(renderer, container, () => labelRendererRef.current);
       renderer.on('clickNode', ({ node }) => onSelect(node));
       renderer.on('doubleClickNode', ({ node, event }) => {
         event.preventSigmaDefault();
@@ -1585,34 +1558,6 @@ function BrainGraph2DCanvas({
       )}
     </div>
   );
-}
-
-function sigmaRendererSettings(
-  model: SigmaGraphModel,
-  palette: GraphPalette,
-  labelRenderer: ReturnType<typeof createSigmaNodeLabelRenderer>,
-) {
-  return {
-    allowInvalidContainer: true,
-    defaultNodeColor: palette.nodes.content,
-    defaultEdgeColor: palette.neutralEdge,
-    defaultDrawNodeLabel: labelRenderer,
-    enableEdgeEvents: false,
-    hideEdgesOnMove: true,
-    hideLabelsOnMove: true,
-    itemSizesReference: 'screen' as const,
-    defaultDrawNodeHover: createSigmaNodeHoverRenderer(palette),
-    labelColor: { color: palette.label },
-    labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
-    labelFont: 'Inter, system-ui, sans-serif',
-    labelWeight: '600',
-    labelRenderedSizeThreshold: model.graph.order > 250 ? 9 : 7,
-    labelSize: 13,
-    maxCameraRatio: 3.4,
-    minCameraRatio: 0.08,
-    renderEdgeLabels: false,
-    zIndex: true,
-  };
 }
 
 function CanvasButton({

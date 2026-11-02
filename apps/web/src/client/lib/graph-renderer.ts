@@ -1,5 +1,10 @@
 import type { NodeHoverDrawingFunction, NodeLabelDrawingFunction } from 'sigma/rendering';
-import type { GraphPalette, SigmaEdgeAttributes, SigmaNodeAttributes } from './graph-model';
+import {
+  type GraphPalette,
+  type SigmaEdgeAttributes,
+  type SigmaGraphModel,
+  type SigmaNodeAttributes,
+} from './graph-model';
 
 export type GraphMode = '2d' | '3d';
 export type GraphRenderTier = 'detailed' | 'balanced' | 'dense';
@@ -198,6 +203,88 @@ export function createSigmaNodeHoverRenderer(
     context.textBaseline = 'middle';
     context.fillText(label, x + 8, y + height / 2);
     context.restore();
+  };
+}
+
+/**
+ * Binds the buffered label renderer to a Sigma instance: Sigma accumulates
+ * label candidates during its label pass, then this flushes measured boxes
+ * (node markers plus reserved control areas) right after each render.
+ * Listeners die with renderer.kill(); no extra cleanup is required.
+ */
+export function attachMeasuredLabelLayer(
+  renderer: {
+    on(event: 'beforeRender' | 'afterRender', handler: () => void): void;
+    getDimensions(): { width: number; height: number };
+    getGraph(): { forEachNode(callback: (nodeId: string) => void): void };
+    getNodeDisplayData(
+      nodeId: string,
+    ): { x: number; y: number; size: number; hidden?: boolean } | undefined;
+    framedGraphToViewport(point: { x: number; y: number }): { x: number; y: number };
+    scaleSize(size: number): number;
+  },
+  container: HTMLElement,
+  getLabelRenderer: () => ReturnType<typeof createSigmaNodeLabelRenderer>,
+): void {
+  renderer.on('beforeRender', () => getLabelRenderer().reset());
+  renderer.on('afterRender', () => {
+    const { width, height } = renderer.getDimensions();
+    const obstacles: LabelObstacle[] = [];
+    renderer.getGraph().forEachNode((id) => {
+      const data = renderer.getNodeDisplayData(id);
+      if (!data || data.hidden) return;
+      const point = renderer.framedGraphToViewport(data);
+      if (point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height)
+        obstacles.push({ ...point, size: renderer.scaleSize(data.size) });
+    });
+    const controls = container.parentElement?.querySelector('[data-graph-controls]');
+    const bounds = controls?.getBoundingClientRect();
+    const canvas = container.getBoundingClientRect();
+    getLabelRenderer().flush(
+      obstacles,
+      bounds
+        ? [
+            {
+              left: bounds.left - canvas.left - 4,
+              top: bounds.top - canvas.top - 4,
+              right: bounds.right - canvas.left + 4,
+              bottom: bounds.bottom - canvas.top + 4,
+            },
+          ]
+        : [],
+    );
+  });
+}
+
+/**
+ * Sigma settings for the knowledge graph: measured labels with per-frame
+ * collision handling plus a measured, viewport-clamped hover box.
+ */
+export function sigmaRendererSettings(
+  model: SigmaGraphModel,
+  palette: GraphPalette,
+  labelRenderer: ReturnType<typeof createSigmaNodeLabelRenderer>,
+) {
+  return {
+    allowInvalidContainer: true,
+    defaultNodeColor: palette.nodes.content,
+    defaultEdgeColor: palette.neutralEdge,
+    defaultDrawNodeLabel: labelRenderer,
+    enableEdgeEvents: false,
+    hideEdgesOnMove: true,
+    hideLabelsOnMove: true,
+    itemSizesReference: 'screen' as const,
+    defaultDrawNodeHover: createSigmaNodeHoverRenderer(palette),
+    labelColor: { color: palette.label },
+    labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
+    labelFont: 'Inter, system-ui, sans-serif',
+    labelWeight: '600',
+    labelRenderedSizeThreshold: model.graph.order > 250 ? 9 : 7,
+    labelSize: 13,
+    maxCameraRatio: 3.4,
+    minCameraRatio: 0.08,
+    renderEdgeLabels: false,
+    zIndex: true,
   };
 }
 
