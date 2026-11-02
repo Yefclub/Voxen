@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1793596903 — 2026-11-02 · Dev
+
+### ✨ Shared controls, overlay motion and direct library search
+
+### Changed
+- Shared controls use consistent radii, danger tokens, and open/close overlay motion (220ms in / 160ms out) with reduced-motion support; sidebar icons stay static during layout changes.
+- Library search is direct, without the icon-tile header card.
+
 ## v0.15.1-dev.1793594689 — 2026-11-02 · Dev
 
 ### ✨ Persistent header with appearance and account controls
