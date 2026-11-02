@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793606693",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Provide Tooltip context at the shell and verify the workspace rendered",
+    "body": "### Fixed\n- Mounted `TooltipProvider` at the shell so header appearance controls, sidebar toggle, graph viewport controls and combobox search tooltips resolve instead of crashing authenticated pages.\n\n### Added\n- Rendered verification: updated local-graph flow to the new UI, plus viewport (320–2560), four-theme, keyboard, reduced-motion and WebGL-fallback specs with screenshots; storage-backed fixtures and a strictness fix for the corrections history assertion.",
+    "pr": 1029,
+    "author": "Kalyel",
+    "date": "2026-11-02T05:04:34-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1029"
+  },
+  {
     "version": "0.15.1-dev.1793604294",
     "channel": "dev",
     "type": "feat",
