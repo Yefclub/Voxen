@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793584081 — 2026-11-01 · Dev
+
+### ✨ Benchmark reports resource usage
+
+### Added
+- Retrieval benchmark now reports heap/rss and database bytes alongside latencies, without failure thresholds on resource figures.
+
 ## v0.15.1-dev.1793583161 — 2026-11-01 · Dev
 
 ### 🧹 Harden stdlib guard against dynamic loading
