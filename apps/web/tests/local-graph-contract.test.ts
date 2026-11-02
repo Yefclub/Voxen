@@ -57,4 +57,12 @@ describe('local graph contract (spec 219)', () => {
     expect(CONTAINERS_CSS).toContain('.knowledge-graph-inspector');
     expect(OVERLAY_CSS).toContain('.base-popup[data-starting-style]');
   });
+
+  test('local status covers every compilation state without hiding materialized data', () => {
+    for (const state of ['NOT_INDEXED', 'INDEXING', 'PARTIAL', 'FAILED']) {
+      expect(LOCAL_GRAPH_SOURCE).toContain(`data.state === '${state}'`);
+    }
+    expect(LOCAL_GRAPH_SOURCE).toContain('{data.truncated &&');
+    expect(LOCAL_GRAPH_SOURCE).toContain('{data.nodes.length === 0 && (');
+  });
 });
