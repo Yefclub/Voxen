@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.15.1-dev.1793598811",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Graph labels wired with per-frame collision handling",
+    "body": "### Added\n- Full-graph page wires the measured label renderer into Sigma (defaultDrawNodeLabel + beforeRender reset + afterRender flush with obstacles and reserved controls).",
+    "pr": 1019,
+    "author": "Kalyel",
+    "date": "2026-11-02T02:53:20-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1019"
+  },
+  {
+    "version": "0.15.1-dev.1793598811",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Measured graph labels and stable refresh identity",
+    "body": "### Added\n- Canvas labels resolve collisions with measured per-frame text rectangles (4-side placement, deterministic tie-breaks) instead of truncation alone; hover boxes are measured and viewport-clamped.\n- Graph topology key is order-invariant, so equivalent server responses keep camera/node identity instead of refitting.",
+    "pr": 1019,
+    "author": "Kalyel",
+    "date": "2026-11-02T02:53:20-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1019"
+  },
+  {
     "version": "0.15.1-dev.1793596903",
     "channel": "dev",
     "type": "feat",
