@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793582123 — 2026-11-01 · Dev
+
+### 🧹 Guard agent tooling stdlib-only contract
+
+### Added
+- `scripts/agent-stdlib-only.test.mjs` locks agent tooling to stdlib plus relative imports with no model-provider configuration, keeping transient agent tooling out of the application runtime.
+
 ## v0.15.1-dev.1793581178 — 2026-11-01 · Dev
 
 ### ✨ Benchmark measures continuation reuse
