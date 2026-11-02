@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793581178",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Benchmark measures continuation reuse",
+    "body": "### Added\n- Retrieval benchmark now measures page-2 continuation via `content_cursor`, proving the page is served from the prepared result (same checksum) within the MCP latency budget.",
+    "pr": 1003,
+    "author": "Kalyel",
+    "date": "2026-11-01T21:58:31-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1003"
+  },
+  {
     "version": "0.15.1-dev.1793580291",
     "channel": "dev",
     "type": "chore",

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793581178 — 2026-11-01 · Dev
+
+### ✨ Benchmark measures continuation reuse
+
+### Added
+- Retrieval benchmark now measures page-2 continuation via `content_cursor`, proving the page is served from the prepared result (same checksum) within the MCP latency budget.
+
 ## v0.15.1-dev.1793580291 — 2026-11-01 · Dev
 
 ### 🧹 Doctor reports declared hooks coverage
