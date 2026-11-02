@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -149,7 +149,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
+  const [linkedNotesOpen, setLinkedNotesOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    setLinkedNotesOpen(false);
+  }, [id]);
 
   async function moveToFolder(folderId: string | null): Promise<void> {
     if (!id) return;
@@ -453,7 +458,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               readOnly={!canUseContextualActions}
               t={translate}
             />
-            {canUseContextualActions && <TranscriptKnowledgeGraph transcriptId={t.id} />}
+            {canUseContextualActions && <TranscriptKnowledgeGraph key={t.id} transcriptId={t.id} />}
             <TranscriptCorrectionsCard
               transcriptId={t.id}
               revision={t.correctionRevision}
@@ -469,11 +474,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
                   {contentHeading}
                 </h2>
-                <Card elevated className="border-[var(--color-app-border)]/80">
-                  <CardContent className="px-5 py-5 sm:px-6">
-                    <Markdown>{contentMarkdown}</Markdown>
-                  </CardContent>
-                </Card>
+                <div className="min-w-0 max-w-[75ch]">
+                  <Markdown>{contentMarkdown}</Markdown>
+                </div>
               </section>
             ) : (
               <TranscriptViewer
@@ -483,6 +486,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 )}
                 onCreateAnnotation={(selection) => {
                   setLinkedNoteAnchor(selection);
+                  setLinkedNotesOpen(true);
                   window.setTimeout(
                     () =>
                       document
@@ -587,10 +591,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                   content={linkedNoteContent}
                   anchor={linkedNoteAnchor}
                   creating={creatingLinkedNote}
+                  composerOpen={linkedNotesOpen}
                   locale={locale}
                   onTitleChange={setLinkedNoteTitle}
                   onContentChange={setLinkedNoteContent}
                   onAnchorChange={setLinkedNoteAnchor}
+                  onComposerOpenChange={setLinkedNotesOpen}
                   onCreate={() => void createLinkedNote(t)}
                   t={translate}
                 />
