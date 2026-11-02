@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793607598",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Touch coverage in the rendered visual matrix",
+    "body": "### Added\n- Touch-tap coverage on coarse pointers in the rendered workspace matrix (selection via tap with screenshot evidence).",
+    "pr": 1031,
+    "author": "Kalyel",
+    "date": "2026-11-02T05:19:36-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1031"
+  },
+  {
     "version": "0.15.1-dev.1793606693",
     "channel": "dev",
     "type": "fix",
