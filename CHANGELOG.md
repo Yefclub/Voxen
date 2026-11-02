@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.1-dev.1793586943 — 2026-11-01 · Dev
+
+### 🧹 EARS spec for the knowledge-workspace UI port
+
+### Added
+- Spec 219 defining the edge-to-edge shell, open reading sections, and tab-free graph port with verified reference integrity and porting boundary.
+
+## v0.15.1-dev.1793586943 — 2026-11-01 · Dev
+
+### ✨ Benchmark reports resource usage
+
+### Added
+- Retrieval benchmark now reports heap/rss and database bytes alongside latencies, without failure thresholds on resource figures.
+
 ## v0.15.1-dev.1793583161 — 2026-11-01 · Dev
 
 ### 🧹 Harden stdlib guard against dynamic loading

@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.15.1-dev.1793586943",
+    "channel": "dev",
+    "type": "chore",
+    "title": "EARS spec for the knowledge-workspace UI port",
+    "body": "### Added\n- Spec 219 defining the edge-to-edge shell, open reading sections, and tab-free graph port with verified reference integrity and porting boundary.",
+    "pr": 1011,
+    "author": "Kalyel",
+    "date": "2026-11-01T23:35:31-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1011"
+  },
+  {
+    "version": "0.15.1-dev.1793586943",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Benchmark reports resource usage",
+    "body": "### Added\n- Retrieval benchmark now reports heap/rss and database bytes alongside latencies, without failure thresholds on resource figures.",
+    "pr": 1009,
+    "author": "Kalyel",
+    "date": "2026-11-01T22:46:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1009"
+  },
+  {
     "version": "0.15.1-dev.1793583161",
     "channel": "dev",
     "type": "chore",
