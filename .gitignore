@@ -32,6 +32,8 @@ htmlcov/
 quality-gate/input/
 quality-gate/output/
 prisma-migration-gate/output/
+# Playwright local run artifacts (screenshots, traces)
+apps/web/test-results/
 
 # Env / secrets (NUNCA commitar)
 .env

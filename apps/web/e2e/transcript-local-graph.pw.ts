@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { db } from '../src/lib/db';
 import { setSetting } from '../src/lib/settings';
+import { storagePut } from '../src/lib/storage';
+
+function seedMarkdown(mdPath: string, title: string, body: string): Promise<unknown> {
+  return storagePut({ key: mdPath, body: `# ${title}\n\n${body}\n`, contentType: 'text/markdown' });
+}
 
 test('explores grounded transcript knowledge and connected library content', async ({
   page,
@@ -22,6 +27,17 @@ test('explores grounded transcript knowledge and connected library content', asy
       data: { email, password },
     });
     expect(signin.ok()).toBeTruthy();
+
+    await seedMarkdown(
+      `tests/missing-${suffix}.md`,
+      'Grounded graph source',
+      '[00:00:15] A grounded topic appears in this source.',
+    );
+    await seedMarkdown(
+      `tests/missing-connected-${suffix}.md`,
+      'Connected library source',
+      'Related knowledge from another source.',
+    );
 
     const transcript = await db.transcript.create({
       data: {
@@ -153,29 +169,34 @@ test('explores grounded transcript knowledge and connected library content', asy
     ]);
 
     await page.goto(`/transcricoes/${transcript.id}`);
-    const graph = page.getByTestId('transcript-knowledge-graph');
-    await expect(graph.getByText('Grafo deste conteúdo')).toBeVisible();
-    await expect(
-      graph.getByRole('img', { name: 'Mapa local de conhecimento da transcrição' }),
-    ).toBeVisible();
-    await expect(graph.getByRole('button', { name: 'Grounded topic — topic' })).toBeVisible();
-    await expect(
-      graph.getByRole('button', { name: 'Connected library source — transcript' }),
-    ).toHaveCount(0);
-    await graph.getByRole('button', { name: 'Grounded topic — topic' }).click();
-    await expect(graph.getByText('A grounded topic appears in this source.')).toBeVisible();
-    await graph.getByRole('button', { name: 'Ir para a passagem' }).click();
+    const graphSection = page.getByTestId('transcript-knowledge-graph');
+    await expect(graphSection.getByText('Grafo deste conteúdo')).toBeVisible();
+    const scopeSelect = graphSection.getByRole('combobox', { name: 'Escopo do grafo' });
+    await expect(scopeSelect).toBeVisible();
+    await expect(scopeSelect).toContainText('Neste conteúdo');
+
+    const inspector = graphSection.getByRole('region', { name: 'Detalhes do nó' });
+    await expect(inspector.getByRole('heading', { name: 'Nós' })).toBeVisible();
+    const topicOption = inspector.getByRole('button', { name: /Grounded topic/ });
+    await expect(topicOption).toBeVisible();
+    await expect(inspector.getByRole('button', { name: /Connected library source/ })).toHaveCount(
+      0,
+    );
+    await topicOption.click();
+    await expect(inspector.getByText('A grounded topic appears in this source.')).toBeVisible();
+    await inspector.getByRole('button', { name: 'Ir para a passagem' }).click();
     await expect(page).toHaveURL(/#l=1-1$/);
     await page.screenshot({
       path: testInfo.outputPath('transcript-local-graph-content.png'),
       fullPage: true,
     });
 
-    await graph.getByRole('button', { name: 'Conexões com a base' }).click();
-    await expect(
-      graph.getByRole('button', { name: 'Connected library source — transcript' }),
-    ).toBeVisible();
-    const globalLink = graph.getByRole('link', { name: 'Abrir no grafo completo' });
+    await scopeSelect.click();
+    await page.getByRole('option', { name: 'Conexões com a base' }).click();
+    await expect(graphSection.getByText('3 nós')).toBeVisible();
+    await inspector.getByRole('button', { name: 'Todos os nós' }).click();
+    await expect(inspector.getByRole('button', { name: /Connected library source/ })).toBeVisible();
+    const globalLink = graphSection.getByRole('link', { name: 'Abrir no grafo completo' });
     await expect(globalLink).toHaveAttribute('href', `/grafo?focus=${focus.id}`);
     await page.screenshot({
       path: testInfo.outputPath('transcript-local-graph-connections.png'),
@@ -183,7 +204,7 @@ test('explores grounded transcript knowledge and connected library content', asy
     });
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(graph.getByText('Grafo deste conteúdo')).toBeVisible();
+    await expect(graphSection.getByText('Grafo deste conteúdo')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('transcript-local-graph-mobile.png'),
       fullPage: true,

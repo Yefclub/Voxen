@@ -118,7 +118,7 @@ test('previews, conflicts, inspects, and restores transcript corrections', async
   await expect(refreshedCard.getByText('correct word in immutable evidence')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('transcript-correction-history.png') });
   await refreshedCard.getByRole('button', { name: 'Restaurar' }).last().click();
-  await expect(refreshedCard.getByText('Revisão 3')).toBeVisible();
+  await expect(refreshedCard.getByText('Revisão 3', { exact: true })).toBeVisible();
   await expect(page.getByText('correct word in immutable evidence', { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });

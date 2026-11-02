@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { db } from '../src/lib/db';
 import { setSetting } from '../src/lib/settings';
+import { storagePut } from '../src/lib/storage';
 
 test('records a personal transcript preference with accessible reversible feedback', async ({
   page,
@@ -22,6 +23,12 @@ test('records a personal transcript preference with accessible reversible feedba
       data: { email, password },
     });
     expect(signin.ok()).toBeTruthy();
+
+    await storagePut({
+      key: `tests/missing-${suffix}.md`,
+      body: '# Personal interest source\n\n[00:00:10] A source used to validate explicit preference feedback.\n',
+      contentType: 'text/markdown',
+    });
 
     const transcript = await db.transcript.create({
       data: {
