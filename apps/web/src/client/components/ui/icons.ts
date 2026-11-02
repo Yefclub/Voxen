@@ -37,7 +37,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
-  ChevronsLeftIcon,
   CircleCheckIcon,
   CirclePlusIcon,
   ClockIcon,
@@ -59,7 +58,6 @@ import {
   InfoIcon,
   KeyRoundIcon,
   LayersIcon,
-  LayoutListIcon,
   LinkIcon,
   ListChevronsUpDownIcon,
   LoaderCircleIcon,
@@ -67,7 +65,6 @@ import {
   LockIcon,
   LogoutIcon,
   MailsIcon,
-  MenuIcon,
   MessageCircleIcon,
   MinusIcon,
   MoonIcon,
@@ -319,9 +316,48 @@ export const Music2 = accessibleIcon(MusicIcon);
 export const Network = accessibleIcon(ChartNetworkIcon);
 export const Notebook = accessibleIcon(BookOpenTextIcon);
 export const NotebookPen = accessibleIcon(BookOpenTextIcon);
-export const PanelLeft = accessibleIcon(LayoutListIcon);
-export const PanelLeftClose = accessibleIcon(ChevronsLeftIcon);
-export const PanelLeftOpen = accessibleIcon(MenuIcon);
+/** Sidebar controls use a panel glyph and never animate during layout changes. */
+function sidebarIcon(direction?: 'open' | 'close'): AnimatedIcon {
+  return forwardRef<IconCueHandle, AnimatedIconProps>(function SidebarIcon(
+    {
+      className,
+      size = 24,
+      color = 'currentColor',
+      duration: _duration,
+      isAnimated: _isAnimated,
+      ...props
+    },
+    ref,
+  ) {
+    useImperativeHandle(ref, () => ({ startAnimation() {}, stopAnimation() {} }), []);
+    return createElement(
+      'div',
+      { ...props, className: cn(ANIMATED_ICON_FRAME_CLASS, className) },
+      createElement(
+        'svg',
+        {
+          viewBox: '0 0 24 24',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: color,
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        createElement('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2 }),
+        createElement('path', { d: 'M9 3v18' }),
+        direction &&
+          createElement('path', { d: direction === 'open' ? 'm14 9 3 3-3 3' : 'm17 9-3 3 3 3' }),
+      ),
+    );
+  });
+}
+
+export const PanelLeft = sidebarIcon();
+export const PanelLeftClose = sidebarIcon('close');
+export const PanelLeftOpen = sidebarIcon('open');
 export const PlayCircle = accessibleIcon(PlayIcon);
 export const Plug = accessibleIcon(WebhookIcon);
 export const Puzzle = accessibleIcon(BlocksIcon);

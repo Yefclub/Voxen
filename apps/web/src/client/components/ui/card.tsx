@@ -2,7 +2,7 @@ import * as React from 'react';
 import { cn } from '../../lib/utils';
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** elevated = leve gradient interno (top → bottom) */
+  /** elevated = superfície elevada sem gradientes decorativos */
   elevated?: boolean;
   /** hoverable = leve translate no hover + border destacada */
   hoverable?: boolean;
@@ -17,7 +17,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
       className={cn(
         'rounded-2xl text-[var(--color-app-fg)] transition-colors duration-200 ease-out',
         elevated
-          ? 'border border-[var(--color-app-border)] bg-gradient-to-b from-[var(--color-app-elevate)] to-[var(--color-app-surface)]'
+          ? 'border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]'
           : 'border border-[var(--color-app-border)] bg-[var(--color-app-surface)]',
         hoverable && 'hover:border-[var(--color-app-border-strong)]',
         className,

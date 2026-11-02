@@ -17,8 +17,8 @@ export const PopoverContent = React.forwardRef<
       sideOffset={sideOffset}
       collisionPadding={collisionPadding}
       className={cn(
-        'z-50 overflow-hidden rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] shadow-xl',
-        'data-[state=open]:anim-in',
+        'z-50 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] shadow-xl',
+        'app-overlay origin-[var(--radix-popover-content-transform-origin)]',
         className,
       )}
       {...props}
