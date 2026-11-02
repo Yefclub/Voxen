@@ -73,19 +73,26 @@ describe('fundação visual Linear', () => {
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
     expect(pageShell).toContain('shouldAnimateDecoration(reduceMotion, animate)');
-    expect(sidebar.match(/useReducedMotion\(\)/g)?.length).toBeGreaterThanOrEqual(5);
-    expect(sidebar).toContain("reduceMotion ? { duration: 0 } : { type: 'spring'");
+    expect(sidebar.match(/useReducedMotion\(\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(sidebar).toContain('{ duration: 0 }');
+    expect(sidebar).toContain("{ type: 'spring'");
     expect(sidebar).toContain("layoutId={reduceMotion ? undefined : 'sidebar-pill'}");
     expect(drawer).toContain('duration: reduceMotion ? 0 : 0.22');
   });
 
-  test('mantém painel, spacer e drawer mobile coerentes e sem árvore fora de tela', () => {
+  test('mantém sidebar estacionária, superfície e drawer mobile coerentes', () => {
     const sidebar = read('src/client/components/layout/sidebar.tsx');
+    const appLayout = read('src/client/components/layout/app-layout.tsx');
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
     expect(sidebar).toContain('const SIDEBAR_WIDTH = 288');
     expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
-    expect(sidebar).toContain('SIDEBAR_WIDTH + 32');
+    expect(sidebar).toContain('id="desktop-sidebar"');
+    expect(sidebar).toContain('aria-hidden');
+    expect(sidebar).not.toContain('SidebarRail');
+    expect(sidebar).not.toContain('SidebarSpacer');
+    expect(appLayout).toContain('marginLeft');
+    expect(appLayout).toContain('SURFACE_CORNER_RADIUS');
     expect(drawer).toContain('fica preparada fora da tela');
     expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
     expect(drawer).toContain('inert={present ? undefined : true}');

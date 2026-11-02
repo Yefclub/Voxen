@@ -10,14 +10,13 @@ describe('chrome de navegação mobile compacto', () => {
     const source = readClientSource('components/layout/topbar.tsx');
 
     expect(source).toContain('right-2');
-    expect(source).toContain('md:right-7');
     expect(source).toContain('md:right-9');
-    expect(source).not.toContain('md:right-4');
+    expect(source).not.toContain('md:right-7');
     expect(source).not.toContain('md:right-5');
     expect(source).toContain('bg-transparent');
     expect(source).toContain('md:bg-[var(--color-app-bg-elevated)]/85');
     expect(source).toContain('top-[calc(env(safe-area-inset-top)+0.5rem)]');
-    expect(source).toContain('md:top-[calc(env(safe-area-inset-top)+1rem)]');
+    expect(source).toContain('md:top-[calc(env(safe-area-inset-top)+1.25rem)]');
     expect(source).toContain('h-10 w-10');
     expect(source).toContain('md:h-8 md:w-8');
     expect(source).toContain('md:gap-2');
