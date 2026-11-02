@@ -51,3 +51,22 @@
     transition: none;
   }
 }
+
+/* Base UI popup enter/exit for portaled menus, selects and comboboxes. */
+.base-popup {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 160ms ease-out,
+    transform 220ms var(--ease-out);
+}
+.base-popup[data-starting-style],
+.base-popup[data-ending-style] {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+@media (prefers-reduced-motion: reduce) {
+  .base-popup {
+    transition: none;
+  }
+}

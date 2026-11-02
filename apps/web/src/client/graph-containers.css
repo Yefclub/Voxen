@@ -1,0 +1,34 @@
+/* Graph workspace containers respond to the space left by navigation and
+   content metadata (spec 219). Kept in its own file so the global
+   stylesheet stays within the quality-gate size budget. */
+.local-graph-shell {
+  container: localgraph / inline-size;
+}
+@container localgraph (min-width: 680px) {
+  .local-graph-workspace {
+    height: 420px;
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+  .local-graph-map,
+  .local-graph-inspector {
+    height: 100%;
+  }
+  .local-graph-inspector {
+    border-top: 0;
+    border-left: 1px solid var(--color-app-border);
+  }
+}
+.graph-workspace-shell {
+  container: globalgraph / inline-size;
+}
+@container globalgraph (min-width: 720px) {
+  .knowledge-graph-workspace {
+    flex-direction: row;
+  }
+  .knowledge-graph-inspector {
+    height: auto;
+    width: 288px;
+    border-top: 0;
+    border-left: 1px solid var(--color-app-border);
+  }
+}
