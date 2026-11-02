@@ -691,8 +691,9 @@ function graphTopologyKey(data: GraphResp): string {
       hash = Math.imul(hash, 16_777_619) >>> 0;
     }
   };
-  for (const node of data.nodes) add(node.id);
-  for (const edge of data.edges) add(`${edge.id}:${edge.from}:${edge.to}`);
+  for (const id of data.nodes.map((node) => node.id).sort()) add(id);
+  for (const edge of data.edges.map((edge) => `${edge.id}:${edge.from}:${edge.to}`).sort())
+    add(edge);
   return `${data.nodes.length}:${data.edges.length}:${hash.toString(36)}`;
 }
 

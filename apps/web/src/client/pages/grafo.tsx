@@ -67,7 +67,9 @@ import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
-  createSigmaNodeHoverRenderer,
+  attachMeasuredLabelLayer,
+  createSigmaNodeLabelRenderer,
+  sigmaRendererSettings,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
   type GraphMode,
@@ -1308,6 +1310,8 @@ function BrainGraph2DCanvas({
   const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
   const modelRef = useRef(model);
   const paletteRef = useRef(palette);
+  const labelRenderer = useMemo(() => createSigmaNodeLabelRenderer(palette), [palette]);
+  const labelRendererRef = useRef(labelRenderer);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [rendererVersion, setRendererVersion] = useState(0);
@@ -1315,6 +1319,7 @@ function BrainGraph2DCanvas({
   const hasModel = Boolean(model);
   modelRef.current = model;
   paletteRef.current = palette;
+  labelRendererRef.current = labelRenderer;
 
   useEffect(() => {
     let cancelled = false;
@@ -1346,9 +1351,10 @@ function BrainGraph2DCanvas({
       renderer = new SigmaConstructor(
         initialModel.graph,
         containerRef.current,
-        sigmaRendererSettings(initialModel, initialPalette),
+        sigmaRendererSettings(initialModel, initialPalette, labelRendererRef.current),
       );
       rendererRef.current = renderer;
+      attachMeasuredLabelLayer(renderer, container, () => labelRendererRef.current);
       renderer.on('clickNode', ({ node }) => onSelect(node));
       renderer.on('doubleClickNode', ({ node, event }) => {
         event.preventSigmaDefault();
@@ -1380,7 +1386,7 @@ function BrainGraph2DCanvas({
     const renderer = rendererRef.current;
     if (!renderer || !model) return;
     renderer.setGraph(model.graph);
-    renderer.setSettings(sigmaRendererSettings(model, palette));
+    renderer.setSettings(sigmaRendererSettings(model, palette, labelRendererRef.current));
     renderer.refresh();
     setRendererVersion((version) => version + 1);
     // Reenquadra o núcleo (maior comunidade) após troca de topologia.
@@ -1534,7 +1540,11 @@ function BrainGraph2DCanvas({
     <div className="absolute inset-0 overflow-hidden">
       <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
       {model.graph.order > 0 && (
-        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
+        <div
+          data-graph-controls
+          className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md"
+        >
+          {' '}
           <CanvasButton label={translate('graph.zoomIn')} onClick={() => moveCamera(0.72)}>
             <ZoomIn className="h-3.5 w-3.5" />
           </CanvasButton>
@@ -1548,29 +1558,6 @@ function BrainGraph2DCanvas({
       )}
     </div>
   );
-}
-
-function sigmaRendererSettings(model: SigmaGraphModel, palette: GraphPalette) {
-  return {
-    allowInvalidContainer: true,
-    defaultNodeColor: palette.nodes.content,
-    defaultEdgeColor: palette.neutralEdge,
-    enableEdgeEvents: false,
-    hideEdgesOnMove: true,
-    hideLabelsOnMove: true,
-    itemSizesReference: 'screen' as const,
-    defaultDrawNodeHover: createSigmaNodeHoverRenderer(palette),
-    labelColor: { color: palette.label },
-    labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
-    labelFont: 'Inter, system-ui, sans-serif',
-    labelWeight: '600',
-    labelRenderedSizeThreshold: model.graph.order > 250 ? 9 : 7,
-    labelSize: 13,
-    maxCameraRatio: 3.4,
-    minCameraRatio: 0.08,
-    renderEdgeLabels: false,
-    zIndex: true,
-  };
 }
 
 function CanvasButton({
