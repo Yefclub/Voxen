@@ -18,6 +18,7 @@ import {
   hidesBottomNav,
   shouldResetMobileDrawerForDesktop,
 } from '../../lib/mobile-nav';
+import { TooltipProvider } from '../ui/tooltip';
 import { SessionUnavailable } from '../session-unavailable';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 
@@ -159,7 +160,7 @@ export function AppLayout(): React.ReactElement {
         headerPad;
 
   return (
-    <>
+    <TooltipProvider delayDuration={350}>
       <UpdateModal monitor={versionMonitor} />
       <div
         data-interface-mode="focus"
@@ -205,7 +206,7 @@ export function AppLayout(): React.ReactElement {
           {!hideBottomNav && <MobileBottomNav user={data.user} />}
         </motion.div>
       </div>
-    </>
+    </TooltipProvider>
   );
 }
 
