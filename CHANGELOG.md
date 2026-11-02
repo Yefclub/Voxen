@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1793598811 — 2026-11-02 · Dev
+
+### ✨ Graph labels wired with per-frame collision handling
+
+### Added
+- Full-graph page wires the measured label renderer into Sigma (defaultDrawNodeLabel + beforeRender reset + afterRender flush with obstacles and reserved controls).
+
+## v0.15.1-dev.1793598811 — 2026-11-02 · Dev
+
+### ✨ Measured graph labels and stable refresh identity
+
+### Added
+- Canvas labels resolve collisions with measured per-frame text rectangles (4-side placement, deterministic tie-breaks) instead of truncation alone; hover boxes are measured and viewport-clamped.
+- Graph topology key is order-invariant, so equivalent server responses keep camera/node identity instead of refitting.
+
 ## v0.15.1-dev.1793596903 — 2026-11-02 · Dev
 
 ### ✨ Shared controls, overlay motion and direct library search
