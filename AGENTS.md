@@ -19,4 +19,17 @@ O CI roda essa conferência como teste em `Test TS (apps/web)`, então PR que me
 
 A reescrita de path (`.claude/` → `.agents/`) é textual e incondicional, e só se aplica a arquivo UTF-8 válido — binário é copiado byte a byte. Se algum arquivo precisar manter uma referência literal a `.claude/`, exclua-o em `scripts/agents-mirror-lib.mjs` em vez de editar o espelho.
 
+## Papéis e rotas (contrato versionado)
+
+| Papel                            | Onde está definido                 | Modelo/esforço                         | Limites                                                                                                                               |
+| -------------------------------- | ---------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Orquestrador                     | sessão do cliente                  | modelo da sessão, sem troca silenciosa | delegar não troca o modelo principal                                                                                                  |
+| Implementador Codex              | `.codex/agents/implementer.toml`   | `gpt-6.1-sol` / `high`                 | worktree/task atribuída; sem auto-aprovação, merge ou publicação                                                                      |
+| Revisor Codex                    | `.codex/agents/code-reviewer.toml` | `gpt-6.1-sol` / `high`                 | somente leitura (`shell_tool = false`, `memories = false`); vereditos `APROVADO`, `MUDANCAS NECESSARIAS` ou `BLOQUEADO`; sem publicar |
+| Auditor de testes                | skill `test-audit`                 | somente auditoria                      | avalia cobertura retida; nunca aprova merge sozinha                                                                                   |
+| Auditor/verificador de segurança | skill `security-audit`             | instâncias separadas                   | candidatos marcados `confirmado`, `refutado` ou `não verificado`; só confirmados viram achado                                         |
+| Revisor visual                   | regra (sem instalação alegada)     | resultado só visual                    | nunca substitui review de código/segurança, CI ou deploy                                                                              |
+
+Rota de revisão para entrega de autoria Claude: primária via Codex CLI com o perfil de review; fallback somente-leitura quando a rota primária estiver indisponível, não autenticada ou falhar ao executar. Trocar de revisor para evitar um veredito adverso é proibido; evidência ausente permanece bloqueio. O teste `scripts/role-matrix.test.mjs` trava esta matriz contra os arquivos reais.
+
 Consulte `CLAUDE.md` na raiz como **fonte única de verdade** das regras do projeto.
