@@ -121,10 +121,72 @@ function hasSecretLeak(text) {
   );
 }
 
+function checkHooks() {
+  // Declared project hooks only. Whether the client actually loads and fires
+  // them requires a client session, so mapping coverage stays unverified.
+  let raw = null;
+  try {
+    raw = readFileSync(join(root, ".claude/settings.json"), "utf8");
+  } catch {
+    return {
+      settingsReadable: false,
+      hooksDeclared: false,
+      hooksEvents: [],
+      hooksWithSecretLikeCommand: 0,
+    };
+  }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      settingsReadable: true,
+      hooksDeclared: false,
+      hooksEvents: [],
+      hooksWithSecretLikeCommand: 0,
+      hooksUnparsable: true,
+    };
+  }
+  const hooks = parsed.hooks;
+  if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) {
+    return {
+      settingsReadable: true,
+      hooksDeclared: false,
+      hooksEvents: [],
+      hooksWithSecretLikeCommand: 0,
+    };
+  }
+  const events = Object.keys(hooks);
+  let secretLike = 0;
+  for (const entries of Object.values(hooks)) {
+    const list = Array.isArray(entries) ? entries : [entries];
+    for (const entry of list) {
+      const commands = [];
+      if (entry && typeof entry === "object") {
+        if (Array.isArray(entry.hooks)) {
+          for (const hook of entry.hooks) {
+            if (hook && typeof hook.command === "string")
+              commands.push(hook.command);
+          }
+        }
+        if (typeof entry.command === "string") commands.push(entry.command);
+      }
+      if (commands.some((command) => hasSecretLeak(command))) secretLike += 1;
+    }
+  }
+  return {
+    settingsReadable: true,
+    hooksDeclared: events.length > 0,
+    hooksEvents: events,
+    hooksWithSecretLikeCommand: secretLike,
+  };
+}
+
 export function runDoctor() {
   const skills = listSkills();
   const mirror = checkMirror();
   const native = checkNative();
+  const hooks = checkHooks();
   const declared = {
     skills: skills.filter((s) => s.present).length,
     skillsMissingFrontmatter: skills.filter(
@@ -135,6 +197,9 @@ export function runDoctor() {
     nativeRolesPresent: native.implementerPresent && native.reviewerPresent,
     reviewerReadOnly: native.reviewerReadOnly,
     localStateAbsent: native.localStateAbsent,
+    hooksDeclared: hooks.hooksDeclared,
+    hooksEvents: hooks.hooksEvents,
+    hooksWithSecretLikeCommand: hooks.hooksWithSecretLikeCommand,
   };
   const report = {
     version: 1,
@@ -148,6 +213,7 @@ export function runDoctor() {
     notes: [
       "effective loaded configuration requires a client session; not observable from files",
       "observed execution requires a client run; reported as unverified, never success",
+      "hook mapping against tools the client actually emits requires a client session",
     ],
   };
   const serialized = JSON.stringify(report, null, 2);
@@ -168,7 +234,8 @@ if (args.includes("--json") || !args.includes("--no-run")) {
         report.declared.nativeRolesPresent &&
         report.declared.reviewerReadOnly &&
         report.declared.localStateAbsent &&
-        report.declared.skillsMissingFrontmatter === 0;
+        report.declared.skillsMissingFrontmatter === 0 &&
+        report.declared.hooksWithSecretLikeCommand === 0;
       process.exit(ok ? 0 : 2);
     }
   }
