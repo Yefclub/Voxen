@@ -1382,7 +1382,6 @@ function BrainGraph2DCanvas({
             : [],
         );
       });
-      rendererRef.current = renderer;
       renderer.on('clickNode', ({ node }) => onSelect(node));
       renderer.on('doubleClickNode', ({ node, event }) => {
         event.preventSigmaDefault();
