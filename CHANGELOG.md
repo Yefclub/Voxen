@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793578441 — 2026-11-01 · Dev
+
+### 🧹 Agent permission guard contract
+
+### Added
+- `scripts/agent-permissions.test.mjs` locks the `.claude/settings.json` permission contract: no blanket shell/escalation, destructive git and supply-chain ops stay denied, no destructive gh scopes or credential paths in allow.
+
 ## v0.15.1-dev.1793577519 — 2026-11-01 · Dev
 
 ### 🧹 Adopted browser-validation workflow
