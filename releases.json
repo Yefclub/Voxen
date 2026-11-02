@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793577519",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Adopted browser-validation workflow",
+    "body": "### Added\n- Native `browser-validation` skill with triggers, boundaries, and evidence rules, mirrored to `.agents/` and covered by `scripts/adopted-workflows.test.mjs`.",
+    "pr": 995,
+    "author": "Kalyel",
+    "date": "2026-11-01T20:58:26-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/995"
+  },
+  {
     "version": "0.15.1-dev.1793576623",
     "channel": "dev",
     "type": "feat",
