@@ -38,6 +38,23 @@ test("agent tooling imports only stdlib and relative modules", () => {
         `${file} imports non-stdlib dependency: ${specifier}`,
       );
     }
+    // No dynamic loading bypass: require calls, dynamic imports, or re-exports
+    // from unlisted modules would dodge the static-import check above.
+    assert.doesNotMatch(
+      content,
+      /\brequire\s*\(|\bimport\s*\(|\bcreateRequire\s*\(/m,
+      `${file} uses dynamic loading`,
+    );
+    for (const match of content.matchAll(
+      /^\s*export\s+(?:[^'"]*?\sfrom\s+)['"]([^'"]+)['"]/gm,
+    )) {
+      const specifier = match[1];
+      if (specifier.startsWith(".") || specifier.startsWith("node:")) continue;
+      assert.ok(
+        builtins.has(specifier) || builtins.has(`node:${specifier}`),
+        `${file} re-exports non-stdlib dependency: ${specifier}`,
+      );
+    }
   }
 });
 
