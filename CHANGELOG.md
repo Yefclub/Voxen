@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793607598 — 2026-11-02 · Dev
+
+### 🧹 Touch coverage in the rendered visual matrix
+
+### Added
+- Touch-tap coverage on coarse pointers in the rendered workspace matrix (selection via tap with screenshot evidence).
+
 ## v0.15.1-dev.1793606693 — 2026-11-02 · Dev
 
 ### 🐛 Provide Tooltip context at the shell and verify the workspace rendered
