@@ -18,8 +18,6 @@ import {
   hidesBottomNav,
   shouldResetMobileDrawerForDesktop,
 } from '../../lib/mobile-nav';
-import { MobileBackButton } from './mobile-back-button';
-import { MobileMenuButton } from './mobile-menu-button';
 import { SessionUnavailable } from '../session-unavailable';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 
@@ -195,9 +193,12 @@ export function AppLayout(): React.ReactElement {
           className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden md:bg-[var(--color-app-bg-elevated)]"
           inert={mobileNavPresent ? true : undefined}
         >
-          <Topbar user={data.user} />
-          {showBack && <MobileBackButton />}
-          {showMobileNavButton && <MobileMenuButton onOpen={() => setMobileNavOpen(true)} />}
+          <Topbar
+            user={data.user}
+            showBack={showBack}
+            showMobileMenu={showMobileNavButton}
+            onOpenMobileNav={() => setMobileNavOpen(true)}
+          />
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
