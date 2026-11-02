@@ -68,6 +68,7 @@ import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
   createSigmaNodeHoverRenderer,
+  createSigmaNodeLabelRenderer,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
   type GraphMode,
@@ -1308,6 +1309,8 @@ function BrainGraph2DCanvas({
   const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
   const modelRef = useRef(model);
   const paletteRef = useRef(palette);
+  const labelRenderer = useMemo(() => createSigmaNodeLabelRenderer(palette), [palette]);
+  const labelRendererRef = useRef(labelRenderer);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [rendererVersion, setRendererVersion] = useState(0);
@@ -1315,6 +1318,7 @@ function BrainGraph2DCanvas({
   const hasModel = Boolean(model);
   modelRef.current = model;
   paletteRef.current = palette;
+  labelRendererRef.current = labelRenderer;
 
   useEffect(() => {
     let cancelled = false;
@@ -1346,8 +1350,38 @@ function BrainGraph2DCanvas({
       renderer = new SigmaConstructor(
         initialModel.graph,
         containerRef.current,
-        sigmaRendererSettings(initialModel, initialPalette),
+        sigmaRendererSettings(initialModel, initialPalette, labelRendererRef.current),
       );
+      rendererRef.current = renderer;
+      renderer.on('beforeRender', () => labelRendererRef.current.reset());
+      renderer.on('afterRender', () => {
+        if (!renderer) return;
+        const { width, height } = renderer.getDimensions();
+        const obstacles: { x: number; y: number; size: number }[] = [];
+        renderer.getGraph().forEachNode((id) => {
+          const data = renderer?.getNodeDisplayData(id);
+          if (!renderer || !data || data.hidden) return;
+          const point = renderer.framedGraphToViewport(data);
+          if (point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height)
+            obstacles.push({ ...point, size: renderer.scaleSize(data.size) });
+        });
+        const controls = container.parentElement?.querySelector('[data-graph-controls]');
+        const bounds = controls?.getBoundingClientRect();
+        const canvas = container.getBoundingClientRect();
+        labelRendererRef.current.flush(
+          obstacles,
+          bounds
+            ? [
+                {
+                  left: bounds.left - canvas.left - 4,
+                  top: bounds.top - canvas.top - 4,
+                  right: bounds.right - canvas.left + 4,
+                  bottom: bounds.bottom - canvas.top + 4,
+                },
+              ]
+            : [],
+        );
+      });
       rendererRef.current = renderer;
       renderer.on('clickNode', ({ node }) => onSelect(node));
       renderer.on('doubleClickNode', ({ node, event }) => {
@@ -1380,7 +1414,7 @@ function BrainGraph2DCanvas({
     const renderer = rendererRef.current;
     if (!renderer || !model) return;
     renderer.setGraph(model.graph);
-    renderer.setSettings(sigmaRendererSettings(model, palette));
+    renderer.setSettings(sigmaRendererSettings(model, palette, labelRendererRef.current));
     renderer.refresh();
     setRendererVersion((version) => version + 1);
     // Reenquadra o núcleo (maior comunidade) após troca de topologia.
@@ -1534,7 +1568,11 @@ function BrainGraph2DCanvas({
     <div className="absolute inset-0 overflow-hidden">
       <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
       {model.graph.order > 0 && (
-        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
+        <div
+          data-graph-controls
+          className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md"
+        >
+          {' '}
           <CanvasButton label={translate('graph.zoomIn')} onClick={() => moveCamera(0.72)}>
             <ZoomIn className="h-3.5 w-3.5" />
           </CanvasButton>
@@ -1550,11 +1588,16 @@ function BrainGraph2DCanvas({
   );
 }
 
-function sigmaRendererSettings(model: SigmaGraphModel, palette: GraphPalette) {
+function sigmaRendererSettings(
+  model: SigmaGraphModel,
+  palette: GraphPalette,
+  labelRenderer: ReturnType<typeof createSigmaNodeLabelRenderer>,
+) {
   return {
     allowInvalidContainer: true,
     defaultNodeColor: palette.nodes.content,
     defaultEdgeColor: palette.neutralEdge,
+    defaultDrawNodeLabel: labelRenderer,
     enableEdgeEvents: false,
     hideEdgesOnMove: true,
     hideLabelsOnMove: true,
