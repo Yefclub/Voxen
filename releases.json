@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793580291",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Doctor reports declared hooks coverage",
+    "body": "### Added\n- `agent-doctor` now reports declared project hooks (events, secret-like commands) while keeping effective/observed states explicitly unverified; hook mapping against tools the client emits stays a documented client-side check.",
+    "pr": 1001,
+    "author": "Kalyel",
+    "date": "2026-11-01T21:44:29-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1001"
+  },
+  {
     "version": "0.15.1-dev.1793579339",
     "channel": "dev",
     "type": "chore",
