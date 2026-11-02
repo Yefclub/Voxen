@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793580291 — 2026-11-01 · Dev
+
+### 🧹 Doctor reports declared hooks coverage
+
+### Added
+- `agent-doctor` now reports declared project hooks (events, secret-like commands) while keeping effective/observed states explicitly unverified; hook mapping against tools the client emits stays a documented client-side check.
+
 ## v0.15.1-dev.1793579339 — 2026-11-01 · Dev
 
 ### 🧹 Explicit role and review-route matrix
