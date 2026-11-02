@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793583161",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Harden stdlib guard against dynamic loading",
+    "body": "### Fixed\n- `agent-stdlib-only` guard now also rejects `require`, dynamic `import`, and re-exports from unlisted modules in agent tooling.",
+    "pr": 1007,
+    "author": "Kalyel",
+    "date": "2026-11-01T22:32:29-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1007"
+  },
+  {
     "version": "0.15.1-dev.1793582123",
     "channel": "dev",
     "type": "chore",

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.1-dev.1793583161 — 2026-11-01 · Dev
+
+### 🧹 Harden stdlib guard against dynamic loading
+
+### Fixed
+- `agent-stdlib-only` guard now also rejects `require`, dynamic `import`, and re-exports from unlisted modules in agent tooling.
+
 ## v0.15.1-dev.1793582123 — 2026-11-01 · Dev
 
 ### 🧹 Guard agent tooling stdlib-only contract
