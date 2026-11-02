@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793579339",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Explicit role and review-route matrix",
+    "body": "### Added\n- `AGENTS.md` documents the versioned role/review-route matrix (orchestrator, Codex implementer/reviewer pins, auditors, visual-only rule, Claude-authored fallback route), locked by `scripts/role-matrix.test.mjs`.",
+    "pr": 999,
+    "author": "Kalyel",
+    "date": "2026-11-01T21:28:49-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/999"
+  },
+  {
     "version": "0.15.1-dev.1793578441",
     "channel": "dev",
     "type": "chore",
