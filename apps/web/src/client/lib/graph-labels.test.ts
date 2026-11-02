@@ -121,10 +121,12 @@ describe('graph label collisions', () => {
 });
 
 describe('graph label wiring (spec 219)', () => {
-  test('full-graph page routes Sigma label passes through the measured renderer', async () => {
+  test('measured labels reach Sigma through the shared canvas', async () => {
     const { readFile } = await import('node:fs/promises');
-    const [page, lib] = await Promise.all([
+    const [page, canvas, controls, lib] = await Promise.all([
       readFile(new URL('../pages/grafo.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../components/graph/knowledge-graph-canvas.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../components/graph/graph-canvas-controls.tsx', import.meta.url), 'utf8'),
       readFile(new URL('./graph-renderer.ts', import.meta.url), 'utf8'),
     ]);
     // Settings hand the buffered renderer to Sigma; the attach helper resets
@@ -134,12 +136,16 @@ describe('graph label wiring (spec 219)', () => {
     expect(lib).toContain("renderer.on('afterRender'");
     expect(lib).toContain('getLabelRenderer().reset()');
     expect(lib).toContain('getLabelRenderer().flush(');
-    expect(page).toContain(
+    // The shared canvas owns the per-frame orchestration; the full-graph
+    // page only mounts it.
+    expect(canvas).toContain(
       'attachMeasuredLabelLayer(renderer, container, () => labelRendererRef.current)',
     );
-    expect(page).toContain(
+    expect(canvas).toContain(
       'sigmaRendererSettings(initialModel, initialPalette, labelRendererRef.current)',
     );
-    expect(page).toContain('data-graph-controls');
+    expect(controls).toContain('data-graph-controls');
+    expect(page).toContain('../components/graph/knowledge-graph-canvas');
+    expect(page).toContain('<BrainGraph2DCanvas');
   });
 });

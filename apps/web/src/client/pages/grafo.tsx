@@ -3,13 +3,11 @@ import {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type SigmaRenderer from 'sigma';
 import type {
   GraphCanvas as GraphCanvasType,
   GraphCanvasRef,
@@ -42,24 +40,18 @@ import { Spinner } from '../components/ui/spinner';
 import {
   ALL_GRAPH_NODE_TYPES,
   buildGraphInsights,
-  buildGraphLayout,
   buildSigmaGraphModel,
   graphDescriptionText,
-  edgePath,
   filterGraphData,
   resolveGraphPalette,
-  resolveGraphViewBox,
   resolveNodeRadiusBounds,
   toOpaqueGraphColor,
   type GraphEdge,
-  type GraphLayoutNode,
   type GraphNode,
   type GraphNodeType,
   type GraphPalette,
   type GraphResp,
-  type SigmaEdgeAttributes,
   type SigmaGraphModel,
-  type SigmaNodeAttributes,
 } from '../lib/graph-model';
 import { graphFocusFromSearch, nodePath } from '../lib/graph-node-path';
 import { communitySelectionId } from '../lib/graph-community-model';
@@ -67,13 +59,11 @@ import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
-  attachMeasuredLabelLayer,
-  createSigmaNodeLabelRenderer,
-  sigmaRendererSettings,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
   type GraphMode,
 } from '../lib/graph-renderer';
+import { KnowledgeGraphCanvas as BrainGraph2DCanvas } from '../components/graph/knowledge-graph-canvas';
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useIsCoarsePointer } from '../lib/use-media-query';
@@ -102,8 +92,6 @@ interface ReagraphModule {
   GraphCanvas: GraphCanvasComponent;
   darkTheme: Theme;
 }
-type SigmaRendererConstructor = typeof SigmaRenderer;
-
 const EMPTY_REAGRAPH_NODES: SigmaGraphModel['reagraphNodes'] = [];
 const EMPTY_REAGRAPH_EDGES: SigmaGraphModel['reagraphEdges'] = [];
 const GRAPH_GL_OPTIONS = {
@@ -112,17 +100,11 @@ const GRAPH_GL_OPTIONS = {
   powerPreference: 'high-performance' as const,
 };
 let reagraphModulePromise: Promise<ReagraphModule> | null = null;
-let sigmaModulePromise: Promise<SigmaRendererConstructor> | null = null;
 let cachedWebGLSupport: boolean | null = null;
 
 function loadReagraph(): Promise<ReagraphModule> {
   reagraphModulePromise ??= import('reagraph');
   return reagraphModulePromise;
-}
-
-function loadSigma(): Promise<SigmaRendererConstructor> {
-  sigmaModulePromise ??= import('sigma').then((module) => module.default);
-  return sigmaModulePromise;
 }
 
 class GraphRendererBoundary extends Component<
@@ -1291,275 +1273,6 @@ export function BrainGraph3DCanvas({
   );
 }
 
-function BrainGraph2DCanvas({
-  model,
-  selectedId,
-  palette,
-  translate,
-  onSelect,
-  onOpen,
-}: {
-  model: SigmaGraphModel | null;
-  selectedId: string | null;
-  palette: GraphPalette;
-  translate: TranslateFn;
-  onSelect: (id: string | null) => void;
-  onOpen: (node: GraphNode) => void;
-}): React.ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
-  const modelRef = useRef(model);
-  const paletteRef = useRef(palette);
-  const labelRenderer = useMemo(() => createSigmaNodeLabelRenderer(palette), [palette]);
-  const labelRendererRef = useRef(labelRenderer);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [webglFailed, setWebglFailed] = useState(false);
-  const [rendererVersion, setRendererVersion] = useState(0);
-  const [SigmaConstructor, setSigmaConstructor] = useState<SigmaRendererConstructor | null>(null);
-  const hasModel = Boolean(model);
-  modelRef.current = model;
-  paletteRef.current = palette;
-  labelRendererRef.current = labelRenderer;
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadSigma()
-      .then((Sigma) => {
-        if (!cancelled) setSigmaConstructor(() => Sigma);
-      })
-      .catch(() => {
-        if (!cancelled) setWebglFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    const initialModel = modelRef.current;
-    const initialPalette = paletteRef.current;
-    if (webglFailed || !SigmaConstructor || !initialModel || !containerRef.current) return;
-    const container = containerRef.current;
-    let renderer: SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    const handleContextLost = (event: Event): void => {
-      event.preventDefault();
-      setWebglFailed(true);
-    };
-    container.addEventListener('webglcontextlost', handleContextLost, true);
-    try {
-      renderer = new SigmaConstructor(
-        initialModel.graph,
-        containerRef.current,
-        sigmaRendererSettings(initialModel, initialPalette, labelRendererRef.current),
-      );
-      rendererRef.current = renderer;
-      attachMeasuredLabelLayer(renderer, container, () => labelRendererRef.current);
-      renderer.on('clickNode', ({ node }) => onSelect(node));
-      renderer.on('doubleClickNode', ({ node, event }) => {
-        event.preventSigmaDefault();
-        const currentModel = modelRef.current;
-        if (currentModel?.graph.hasNode(node))
-          onOpen(currentModel.graph.getNodeAttributes(node).original);
-      });
-      renderer.on('clickStage', () => onSelect(null));
-      renderer.on('enterNode', ({ node }) => setHoveredId(node));
-      renderer.on('leaveNode', () => setHoveredId(null));
-      if ('ResizeObserver' in window) {
-        resizeObserver = new ResizeObserver(() => renderer?.resize());
-        resizeObserver.observe(containerRef.current);
-      }
-      renderer.refresh();
-      setRendererVersion((version) => version + 1);
-    } catch {
-      setWebglFailed(true);
-    }
-    return () => {
-      resizeObserver?.disconnect();
-      container.removeEventListener('webglcontextlost', handleContextLost, true);
-      renderer?.kill();
-      rendererRef.current = null;
-    };
-  }, [SigmaConstructor, hasModel, onOpen, onSelect, webglFailed]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !model) return;
-    renderer.setGraph(model.graph);
-    renderer.setSettings(sigmaRendererSettings(model, palette, labelRendererRef.current));
-    renderer.refresh();
-    setRendererVersion((version) => version + 1);
-    // Reenquadra o núcleo (maior comunidade) após troca de topologia.
-    const timer = window.setTimeout(() => {
-      const camera = renderer.getCamera();
-      const primary = model.primaryNodeIds;
-      if (primary.length === 0) {
-        void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 0 });
-        return;
-      }
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      let count = 0;
-      for (const id of primary) {
-        const display = renderer.getNodeDisplayData(id);
-        if (!display) continue;
-        minX = Math.min(minX, display.x);
-        maxX = Math.max(maxX, display.x);
-        minY = Math.min(minY, display.y);
-        maxY = Math.max(maxY, display.y);
-        count += 1;
-      }
-      if (count === 0) {
-        void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 0 });
-        return;
-      }
-      const span = Math.max(maxX - minX, maxY - minY, 0.35);
-      void camera.animate(
-        {
-          x: (minX + maxX) / 2,
-          y: (minY + maxY) / 2,
-          ratio: Math.min(1.4, Math.max(0.28, span * 1.35)),
-          angle: 0,
-        },
-        { duration: 0 },
-      );
-    }, 40);
-    return () => window.clearTimeout(timer);
-  }, [model, palette]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !model) return;
-    const activeId = hoveredId ?? selectedId;
-    const activeNeighbors = activeId
-      ? (model.neighborhoods.get(activeId) ?? new Set([activeId]))
-      : null;
-    renderer.setSetting('nodeReducer', (node, nodeData) => {
-      if (!activeId || !activeNeighbors) return nodeData;
-      const isActive = node === activeId;
-      const isNeighbor = activeNeighbors.has(node);
-      if (!isActive && !isNeighbor)
-        return {
-          ...nodeData,
-          color: palette.dimNode,
-          label: '',
-          size: Math.max(2.5, nodeData.size * 0.7),
-          zIndex: 0,
-        };
-      return {
-        ...nodeData,
-        color: isActive ? palette.activeNode : nodeData.color,
-        size: nodeData.size * (isActive ? 1.45 : 1.12),
-        zIndex: isActive ? 4 : 3,
-      };
-    });
-    renderer.setSetting('edgeReducer', (_edge, edgeData) => {
-      if (!activeId) return edgeData;
-      const connected = edgeData.from === activeId || edgeData.to === activeId;
-      return {
-        ...edgeData,
-        color: connected ? edgeData.color : palette.dimEdge,
-        hidden: !connected,
-        size: connected ? edgeData.size * 1.4 : edgeData.size,
-      };
-    });
-    renderer.refresh();
-  }, [hoveredId, model, palette, rendererVersion, selectedId]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !model || !selectedId || !model.graph.hasNode(selectedId)) return;
-    const display = renderer.getNodeDisplayData(selectedId);
-    if (!display) return;
-    void renderer
-      .getCamera()
-      .animate({ x: display.x, y: display.y, ratio: 0.52 }, { duration: 240 });
-  }, [model, rendererVersion, selectedId]);
-
-  const moveCamera = useCallback((ratioFactor: number) => {
-    const camera = rendererRef.current?.getCamera();
-    if (!camera) return;
-    const state = camera.getState();
-    void camera.animate({ ...state, ratio: state.ratio * ratioFactor }, { duration: 180 });
-  }, []);
-  const resetCamera = useCallback(() => {
-    const renderer = rendererRef.current;
-    const camera = renderer?.getCamera();
-    if (!camera || !renderer) return;
-    // Grafo Sigma está centrado em (0,0) em coords de grafo (layout normalizado).
-    // 0.5/0.5 deslocava a câmera para fora do núcleo.
-    const primary = modelRef.current?.primaryNodeIds ?? [];
-    if (primary.length > 0) {
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      let count = 0;
-      for (const id of primary) {
-        const display = renderer.getNodeDisplayData(id);
-        if (!display) continue;
-        minX = Math.min(minX, display.x);
-        maxX = Math.max(maxX, display.x);
-        minY = Math.min(minY, display.y);
-        maxY = Math.max(maxY, display.y);
-        count += 1;
-      }
-      if (count > 0) {
-        const span = Math.max(maxX - minX, maxY - minY, 0.35);
-        void camera.animate(
-          {
-            x: (minX + maxX) / 2,
-            y: (minY + maxY) / 2,
-            ratio: Math.min(1.4, Math.max(0.28, span * 1.35)),
-            angle: 0,
-          },
-          { duration: 240 },
-        );
-        return;
-      }
-    }
-    void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 220 });
-  }, []);
-
-  if (!model) return <div className="absolute inset-0" />;
-  if (webglFailed) {
-    return (
-      <BrainGraphSvg
-        model={model}
-        selectedId={selectedId}
-        palette={palette}
-        translate={translate}
-        onSelect={onSelect}
-        onOpen={onOpen}
-      />
-    );
-  }
-  return (
-    <div className="absolute inset-0 overflow-hidden">
-      <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
-      {model.graph.order > 0 && (
-        <div
-          data-graph-controls
-          className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md"
-        >
-          {' '}
-          <CanvasButton label={translate('graph.zoomIn')} onClick={() => moveCamera(0.72)}>
-            <ZoomIn className="h-3.5 w-3.5" />
-          </CanvasButton>
-          <CanvasButton label={translate('graph.zoomOut')} onClick={() => moveCamera(1.38)}>
-            <ZoomOut className="h-3.5 w-3.5" />
-          </CanvasButton>
-          <CanvasButton label={translate('graph.fitView')} onClick={resetCamera}>
-            <Focus className="h-3.5 w-3.5" />
-          </CanvasButton>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CanvasButton({
   label,
   onClick,
@@ -1582,204 +1295,6 @@ function CanvasButton({
   );
 }
 
-function BrainGraphSvg({
-  model,
-  selectedId,
-  palette,
-  translate,
-  onSelect,
-  onOpen,
-}: {
-  model: SigmaGraphModel;
-  selectedId: string | null;
-  palette: GraphPalette;
-  translate: TranslateFn;
-  onSelect: (id: string | null) => void;
-  onOpen: (node: GraphNode) => void;
-}): React.ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const coarsePointer = useIsCoarsePointer();
-  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(
-    null,
-  );
-  useLayoutEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-    const rect = element.getBoundingClientRect();
-    setContainerSize({ width: rect.width, height: rect.height });
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry)
-        setContainerSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  const viewBox = useMemo(
-    () => resolveGraphViewBox(containerSize?.width ?? 0, containerSize?.height ?? 0),
-    [containerSize],
-  );
-  const radiusBounds = useMemo(() => resolveNodeRadiusBounds(coarsePointer), [coarsePointer]);
-  const layout = useMemo(
-    () =>
-      buildGraphLayout(model.data, {
-        viewBox,
-        minNodeRadius: radiusBounds.min,
-        maxNodeRadius: radiusBounds.max,
-      }),
-    [model, radiusBounds, viewBox],
-  );
-  const activeIds = selectedId
-    ? (model.neighborhoods.get(selectedId) ?? new Set([selectedId]))
-    : null;
-
-  return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden">
-      <svg
-        role="img"
-        aria-label={translate('graph.title')}
-        className="h-full w-full"
-        viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
-        preserveAspectRatio="xMidYMid meet"
-        onClick={() => onSelect(null)}
-      >
-        <rect width={viewBox.width} height={viewBox.height} fill="transparent" />
-        <g>
-          {layout.edges.map((edge) => {
-            const connected = !selectedId || edge.from === selectedId || edge.to === selectedId;
-            return (
-              <path
-                key={edge.id}
-                d={edgePath(edge)}
-                fill="none"
-                stroke={connected ? palette.edges[edge.kind] : palette.dimEdge}
-                strokeLinecap="round"
-                strokeWidth={connected ? (edge.kind === 'links_to' ? 2.2 : 1.4) : 0.5}
-                opacity={connected ? 0.72 : 0.12}
-              />
-            );
-          })}
-        </g>
-        <g>
-          {layout.nodes.map((node) => (
-            <BrainGraphNode
-              key={node.id}
-              node={node}
-              selected={node.id === selectedId}
-              dimmed={Boolean(activeIds && !activeIds.has(node.id))}
-              palette={palette}
-              onSelect={onSelect}
-              onOpen={onOpen}
-            />
-          ))}
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function BrainGraphNode({
-  node,
-  selected,
-  dimmed,
-  palette,
-  onSelect,
-  onOpen,
-}: {
-  node: GraphLayoutNode;
-  selected: boolean;
-  dimmed: boolean;
-  palette: GraphPalette;
-  onSelect: (id: string) => void;
-  onOpen: (node: GraphNode) => void;
-}): React.ReactElement {
-  const labelY = node.radius + 15;
-  return (
-    <g
-      className="cursor-pointer outline-none"
-      role="button"
-      tabIndex={0}
-      opacity={dimmed ? 0.2 : 1}
-      transform={`translate(${node.x} ${node.y})`}
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect(node.id);
-      }}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-        onOpen(node);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          onOpen(node);
-        } else if (event.key === ' ') {
-          event.preventDefault();
-          onSelect(node.id);
-        }
-      }}
-    >
-      <title>{node.label}</title>
-      {nodeShapeElement(
-        node,
-        palette.nodes[node.type],
-        selected ? palette.selected : palette.canvas,
-        selected ? 4 : 1.5,
-      )}
-      <text
-        y={labelY}
-        textAnchor="middle"
-        className="select-none font-sans text-[11px] font-medium"
-        fill={palette.label}
-        paintOrder="stroke"
-        stroke={palette.labelStroke}
-        strokeWidth="3"
-        strokeLinejoin="round"
-      >
-        {node.labelLines.map((line, index) => (
-          <tspan key={`${line}-${index}`} x="0" dy={index === 0 ? 0 : 13}>
-            {line}
-          </tspan>
-        ))}
-      </text>
-    </g>
-  );
-}
-
-function nodeShapeElement(
-  node: GraphLayoutNode,
-  fill: string,
-  stroke: string,
-  strokeWidth: number,
-): React.ReactElement {
-  if (node.type === 'folder') {
-    const width = node.radius * 2.25;
-    const height = node.radius * 1.55;
-    return (
-      <rect
-        x={-width / 2}
-        y={-height / 2}
-        width={width}
-        height={height}
-        rx="8"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-      />
-    );
-  }
-  if (node.type === 'cluster')
-    return (
-      <polygon
-        points={hexagonPoints(node.radius)}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-      />
-    );
-  return <circle r={node.radius} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
-}
-
 function supportsWebGL(): boolean {
   if (cachedWebGLSupport !== null) return cachedWebGLSupport;
   if (typeof document === 'undefined') return false;
@@ -1795,11 +1310,4 @@ function supportsWebGL(): boolean {
     cachedWebGLSupport = false;
     return false;
   }
-}
-
-function hexagonPoints(radius: number): string {
-  return Array.from({ length: 6 }, (_, index) => {
-    const angle = Math.PI / 6 + index * (Math.PI / 3);
-    return `${(Math.cos(angle) * radius).toFixed(1)},${(Math.sin(angle) * radius).toFixed(1)}`;
-  }).join(' ');
 }
