@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793582123",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Guard agent tooling stdlib-only contract",
+    "body": "### Added\n- `scripts/agent-stdlib-only.test.mjs` locks agent tooling to stdlib plus relative imports with no model-provider configuration, keeping transient agent tooling out of the application runtime.",
+    "pr": 1005,
+    "author": "Kalyel",
+    "date": "2026-11-01T22:14:33-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1005"
+  },
+  {
     "version": "0.15.1-dev.1793581178",
     "channel": "dev",
     "type": "feat",
