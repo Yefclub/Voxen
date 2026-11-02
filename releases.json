@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793603107",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Open reading sections with preserved note drafts",
+    "body": "### Changed\n- Prepared transcript content renders on an open `75ch` reading surface instead of inside a card; the local graph remounts per transcript.\n- The linked-note composer hides via `hidden` (DOM preserved, draft kept) with an explicit toggle, opens on text annotation, and resets per transcript; the notes list scrolls within a bounded pane.",
+    "pr": 1025,
+    "author": "Kalyel",
+    "date": "2026-11-02T04:04:55-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1025"
+  },
+  {
     "version": "0.15.1-dev.1793601806",
     "channel": "dev",
     "type": "feat",
