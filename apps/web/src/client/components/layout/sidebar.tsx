@@ -7,8 +7,6 @@ import {
   FolderPlus,
   LogOut,
   PanelLeftClose,
-  PanelLeftOpen,
-  PanelLeft,
   Plus,
   Sparkles,
 } from '@/components/ui/icons';
@@ -23,15 +21,10 @@ import {
   ICON_CUE_PANEL_DELAY_MS,
   useIconCueGroup,
   useIconCueSignal,
-  useIconCueTrigger,
-  type IconCueHandle,
 } from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
-import { useInterfaceMode } from '../../lib/interface-mode-provider';
-import { toast } from '../../lib/toast';
 import { SidebarReleaseUpdateButton } from './sidebar-release-update';
 import { NAV, NAV_SCOPES, NAV_SCOPE_LABELS, isNavItemActive, type NavItem } from './sidebar-nav';
 export { NAV, isNavItemActive } from './sidebar-nav';
@@ -41,30 +34,14 @@ export { NAV, isNavItemActive } from './sidebar-nav';
  * the bottom-nav profile menu. Keep top-level tabs aligned with
  * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
-const SIDEBAR_WIDTH = 288;
-const RAIL_WIDTH = 60;
-const FOCUS_SURFACE_GAP = 8;
+export const SIDEBAR_WIDTH = 288;
 
 /**
- * Alvo de clique do rail: quadrado de 36px, ícone de 18px centralizado. Todo
- * item do rail usa esta base — o que muda entre eles é só a cor do hover.
- */
-const RAIL_ITEM_CLASS = 'flex h-9 w-9 items-center justify-center rounded-lg transition-colors';
-const RAIL_ITEM_IDLE_CLASS =
-  'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]';
-/**
- * Sair é a única ação do rail que não é navegação, e a única com consequência.
- * Constante compartilhada com a sidebar aberta para as duas larguras não
- * discordarem sobre o que o botão significa.
- *
  * A cor vem de `--color-app-danger` e não de um tom fixo do Tailwind: o app
  * troca de tema por variável CSS, sem variante `dark:`, e nenhum vermelho único
- * passa em AA nos dois extremos. O `rose-200` que estava aqui sumia no tema
- * claro — rosa claro sobre `rose-500/10` —, deixando ilegível justamente no
- * hover o único aviso de que a ação desconecta.
+ * passa em AA nos dois extremos.
  */
 const SIGN_OUT_HOVER_CLASS = 'hover:bg-rose-500/10 hover:text-[var(--color-app-danger)]';
-const RAIL_ICON_CLASS = 'h-[18px] w-[18px]';
 
 /**
  * Corpo modo-aware da sidebar: nav (default) | notas (em /notas). Reutilizado
@@ -112,19 +89,8 @@ export function SidebarModeBody({
 }
 
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
-  const location = useLocation();
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
-  const reduceMotion = useReducedMotion();
-  const { interfaceMode } = useInterfaceMode();
-  const focusInterface = interfaceMode === 'focus';
-
-  // A deixa dos ícones da nav é um contador: só uma MUDANÇA de sinal dispara.
-  // (aí quem pontua é o cabeçalho da página), a troca de estado pontua uma
-  // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
-  // rerenderiza com as props congeladas da última vez em que esteve presente —
-  // nunca recebe sinal novo, então não varre ícones enquanto desaparece.
-  const cueSignal = useIconCueTrigger(collapsed);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -132,191 +98,28 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   // leve (sem fetches nem árvore de notas viva por trás).
   if (!isDesktop) return null;
 
-  // Colapsada é o padrão em TODAS as páginas desktop (ver `sidebar-state.ts`):
-  // mostra o rail fino de ícones com tooltip. Expandir persiste (fica aberta
-  // até o usuário recolher de novo) — um único mecanismo de colapso, sem
-  // forçamento especial por rota.
+  // Camada estacionária e montada: a página opaca acima revela/cobre a
+  // navegação; controles cobertos não recebem foco nem entrada.
   return (
-    <>
-      <AnimatePresence>
-        {collapsed && (
-          <SidebarRail
-            user={user}
-            pathname={location.pathname}
-            cueSignal={cueSignal}
-            onExpand={() => setCollapsed(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {!collapsed && (
-          <motion.aside
-            initial={reduceMotion ? false : { x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={reduceMotion ? { opacity: 0 } : { x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
-            transition={
-              reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }
-            }
-            className={cn(
-              'hidden md:flex fixed z-40 flex-col overflow-hidden',
-              focusInterface
-                ? 'inset-y-0 left-0 bg-transparent'
-                : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
-            )}
-            style={{ width: SIDEBAR_WIDTH }}
-          >
-            <SidebarHeader focusInterface={focusInterface} onCollapse={() => setCollapsed(true)} />
-            <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
-            <SidebarInterfaceModeButton />
-            <SidebarReleaseUpdateButton />
-            <SidebarChangelogButton />
-            <SidebarSignOut />
-          </motion.aside>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
-
-/**
- * Rail vertical de ícones — exibido quando a sidebar está colapsada, o padrão
- * em toda página desktop. Botão de
- * expandir no topo + atalhos de navegação (sem "Início", redundante — o
- * desktop já tem `/` como chat) com tooltip do nome no hover. Desktop-only.
- */
-function SidebarRail({
-  user,
-  pathname,
-  cueSignal,
-  onExpand,
-}: {
-  user: MeUser;
-  pathname: string;
-  cueSignal: number;
-  onExpand: () => void;
-}): React.ReactElement {
-  const { t } = useI18n();
-  const reduceMotion = useReducedMotion();
-  const { interfaceMode } = useInterfaceMode();
-  const focusInterface = interfaceMode === 'focus';
-  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
-  const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
-    (n) => n.to !== '/',
-  );
-
-  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
-
-  return (
-    <motion.nav
-      // Respeita prefers-reduced-motion: sem slide, aparição instantânea.
-      initial={reduceMotion ? false : { opacity: 0, x: -16 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
-      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
-      className={cn(
-        'hidden md:flex fixed z-40 flex-col items-center gap-1 px-2 py-3',
-        focusInterface
-          ? 'inset-y-0 left-0 bg-transparent'
-          : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
-      )}
-      style={{ width: focusInterface ? RAIL_WIDTH + FOCUS_SURFACE_GAP : RAIL_WIDTH }}
-      aria-label={t('shell.openMenu')}
+    <aside
+      id="desktop-sidebar"
+      aria-hidden={collapsed}
+      inert={collapsed ? true : undefined}
+      className="fixed inset-y-0 left-0 z-0 hidden flex-col overflow-hidden bg-[var(--color-app-bg)] md:flex"
+      style={{ width: SIDEBAR_WIDTH }}
     >
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onExpand}
-              className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
-              aria-label={t('shell.expandSidebar')}
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">{t('shell.expandSidebar')}</TooltipContent>
-        </Tooltip>
-
-        <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
-
-        {items.map(({ to, labelKey, Icon }) => {
-          const isActive = isNavItemActive(pathname, to);
-          return (
-            <Tooltip key={to}>
-              <TooltipTrigger asChild>
-                <NavLink
-                  to={to}
-                  className={cn(
-                    RAIL_ITEM_CLASS,
-                    isActive
-                      ? 'bg-[var(--color-app-surface-hover)] text-emerald-400'
-                      : RAIL_ITEM_IDLE_CLASS,
-                  )}
-                  aria-label={t(labelKey)}
-                >
-                  <Icon
-                    ref={registerIcon(to)}
-                    duration={ICON_CUE_DURATION}
-                    className={RAIL_ICON_CLASS}
-                  />
-                </NavLink>
-              </TooltipTrigger>
-              <TooltipContent side="right">{t(labelKey)}</TooltipContent>
-            </Tooltip>
-          );
-        })}
-
-        {/*
-          Conta e novidades fecham o rail, empurradas para o rodapé pelo
-          `mt-auto` — mesma ordem e mesmo lugar da sidebar aberta, para trocar
-          de largura não mudar onde a ação mora. O separador repete o do topo,
-          então o rail lê como [expandir | navegação | conta] nas duas pontas.
-        */}
-        <div className="mt-auto flex w-full flex-col items-center gap-1">
-          <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
-          <SidebarInterfaceModeButton variant="rail" iconRef={registerIcon('interface-mode')} />
-          <SidebarReleaseUpdateButton variant="rail" iconRef={registerIcon('release-update')} />
-          <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
-          <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
-        </div>
-      </TooltipProvider>
-    </motion.nav>
+      <SidebarHeader onCollapse={() => setCollapsed(true)} />
+      <SidebarModeBody user={user} hideHome />
+      <SidebarReleaseUpdateButton />
+      <SidebarChangelogButton />
+      <SidebarSignOut />
+    </aside>
   );
 }
 
-/** Como o item de conta se apresenta: rótulo ao lado do ícone, ou só o ícone. */
-type SidebarItemVariant = 'full' | 'rail';
-
-interface SidebarItemProps {
-  variant?: SidebarItemVariant;
-  /** Entra na cascata de ícones do rail — ver `useIconCueGroup`. */
-  iconRef?: React.Ref<IconCueHandle>;
-}
-
-export function SidebarChangelogButton({
-  variant = 'full',
-  iconRef,
-}: SidebarItemProps = {}): React.ReactElement {
+export function SidebarChangelogButton(): React.ReactElement {
   const { t } = useI18n();
   const label = t('shell.nav.changelog');
-
-  if (variant === 'rail') {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            to="/novidades"
-            aria-label={label}
-            className={cn(RAIL_ITEM_CLASS, RAIL_ITEM_IDLE_CLASS)}
-          >
-            <Sparkles ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="right">{label}</TooltipContent>
-      </Tooltip>
-    );
-  }
 
   return (
     <div className="shrink-0 px-3 py-1.5">
@@ -332,78 +135,7 @@ export function SidebarChangelogButton({
   );
 }
 
-export function SidebarInterfaceModeButton({
-  variant = 'full',
-  iconRef,
-}: SidebarItemProps = {}): React.ReactElement {
-  const { t } = useI18n();
-  const { interfaceMode, saving, toggleInterface } = useInterfaceMode();
-  const focusInterface = interfaceMode === 'focus';
-  const actionLabel = t(focusInterface ? 'interface.switchToClassic' : 'interface.switchToFocus');
-
-  const onToggle = async (): Promise<void> => {
-    try {
-      await toggleInterface();
-      toast.success(t('interface.updated'));
-    } catch {
-      toast.error(t('interface.updateFailed'));
-    }
-  };
-
-  if (variant === 'rail') {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void onToggle()}
-            aria-label={actionLabel}
-            aria-pressed={focusInterface}
-            className={cn(
-              RAIL_ITEM_CLASS,
-              focusInterface
-                ? 'bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]'
-                : RAIL_ITEM_IDLE_CLASS,
-              'disabled:cursor-wait disabled:opacity-50',
-            )}
-          >
-            <PanelLeft ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">{actionLabel}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return (
-    <div className="shrink-0 px-3 py-1.5">
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => void onToggle()}
-        aria-pressed={focusInterface}
-        className={cn(
-          'flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium transition-colors disabled:cursor-wait disabled:opacity-50',
-          focusInterface
-            ? 'bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]'
-            : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
-        )}
-      >
-        <PanelLeft className="h-4 w-4 shrink-0" />
-        <span className="truncate">
-          {t(focusInterface ? 'interface.focus' : 'interface.classic')}
-        </span>
-        <span className="sr-only">{actionLabel}</span>
-      </button>
-    </div>
-  );
-}
-
-export function SidebarSignOut({
-  variant = 'full',
-  iconRef,
-}: SidebarItemProps = {}): React.ReactElement {
+export function SidebarSignOut(): React.ReactElement {
   const { t } = useI18n();
   const { refresh } = useMe();
   const navigate = useNavigate();
@@ -413,24 +145,6 @@ export function SidebarSignOut({
     await apiPost('/api/auth/sign-out').catch(() => undefined);
     await refresh();
     navigate('/entrar');
-  }
-
-  if (variant === 'rail') {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            aria-label={label}
-            className={cn(RAIL_ITEM_CLASS, 'text-[var(--color-app-muted)]', SIGN_OUT_HOVER_CLASS)}
-          >
-            <LogOut ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">{label}</TooltipContent>
-      </Tooltip>
-    );
   }
 
   return (
@@ -450,21 +164,10 @@ export function SidebarSignOut({
   );
 }
 
-function SidebarHeader({
-  focusInterface,
-  onCollapse,
-}: {
-  focusInterface: boolean;
-  onCollapse: () => void;
-}): React.ReactElement {
+function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactElement {
   const { t } = useI18n();
   return (
-    <div
-      className={cn(
-        'flex h-16 shrink-0 items-center px-4',
-        !focusInterface && 'border-b border-[var(--color-app-border)]',
-      )}
-    >
+    <div className={cn('flex h-16 shrink-0 items-center px-4')}>
       <div className="relative shrink-0 h-9 w-9">
         <img
           src="/voxen-256.png"
@@ -484,6 +187,7 @@ function SidebarHeader({
       <button
         type="button"
         onClick={onCollapse}
+        id="desktop-sidebar-close"
         className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
         aria-label={t('shell.collapse')}
         title={t('shell.collapse')}
@@ -715,31 +419,5 @@ function NotasModeBody({
         </AnimatePresence>
       </div>
     </div>
-  );
-}
-
-export function SidebarSpacer(): React.ReactElement | null {
-  const { collapsed } = useSidebarCollapsed();
-  const { interfaceMode } = useInterfaceMode();
-  const isDesktop = useIsDesktop();
-  const reduceMotion = useReducedMotion();
-  // No mobile não há sidebar montada — sem spacer (evita reservar largura).
-  if (!isDesktop) return null;
-  const width =
-    interfaceMode === 'focus'
-      ? collapsed
-        ? RAIL_WIDTH
-        : SIDEBAR_WIDTH
-      : collapsed
-        ? RAIL_WIDTH + 16
-        : SIDEBAR_WIDTH + 32;
-  return (
-    <motion.div
-      className="hidden md:block shrink-0"
-      animate={{ width }}
-      initial={false}
-      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
-      aria-hidden
-    />
   );
 }
