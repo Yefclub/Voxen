@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.15.1-dev.1793600587",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Unified 2D canvas shared by full graph and local views",
+    "body": "### Added\n- Shared `KnowledgeGraphCanvas` component (Sigma 2D with measured labels, framed camera, resize repaint, zoom/viewport controls, SVG fallback) replacing the inline full-page canvas; page mounts it instead of duplicating orchestration.\n- Canvas split into `knowledge-graph-canvas`, `graph-canvas-controls` and `graph-fallback-svg` so each file stays within the quality-gate size budget.\n- `graph.focusSelection` and `graph.zoomLevel` labels (PT/EN) for the viewport controls.",
+    "pr": 1021,
+    "author": "Kalyel",
+    "date": "2026-11-02T03:22:54-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1021"
+  },
+  {
     "version": "0.15.1-dev.1793598811",
     "channel": "dev",
     "type": "feat",
