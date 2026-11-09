@@ -57,7 +57,10 @@ function timestampLink(input: CaptureMarkdownInput, seconds: number): string {
 
 /** Escapes characters that would let captured text start Markdown links. */
 function escapeInline(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/([[\]<>])/g, '\\$1').trim();
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/([[\]<>])/g, '\\$1')
+    .trim();
 }
 
 /**
@@ -84,7 +87,10 @@ export function segmentsToPlainText(segments: CaptureSegment[]): string {
     .join(' ');
 }
 
-export function buildCaptureMarkdown(input: CaptureMarkdownInput): { markdown: string; plainText: string } {
+export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
+  markdown: string;
+  plainText: string;
+} {
   const { artifact, interpretation } = input;
   const front: Array<[string, string | number | null]> = [
     ['id', input.id],
@@ -114,9 +120,11 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): { markdown: s
   if (input.thumbnail) lines.push(`![thumbnail](${input.thumbnail})`, '');
   lines.push(`# ${escapeInline(input.title)}`, '');
   const header = [`[Original](${input.url})`];
-  if (input.channel ?? input.author) header.push(escapeInline((input.channel ?? input.author) as string));
+  if (input.channel ?? input.author)
+    header.push(escapeInline((input.channel ?? input.author) as string));
   if (input.durationSec > 0) header.push(formatDuration(input.durationSec));
-  if (input.publishedAt) header.push(`publicado em ${input.publishedAt.toISOString().slice(0, 10)}`);
+  if (input.publishedAt)
+    header.push(`publicado em ${input.publishedAt.toISOString().slice(0, 10)}`);
   lines.push(`> ${header.join(' — ')}`, '');
 
   const summary = sanitizeModelText(interpretation.summaryMd);
@@ -133,7 +141,9 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): { markdown: s
     .filter(Boolean);
   if (descriptions.length > 0) {
     lines.push('## Imagens', '');
-    descriptions.forEach((description, index) => lines.push(`${index + 1}. ${description.replace(/\n+/g, ' ')}`));
+    descriptions.forEach((description, index) =>
+      lines.push(`${index + 1}. ${description.replace(/\n+/g, ' ')}`),
+    );
     lines.push('');
   }
 
@@ -143,7 +153,10 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): { markdown: s
     for (const segment of artifact.segments) {
       const text = escapeInline(segment.text);
       if (!text) continue;
-      lines.push(`[${formatTimestamp(segment.startSec)}](${timestampLink(input, segment.startSec)}) ${text}`, '');
+      lines.push(
+        `[${formatTimestamp(segment.startSec)}](${timestampLink(input, segment.startSec)}) ${text}`,
+        '',
+      );
     }
     plainText = segmentsToPlainText(artifact.segments);
   } else {

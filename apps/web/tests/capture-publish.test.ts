@@ -61,11 +61,20 @@ describeIfDb('capture publication (contract v2 DOCUMENT)', () => {
 
   beforeAll(async () => {
     const user = await db.user.create({
-      data: { email: `capture-publish-${Date.now()}@voxen.local`, name: 'Capture', status: 'APPROVED' },
+      data: {
+        email: `capture-publish-${Date.now()}@voxen.local`,
+        name: 'Capture',
+        status: 'APPROVED',
+      },
     });
     userId = user.id;
     const job = await db.job.create({
-      data: { userId, type: 'CAPTURE_LINK', status: 'RUNNING', sourceUrl: 'https://example.com/post' },
+      data: {
+        userId,
+        type: 'CAPTURE_LINK',
+        status: 'RUNNING',
+        sourceUrl: 'https://example.com/post',
+      },
     });
     jobId = job.id;
   });
@@ -97,8 +106,14 @@ describeIfDb('capture publication (contract v2 DOCUMENT)', () => {
     const key = await db.preparedIngestKey.findUniqueOrThrow({
       where: { userId_key: { userId, key: `capture:${jobId}` } },
     });
-    expect(key).toMatchObject({ targetType: 'DOCUMENT', contractVersion: '2', producerId: 'voxen-capture' });
-    expect((await db.job.findUniqueOrThrow({ where: { id: jobId } })).transcriptId).toBe(first.transcriptId);
+    expect(key).toMatchObject({
+      targetType: 'DOCUMENT',
+      contractVersion: '2',
+      producerId: 'voxen-capture',
+    });
+    expect((await db.job.findUniqueOrThrow({ where: { id: jobId } })).transcriptId).toBe(
+      first.transcriptId,
+    );
 
     const markdown = await storageReadText(doc.mdPath);
     expect(markdown).toContain('## Resumo');

@@ -4,9 +4,23 @@
 
 export type CaptureSegment = { startSec: number; endSec: number; text: string };
 
-export type CaptureTextKind = 'captions' | 'post' | 'page' | 'description' | 'document' | 'stt' | 'none';
+export type CaptureTextKind =
+  | 'captions'
+  | 'post'
+  | 'page'
+  | 'description'
+  | 'document'
+  | 'stt'
+  | 'none';
 
-export type CapturePlatformName = 'youtube' | 'tiktok' | 'instagram' | 'x' | 'web' | 'other' | 'upload';
+export type CapturePlatformName =
+  | 'youtube'
+  | 'tiktok'
+  | 'instagram'
+  | 'x'
+  | 'web'
+  | 'other'
+  | 'upload';
 
 export type CaptureImageRef = {
   kind: string;

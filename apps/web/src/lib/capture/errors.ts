@@ -75,7 +75,8 @@ const MESSAGES: Record<CaptureLocale, Record<CaptureErrorCode, string>> = {
     BLOCKED_ADDRESS: 'Este endereço aponta para uma rede interna e foi bloqueado.',
     UNSUPPORTED: 'Não há como extrair conteúdo deste link ou arquivo. Envie o arquivo diretamente.',
     LOGIN_REQUIRED: 'A plataforma exige login para este conteúdo. Envie o arquivo diretamente.',
-    IP_BLOCKED: 'A plataforma bloqueou o acesso automatizado do servidor. Envie o arquivo diretamente.',
+    IP_BLOCKED:
+      'A plataforma bloqueou o acesso automatizado do servidor. Envie o arquivo diretamente.',
     RATE_LIMITED: 'A plataforma limitou as requisições. Tente de novo em alguns minutos.',
     REMOVED: 'O conteúdo foi removido, é privado ou não existe mais.',
     NO_TEXT: 'Não encontrei texto, fala nem imagens úteis neste conteúdo.',
@@ -114,7 +115,10 @@ const MESSAGES: Record<CaptureLocale, Record<CaptureErrorCode, string>> = {
   },
 };
 
-export function captureErrorMessage(code: CaptureErrorCode, locale: CaptureLocale = 'pt-BR'): string {
+export function captureErrorMessage(
+  code: CaptureErrorCode,
+  locale: CaptureLocale = 'pt-BR',
+): string {
   return MESSAGES[locale][code];
 }
 

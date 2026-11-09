@@ -11,7 +11,11 @@
 
 import { createHash } from 'node:crypto';
 
-import type { Prisma, TranscriptionMethod, TranscriptSource } from '../../../prisma-generated/client';
+import type {
+  Prisma,
+  TranscriptionMethod,
+  TranscriptSource,
+} from '../../../prisma-generated/client';
 import { db } from '../db';
 import { invalidateGraphCache } from '../graph-cache';
 import { claimIngestKey, PREPARED_DOCUMENT_CONTRACT_VERSION } from '../prepared-ingest';
@@ -47,7 +51,9 @@ export function captureTranscriptId(jobId: string): string {
 }
 
 export function sourceChecksum(plainText: string): string {
-  return createHash('sha256').update(plainText.split(/\s+/).filter(Boolean).join(' '), 'utf8').digest('hex');
+  return createHash('sha256')
+    .update(plainText.split(/\s+/).filter(Boolean).join(' '), 'utf8')
+    .digest('hex');
 }
 
 export function sourceVersionKey(userId: string, transcriptId: string, version: number): string {
@@ -64,7 +70,10 @@ const SOURCE_BY_PLATFORM: Record<CaptureArtifact['platform'], TranscriptSource> 
   upload: 'UPLOAD',
 };
 
-const MD_SOURCE: Record<TranscriptSource, 'youtube' | 'instagram' | 'tiktok' | 'x' | 'web' | 'upload'> = {
+const MD_SOURCE: Record<
+  TranscriptSource,
+  'youtube' | 'instagram' | 'tiktok' | 'x' | 'web' | 'upload'
+> = {
   YOUTUBE: 'youtube',
   INSTAGRAM: 'instagram',
   TIKTOK: 'tiktok',
@@ -73,7 +82,10 @@ const MD_SOURCE: Record<TranscriptSource, 'youtube' | 'instagram' | 'tiktok' | '
   UPLOAD: 'upload',
 };
 
-const MD_METHOD: Record<TranscriptionMethod, 'subtitles' | 'scrape' | 'api' | 'vision' | 'document'> = {
+const MD_METHOD: Record<
+  TranscriptionMethod,
+  'subtitles' | 'scrape' | 'api' | 'vision' | 'document'
+> = {
   API: 'api',
   SUBTITLES: 'subtitles',
   SCRAPE: 'scrape',
@@ -131,7 +143,10 @@ type DocumentFields = {
 
 function documentFields(input: PublishInput, fallbackSource?: TranscriptSource): DocumentFields {
   const { artifact, interpretation } = input;
-  const title = (interpretation.title || artifact.title || input.sourceUrl).replace(/\s+/g, ' ').trim().slice(0, 300);
+  const title = (interpretation.title || artifact.title || input.sourceUrl)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
   return {
     url: artifact.canonicalUrl ?? input.sourceUrl,
     title,
@@ -140,7 +155,10 @@ function documentFields(input: PublishInput, fallbackSource?: TranscriptSource):
     durationSec: Math.max(0, Math.round(artifact.durationSec ?? 0)),
     publishedAt: parseDate(artifact.publishedAt),
     language: normalizeLanguage(interpretation.language || artifact.language),
-    source: artifact.platform === 'upload' && fallbackSource ? fallbackSource : SOURCE_BY_PLATFORM[artifact.platform],
+    source:
+      artifact.platform === 'upload' && fallbackSource
+        ? fallbackSource
+        : SOURCE_BY_PLATFORM[artifact.platform],
   };
 }
 
@@ -198,7 +216,13 @@ async function renderAndStore(
 async function finishTags(userId: string, transcriptId: string, tags: string[]): Promise<void> {
   const fresh = await db.transcript.findFirst({
     where: { id: transcriptId, userId },
-    select: { id: true, folderId: true, correctionRevision: true, sourceVersion: true, sourceChecksum: true },
+    select: {
+      id: true,
+      folderId: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
+    },
   });
   if (fresh && tags.length > 0) await applyTagsToTranscript(userId, fresh, tags);
   invalidateTranscriptReadCache(userId, transcriptId);
@@ -393,5 +417,7 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
 }
 
 export async function publishCapturedDocument(input: PublishInput): Promise<PublishResult> {
-  return input.refreshTranscriptId ? publishRefresh(input, input.refreshTranscriptId) : publishNew(input);
+  return input.refreshTranscriptId
+    ? publishRefresh(input, input.refreshTranscriptId)
+    : publishNew(input);
 }

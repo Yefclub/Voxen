@@ -114,11 +114,16 @@ function normalizeWebUrl(url: URL): string {
   const out = new URL(url.toString());
   out.hash = '';
   out.hostname = out.hostname.toLowerCase();
-  if ((out.protocol === 'https:' && out.port === '443') || (out.protocol === 'http:' && out.port === '80')) {
+  if (
+    (out.protocol === 'https:' && out.port === '443') ||
+    (out.protocol === 'http:' && out.port === '80')
+  ) {
     out.port = '';
   }
   const kept = [...out.searchParams.entries()]
-    .filter(([key]) => !key.toLowerCase().startsWith('utm_') && !TRACKING_PARAMS.has(key.toLowerCase()))
+    .filter(
+      ([key]) => !key.toLowerCase().startsWith('utm_') && !TRACKING_PARAMS.has(key.toLowerCase()),
+    )
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   out.search = '';
   for (const [key, value] of kept) out.searchParams.append(key, value);
@@ -145,9 +150,19 @@ export function parseCaptureUrl(input: unknown): CaptureUrl | CaptureUrlError {
   url.hash = '';
   const video = parseVideoUrl(url.toString());
   if (video) {
-    return { url: url.toString(), canonical: video.canonical, platform: video.source, platformId: video.videoId };
+    return {
+      url: url.toString(),
+      canonical: video.canonical,
+      platform: video.source,
+      platformId: video.videoId,
+    };
   }
-  return { url: url.toString(), canonical: normalizeWebUrl(url), platform: 'WEB', platformId: null };
+  return {
+    url: url.toString(),
+    canonical: normalizeWebUrl(url),
+    platform: 'WEB',
+    platformId: null,
+  };
 }
 
 export function isCaptureUrlError(value: CaptureUrl | CaptureUrlError): value is CaptureUrlError {

@@ -75,7 +75,9 @@ describe('parseCaptureUrl — canonical identity', () => {
   });
 
   test('TikTok short links and Instagram reels keep their platform identity', () => {
-    expect(ok('https://vt.tiktok.com/ZS4enEV8X/').canonical).toBe('https://vt.tiktok.com/ZS4enEV8X');
+    expect(ok('https://vt.tiktok.com/ZS4enEV8X/').canonical).toBe(
+      'https://vt.tiktok.com/ZS4enEV8X',
+    );
     expect(ok('https://www.instagram.com/reel/DWhWkoWgZ1D/?igsh=xyz').canonical).toBe(
       'https://www.instagram.com/reel/DWhWkoWgZ1D/',
     );
