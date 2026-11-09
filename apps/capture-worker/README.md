@@ -48,6 +48,10 @@ output.
   external downloaders. Deno solves YouTube JS challenges with the pinned
   `yt-dlp-ejs` scripts.
 - **ffmpeg.** Only ever reads local files, with `-protocol_whitelist file`.
+- **Image.** No setuid or setgid binaries (stripped and verified at build
+  time), so platforms that cannot drop capabilities or set
+  `no-new-privileges` (Easypanel, Openship) still have no in-container
+  escalation path.
 - **Container.** Non-root uid 10001, read-only root filesystem, 1 GiB tmpfs
   `/tmp`, all capabilities dropped, `no-new-privileges`, 2 GiB memory, 2 CPUs,
   PID limit, no published ports. Audio and upload work is serialized.
