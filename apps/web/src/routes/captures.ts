@@ -168,7 +168,8 @@ async function respondOutcome(
   );
 }
 
-async function submitRateLimited(userId: string): Promise<boolean> {
+/** Shared by the API and the PWA share target: 30 submits per minute per user. */
+export async function submitRateLimited(userId: string): Promise<boolean> {
   const limit = await rateLimit(`capture-submit:${userId}`, 30, 60).catch(() => ({
     allowed: true,
   }));
