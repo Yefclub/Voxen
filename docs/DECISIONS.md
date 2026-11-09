@@ -443,7 +443,12 @@ e sem GPU, então inferência local não é viável.
   AI SDK v7, com chaves por usuário cifradas no `Setting`.
 - Exceções à regra de licenças: Unlicense (yt-dlp) e ffmpeg LGPL (build
   BtbN `linux64-lgpl`, sem modificação), este só como binário separado no
-  worker.
+  worker. No mesmo worker, MPL sem modificação é aceito só para dependências
+  transitivas sem alternativa permissiva: `certifi` (bundle de CAs da Mozilla,
+  os mesmos dados do `ca-certificates` já presente nas imagens), `tld`
+  (tri-licença, usada sob MPL-1.1, via trafilatura → courlan) e `go-cleanhttp`
+  (MPL-2.0, compilado no Smokescreen). MPL é copyleft por arquivo e não cria
+  obrigação para o código da Voxen.
 
 ### Alternativas rejeitadas
 

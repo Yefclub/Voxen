@@ -44,7 +44,9 @@ X 44%, web 17%, YouTube 12%, TikTok 13%, uploads 13%. 26% of the library
   `/api/v1/audio/transcriptions`.
 - D3. An unmodified LGPL ffmpeg build (BtbN `linux64-lgpl`) is allowed only
   as a separate binary inside the capture worker. Every other dependency
-  stays MIT, Apache-2.0, BSD, ISC or Unlicense (CLAUDE.md, ADR-014).
+  stays MIT, Apache-2.0, BSD, ISC or Unlicense (CLAUDE.md, ADR-014), except
+  the unmodified MPL transitive dependencies listed in ADR-014 (`certifi`,
+  `tld`, `go-cleanhttp`), all confined to the capture worker.
 - D4. Provider keys are per user, stored in `Setting` (scope USER) encrypted
   with MASTER_KEY, entered through the UI. Never in `.env`, logs, commits,
   fixtures, job rows or progress events.

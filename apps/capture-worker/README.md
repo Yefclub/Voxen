@@ -70,7 +70,10 @@ Pinned in the `Dockerfile` by exact version and checksum:
 - **Deno** (MIT), **Smokescreen** (MIT, built from a pinned tag and commit
   with our `egress/main.go` adding the port policy), **yt-dlp** (Unlicense).
 
-Python dependencies are pinned in `uv.lock` (hashes included). Never install
+Python dependencies are pinned in `uv.lock` (hashes included). Three
+unmodified MPL dependencies are documented exceptions (ADR-014): `certifi`
+(Mozilla CA bundle), `tld` (used under MPL-1.1, via trafilatura → courlan)
+and `go-cleanhttp` (compiled into Smokescreen). Never install
 yt-dlp's `default` extra (it pulls GPL code) or `markitdown[all]`.
 
 ## Development

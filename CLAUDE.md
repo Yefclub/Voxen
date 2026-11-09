@@ -194,7 +194,7 @@ Cada user tem seu workspace. Tudo do user (transcrições, notas, jobs, grafo) �
 
 - **SEMPRE open-source** com licença permissiva: MIT, Apache 2.0, BSD, ISC
 - **NUNCA** GPL, AGPL, SSPL, ou qualquer licença que obrigue a liberar código-fonte
-- **Exceções documentadas (spec 220, ADR-014)**: Unlicense (yt-dlp) é permitida; ffmpeg/ffprobe LGPL (build BtbN `linux64-lgpl`) só como binário separado, sem modificação, dentro do container `capture-worker` — nunca linkado, nunca em `apps/web`
+- **Exceções documentadas (spec 220, ADR-014)**: Unlicense (yt-dlp) é permitida; ffmpeg/ffprobe LGPL (build BtbN `linux64-lgpl`) só como binário separado, sem modificação, dentro do container `capture-worker` — nunca linkado, nunca em `apps/web`. No mesmo container, MPL usado sem modificação é aceito só quando a dependência transitiva não tem alternativa permissiva: `certifi` (bundle de CAs da Mozilla, os mesmos dados do `ca-certificates` já presente nas imagens), `tld` (tri-licença, usada sob MPL-1.1, via trafilatura → courlan) e `go-cleanhttp` (MPL-2.0, dentro do binário do Smokescreen)
 - Antes de sugerir uma lib, verificar: licença, manutenção ativa (commits recentes), issues abertas críticas
 - Pesquisar na web o que existe antes de propor construir do zero
 - Ao comparar opções, trazer: licença, stars, última release, tamanho do bundle, dependências transitivas
