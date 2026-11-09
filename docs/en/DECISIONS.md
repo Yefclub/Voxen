@@ -6,6 +6,9 @@
 > scraping, a Python worker, or embeddings remain as historical record; the
 > current normative boundary is defined by specs `.specs/215-*` and
 > `.specs/216-*`.
+>
+> Note (2026-11-09, spec 220): link capture and AI interpretation return as a
+> Voxen extension that uses only cloud providers. See ADR-014.
 
 This English document is the default ADR index for contributors. The
 Portuguese file preserves the detailed historical log while decisions are
@@ -97,3 +100,30 @@ is enabled. A live harness must pass quality, isolation, deletion, latency, toke
 and cost review before a new ADR may authorize controlled retrieval. Mem0's
 native Platform graph is not adopted because it boosts retrieval through
 untyped entity co-occurrence rather than exposing Voxen's grounded typed graph.
+
+## ADR-014: Link capture with cloud-only AI
+
+Date: 2026-11-09. Status: accepted (spec 220; amends spec 215).
+
+After spec 215 Voxen only accepted prepared content. The owner needs to send
+a link (web, YouTube, TikTok, Instagram, X) and find a finished document. The
+deploy host is a 2014 4-core CPU without GPU, so local inference is not viable.
+
+Decision:
+
+- Capture is an extension of Voxen itself: same repository, database, login
+  and UI.
+- yt-dlp, Deno, ffmpeg and Trafilatura run in the `capture-worker` container,
+  with no MASTER_KEY, provider key or database access. All outbound traffic
+  goes through Smokescreen, which blocks private ranges.
+- Text, vision and speech-to-text use only OpenAI, Anthropic, OpenRouter and
+  xAI through AI SDK v7, with per-user keys encrypted in `Setting`.
+- License exceptions: Unlicense (yt-dlp) and an unmodified LGPL ffmpeg build
+  (BtbN `linux64-lgpl`), the latter only as a separate binary in the worker.
+
+Rejected: a separate product outside the app (more operations, no gain for a
+single-tenant install); local models (host CPU too weak); ffmpeg-free
+decoding (no permissively licensed AAC decoder).
+
+Consequences: Product 1 keeps working without any provider key, and platforms
+that block the server IP become typed errors with a suggested action.

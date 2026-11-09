@@ -57,7 +57,9 @@ Antes de implementar qualquer coisa, confirme seu entendimento do pedido em 1-2 
 
 ## Visão Geral do Projeto
 
-Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** para conteúdo preparado: produtores externos publicam documentos via contratos versionados HTTP/MCP e clientes MCP recuperam com busca full-text determinística e leituras progressivas (sem embeddings, sem execução de modelos).
+Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento**: produtores externos publicam documentos via contratos versionados HTTP/MCP e clientes MCP recuperam com busca full-text determinística e leituras progressivas (sem embeddings).
+
+A captura de links (web, YouTube, TikTok, Instagram, X, upload e PWA share target) é uma extensão da própria Voxen, em entrega pela spec 220: o container `capture-worker` baixa o conteúdo sem `MASTER_KEY`, chaves de provedor ou acesso ao banco, e o web interpreta com IA **só por provedores na nuvem** (OpenAI, Anthropic, OpenRouter, xAI) com chaves por usuário cifradas no banco. Sem modelos locais, sem embeddings. A base (Produto 1) continua funcionando sem nenhuma chave de provedor.
 
 **Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (credenciais, usuários aprovados via better-auth).
 
@@ -164,11 +166,11 @@ Este projeto **proíbe qualquer marca de autoria de IA**, em qualquer lugar:
 - **`.env` APENAS na raiz do projeto**. NUNCA em `apps/web/`
 - O `.env` na raiz contém SÓ o mínimo essencial:
   - URLs de infra (`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`)
-  - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `BETTER_AUTH_SECRET`, `MASTER_KEY`)
+  - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `BETTER_AUTH_SECRET`, `MASTER_KEY`, `CAPTURE_WORKER_TOKEN`)
   - `APP_BASE_URL` e `NODE_ENV`
 - **TUDO O MAIS** vai em DB (tabela `settings`), cifrado com a master key
 - A **master key** vem de `MASTER_KEY` em todos os modos documentados; formato `openssl rand -base64 32`.
-- Secrets cifrados em DB incluem: tokens MCP/OAuth, config SMTP (futuro)
+- Secrets cifrados em DB incluem: tokens MCP/OAuth, chaves de provedor de IA por usuário (spec 220), config SMTP (futuro)
 - Se você precisa adicionar config nova: pergunta-se "muda em runtime?" — se sim, vai pra DB; se é infra, vai pra `.env` na raiz
 
 ### Isolamento de Workspaces (CRÍTICO)
@@ -192,6 +194,7 @@ Cada user tem seu workspace. Tudo do user (transcrições, notas, jobs, grafo) �
 
 - **SEMPRE open-source** com licença permissiva: MIT, Apache 2.0, BSD, ISC
 - **NUNCA** GPL, AGPL, SSPL, ou qualquer licença que obrigue a liberar código-fonte
+- **Exceções documentadas (spec 220, ADR-014)**: Unlicense (yt-dlp) é permitida; ffmpeg/ffprobe LGPL (build BtbN `linux64-lgpl`) só como binário separado, sem modificação, dentro do container `capture-worker` — nunca linkado, nunca em `apps/web`
 - Antes de sugerir uma lib, verificar: licença, manutenção ativa (commits recentes), issues abertas críticas
 - Pesquisar na web o que existe antes de propor construir do zero
 - Ao comparar opções, trazer: licença, stars, última release, tamanho do bundle, dependências transitivas

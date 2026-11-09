@@ -6,6 +6,9 @@
 > providers de modelo, transcrição/scraping, worker Python, ou embeddings
 > permanecem como registro histórico; a boundary normativa atual está nas
 > specs `.specs/215-*` e `.specs/216-*`.
+>
+> Nota (2026-11-09, spec 220): a captura de links e a interpretação por IA
+> voltaram como extensão da Voxen, só com provedores na nuvem. Ver ADR-014.
 
 Cada ADR captura uma decisão arquitetural significativa, o contexto que a motivou, alternativas consideradas e consequências. Adicionar nova ADR quando uma decisão grande for tomada — usar próxima numeração.
 
@@ -417,3 +420,39 @@ ranking por coocorrência de entidades sem expor o grafo tipado e fundamentado d
 Voxen.
 
 ---
+
+## ADR-014 — Captura de links e IA só por provedores na nuvem
+
+**Data**: 2026-11-09
+**Status**: Aceita (spec 220; emenda a spec 215)
+
+### Contexto
+
+Depois da spec 215, a Voxen só aceitava conteúdo preparado. Na prática, o
+owner precisa enviar um link (web, YouTube, TikTok, Instagram, X) e
+encontrar o documento pronto. O host de deploy é um i5 de 2014 com 4 núcleos
+e sem GPU, então inferência local não é viável.
+
+### Decisão
+
+- A captura é uma extensão da própria Voxen: mesmo repo, banco, login e UI.
+- yt-dlp, Deno, ffmpeg e Trafilatura rodam no container `capture-worker`,
+  sem `MASTER_KEY`, sem chaves de provedor e sem acesso ao banco. Toda saída
+  de rede passa pelo Smokescreen, que bloqueia faixas privadas.
+- IA de texto, visão e STT só por OpenAI, Anthropic, OpenRouter e xAI via
+  AI SDK v7, com chaves por usuário cifradas no `Setting`.
+- Exceções à regra de licenças: Unlicense (yt-dlp) e ffmpeg LGPL (build
+  BtbN `linux64-lgpl`, sem modificação), este só como binário separado no
+  worker.
+
+### Alternativas rejeitadas
+
+- Serviço separado fora do app: mais operação sem ganho para single-tenant.
+- Modelos locais (Parakeet, Gemma, embeddings): CPU do host insuficiente.
+- Decodificação sem ffmpeg: não há decodificador AAC com licença permitida.
+
+### Consequências
+
+- A base continua funcionando sem nenhuma chave de provedor.
+- Plataformas que bloqueiam o IP do servidor viram erro tipado com ação
+  sugerida (upload do arquivo), não falha silenciosa.
