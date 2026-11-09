@@ -57,7 +57,7 @@ export interface CaptureAi {
   isRoleConfigured(userId: string, role: AiRole): Promise<boolean>;
   generateStructured<T>(input: {
     userId: string;
-    role: AiRole;
+    role: Exclude<AiRole, 'stt'>;
     instructions: string;
     untrusted: UntrustedPart[];
     schema: z.ZodType<T>;
