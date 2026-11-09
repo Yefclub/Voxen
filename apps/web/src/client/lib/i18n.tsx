@@ -23,6 +23,7 @@ import * as featureMessages from './feature-messages';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enJobStageMessages, ptBrJobStageMessages } from './job-stage-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
+import { enAiProviderMessages, ptBrAiProviderMessages } from './ai-providers-i18n';
 import {
   enTranscriptAnnotationMessages,
   ptBrTranscriptAnnotationMessages,
@@ -704,6 +705,7 @@ const ptBRMessages = {
   'admin.shell.description':
     'Configurações compartilhadas por todos os usuários. Apenas administradores podem alterar estes valores.',
   ...ptBrSsoMessages,
+  ...ptBrAiProviderMessages,
   'admin.integrations.telegram.title': 'Bot do Telegram',
   'admin.integrations.telegram.description':
     'Cole o token do bot (formato {format}). Crie um bot via {botFather} no Telegram.',
@@ -1848,6 +1850,7 @@ const enMessages: Record<I18nKey, string> = {
   'admin.shell.description':
     'Settings shared by every user. Only administrators can change these values.',
   ...enSsoMessages,
+  ...enAiProviderMessages,
   'admin.integrations.telegram.title': 'Telegram bot',
   'admin.integrations.telegram.description':
     'Paste the bot token ({format}). Create a bot through {botFather} on Telegram.',

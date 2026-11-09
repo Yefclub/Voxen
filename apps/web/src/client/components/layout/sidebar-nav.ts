@@ -1,4 +1,5 @@
 import {
+  BrainCircuit,
   House,
   KeyRound,
   LineChart,
@@ -26,6 +27,7 @@ export const NAV: NavItem[] = [
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
   { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },
   { to: '/conta/mcp', labelKey: 'shell.nav.mcpAccess', Icon: KeyRound, scope: 'personal' },
+  { to: '/conta/ia', labelKey: 'shell.nav.aiProviders', Icon: BrainCircuit, scope: 'personal' },
   {
     to: '/admin',
     labelKey: 'shell.nav.administration',

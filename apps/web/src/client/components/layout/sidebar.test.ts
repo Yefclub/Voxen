@@ -29,6 +29,7 @@ describe('application navigation domains', () => {
     expect(NAV.filter((item) => item.scope === 'personal').map((item) => item.to)).toEqual([
       '/conta',
       '/conta/mcp',
+      '/conta/ia',
     ]);
   });
 
@@ -40,6 +41,7 @@ describe('application navigation domains', () => {
     expect(isNavItemActive('/conta', '/conta')).toBe(true);
     expect(isNavItemActive('/conta/mcp', '/conta')).toBe(false);
     expect(isNavItemActive('/conta/mcp', '/conta/mcp')).toBe(true);
+    expect(isNavItemActive('/conta/ia', '/conta')).toBe(false);
     expect(isNavItemActive('/admin/integracoes', '/admin')).toBe(true);
   });
 });
