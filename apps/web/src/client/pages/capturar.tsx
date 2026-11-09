@@ -16,7 +16,6 @@ import { useI18n } from '../lib/i18n';
 import { fetchCapture, fetchCaptures, type CaptureJob } from '../lib/capture-api';
 import {
   actionForCode,
-  claimSharedSubmit,
   isActiveCapture,
   mergeCaptures,
   readCapturePageIntent,
@@ -25,14 +24,6 @@ import {
 /** Open SSE streams for at most this many active jobs; the rest are polled. */
 const MAX_LIVE_STREAMS = 3;
 const POLL_MS = 10_000;
-
-function sessionStore(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
 
 export function CapturarPage(): React.ReactElement {
   const { t } = useI18n();
@@ -102,16 +93,17 @@ export function CapturarPage(): React.ReactElement {
     }
   }, [intent.error, intent.existingTranscriptId, t]);
 
-  // After login the share target hands the link over as `?shared=`; submit once.
+  // After login the share target hands the link over as `?shared=`. A GET link
+  // must never start a capture by itself (it could be forged cross-site), so
+  // the link is only prefilled and the user confirms with one tap.
   useEffect(() => {
     const url = intent.sharedUrl;
     if (!url || !composer.current) return;
     const next = new URLSearchParams(params);
     next.delete('shared');
     setParams(next, { replace: true });
-    if (!claimSharedSubmit(url, sessionStore())) return;
+    composer.current.prefillUrl(url);
     setSharedPending(true);
-    void composer.current.submitUrl(url).finally(() => setSharedPending(false));
   }, [intent.sharedUrl, params, setParams]);
 
   const onJob = useCallback(
@@ -165,8 +157,7 @@ export function CapturarPage(): React.ReactElement {
             className="flex items-center gap-2 text-sm text-[var(--color-app-muted)]"
             role="status"
           >
-            <Spinner size={14} />
-            {t('capture.sharedSubmitting')}
+            {t('capture.sharedReady')}
           </p>
         )}
       </section>

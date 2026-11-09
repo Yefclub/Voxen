@@ -83,6 +83,34 @@ function trustedFetchSite(value: string | undefined): boolean {
   return value === undefined || value === 'none' || value === 'same-origin';
 }
 
+const ANONYMOUS_SHARE_MAX_BYTES = 64 * 1024;
+
+/**
+ * Parses a multipart body only if it fits in `maxBytes` (chunked bodies have
+ * no declared length). Returns undefined when the body is larger.
+ */
+async function readCappedForm(
+  request: Request,
+  maxBytes: number,
+): Promise<FormData | null | undefined> {
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return undefined;
+    }
+    parts.push(value);
+  }
+  const headers = { 'content-type': request.headers.get('content-type') ?? '' };
+  return new Response(Buffer.concat(parts), { headers }).formData().catch(() => null);
+}
+
 function formText(form: FormData, key: string): string | null {
   const value = form.get(key);
   return typeof value === 'string' ? value : null;
@@ -99,7 +127,18 @@ shareTargetRoutes.post('/', async (c) => {
   }
 
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  const form = await c.req.formData().catch(() => null);
+  // Anonymous shares only carry a link across login, so never buffer a large
+  // multipart body for someone who is not signed in.
+  if (!session && contentLength > ANONYMOUS_SHARE_MAX_BYTES) {
+    await c.req.raw.body?.cancel().catch(() => undefined);
+    return c.redirect(loginRedirect(captureRedirect({ error: 'SHARE_LOGIN_FILES' })), 303);
+  }
+  const form = session
+    ? await c.req.formData().catch(() => null)
+    : await readCappedForm(c.req.raw, ANONYMOUS_SHARE_MAX_BYTES);
+  if (!session && form === undefined) {
+    return c.redirect(loginRedirect(captureRedirect({ error: 'SHARE_LOGIN_FILES' })), 303);
+  }
   const sharedUrl = form
     ? extractSharedUrl({
         url: formText(form, 'url'),

@@ -166,25 +166,6 @@ export function readCapturePageIntent(params: URLSearchParams): CapturePageInten
   };
 }
 
-/**
- * One-shot lock for the post-login auto submit of a shared URL. Returns true
- * only the first time a URL is claimed in this tab session.
- */
-export function claimSharedSubmit(
-  url: string,
-  storage: Pick<Storage, 'getItem' | 'setItem'> | null,
-): boolean {
-  const key = `voxen:capture:shared:${url}`;
-  try {
-    if (!storage) return true;
-    if (storage.getItem(key)) return false;
-    storage.setItem(key, String(Date.now()));
-    return true;
-  } catch {
-    return true;
-  }
-}
-
 /** Short human label for a job: document title, file name or the link itself. */
 export function captureLabel(job: CaptureJob): string {
   if (job.transcript?.title) return job.transcript.title;

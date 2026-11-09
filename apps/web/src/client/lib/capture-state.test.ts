@@ -5,7 +5,6 @@ import {
   applyCaptureEvent,
   canRetry,
   captureLabel,
-  claimSharedSubmit,
   mergeCaptures,
   platformLabel,
   readCapturePageIntent,
@@ -172,17 +171,6 @@ describe('capture page intent', () => {
         }),
       ),
     ).toEqual({ focusJobId: null, existingTranscriptId: null, error: null, sharedUrl: null });
-  });
-
-  it('claims a shared link only once per tab session', () => {
-    const store = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => void store.set(key, value),
-    };
-    expect(claimSharedSubmit('https://a.example/x', storage)).toBe(true);
-    expect(claimSharedSubmit('https://a.example/x', storage)).toBe(false);
-    expect(claimSharedSubmit('https://a.example/y', storage)).toBe(true);
   });
 });
 

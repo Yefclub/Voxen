@@ -315,6 +315,29 @@ describeIfDb('capture API', () => {
     expect(text).toContain('"stage":"extracting"');
   });
 
+  it('does not replay the previous attempt after a retry', async () => {
+    const res = await postUrl(a.cookie, 'https://example.com/retry-replay');
+    const { job } = (await res.json()) as { job: { id: string } };
+    await db.jobProgressEvent.create({
+      data: { jobId: job.id, userId: a.userId, stage: 'failed' },
+    });
+    await db.job.update({
+      where: { id: job.id },
+      data: { status: 'FAILED', captureErrorCode: 'NO_TEXT' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(
+      (await call(`/api/captures/${job.id}/retry`, { cookie: a.cookie, method: 'POST' })).status,
+    ).toBe(202);
+    await db.jobProgressEvent.create({
+      data: { jobId: job.id, userId: a.userId, stage: 'extracting', percent: 10 },
+    });
+    await db.job.update({ where: { id: job.id }, data: { status: 'DONE' } });
+    const text = await (await call(`/api/captures/${job.id}/events`, { cookie: a.cookie })).text();
+    expect(text).not.toContain('"stage":"failed"');
+    expect(text).toContain('"stage":"extracting"');
+  });
+
   it('rejects non-web ports as INVALID_URL and keeps blocking private hosts', async () => {
     const port = await postUrl(a.cookie, 'https://example.com:8443/x');
     expect(port.status).toBe(400);

@@ -418,7 +418,13 @@ captureRoutes.get('/:id/events', async (c) => {
           after = anchor?.createdAt ?? null;
         }
         const history = await db.jobProgressEvent.findMany({
-          where: { jobId: id, userId, ...(after ? { createdAt: { gt: after } } : {}) },
+          // Only the current attempt: a retry resets queuedAt, so the previous
+          // attempt's terminal event is never replayed onto the running job.
+          where: {
+            jobId: id,
+            userId,
+            createdAt: after && after > job.queuedAt ? { gt: after } : { gte: job.queuedAt },
+          },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           take: 120,
         });

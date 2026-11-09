@@ -112,8 +112,8 @@ internal network with no published ports, a read-only root filesystem, all
 capabilities dropped, `no-new-privileges`, and CPU/memory limits. It runs
 yt-dlp, Deno, ffmpeg/ffprobe, Trafilatura, and the Smokescreen egress proxy.
 
-- Generate `CAPTURE_WORKER_TOKEN` with `openssl rand -base64 32` (`make dev`
-  does it for you) and give it to `web` and `capture-worker` only. The worker
+- Generate `CAPTURE_WORKER_TOKEN` with `openssl rand -hex 32` (`make dev`
+  does it for you; placeholders are rejected at startup) and give it to `web` and `capture-worker` only. The worker
   never receives `MASTER_KEY`, provider keys, or database credentials.
 - `web` reaches the worker at `CAPTURE_WORKER_URL`
   (`http://capture-worker:8080` in Compose).
@@ -126,7 +126,9 @@ yt-dlp, Deno, ffmpeg/ffprobe, Trafilatura, and the Smokescreen egress proxy.
 - The worker image ships an unmodified LGPL ffmpeg/ffprobe build (BtbN
   `linux64-lgpl`) used only as a separate binary; it is never linked into
   Voxen code. Every other dependency is MIT, Apache-2.0, BSD, ISC, or
-  Unlicense (yt-dlp). See ADR-014 in [`DECISIONS.md`](DECISIONS.md).
+  Unlicense (yt-dlp), except three unmodified MPL transitive dependencies
+  confined to the worker (`certifi`, `tld`, `golang-lru`). See ADR-014 in
+  [`DECISIONS.md`](DECISIONS.md).
 - No cookies or logged-in capture are used. A home-lab residential IP is less
   likely to be blocked by media platforms than a datacenter IP; when a platform
   blocks the server, the capture suggests uploading the file instead.
@@ -206,8 +208,12 @@ build-time secrets). Do not expose a domain or port for it. Set only
 `CAPTURE_WORKER_TOKEN` in its Environment, then add the same
 `CAPTURE_WORKER_TOKEN` and `CAPTURE_WORKER_URL=http://<project>_capture-worker:8080`
 (the internal service hostname Easypanel shows for that App) to the Voxen App
-and redeploy it. Apply the hardening from the Compose service where Easypanel
-allows it (read-only filesystem, dropped capabilities, memory limit).
+and redeploy it. Set a memory limit (2 GB) on the worker App. Easypanel (like
+Openship) cannot apply the Compose service's read-only filesystem, dropped
+capabilities or `no-new-privileges`; there the worker still runs as an
+unprivileged user from an image with no setuid/setgid binaries and holds no
+secret besides its token, but full container hardening requires Docker
+Compose.
 
 Stable release automation publishes the versioned combined image and advances
 `latest` from the same `vX.Y.Z` tag. On `dev`, the combined image is published

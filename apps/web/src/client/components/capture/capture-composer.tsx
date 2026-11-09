@@ -19,6 +19,8 @@ import { CaptureNotice, captureErrorText, type CaptureNoticeState } from './capt
 export interface CaptureComposerHandle {
   openFilePicker: () => void;
   submitUrl: (url: string) => Promise<void>;
+  /** Fills the link field and focuses it without submitting. */
+  prefillUrl: (url: string) => void;
   showNotice: (notice: CaptureNoticeState | null) => void;
 }
 
@@ -139,6 +141,10 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
         submitUrl: (value: string) => {
           setUrl(value);
           return submitUrl(value);
+        },
+        prefillUrl: (value: string) => {
+          setUrl(value);
+          urlInput.current?.focus();
         },
         showNotice: setNotice,
       }),

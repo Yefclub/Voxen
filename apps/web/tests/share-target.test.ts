@@ -1,25 +1,8 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AiRole, CaptureDeps } from '../src/lib/capture/runner';
-
-// The capture deps module imports the AI client from the providers delivery
-// (spec 220, PR 2). Until that module exists in this tree, give the import a
-// stub so the app can load; the test seam below replaces it at runtime anyway.
-if (!existsSync(join(import.meta.dir, '../src/lib/ai/client.ts'))) {
-  mock.module('../src/lib/ai/client', () => ({
-    resolveRole: async () => {
-      throw Object.assign(new Error('stub'), { code: 'AI_NOT_CONFIGURED' });
-    },
-    generateStructured: async () => {
-      throw new Error('stub');
-    },
-    transcribeAudio: async () => {
-      throw new Error('stub');
-    },
-  }));
-}
 
 const storageRoot = mkdtempSync(join(tmpdir(), 'voxen-share-target-'));
 process.env.STORAGE_DRIVER = 'local';
@@ -180,6 +163,16 @@ describeIfDb('POST /share-target', () => {
     expect(next.searchParams.get('error')).toBe('SHARE_LOGIN_FILES');
     expect(await db.job.count()).toBe(before);
     expect(readdirSync(storageRoot)).toEqual([]);
+  });
+
+  it('without a session refuses to buffer a large body', async () => {
+    const before = await db.job.count();
+    const res = await share({
+      files: new File([new Uint8Array(200 * 1024)], 'grande.mp3', { type: 'audio/mpeg' }),
+    });
+    const next = new URL(location(res).searchParams.get('next') ?? '', 'http://localhost');
+    expect(next.searchParams.get('error')).toBe('SHARE_LOGIN_FILES');
+    expect(await db.job.count()).toBe(before);
   });
 
   it('rejects cross-site posts even with a valid session', async () => {
