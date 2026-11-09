@@ -12,18 +12,16 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createXai } from '@ai-sdk/xai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import {
-  APICallError,
   generateText,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   Output,
-  transcribe,
   type JSONValue,
   type LanguageModel,
   type ModelMessage,
   type TranscriptionModel,
 } from 'ai';
-import { z, type ZodType } from 'zod';
+import type { ZodType } from 'zod';
 import {
   estimateSttCostUsd,
   estimateTextCostUsd,
@@ -33,7 +31,18 @@ import {
   type CatalogModel,
 } from './catalog';
 import { getModelRoles, getProviderKey, type ModelRoles } from './credentials';
-import { AiError, AiNotConfiguredError, redactSecrets } from './errors';
+import { AiError, AiNotConfiguredError } from './errors';
+import { toAiError } from './error-mapping';
+import {
+  providerTranscriptionModel,
+  roundSec,
+  transcribeWithOpenRouter,
+  transcribeWithSdk,
+  type ChunkTranscript,
+} from './transcription';
+
+export { toAiError } from './error-mapping';
+export { openRouterAudioFormat, sentenceSegments } from './transcription';
 
 export const PROVIDER_BASE_URLS: Readonly<Record<AiProvider, string>> = {
   openai: 'https://api.openai.com/v1',
@@ -347,277 +356,4 @@ export function callOptions(provider: AiProvider): ProviderCallOptions {
 function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
-
-function roundSec(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
-// ---------------------------------------------------------------------------
-// Speech-to-text
-// ---------------------------------------------------------------------------
-
-interface ChunkTranscript {
-  text: string;
-  segments: TranscriptSegment[];
-  language: string | null;
-  durationSec: number | null;
-}
-
-function providerTranscriptionModel(
-  resolved: ResolvedRole,
-  fetchImpl: typeof fetch,
-): TranscriptionModel {
-  const baseURL = PROVIDER_BASE_URLS[resolved.provider];
-  const options = { apiKey: resolved.apiKey, baseURL, fetch: fetchImpl };
-  switch (resolved.provider) {
-    case 'openai':
-      return createOpenAI(options).transcription(resolved.model);
-    case 'xai':
-      return createXai(options).transcription(resolved.model);
-    default:
-      throw new AiError('LLM_FAILED', 'This provider has no SDK transcription model.', {
-        provider: resolved.provider,
-      });
-  }
-}
-
-async function transcribeWithSdk(
-  model: TranscriptionModel,
-  resolved: ResolvedRole,
-  chunk: AudioChunk,
-  language: string | undefined,
-  signal: AbortSignal,
-): Promise<ChunkTranscript> {
-  const providerKey = resolved.provider === 'openai' ? 'openai' : 'xai';
-  const result = await transcribe({
-    model,
-    audio: chunk.data,
-    timestampGranularities: ['segment'],
-    maxRetries: 1,
-    abortSignal: signal,
-    ...(language ? { providerOptions: { [providerKey]: { language } } } : {}),
-  });
-  const segments = sentenceSegments(
-    result.segments.map((segment) => ({
-      startSec: segment.startSecond,
-      endSec: segment.endSecond,
-      text: segment.text,
-    })),
-  );
-  const durationSec = result.durationInSeconds ?? segments.at(-1)?.endSec ?? null;
-  return {
-    text: result.text,
-    segments: segments.length > 0 ? segments : wholeChunkSegment(result.text, durationSec),
-    language: result.language ?? null,
-    durationSec,
-  };
-}
-
-const OPENROUTER_MIME_FORMATS: Readonly<Record<string, string>> = {
-  'audio/mpeg': 'mp3',
-  'audio/mp3': 'mp3',
-  'audio/wav': 'wav',
-  'audio/x-wav': 'wav',
-  'audio/wave': 'wav',
-  'audio/flac': 'flac',
-  'audio/ogg': 'ogg',
-  'audio/opus': 'opus',
-  'audio/webm': 'webm',
-  'audio/mp4': 'm4a',
-  'audio/m4a': 'm4a',
-  'audio/x-m4a': 'm4a',
-  'audio/aac': 'aac',
-};
-
-const OpenRouterSttResponse = z.object({
-  text: z.string(),
-  language: z.string().nullish(),
-  duration: z.number().nullish(),
-  segments: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })).nullish(),
-  usage: z.object({ seconds: z.number().nullish() }).nullish(),
-});
-
-export function openRouterAudioFormat(mime: string): string {
-  const base = mime.split(';')[0]!.trim().toLowerCase();
-  return OPENROUTER_MIME_FORMATS[base] ?? (base.startsWith('audio/') ? base.slice(6) : 'mp3');
-}
-
-/** OpenRouter STT: JSON body with base64 audio (no AI SDK transcription model). */
-async function transcribeWithOpenRouter(
-  resolved: ResolvedRole,
-  chunk: AudioChunk,
-  language: string | undefined,
-  signal: AbortSignal,
-  fetchImpl: typeof fetch,
-): Promise<ChunkTranscript> {
-  const url = `${PROVIDER_BASE_URLS.openrouter}/audio/transcriptions`;
-  const body = {
-    model: resolved.model,
-    input_audio: {
-      data: Buffer.from(chunk.data).toString('base64'),
-      format: openRouterAudioFormat(chunk.mime),
-    },
-    ...(language ? { language } : {}),
-    response_format: 'verbose_json',
-    timestamp_granularities: ['segment'],
-    provider: { data_collection: 'deny' },
-  };
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${resolved.apiKey}`,
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-    redirect: 'error',
-    signal,
-  });
-  if (!response.ok) {
-    const responseBody = await response.text().catch(() => '');
-    throw new APICallError({
-      message: `OpenRouter transcription failed with HTTP ${response.status}`,
-      url,
-      requestBodyValues: {},
-      statusCode: response.status,
-      responseBody,
-      isRetryable: response.status >= 500,
-    });
-  }
-  const parsed = OpenRouterSttResponse.safeParse(await response.json().catch(() => null));
-  if (!parsed.success) {
-    throw new AiError('LLM_FAILED', 'Unexpected transcription response.', {
-      provider: 'openrouter',
-    });
-  }
-  const segments = sentenceSegments(
-    (parsed.data.segments ?? []).map((segment) => ({
-      startSec: segment.start,
-      endSec: segment.end,
-      text: segment.text,
-    })),
-  );
-  const durationSec =
-    parsed.data.duration ?? parsed.data.usage?.seconds ?? segments.at(-1)?.endSec ?? null;
-  return {
-    text: parsed.data.text,
-    segments: segments.length > 0 ? segments : wholeChunkSegment(parsed.data.text, durationSec),
-    language: parsed.data.language ?? null,
-    durationSec,
-  };
-}
-
-function wholeChunkSegment(text: string, durationSec: number | null): TranscriptSegment[] {
-  const trimmed = text.trim();
-  return trimmed ? [{ startSec: 0, endSec: durationSec ?? 0, text: trimmed }] : [];
-}
-
-const MAX_MERGED_SEGMENT_SEC = 15;
-
-/**
- * Some providers (xAI, OpenAI word fallback) return word-level timings in
- * `segments`. Word-level input is merged into sentence-sized segments; real
- * segments pass through trimmed.
- */
-export function sentenceSegments(segments: readonly TranscriptSegment[]): TranscriptSegment[] {
-  const cleaned = segments
-    .map((segment) => ({ ...segment, text: segment.text.trim() }))
-    .filter((segment) => segment.text.length > 0);
-  if (cleaned.length < 2) return cleaned;
-  const averageWords =
-    cleaned.reduce((sum, segment) => sum + segment.text.split(/\s+/).length, 0) / cleaned.length;
-  if (averageWords > 1.5) return cleaned;
-
-  const merged: TranscriptSegment[] = [];
-  let current: TranscriptSegment | null = null;
-  for (const word of cleaned) {
-    if (!current) {
-      current = { ...word };
-    } else {
-      current.text = `${current.text} ${word.text}`;
-      current.endSec = word.endSec;
-    }
-    const sentenceEnd = /[.!?…]["')\]]?$/.test(word.text);
-    if (sentenceEnd || current.endSec - current.startSec >= MAX_MERGED_SEGMENT_SEC) {
-      merged.push(current);
-      current = null;
-    }
-  }
-  if (current) merged.push(current);
-  return merged;
-}
-
-// ---------------------------------------------------------------------------
-// Error mapping
-// ---------------------------------------------------------------------------
-
-const QUOTA_PATTERN = /quota|billing|credit|insufficient|payment|balance|exceeded your/i;
-
-/** Maps any provider/SDK failure to a typed, secret-free AiError. */
-export function toAiError(error: unknown, resolved: Pick<ResolvedRole, 'provider' | 'apiKey'>) {
-  if (error instanceof AiError) return error;
-  const provider = resolved.provider;
-  if (isAbortLike(error)) {
-    return new AiError('TIMEOUT', 'The provider call was aborted or timed out.', { provider });
-  }
-  const lastError =
-    typeof error === 'object' && error !== null && 'lastError' in error
-      ? (error as { lastError: unknown }).lastError
-      : undefined;
-  if (lastError !== undefined && lastError !== error) return toAiError(lastError, resolved);
-
-  if (APICallError.isInstance(error)) {
-    const status = error.statusCode ?? null;
-    if (status === 401 || status === 403) {
-      return new AiError('LLM_AUTH', `The provider rejected the API key (HTTP ${status}).`, {
-        provider,
-        status,
-      });
-    }
-    // xAI answers HTTP 400 "Incorrect API key provided" for a rejected key.
-    if (
-      status === 400 &&
-      provider === 'xai' &&
-      /(incorrect|invalid)[^.]{0,40}api key/i.test(error.responseBody ?? '')
-    ) {
-      return new AiError('LLM_AUTH', 'The provider rejected the API key (HTTP 400).', {
-        provider,
-        status,
-      });
-    }
-    if (status === 402) {
-      return new AiError('LLM_QUOTA', 'The provider reported insufficient credit (HTTP 402).', {
-        provider,
-        status,
-      });
-    }
-    if (status === 429) {
-      const quota = QUOTA_PATTERN.test(redactSecrets(error.responseBody ?? '', [resolved.apiKey]));
-      return quota
-        ? new AiError('LLM_QUOTA', 'The provider quota or billing limit was reached (HTTP 429).', {
-            provider,
-            status,
-          })
-        : new AiError('LLM_FAILED', 'The provider rate-limited the request (HTTP 429).', {
-            provider,
-            status,
-            retryable: true,
-          });
-    }
-    return new AiError(
-      'LLM_FAILED',
-      `The provider call failed${status ? ` (HTTP ${status})` : ''}.`,
-      { provider, status, retryable: error.isRetryable },
-    );
-  }
-  return new AiError('LLM_FAILED', 'The provider call failed.', { provider });
-}
-
-function isAbortLike(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const name = (error as { name?: unknown }).name;
-  if (name === 'AbortError' || name === 'TimeoutError') return true;
-  const cause = (error as { cause?: unknown }).cause;
-  return cause !== undefined && cause !== error && isAbortLike(cause);
 }
