@@ -77,7 +77,11 @@ RUN echo "Refreshing APT security packages: ${VOXEN_APT_SECURITY_REFRESH}" \
     && python -m pip uninstall --yes pip \
     && groupadd --system --gid 10001 capture \
     && useradd --system --uid 10001 --gid capture --home-dir /nonexistent --no-create-home capture \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Platforms that cannot set no-new-privileges or drop capabilities
+    # (Easypanel, Openship) still get no setuid/setgid escalation path.
+    && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000 -print -quit)"
 
 COPY --from=egress /out/smokescreen /usr/local/bin/smokescreen
 COPY --from=tools /out/deno /out/ffmpeg /out/ffprobe /usr/local/bin/
