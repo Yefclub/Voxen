@@ -62,7 +62,8 @@ export default defineConfig({
         id: '/',
         name: 'Voxen',
         short_name: 'Voxen',
-        description: 'Base de conhecimento self-hosted com IA, transcricao e biblioteca.',
+        description:
+          'Base de conhecimento self-hosted com captura de links e arquivos interpretados por IA.',
         lang: 'pt-BR',
         start_url: '/',
         scope: '/',
@@ -122,7 +123,7 @@ export default defineConfig({
           {
             name: 'Capturar conteúdo',
             short_name: 'Capturar',
-            url: '/',
+            url: '/capturar',
             icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {

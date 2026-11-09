@@ -1,5 +1,6 @@
 import {
   BrainCircuit,
+  Download,
   House,
   KeyRound,
   LineChart,
@@ -22,6 +23,7 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { to: '/', labelKey: 'shell.nav.home', Icon: House, scope: 'workspace' },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo, scope: 'workspace' },
+  { to: '/capturar', labelKey: 'shell.nav.capture', Icon: Download, scope: 'workspace' },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
   { to: '/guia', labelKey: 'shell.nav.guide', Icon: LineChart, scope: 'workspace' },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },

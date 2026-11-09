@@ -66,6 +66,9 @@ const TranscricaoDetalhePage = lazy(() =>
     default: TranscricaoDetalhePage,
   })),
 );
+const CapturarPage = lazy(() =>
+  import('./pages/capturar').then(({ CapturarPage }) => ({ default: CapturarPage })),
+);
 const NotasPage = lazy(() =>
   import('./pages/notas').then(({ NotasPage }) => ({ default: NotasPage })),
 );
@@ -182,6 +185,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/fila" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/jobs" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/jobs/:id" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/capturar" element={<CapturarPage />} />
         <Route path="/transcricoes" element={<TranscricoesPage />} />
         <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
         <Route path="/downloads" element={<Navigate to="/transcricoes" replace />} />
