@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794264446",
+    "channel": "dev",
+    "type": "infra",
+    "title": "New capture worker container for link capture",
+    "body": "Voxen now ships a `capture-worker` service that downloads and extracts content from web pages, YouTube, TikTok, Instagram, X posts and uploaded files. It runs isolated: it holds no encryption key, no AI provider keys and no database access, and every outbound request goes through a built-in egress filter that blocks private and internal addresses. `make ensure-env` generates its access token. The capture screens that use it arrive in a later release; the knowledge base keeps working without it.",
+    "pr": 1037,
+    "author": "Kalyel",
+    "date": "2026-11-09T19:47:12-03:00",
+    "translations": {
+      "en": {
+        "title": "New capture worker container for link capture",
+        "body": "Voxen now ships a `capture-worker` service that downloads and extracts content from web pages, YouTube, TikTok, Instagram, X posts and uploaded files. It runs isolated: it holds no encryption key, no AI provider keys and no database access, and every outbound request goes through a built-in egress filter that blocks private and internal addresses. `make ensure-env` generates its access token. The capture screens that use it arrive in a later release; the knowledge base keeps working without it."
+      },
+      "pt-BR": {
+        "title": "Novo container de captura para links",
+        "body": "A Voxen agora inclui o serviço `capture-worker`, que baixa e extrai o conteúdo de páginas web, YouTube, TikTok, Instagram, posts do X e arquivos enviados. Ele roda isolado: não guarda chave de criptografia, chaves de provedores de IA nem acesso ao banco, e toda requisição de saída passa por um filtro embutido que bloqueia endereços privados e internos. O `make ensure-env` gera o token de acesso. As telas de captura que usam o serviço chegam numa próxima versão; a base continua funcionando sem ele."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1037"
+  },
+  {
     "version": "0.15.1-dev.1794261802",
     "channel": "dev",
     "type": "chore",

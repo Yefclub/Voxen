@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794264446 — 2026-11-09 · Dev
+
+### 🛠️ New capture worker container for link capture
+
+Voxen now ships a `capture-worker` service that downloads and extracts content from web pages, YouTube, TikTok, Instagram, X posts and uploaded files. It runs isolated: it holds no encryption key, no AI provider keys and no database access, and every outbound request goes through a built-in egress filter that blocks private and internal addresses. `make ensure-env` generates its access token. The capture screens that use it arrive in a later release; the knowledge base keeps working without it.
+
 ## v0.15.1-dev.1794261802 — 2026-11-09 · Dev
 
 ### 🧹 Link capture with cloud AI is now planned in spec 220
