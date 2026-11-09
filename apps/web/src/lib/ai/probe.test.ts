@@ -35,6 +35,11 @@ describe('probeProviderKey', () => {
       error: 'HTTP_401',
     });
     expect((await createKeyProbe(fetchReturning(403))('xai', KEY)).status).toBe('invalid');
+    expect(await createKeyProbe(fetchReturning(400))('xai', KEY)).toEqual({
+      status: 'invalid',
+      error: 'HTTP_400',
+    });
+    expect((await createKeyProbe(fetchReturning(400))('openai', KEY)).status).toBe('unknown');
     expect(await createKeyProbe(fetchReturning(503))('openai', KEY)).toEqual({
       status: 'unknown',
       error: 'HTTP_503',

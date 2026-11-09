@@ -180,7 +180,9 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     }
     const model = languageModel(resolved);
     const messages: ModelMessage[] = [{ role: 'user', content: untrustedContent(input.untrusted) }];
-    const usage = { inputTokens: 0, outputTokens: 0, known: true };
+    const usage = { inputTokens: 0, outputTokens: 0, known: true, costUsd: 0 as number | null };
+    // Long-context price tiers apply per request, so each attempt is priced
+    // on its own before the costs are summed.
     const addUsage = (value: TokenUsage | undefined) => {
       if (value?.inputTokens === undefined || value.outputTokens === undefined) {
         usage.known = false;
@@ -188,6 +190,9 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
       }
       usage.inputTokens += value.inputTokens;
       usage.outputTokens += value.outputTokens;
+      const attemptCost = estimateTextCostUsd(resolved.catalog, value);
+      usage.costUsd =
+        attemptCost === null || usage.costUsd === null ? null : usage.costUsd + attemptCost;
     };
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -212,11 +217,12 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
           output,
           modelRef: `${resolved.provider}:${resolved.model}`,
           usage: totals,
-          costUsd: estimateTextCostUsd(resolved.catalog, totals),
+          costUsd: usage.known ? usage.costUsd : null,
         };
       } catch (error) {
         if (NoObjectGeneratedError.isInstance(error) || NoOutputGeneratedError.isInstance(error)) {
           if (NoObjectGeneratedError.isInstance(error)) addUsage(error.usage);
+          else usage.known = false;
           if (attempt < 2) continue;
           throw new AiError('LLM_FAILED', 'The model output did not match the schema twice.', {
             provider: resolved.provider,
@@ -320,14 +326,18 @@ export function callOptions(provider: AiProvider): ProviderCallOptions {
     case 'openai':
       return { reasoning: 'none', providerOptions: { openai: { store: false } } };
     case 'anthropic':
-    case 'xai':
       return { reasoning: 'none' };
+    case 'xai':
+      // The xAI Responses API stores prompts and outputs unless told not to.
+      return { reasoning: 'none', providerOptions: { xai: { store: false } } };
     case 'openrouter':
       return {
         providerOptions: {
           openrouter: {
+            // `require_parameters` keeps structured output and data-collection
+            // rules enforced; no `reasoning` field, because combined with it
+            // OpenRouter could find no endpoint for non-reasoning models.
             provider: { require_parameters: true, data_collection: 'deny' },
-            reasoning: { effort: 'minimal' },
           },
         },
       };
@@ -561,6 +571,17 @@ export function toAiError(error: unknown, resolved: Pick<ResolvedRole, 'provider
     const status = error.statusCode ?? null;
     if (status === 401 || status === 403) {
       return new AiError('LLM_AUTH', `The provider rejected the API key (HTTP ${status}).`, {
+        provider,
+        status,
+      });
+    }
+    // xAI answers HTTP 400 "Incorrect API key provided" for a rejected key.
+    if (
+      status === 400 &&
+      provider === 'xai' &&
+      /(incorrect|invalid)[^.]{0,40}api key/i.test(error.responseBody ?? '')
+    ) {
+      return new AiError('LLM_AUTH', 'The provider rejected the API key (HTTP 400).', {
         provider,
         status,
       });

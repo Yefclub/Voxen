@@ -56,7 +56,12 @@ export function createKeyProbe(fetchImpl: typeof fetch = fetch): ProbeProviderKe
     // The body is never read: it may echo request data and is not needed.
     await response.body?.cancel().catch(() => undefined);
     if (response.ok) return { status: 'valid', error: null };
-    if (response.status === 401 || response.status === 403) {
+    // xAI answers 400 to a rejected key; a parameterless GET has no other 400 cause.
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      (provider === 'xai' && response.status === 400)
+    ) {
       return { status: 'invalid', error: `HTTP_${response.status}` };
     }
     return { status: 'unknown', error: `HTTP_${response.status}` };

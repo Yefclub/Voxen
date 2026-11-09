@@ -242,6 +242,37 @@ describe('generateStructured', () => {
     expect(captured[0]!.headers.get('authorization')).toBe(`Bearer ${KEYS.openai}`);
   });
 
+  test('xAI requests send store:false and map a 400 rejected key to LLM_AUTH', async () => {
+    const captured: CapturedRequest[] = [];
+    const client = createAiClient(
+      deps(
+        { standard: { provider: 'xai', model: 'grok-4.3' } },
+        {
+          fetch: failingFetch(
+            400,
+            `{"code":"Client specified an invalid argument","error":"Incorrect API key provided: ${KEYS.xai}"}`,
+            captured,
+          ),
+        },
+      ),
+    );
+    const error = await client
+      .generateStructured({
+        userId: USER,
+        role: 'standard',
+        instructions: 'x',
+        untrusted: [{ text: 'y' }],
+        schema: Summary,
+        maxOutputTokens: 100,
+      })
+      .catch((caught: unknown) => caught);
+    expect((error as AiError).code).toBe('LLM_AUTH');
+    expect((error as AiError).message).not.toContain(KEYS.xai);
+    expect(captured[0]!.url.startsWith('https://api.x.ai/v1/')).toBe(true);
+    expect(captured[0]!.body.store).toBe(false);
+    expect(captured[0]!.body.tools).toBeUndefined();
+  });
+
   test('OpenRouter requests require parameters, deny data collection and use no plugins', async () => {
     const captured: CapturedRequest[] = [];
     const client = createAiClient(
@@ -264,7 +295,7 @@ describe('generateStructured', () => {
     expect(captured[0]!.url).toBe('https://openrouter.ai/api/v1/chat/completions');
     expect(body.model).toBe('deepseek/deepseek-v4.1-flash');
     expect(body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
-    expect(body.reasoning).toEqual({ effort: 'minimal' });
+    expect(body.reasoning).toBeUndefined();
     expect(body.plugins).toBeUndefined();
     expect(body.tools).toBeUndefined();
     expect(body.temperature).toBeUndefined();
