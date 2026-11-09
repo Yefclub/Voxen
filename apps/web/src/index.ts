@@ -30,7 +30,9 @@ import { resolveStorageDriver, storageGet } from './lib/storage';
 import { publicAuthenticationRoutes } from './routes/public-authentication';
 import { mcpOAuthDiscoveryRoutes } from './routes/mcp-oauth';
 import { mcpOAuthAccountRoutes } from './routes/mcp-oauth-account';
+import { MAX_MEDIA_UPLOAD_REQUEST_BYTES } from './lib/media-upload';
 import { requestLogging } from './lib/request-logging';
+import { captureRoutes } from './routes/captures';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -165,6 +167,7 @@ app.route('/api/account', accountRoutes);
 app.route('/api/notes', notesRoutes);
 // Organização compartilhada da biblioteca
 app.route('/api/library', libraryRoutes);
+app.route('/api/captures', captureRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
@@ -350,6 +353,36 @@ if (process.env.NODE_ENV === 'production') {
       );
     });
 
+  // Link capture (spec 220): durable CAPTURE_* jobs drained in the web
+  // process, one at a time, woken by Redis `jobs:new` and a periodic sweep
+  // that also reclaims expired leases and backoff-delayed retries.
+  void Promise.all([
+    import('./lib/capture/runner'),
+    import('./lib/capture/deps'),
+    import('./lib/redis'),
+  ])
+    .then(([{ drainCaptureJobs }, { getCaptureDeps }, { createSubscriber }]) => {
+      const drain = (): void => {
+        void drainCaptureJobs(getCaptureDeps()).catch((err) => {
+          structuredDiagnostic('warning', 'capture-drain-failed', 'CAPTURE_DRAIN_FAILED', err);
+        });
+      };
+      drain();
+      setInterval(drain, 15_000).unref();
+      const wakeups = createSubscriber();
+      wakeups.on('message', () => drain());
+      wakeups.on('error', () => undefined);
+      void wakeups.subscribe('jobs:new').catch(() => undefined);
+    })
+    .catch((err) => {
+      structuredDiagnostic(
+        'warning',
+        'capture-runner-unavailable',
+        'CAPTURE_RUNNER_UNAVAILABLE',
+        err,
+      );
+    });
+
   void import('./routes/graph')
     .then(({ reconcileGraphUsers }) => {
       const reconcile = (): void => {
@@ -381,7 +414,10 @@ function isLongLivedStreamRequest(req: Request): boolean {
   if (req.method === 'GET') {
     const path = new URL(req.url).pathname;
     // Graph SSE: idle do Bun ainda pode matar a conexão.
-    return path.endsWith('/api/graph/events');
+    return (
+      path.endsWith('/api/graph/events') ||
+      (path.startsWith('/api/captures/') && path.endsWith('/events'))
+    );
   }
   return false;
 }
@@ -391,6 +427,8 @@ export default {
   // Bun.serve fecha conexões ociosas em 10s por padrão (inclui streams quietos).
   // 255s é o máximo da API; streams longos desabilitam o timeout por request.
   idleTimeout: 255,
+  // Capture uploads accept up to 500 MB (spec 220); Bun's default is 128 MB.
+  maxRequestBodySize: MAX_MEDIA_UPLOAD_REQUEST_BYTES,
   // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
   // `app.fetch(req)` direto (sem server) — por isso é opcional.
   // Tipamos o retorno como `Response | Promise<Response>` pra não poluir os
