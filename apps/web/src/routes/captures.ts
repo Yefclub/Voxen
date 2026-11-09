@@ -12,19 +12,26 @@
 // userId always comes from the session; nothing here fetches the URL.
 // ============================================================================
 
-import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
-import { getCaptureDeps } from '../lib/capture/deps';
 import {
   describeCaptureError,
   isCaptureErrorCode,
   type CaptureErrorCode,
   type CaptureLocale,
 } from '../lib/capture/errors';
+import {
+  ACTIVE_STATUSES,
+  CAPTURE_TYPES,
+  enqueueCapture,
+  submitCaptureUpload,
+  submitCaptureUrl,
+  textRoleConfigured,
+  type SubmitOutcome,
+} from '../lib/capture/submit';
 import { isCaptureUrlError, parseCaptureUrl } from '../lib/capture/url';
 import { db } from '../lib/db';
 import {
@@ -35,26 +42,17 @@ import {
   requestCancel,
   type JobStage,
 } from '../lib/job-events';
-import {
-  MAX_MEDIA_UPLOAD_BYTES,
-  detectUploadKind,
-  putUploadFile,
-  sanitizeUploadFilename,
-  uploadSourceUrl,
-} from '../lib/media-upload';
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
 import { getAppLanguage } from '../lib/settings';
-import { findTranscriptBySourceIdentity } from '../lib/transcript-source-identity';
+
+export { submitCaptureUpload, submitCaptureUrl, type SubmitOutcome } from '../lib/capture/submit';
 
 type Vars = { userId: string };
 
 export const captureRoutes = new Hono<{ Variables: Vars }>();
 
-const CAPTURE_TYPES = ['CAPTURE_LINK', 'CAPTURE_UPLOAD'] as const;
-const ACTIVE = ['QUEUED', 'RUNNING'] as const;
-
-const TEXT_UPLOAD_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
+const ACTIVE = ACTIVE_STATUSES;
 
 captureRoutes.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -145,101 +143,6 @@ async function readJob(userId: string, id: string): Promise<JobRow | null> {
     where: { id, userId, type: { in: [...CAPTURE_TYPES] } },
     select: JOB_SELECT,
   });
-}
-
-async function textRoleConfigured(userId: string): Promise<boolean> {
-  return getCaptureDeps().ai.isRoleConfigured(userId, 'standard');
-}
-
-async function enqueue(
-  data: Prisma.JobUncheckedCreateInput,
-): Promise<{ id: string; deduped: boolean }> {
-  try {
-    const job = await db.job.create({ data, select: { id: true } });
-    await publishJobEvent(data.userId, { jobId: job.id, stage: 'queued', percent: 0 }).catch(
-      () => {},
-    );
-    await notifyNewJob(job.id).catch(() => {});
-    return { id: job.id, deduped: false };
-  } catch (error) {
-    // Job_user_url_active_unique: a concurrent submit won the race.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const active = await db.job.findFirst({
-        where: { userId: data.userId, sourceUrl: data.sourceUrl, status: { in: [...ACTIVE] } },
-        select: { id: true },
-      });
-      if (active) return { id: active.id, deduped: true };
-    }
-    throw error;
-  }
-}
-
-export type SubmitOutcome =
-  | { kind: 'error'; status: 400 | 409 | 413 | 415; code: CaptureErrorCode }
-  | { kind: 'job'; jobId: string; deduped: boolean }
-  | { kind: 'existing'; transcriptId: string; title: string };
-
-/** Spec 220 submit order: validate → active job → library → text role → enqueue. */
-export async function submitCaptureUrl(userId: string, input: unknown): Promise<SubmitOutcome> {
-  const parsed = parseCaptureUrl(input);
-  if (isCaptureUrlError(parsed)) return { kind: 'error', status: 400, code: parsed.code };
-  const candidates = [...new Set([parsed.canonical, parsed.url])];
-  const active = await db.job.findFirst({
-    where: { userId, sourceUrl: { in: candidates }, status: { in: [...ACTIVE] } },
-    select: { id: true },
-    orderBy: { queuedAt: 'desc' },
-  });
-  if (active) return { kind: 'job', jobId: active.id, deduped: true };
-  for (const candidate of candidates) {
-    const existing = await findTranscriptBySourceIdentity(db, userId, candidate);
-    if (existing) {
-      const doc = await db.transcript.findFirst({
-        where: { id: existing.id, userId },
-        select: { title: true },
-      });
-      return { kind: 'existing', transcriptId: existing.id, title: doc?.title ?? '' };
-    }
-  }
-  if (!(await textRoleConfigured(userId)))
-    return { kind: 'error', status: 409, code: 'AI_NOT_CONFIGURED' };
-  const job = await enqueue({
-    userId,
-    type: 'CAPTURE_LINK',
-    status: 'QUEUED',
-    sourceUrl: parsed.canonical,
-    captureMeta: { submittedUrl: parsed.url, platform: parsed.platform.toLowerCase() },
-  });
-  return { kind: 'job', jobId: job.id, deduped: job.deduped };
-}
-
-/** Spec 220 upload order: text role → type → size → store → enqueue. */
-export async function submitCaptureUpload(userId: string, file: File): Promise<SubmitOutcome> {
-  if (!(await textRoleConfigured(userId)))
-    return { kind: 'error', status: 409, code: 'AI_NOT_CONFIGURED' };
-  const filename = sanitizeUploadFilename(file.name || 'arquivo');
-  const contentType = file.type || 'application/octet-stream';
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const supported =
-    detectUploadKind(filename, contentType) !== null || TEXT_UPLOAD_EXTENSIONS.has(ext);
-  if (!supported) return { kind: 'error', status: 415, code: 'UNSUPPORTED' };
-  if (file.size === 0) return { kind: 'error', status: 415, code: 'UNSUPPORTED' };
-  if (file.size > MAX_MEDIA_UPLOAD_BYTES) return { kind: 'error', status: 413, code: 'TOO_LARGE' };
-  const uploadId = randomUUID();
-  const objectKey = await putUploadFile({
-    userId,
-    uploadId,
-    filename,
-    body: new Uint8Array(await file.arrayBuffer()),
-    contentType,
-  });
-  const job = await enqueue({
-    userId,
-    type: 'CAPTURE_UPLOAD',
-    status: 'QUEUED',
-    sourceUrl: uploadSourceUrl(uploadId, filename),
-    captureMeta: { platform: 'upload', upload: { objectKey, filename, mimeType: contentType } },
-  });
-  return { kind: 'job', jobId: job.id, deduped: job.deduped };
 }
 
 async function respondOutcome(
@@ -416,7 +319,7 @@ captureRoutes.post('/reprocess/:transcriptId', async (c) => {
   if (!(await textRoleConfigured(userId))) {
     return c.json(errorBody('AI_NOT_CONFIGURED', lang, { settingsUrl: '/conta/ia' }), 409);
   }
-  const outcome = await enqueue({
+  const outcome = await enqueueCapture({
     userId,
     type: 'CAPTURE_LINK',
     status: 'QUEUED',
