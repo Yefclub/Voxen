@@ -10,7 +10,6 @@ import { db } from '../db';
 import { notifyNewJob, publishJobEvent } from '../job-events';
 import {
   MAX_MEDIA_UPLOAD_BYTES,
-  detectUploadKind,
   putUploadFile,
   sanitizeUploadFilename,
   uploadSourceUrl,
@@ -23,7 +22,42 @@ import { isCaptureUrlError, parseCaptureUrl } from './url';
 export const CAPTURE_TYPES = ['CAPTURE_LINK', 'CAPTURE_UPLOAD'] as const;
 export const ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
 const ACTIVE = ACTIVE_STATUSES;
-const TEXT_UPLOAD_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
+// Spec 220 upload types: audio, video, image, PDF, text and Markdown. The
+// content type is derived from the extension (browsers often send
+// application/octet-stream) so the worker routes the file correctly.
+const UPLOAD_CONTENT_TYPES: Readonly<Record<string, string>> = {
+  aac: 'audio/aac',
+  aiff: 'audio/aiff',
+  flac: 'audio/flac',
+  m4a: 'audio/mp4',
+  mp3: 'audio/mpeg',
+  mpga: 'audio/mpeg',
+  ogg: 'audio/ogg',
+  opus: 'audio/ogg',
+  wav: 'audio/wav',
+  wma: 'audio/x-ms-wma',
+  avi: 'video/x-msvideo',
+  m4v: 'video/mp4',
+  mkv: 'video/x-matroska',
+  mov: 'video/quicktime',
+  mp4: 'video/mp4',
+  mpeg: 'video/mpeg',
+  webm: 'video/webm',
+  gif: 'image/gif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+};
+
+export function captureUploadContentType(filename: string): string | null {
+  const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() ?? '') : '';
+  return UPLOAD_CONTENT_TYPES[ext] ?? null;
+}
 
 export async function textRoleConfigured(userId: string): Promise<boolean> {
   return getCaptureDeps().ai.isRoleConfigured(userId, 'standard');
@@ -95,11 +129,8 @@ export async function submitCaptureUpload(userId: string, file: File): Promise<S
   if (!(await textRoleConfigured(userId)))
     return { kind: 'error', status: 409, code: 'AI_NOT_CONFIGURED' };
   const filename = sanitizeUploadFilename(file.name || 'arquivo');
-  const contentType = file.type || 'application/octet-stream';
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const supported =
-    detectUploadKind(filename, contentType) !== null || TEXT_UPLOAD_EXTENSIONS.has(ext);
-  if (!supported) return { kind: 'error', status: 415, code: 'UNSUPPORTED' };
+  const contentType = captureUploadContentType(filename);
+  if (!contentType) return { kind: 'error', status: 415, code: 'UNSUPPORTED' };
   if (file.size === 0) return { kind: 'error', status: 415, code: 'UNSUPPORTED' };
   if (file.size > MAX_MEDIA_UPLOAD_BYTES) return { kind: 'error', status: 413, code: 'TOO_LARGE' };
   const uploadId = randomUUID();

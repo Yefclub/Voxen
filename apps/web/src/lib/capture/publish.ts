@@ -235,7 +235,11 @@ async function publishNew(input: PublishInput): Promise<PublishResult> {
     where: { userId_key: { userId: input.userId, key: captureIngestKey(input.jobId) } },
     select: { targetId: true },
   });
-  if (existingKey) return { transcriptId: existingKey.targetId, created: false, changed: false };
+  if (existingKey) {
+    // A crash after the commit may have skipped tagging; tagging is idempotent.
+    await finishTags(input.userId, existingKey.targetId, input.interpretation.tags);
+    return { transcriptId: existingKey.targetId, created: false, changed: false };
+  }
 
   const fields = documentFields(input);
   const preview = await copyPreview(input.userId, transcriptId, input.artifact);
@@ -333,6 +337,12 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
     },
   });
   if (!current) throw new Error('Reprocess target no longer exists.');
+  const currentMeta = (current.sourceMetadata ?? {}) as Record<string, unknown>;
+  if (currentMeta.jobId === input.jobId) {
+    // Replay of a publish that already committed: do not bump the version again.
+    await finishTags(input.userId, refreshId, input.interpretation.tags);
+    return { transcriptId: refreshId, created: false, changed: false };
+  }
   const fields = documentFields(input, current.source);
   const baseline = Math.max(1, current.sourceVersion);
   const nextVersion = baseline + 1;
@@ -357,7 +367,7 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
       ],
       skipDuplicates: true,
     });
-    await tx.transcriptTag.deleteMany({ where: { transcriptId: refreshId } });
+    // Tags are additive on reprocess: manual tags the user added stay.
     await tx.chunk.deleteMany({ where: { transcriptId: refreshId } });
     await tx.transcript.update({
       where: { id: refreshId },

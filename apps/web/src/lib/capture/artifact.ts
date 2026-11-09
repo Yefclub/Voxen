@@ -9,6 +9,10 @@ import type { WorkerExtraction } from './worker-client';
 export const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 1_500_000;
 
+export function captureArtifactPrefix(userId: string, jobId: string): string {
+  return `workspaces/${userId}/captures/${jobId}/`;
+}
+
 export function captureArtifactKey(userId: string, jobId: string): string {
   return `workspaces/${userId}/captures/${jobId}/capture.json`;
 }

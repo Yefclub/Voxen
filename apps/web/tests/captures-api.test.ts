@@ -265,6 +265,62 @@ describeIfDb('capture API', () => {
     expect(job).toMatchObject({ kind: 'upload', filename: 'nota.md' });
   });
 
+  it('resumes SSE after Last-Event-ID without repeating earlier events', async () => {
+    const res = await postUrl(a.cookie, 'https://example.com/sse-resume');
+    const { job } = (await res.json()) as { job: { id: string } };
+    const first = await db.jobProgressEvent.findFirstOrThrow({ where: { jobId: job.id } });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await db.jobProgressEvent.create({
+      data: { jobId: job.id, userId: a.userId, stage: 'extracting', percent: 10 },
+    });
+    await db.job.update({ where: { id: job.id }, data: { status: 'DONE' } });
+    const stream = await call(`/api/captures/${job.id}/events`, {
+      cookie: a.cookie,
+      headers: { 'last-event-id': first.id },
+    });
+    const text = await stream.text();
+    expect(text).not.toContain(`id: ${first.id}`);
+    expect(text).toContain('"stage":"extracting"');
+  });
+
+  it('rejects non-web ports as INVALID_URL and keeps blocking private hosts', async () => {
+    const port = await postUrl(a.cookie, 'https://example.com:8443/x');
+    expect(port.status).toBe(400);
+    expect(((await port.json()) as { error: { code: string } }).error.code).toBe('INVALID_URL');
+  });
+
+  it('rejects office documents with 415 even though the library accepts them', async () => {
+    const form = new FormData();
+    form.set('file', new File([new Uint8Array([80, 75, 3, 4])], 'planilha.xlsx'));
+    const res = await call('/api/captures/upload', {
+      cookie: a.cookie,
+      method: 'POST',
+      body: form,
+    });
+    expect(res.status).toBe(415);
+  });
+
+  it('normalizes an octet-stream upload type from its extension', async () => {
+    const form = new FormData();
+    form.set(
+      'file',
+      new File([new Uint8Array([0xff, 0xfb, 0x90])], 'voz.mp3', {
+        type: 'application/octet-stream',
+      }),
+    );
+    const res = await call('/api/captures/upload', {
+      cookie: a.cookie,
+      method: 'POST',
+      body: form,
+    });
+    expect(res.status).toBe(202);
+    const { job } = (await res.json()) as { job: { id: string } };
+    const row = await db.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect((row.captureMeta as { upload: { mimeType: string } }).upload.mimeType).toBe(
+      'audio/mpeg',
+    );
+  });
+
   it('replays persisted progress events over SSE and closes on a terminal state', async () => {
     const res = await postUrl(a.cookie, 'https://example.com/sse');
     const { job } = (await res.json()) as { job: { id: string } };

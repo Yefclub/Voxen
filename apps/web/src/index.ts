@@ -39,6 +39,19 @@ const app = new Hono();
 
 app.use('*', requestLogging);
 
+// Bun accepts up to MAX_MEDIA_UPLOAD_REQUEST_BYTES (capture uploads, spec 220);
+// every other route keeps the previous 128 MB ceiling. Checked on the declared
+// length so the request stream is never wrapped (cancellation must propagate).
+const DEFAULT_BODY_LIMIT_BYTES = 128 * 1024 * 1024;
+const LARGE_BODY_PATHS = new Set(['/api/captures/upload', '/share-target']);
+app.use('*', async (c, next) => {
+  const declared = Number(c.req.header('content-length') ?? '0');
+  if (declared > DEFAULT_BODY_LIMIT_BYTES && !LARGE_BODY_PATHS.has(new URL(c.req.url).pathname)) {
+    return c.json({ error: 'Corpo da requisição grande demais.' }, 413);
+  }
+  return next();
+});
+
 app.onError((error, c) => {
   structuredDiagnostic('error', 'unhandled-request-error', 'UNHANDLED_REQUEST_ERROR', error, {
     request_id: validCorrelationId(c.res.headers.get('x-request-id')) ?? undefined,
@@ -353,36 +366,6 @@ if (process.env.NODE_ENV === 'production') {
       );
     });
 
-  // Link capture (spec 220): durable CAPTURE_* jobs drained in the web
-  // process, one at a time, woken by Redis `jobs:new` and a periodic sweep
-  // that also reclaims expired leases and backoff-delayed retries.
-  void Promise.all([
-    import('./lib/capture/runner'),
-    import('./lib/capture/deps'),
-    import('./lib/redis'),
-  ])
-    .then(([{ drainCaptureJobs }, { getCaptureDeps }, { createSubscriber }]) => {
-      const drain = (): void => {
-        void drainCaptureJobs(getCaptureDeps()).catch((err) => {
-          structuredDiagnostic('warning', 'capture-drain-failed', 'CAPTURE_DRAIN_FAILED', err);
-        });
-      };
-      drain();
-      setInterval(drain, 15_000).unref();
-      const wakeups = createSubscriber();
-      wakeups.on('message', () => drain());
-      wakeups.on('error', () => undefined);
-      void wakeups.subscribe('jobs:new').catch(() => undefined);
-    })
-    .catch((err) => {
-      structuredDiagnostic(
-        'warning',
-        'capture-runner-unavailable',
-        'CAPTURE_RUNNER_UNAVAILABLE',
-        err,
-      );
-    });
-
   void import('./routes/graph')
     .then(({ reconcileGraphUsers }) => {
       const reconcile = (): void => {
@@ -403,6 +386,51 @@ if (process.env.NODE_ENV === 'production') {
         'warning',
         'graph-runtime-unavailable',
         'GRAPH_RUNTIME_UNAVAILABLE',
+        err,
+      );
+    });
+}
+
+// Link capture (spec 220): durable CAPTURE_* jobs drained in the web process,
+// one at a time, woken by Redis `jobs:new` and a periodic sweep that also
+// reclaims expired leases and backoff-delayed retries. Runs in production and
+// local development (Compose forces NODE_ENV=development); never under tests.
+if (process.env.NODE_ENV !== 'test') {
+  void Promise.all([
+    import('./lib/capture/runner'),
+    import('./lib/capture/deps'),
+    import('./lib/redis'),
+  ])
+    .then(
+      ([
+        { drainCaptureJobs, purgeStaleCaptureArtifacts },
+        { getCaptureDeps },
+        { createSubscriber },
+      ]) => {
+        const drain = (): void => {
+          void drainCaptureJobs(getCaptureDeps()).catch((err) => {
+            structuredDiagnostic('warning', 'capture-drain-failed', 'CAPTURE_DRAIN_FAILED', err);
+          });
+        };
+        drain();
+        setInterval(drain, 15_000).unref();
+        const purge = (): void => {
+          void purgeStaleCaptureArtifacts().catch((err) => {
+            structuredDiagnostic('warning', 'capture-purge-failed', 'CAPTURE_PURGE_FAILED', err);
+          });
+        };
+        setInterval(purge, 60 * 60_000).unref();
+        const wakeups = createSubscriber();
+        wakeups.on('message', () => drain());
+        wakeups.on('error', () => undefined);
+        void wakeups.subscribe('jobs:new').catch(() => undefined);
+      },
+    )
+    .catch((err) => {
+      structuredDiagnostic(
+        'warning',
+        'capture-runner-unavailable',
+        'CAPTURE_RUNNER_UNAVAILABLE',
         err,
       );
     });

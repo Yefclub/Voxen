@@ -36,9 +36,10 @@ export async function claimCaptureJob(
   owner: string,
   now = new Date(),
 ): Promise<ClaimedCaptureJob | null> {
-  return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: string; attempt: number }>>`
-      SELECT id, attempt FROM "Job"
+  let exhausted: string | null = null;
+  const claimed = await db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string; attempt: number; userId: string }>>`
+      SELECT id, attempt, "userId" FROM "Job"
       WHERE id = ${jobId}
         AND type IN ('CAPTURE_LINK', 'CAPTURE_UPLOAD')
         AND (
@@ -64,6 +65,7 @@ export async function claimCaptureJob(
           errorMsg: captureErrorMessage('TIMEOUT'),
         },
       });
+      exhausted = row.userId;
       return null;
     }
     await tx.job.updateMany({
@@ -108,6 +110,15 @@ export async function claimCaptureJob(
       captureMeta: (job.captureMeta ?? {}) as Record<string, unknown>,
     };
   });
+  if (exhausted) {
+    // Over budget: tell SSE clients the job is terminal now, not on reconnect.
+    await publishJobEvent(exhausted, {
+      jobId,
+      stage: 'failed',
+      errorMsg: captureErrorMessage('TIMEOUT'),
+    }).catch(() => {});
+  }
+  return claimed;
 }
 
 export function startHeartbeat(job: ClaimedCaptureJob, controller: AbortController): () => void {
@@ -144,6 +155,10 @@ export async function progress(
   stage: JobStage,
   percent: number,
 ): Promise<void> {
+  // Fenced: a progress write racing a cancel must not move a CANCELLED row
+  // back to a running stage or emit a non-terminal event after `cancelled`.
+  const live = await db.job.count({ where: fence(job) }).catch(() => 0);
+  if (live !== 1) return;
   await publishJobEvent(job.userId, { jobId: job.id, stage, percent }).catch(() => {});
 }
 
@@ -156,7 +171,13 @@ export function mapUnknownError(error: unknown, parent: AbortSignal): CaptureErr
   if (error instanceof LeaseLostError || parent.reason instanceof LeaseLostError)
     throw new LeaseLostError();
   const code = (error as { code?: unknown } | null)?.code;
-  if (isCaptureErrorCode(code)) return new CaptureError(code);
+  if (isCaptureErrorCode(code)) {
+    // Keep the provider's transient flag (429 / retryable 5xx) for backoff.
+    const retryable = (error as { retryable?: unknown }).retryable;
+    return new CaptureError(code, code, {
+      retryable: typeof retryable === 'boolean' ? retryable || undefined : undefined,
+    });
+  }
   const name = (error as { name?: unknown } | null)?.name;
   if (name === 'TimeoutError' || name === 'AbortError') return new CaptureError('TIMEOUT');
   return new CaptureError('UNKNOWN', error instanceof Error ? error.name : 'unknown');

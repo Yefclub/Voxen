@@ -92,6 +92,8 @@ function isBlockedIpv6(host: string): boolean {
     h.startsWith('fe9') ||
     h.startsWith('fea') ||
     h.startsWith('feb') ||
+    /^fe[c-f]/.test(h) ||
+    h.startsWith('2002:') ||
     h.startsWith('ff') ||
     h.startsWith('64:ff9b:') ||
     h.startsWith('2001:db8:')
@@ -145,7 +147,9 @@ export function parseCaptureUrl(input: unknown): CaptureUrl | CaptureUrlError {
   if (url.username || url.password) return { code: 'INVALID_URL' };
   if (!url.hostname) return { code: 'INVALID_URL' };
   if (isBlockedHost(url.hostname)) return { code: 'BLOCKED_ADDRESS' };
-  if (url.port && url.port !== '80' && url.port !== '443') return { code: 'BLOCKED_ADDRESS' };
+  // The worker's egress proxy only allows web ports, so other ports can
+  // never be captured: reject them as invalid instead of failing the job.
+  if (url.port && url.port !== '80' && url.port !== '443') return { code: 'INVALID_URL' };
 
   url.hash = '';
   const video = parseVideoUrl(url.toString());

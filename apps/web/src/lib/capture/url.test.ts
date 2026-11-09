@@ -29,7 +29,8 @@ describe('parseCaptureUrl — rejections at submit time', () => {
     'http://metadata.google.internal/',
     'http://intranet/',
     'http://printer.local/',
-    'https://example.com:8443/',
+    'http://[2002:7f00:1::]/',
+    'http://[fec0::1]/',
   ])('blocks %s', (input) => {
     expect(parseCaptureUrl(input)).toEqual({ code: 'BLOCKED_ADDRESS' });
   });
@@ -42,6 +43,7 @@ describe('parseCaptureUrl — rejections at submit time', () => {
     'file:///etc/passwd',
     'javascript:alert(1)',
     'https://user:pass@example.com/',
+    'https://example.com:8443/',
     `https://example.com/${'a'.repeat(MAX_CAPTURE_URL_LENGTH)}`,
   ])('rejects %p as invalid', (input) => {
     expect(parseCaptureUrl(input)).toEqual({ code: 'INVALID_URL' });

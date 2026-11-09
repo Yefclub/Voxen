@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AiRole, CaptureDeps } from '../src/lib/capture/runner';
-import type { WorkerExtraction } from '../src/lib/capture/worker-client';
+import type { WorkerExtraction, WorkerFileResult } from '../src/lib/capture/worker-client';
 
 const storageRoot = mkdtempSync(join(tmpdir(), 'voxen-capture-runner-'));
 process.env.STORAGE_DRIVER = 'local';
@@ -41,10 +41,18 @@ function extraction(over: Partial<WorkerExtraction> = {}): WorkerExtraction {
   };
 }
 
-type Calls = { extract: number; audio: number; stt: number; generate: Array<AiRole> };
+type Calls = {
+  extract: number;
+  audio: number;
+  file: number;
+  stt: number;
+  generate: Array<AiRole>;
+};
 
 function makeDeps(opts: {
   extract?: () => Promise<WorkerExtraction>;
+  file?: () => Promise<WorkerFileResult>;
+  audioDurationSec?: number;
   roles?: AiRole[];
   calls: Calls;
 }): CaptureDeps {
@@ -58,12 +66,14 @@ function makeDeps(opts: {
       audio: async () => {
         opts.calls.audio += 1;
         return {
-          durationSec: 40,
+          durationSec: opts.audioDurationSec ?? 40,
           chunks: [{ startSec: 0, mime: 'audio/mpeg', dataBase64: 'AAAA' }],
         };
       },
       file: async () => {
-        throw new Error('not used');
+        opts.calls.file += 1;
+        if (!opts.file) throw new Error('not used');
+        return opts.file();
       },
     },
     ai: {
@@ -106,7 +116,7 @@ function makeDeps(opts: {
 }
 
 function freshCalls(): Calls {
-  return { extract: 0, audio: 0, stt: 0, generate: [] };
+  return { extract: 0, audio: 0, file: 0, stt: 0, generate: [] };
 }
 
 describeIfDb('capture runner', () => {
@@ -178,9 +188,9 @@ describeIfDb('capture runner', () => {
     expect(calls.audio).toBe(0);
   });
 
-  it('publishes a caption-less video from its description with a warning when STT is missing', async () => {
+  it('uses a long video description as text and never calls STT (text first)', async () => {
     const calls = freshCalls();
-    const job = await queue(`https://youtu.be/desc${Date.now()}`.slice(0, 40));
+    const job = await queue(`https://youtu.be/d${Date.now()}`.slice(0, 40));
     const deps = makeDeps({
       calls,
       roles: ['standard'],
@@ -193,26 +203,9 @@ describeIfDb('capture runner', () => {
         }),
     });
     const done = await claimAndRun(job.id, deps);
-    expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
-    expect(calls.audio).toBe(0);
-  });
-
-  it('prefers STT over a video description when STT is configured', async () => {
-    const calls = freshCalls();
-    const job = await queue(`https://youtu.be/stt${Date.now()}`.slice(0, 40));
-    const deps = makeDeps({
-      calls,
-      extract: async () =>
-        extraction({
-          platform: 'youtube',
-          text: 'Descrição longa do vídeo sobre arquitetura de software. '.repeat(10),
-          textKind: 'description',
-          hasAudio: true,
-        }),
-    });
-    const done = await claimAndRun(job.id, deps);
     expect(done.status).toBe('DONE');
-    expect(calls.stt).toBe(1);
+    expect(calls.audio).toBe(0);
+    expect(calls.stt).toBe(0);
   });
 
   it('transcribes audio-only content when STT is configured', async () => {
@@ -258,6 +251,7 @@ describeIfDb('capture runner', () => {
     const failed = await claimAndRun(job.id, makeDeps({ calls, roles: [] }));
     expect(failed.captureErrorCode).toBe('AI_NOT_CONFIGURED');
     expect(failed.status).toBe('FAILED');
+    expect(calls.extract).toBe(0);
   });
 
   it('requeues retryable errors with backoff and reuses the stored artifact', async () => {
@@ -326,6 +320,206 @@ describeIfDb('capture runner', () => {
     expect(after.status).toBe('CANCELLED');
     expect(after.transcriptId).toBeNull();
     expect(calls.generate).toEqual([]);
+  });
+
+  it('fails with NO_TEXT when there is no text, audio or image', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://example.com/empty-${Date.now()}`);
+    const failed = await claimAndRun(
+      job.id,
+      makeDeps({ calls, extract: async () => extraction({ text: null, textKind: 'none' }) }),
+    );
+    expect(failed).toMatchObject({ status: 'FAILED', captureErrorCode: 'NO_TEXT' });
+  });
+
+  it('turns a worker BLOCKED_ADDRESS error into a permanent job failure', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://redirects-to-metadata.example/${Date.now()}`);
+    const failed = await claimAndRun(
+      job.id,
+      makeDeps({
+        calls,
+        extract: async () => {
+          throw new CaptureError('BLOCKED_ADDRESS');
+        },
+      }),
+    );
+    expect(failed).toMatchObject({ status: 'FAILED', captureErrorCode: 'BLOCKED_ADDRESS' });
+    expect(failed.notBefore).toBeNull();
+  });
+
+  it('ends WORKER_UNAVAILABLE after the last attempt', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://example.com/worker-down-${Date.now()}`);
+    await db.job.update({
+      where: { id: job.id },
+      data: { attempt: runner.CAPTURE_MAX_ATTEMPTS - 1 },
+    });
+    const failed = await claimAndRun(
+      job.id,
+      makeDeps({
+        calls,
+        extract: async () => {
+          throw new CaptureError('WORKER_UNAVAILABLE');
+        },
+      }),
+    );
+    expect(failed).toMatchObject({ status: 'FAILED', captureErrorCode: 'WORKER_UNAVAILABLE' });
+  });
+
+  it('fails a step TIMEOUT on the last attempt', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://example.com/slow-${Date.now()}`);
+    await db.job.update({
+      where: { id: job.id },
+      data: { attempt: runner.CAPTURE_MAX_ATTEMPTS - 1 },
+    });
+    const failed = await claimAndRun(
+      job.id,
+      makeDeps({
+        calls,
+        extract: async () => {
+          throw new DOMException('timed out', 'TimeoutError');
+        },
+      }),
+    );
+    expect(failed).toMatchObject({ status: 'FAILED', captureErrorCode: 'TIMEOUT' });
+  });
+
+  it('fails TOO_LARGE for audio longer than three hours', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://vt.tiktok.com/L${Date.now()}`);
+    const failed = await claimAndRun(
+      job.id,
+      makeDeps({
+        calls,
+        audioDurationSec: 3 * 3600 + 1,
+        extract: async () =>
+          extraction({ platform: 'tiktok', text: null, textKind: 'none', hasAudio: true }),
+      }),
+    );
+    expect(failed).toMatchObject({ status: 'FAILED', captureErrorCode: 'TOO_LARGE' });
+    expect(calls.stt).toBe(0);
+  });
+
+  it('keeps the artifact after LLM_QUOTA so a retry skips extraction', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://example.com/quota-${Date.now()}`);
+    const base = makeDeps({ calls });
+    let quota = true;
+    const deps = {
+      ...base,
+      ai: {
+        ...base.ai,
+        generateStructured: async <T>(
+          input: Parameters<CaptureDeps['ai']['generateStructured']>[0],
+        ) => {
+          if (quota)
+            throw Object.assign(new Error('quota'), { code: 'LLM_QUOTA', retryable: false });
+          return base.ai.generateStructured<T>(input as never);
+        },
+      },
+    } as CaptureDeps;
+    const failed = await claimAndRun(job.id, deps);
+    expect(failed).toMatchObject({ status: 'FAILED', captureErrorCode: 'LLM_QUOTA' });
+    quota = false;
+    await db.job.update({ where: { id: job.id }, data: { status: 'QUEUED', attempt: 0 } });
+    const done = await claimAndRun(job.id, deps);
+    expect(done.status).toBe('DONE');
+    expect(calls.extract).toBe(1);
+  });
+
+  it('requeues a retryable provider error instead of failing it', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://example.com/rate-${Date.now()}`);
+    const base = makeDeps({ calls });
+    const deps = {
+      ...base,
+      ai: {
+        ...base.ai,
+        generateStructured: async () => {
+          throw Object.assign(new Error('429'), { code: 'LLM_FAILED', retryable: true });
+        },
+      },
+    } as CaptureDeps;
+    const requeued = await claimAndRun(job.id, deps);
+    expect(requeued).toMatchObject({ status: 'QUEUED', captureErrorCode: 'LLM_FAILED' });
+  });
+
+  it('retries an audio upload after STT is configured by re-running the stored file', async () => {
+    const calls = freshCalls();
+    const objectKey = `workspaces/${userId}/uploads/u-${Date.now()}/voz.mp3`;
+    const { storagePut } = await import('../src/lib/storage');
+    await storagePut({
+      key: objectKey,
+      body: new Uint8Array([1, 2, 3]),
+      contentType: 'audio/mpeg',
+    });
+    const job = await db.job.create({
+      data: {
+        userId,
+        type: 'CAPTURE_UPLOAD',
+        status: 'QUEUED',
+        sourceUrl: `upload://00000000-0000-4000-8000-${String(Date.now()).slice(-12)}/voz.mp3`,
+        captureMeta: {
+          platform: 'upload',
+          upload: { objectKey, filename: 'voz.mp3', mimeType: 'audio/mpeg' },
+        },
+      },
+    });
+    const fileResult = (): Promise<WorkerFileResult> =>
+      Promise.resolve({
+        ...extraction({
+          platform: 'upload',
+          text: null,
+          textKind: 'none',
+          hasAudio: true,
+          canonicalUrl: null,
+        }),
+        audio: {
+          durationSec: 30,
+          chunks: [{ startSec: 0, mime: 'audio/mpeg', dataBase64: 'AAAA' }],
+        },
+      });
+    const noStt = await claimAndRun(
+      job.id,
+      makeDeps({ calls, roles: ['standard'], file: fileResult }),
+    );
+    expect(noStt).toMatchObject({ status: 'FAILED', captureErrorCode: 'STT_NOT_CONFIGURED' });
+    await db.job.update({ where: { id: job.id }, data: { status: 'QUEUED', attempt: 0 } });
+    const done = await claimAndRun(job.id, makeDeps({ calls, file: fileResult }));
+    expect(done.status).toBe('DONE');
+    expect(calls.file).toBe(2);
+    expect(calls.audio).toBe(0);
+    expect(calls.stt).toBe(1);
+    const doc = await db.transcript.findUniqueOrThrow({ where: { id: done.transcriptId! } });
+    expect(doc).toMatchObject({
+      source: 'UPLOAD',
+      transcriptionMethod: 'API',
+      originalObjectKey: objectKey,
+    });
+  });
+
+  it('removes the capture artifact once the document is published', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://example.com/cleanup-${Date.now()}`);
+    const done = await claimAndRun(job.id, makeDeps({ calls }));
+    expect(done.status).toBe('DONE');
+    const { storageHead } = await import('../src/lib/storage');
+    await expect(storageHead(runner.captureArtifactKey(userId, job.id))).rejects.toBeDefined();
+  });
+
+  it('purges artifacts of week-old failed captures', async () => {
+    const job = await queue(`https://example.com/stale-${Date.now()}`);
+    const { storagePut, storageHead } = await import('../src/lib/storage');
+    const key = runner.captureArtifactKey(userId, job.id);
+    await storagePut({ key, body: '{}', contentType: 'application/json' });
+    await db.job.update({
+      where: { id: job.id },
+      data: { status: 'FAILED', finishedAt: new Date(Date.now() - 8 * 24 * 3600_000) },
+    });
+    expect(await runner.purgeStaleCaptureArtifacts()).toBeGreaterThanOrEqual(1);
+    await expect(storageHead(key)).rejects.toBeDefined();
   });
 
   it('fails over-budget expired leases instead of running them again', async () => {

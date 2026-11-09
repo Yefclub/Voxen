@@ -12,11 +12,18 @@
 import { randomUUID } from 'node:crypto';
 import type { z } from 'zod';
 
-import type { TranscriptionMethod } from '../../../prisma-generated/client';
+import type { Prisma, TranscriptionMethod } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { publishJobEvent } from '../job-events';
-import { storageGet } from '../storage';
-import { MAX_IMAGES, artifactFromWorker, loadArtifact, readImage, saveArtifact } from './artifact';
+import { storageDelete, storageDeletePrefix, storageGet } from '../storage';
+import {
+  MAX_IMAGES,
+  artifactFromWorker,
+  captureArtifactPrefix,
+  loadArtifact,
+  readImage,
+  saveArtifact,
+} from './artifact';
 import { CaptureError, captureErrorMessage, type CaptureErrorCode } from './errors';
 import {
   INTERPRET_INSTRUCTIONS,
@@ -39,7 +46,7 @@ import {
   type ClaimedCaptureJob,
 } from './lease';
 import { publishCapturedDocument } from './publish';
-import type { CaptureArtifact, CaptureInterpretation, CapturePlatformName } from './types';
+import type { CaptureArtifact, CaptureInterpretation } from './types';
 import type { CaptureWorkerClient, WorkerAudio } from './worker-client';
 
 export { CAPTURE_LEASE_TTL_MS, CAPTURE_MAX_ATTEMPTS, claimCaptureJob } from './lease';
@@ -101,23 +108,20 @@ function usableText(artifact: CaptureArtifact): string {
   return artifact.text ?? '';
 }
 
-const SPOKEN_PLATFORMS = new Set<CapturePlatformName>(['youtube', 'tiktok', 'instagram', 'upload']);
-
-/** `required`: no usable text; `preferred`: only a description/post for spoken media. */
-export function needsSpeechToText(artifact: CaptureArtifact): 'none' | 'preferred' | 'required' {
+/**
+ * Spec 220: text first (captions, description, post, page text); STT only
+ * when no usable text exists and the source has audio.
+ */
+export function needsSpeechToText(artifact: CaptureArtifact): boolean {
   if (!artifact.hasAudio || artifact.textKind === 'stt' || artifact.textKind === 'captions') {
-    return 'none';
+    return false;
   }
-  if (usableText(artifact).trim().length < MIN_USABLE_TEXT) return 'required';
-  if (
-    SPOKEN_PLATFORMS.has(artifact.platform) &&
-    (artifact.textKind === 'description' ||
-      artifact.textKind === 'post' ||
-      artifact.textKind === 'none')
-  ) {
-    return 'preferred';
-  }
-  return 'none';
+  return usableText(artifact).trim().length < MIN_USABLE_TEXT;
+}
+
+async function uploadBlob(upload: NonNullable<CaptureArtifact['upload']>): Promise<Blob> {
+  const object = await storageGet(upload.objectKey);
+  return new Blob([await new Response(object.body).arrayBuffer()], { type: upload.mimeType });
 }
 
 function pickMethod(artifact: CaptureArtifact): TranscriptionMethod {
@@ -156,6 +160,11 @@ async function executeCapture(
   let cost = 0;
   const upload = (job.captureMeta.upload ?? null) as CaptureArtifact['upload'];
 
+  // Fail before paying for downloads or STT when no text model is configured.
+  if (!(await deps.ai.isRoleConfigured(job.userId, 'standard'))) {
+    throw new CaptureError('AI_NOT_CONFIGURED');
+  }
+
   // 1. Extract (or reuse the stored artifact from a previous attempt).
   await ensureLease(job, controller);
   let artifact = await loadArtifact(job.userId, job.id);
@@ -166,12 +175,12 @@ async function executeCapture(
       if (job.type === 'CAPTURE_UPLOAD') {
         if (!upload)
           throw new CaptureError('UNSUPPORTED', 'upload metadata missing', { retryable: false });
-        const object = await storageGet(upload.objectKey);
-        const blob = new Blob([await new Response(object.body).arrayBuffer()], {
-          type: upload.mimeType,
-        });
         const result = await deps.worker.file(
-          { body: blob, filename: upload.filename, contentType: upload.mimeType },
+          {
+            body: await uploadBlob(upload),
+            filename: upload.filename,
+            contentType: upload.mimeType,
+          },
           withTimeout(signal, STEP_TIMEOUT_MS.extract),
         );
         audioFromFile = result.audio ?? null;
@@ -189,24 +198,33 @@ async function executeCapture(
     await saveArtifact(job.userId, job.id, artifact);
   }
 
-  // 2. Speech-to-text when there is no usable text. For video platforms and
-  // media uploads a description or caption-less post is not the content, so
-  // STT runs when configured; without STT those publish with a warning.
-  const sttDecision = needsSpeechToText(artifact);
-  const sttConfigured =
-    sttDecision === 'none' ? false : await deps.ai.isRoleConfigured(job.userId, 'stt');
-  if (sttDecision === 'required' && !sttConfigured) throw new CaptureError('STT_NOT_CONFIGURED');
-  if (sttDecision === 'preferred' && !sttConfigured) warnings = true;
-  if (sttDecision !== 'none' && sttConfigured) {
+  // 2. Speech-to-text only when there is no usable text.
+  if (needsSpeechToText(artifact)) {
+    if (!(await deps.ai.isRoleConfigured(job.userId, 'stt'))) {
+      throw new CaptureError('STT_NOT_CONFIGURED');
+    }
     await ensureLease(job, controller);
     await progress(job, 'transcribing', 35);
     try {
-      const audio =
-        audioFromFile ??
-        (await deps.worker.audio(
-          artifact.canonicalUrl ?? job.sourceUrl,
+      let audio = audioFromFile;
+      if (!audio && artifact.upload) {
+        // Uploads have no URL to re-download: re-run the stored file (retry,
+        // lease reclaim, or a user retry after adding an STT key).
+        const result = await deps.worker.file(
+          {
+            body: await uploadBlob(artifact.upload),
+            filename: artifact.upload.filename,
+            contentType: artifact.upload.mimeType,
+          },
           withTimeout(signal, STEP_TIMEOUT_MS.audio),
-        ));
+        );
+        audio = result.audio ?? null;
+        if (!audio) throw new CaptureError('NO_TEXT', 'upload has no audio', { retryable: false });
+      }
+      audio ??= await deps.worker.audio(
+        artifact.canonicalUrl ?? job.sourceUrl,
+        withTimeout(signal, STEP_TIMEOUT_MS.audio),
+      );
       if (audio.durationSec > 3 * 3600) throw new CaptureError('TOO_LARGE');
       if (audio.chunks.length === 0) throw new CaptureError('NO_TEXT');
       const stt = await deps.ai.transcribeAudio({
@@ -279,9 +297,7 @@ async function executeCapture(
 
   const finalText = usableText(artifact).trim();
   if (!finalText && !(artifact.imageDescriptions?.length ?? 0)) {
-    throw new CaptureError(artifact.hasAudio ? 'NO_TEXT' : 'NO_TEXT', 'nothing usable', {
-      retryable: false,
-    });
+    throw new CaptureError('NO_TEXT', 'nothing usable', { retryable: false });
   }
 
   // 4. Interpretation.
@@ -407,6 +423,9 @@ export async function runCaptureJob(job: ClaimedCaptureJob, deps: CaptureDeps): 
         percent: 100,
         transcriptId: outcome.transcriptId,
       }).catch(() => {});
+      // The published document owns its text and thumbnail now; the capture
+      // artifact (full captured text and images) must not outlive it.
+      await storageDeletePrefix(captureArtifactPrefix(job.userId, job.id)).catch(() => {});
     }
   } catch (error) {
     if (error instanceof LeaseLostError || controller.signal.reason instanceof LeaseLostError)
@@ -448,6 +467,40 @@ export async function listRunnableCaptureJobs(now = new Date(), limit = 10): Pro
 }
 
 /** Claims and runs runnable captures one at a time until none are left. */
+const ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * Failed or cancelled captures keep their artifact (and uploaded file) for a
+ * week so the user can retry; after that both are removed.
+ */
+export async function purgeStaleCaptureArtifacts(now = new Date(), limit = 50): Promise<number> {
+  const cutoff = new Date(now.getTime() - ARTIFACT_RETENTION_MS);
+  const stale = await db.$queryRaw<
+    Array<{ id: string; userId: string; captureMeta: unknown; transcriptId: string | null }>
+  >`
+    SELECT id, "userId", "captureMeta", "transcriptId" FROM "Job"
+    WHERE type IN ('CAPTURE_LINK', 'CAPTURE_UPLOAD')
+      AND status IN ('FAILED', 'CANCELLED')
+      AND "finishedAt" < ${cutoff}
+      AND COALESCE(("captureMeta" ->> 'artifactPurged')::boolean, false) = false
+    ORDER BY "finishedAt" ASC
+    LIMIT ${limit}
+  `;
+  for (const job of stale) {
+    const meta = (job.captureMeta ?? {}) as Record<string, unknown>;
+    await storageDeletePrefix(captureArtifactPrefix(job.userId, job.id)).catch(() => {});
+    const upload = meta.upload as { objectKey?: unknown } | undefined;
+    if (!job.transcriptId && typeof upload?.objectKey === 'string') {
+      await storageDelete(upload.objectKey).catch(() => {});
+    }
+    await db.job.updateMany({
+      where: { id: job.id, userId: job.userId, status: { in: ['FAILED', 'CANCELLED'] } },
+      data: { captureMeta: { ...meta, artifactPurged: true } as Prisma.InputJsonValue },
+    });
+  }
+  return stale.length;
+}
+
 export function drainCaptureJobs(deps: CaptureDeps): Promise<void> {
   if (draining) return draining;
   const owner = `web-capture-${randomUUID()}`;

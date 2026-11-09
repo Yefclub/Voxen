@@ -69,15 +69,40 @@ function escapeInline(text: string): string {
  * auto-loading references that a prompt injection could have planted.
  */
 export function sanitizeModelText(text: string): string {
-  return text
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\b(?:https?|ftp|data|javascript):\/\/?\S+/gi, '')
-    .replace(/\bwww\.\S+/gi, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    collapseLinks(stripImages(text))
+      // Reference definitions: `[id]: url` lines carry the target of any link.
+      .replace(/^[ \t]{0,3}\[[^\]\n]*\]:.*$/gm, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/(?:\b(?:https?|ftp|data|javascript|file|mailto):|\/\/)[^\s)\]]+/gi, '')
+      .replace(/\bwww\.\S+/gi, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+}
+
+const INLINE_LINK = /\[([^[\]]*)\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g;
+const REFERENCE_LINK = /\[([^[\]]*)\]\[[^\]]*\]/g;
+
+/** Unwraps `[text](url)` and `[text][ref]` from the innermost brackets out. */
+function collapseLinks(text: string): string {
+  let current = text;
+  for (let i = 0; i < 20; i += 1) {
+    const next = current.replace(INLINE_LINK, '$1').replace(REFERENCE_LINK, '$1');
+    if (next === current) break;
+    current = next;
+  }
+  return current.replace(/\]\([^)]*\)/g, ']');
+}
+
+/**
+ * Turns every Markdown image into plain text so nothing auto-loads when the
+ * document renders (tracking pixels, prompt-injected beacons). Handles nested
+ * brackets and reference-style images by removing the `!` marker itself.
+ */
+export function stripImages(text: string): string {
+  return text.replace(/!(?=\[)/g, '');
 }
 
 export function segmentsToPlainText(segments: CaptureSegment[]): string {
@@ -162,9 +187,8 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
   } else {
     // Captured page Markdown keeps its links but never auto-loads remote
     // images (tracking pixels) or raw HTML when the document is rendered.
-    const body = (artifact.text ?? '')
+    const body = stripImages(artifact.text ?? '')
       .replace(/\r\n/g, '\n')
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/<[^>]*>/g, '')
       .trim();
     if (body) lines.push('## Conteúdo', '', body, '');
