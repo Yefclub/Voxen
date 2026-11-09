@@ -11,10 +11,12 @@ import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 
 export const PREPARED_CONTRACT_VERSION = '1';
+/** Contract v2 (spec 220): DOCUMENT targets published by link capture. */
+export const PREPARED_DOCUMENT_CONTRACT_VERSION = '2';
 
 type DbClient = Prisma.TransactionClient;
 
-export type IngestTargetType = 'NOTE';
+export type IngestTargetType = 'NOTE' | 'DOCUMENT';
 
 export type IngestKeyClaim = { created: true } | { created: false; targetId: string };
 
@@ -54,6 +56,7 @@ export async function claimIngestKey(
     targetId: string;
     producerId?: string;
     externalId?: string;
+    contractVersion?: string;
   },
 ): Promise<IngestKeyClaim> {
   const lockKey = `voxen:ingest:${args.userId}:${args.key}`;
@@ -80,7 +83,11 @@ export async function claimIngestKey(
         targetId: args.targetId,
         producerId: args.producerId ?? null,
         externalId: args.externalId ?? null,
-        contractVersion: PREPARED_CONTRACT_VERSION,
+        contractVersion:
+          args.contractVersion ??
+          (args.targetType === 'DOCUMENT'
+            ? PREPARED_DOCUMENT_CONTRACT_VERSION
+            : PREPARED_CONTRACT_VERSION),
       },
       select: { id: true },
     });
