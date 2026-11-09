@@ -1,5 +1,14 @@
 # Spec 215 — Remove Product 2 and built-in AI execution
 
+> Amended 2026-11-09 by spec 220. Link capture, speech-to-text, vision and
+> AI interpretation return as a Voxen extension that calls cloud providers
+> (OpenAI, Anthropic, OpenRouter, xAI) with per-user keys. The rest of this
+> spec still holds: Product 1 must work with no provider key, and chat,
+> embeddings, local inference, cookies, schedules and model-based Brain
+> compilation stay removed. Requirements below that forbid "any Product 2
+> entrypoint" or "built-in model calls" now apply only to those
+> still-removed parts.
+
 ## Context
 
 Voxen narrows to Product 1: a self-hosted knowledge base that stores prepared content and serves it over MCP. Capture and interpretation of source material (Product 2) moves out. The baseline is `dev` at `95524cf`. This spec defines the removal boundary so Product 1 keeps working with no model-provider account, key, or inference.

@@ -207,7 +207,7 @@ test("agent roles honor read-only review and current architecture", () => {
   assert.match(reviewer, /MUDANCAS NECESSARIAS/);
   assert.match(reviewer, /BLOQUEADO/);
   assert.match(reviewer, /[Rr]ead-only/);
-  for (const stale of ["FastAPI", "Agno", "Express", "BullMQ", "OpenRouter"]) {
+  for (const stale of ["FastAPI", "Agno", "Express", "BullMQ"]) {
     assert.doesNotMatch(
       reviewer,
       new RegExp(stale),
