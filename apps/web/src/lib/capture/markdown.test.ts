@@ -17,6 +17,11 @@ describe('sanitizeModelText', () => {
     expect(out).not.toMatch(/!\[|\]\(|\]\[/);
   });
 
+  test('never leaves a raw tag opener behind nested tags', () => {
+    const out = sanitizeModelText('a <scr<script>ipt>alert(1)</script> b');
+    expect(out).not.toMatch(/<[a-z/]/i);
+  });
+
   test('keeps the readable text of links and plain prose', () => {
     expect(sanitizeModelText('Leia [o guia oficial](https://x.example) com **calma**.')).toBe(
       'Leia o guia oficial com **calma**.',

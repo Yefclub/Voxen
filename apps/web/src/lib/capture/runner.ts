@@ -12,10 +12,10 @@
 import { randomUUID } from 'node:crypto';
 import type { z } from 'zod';
 
-import type { Prisma, TranscriptionMethod } from '../../../prisma-generated/client';
+import type { TranscriptionMethod } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { publishJobEvent } from '../job-events';
-import { storageDelete, storageDeletePrefix, storageGet } from '../storage';
+import { storageDeletePrefix, storageGet } from '../storage';
 import {
   MAX_IMAGES,
   artifactFromWorker,
@@ -51,7 +51,7 @@ import type { CaptureWorkerClient, WorkerAudio } from './worker-client';
 
 export { CAPTURE_LEASE_TTL_MS, CAPTURE_MAX_ATTEMPTS, claimCaptureJob } from './lease';
 export type { ClaimedCaptureJob } from './lease';
-export { captureArtifactKey } from './artifact';
+export { captureArtifactKey, purgeStaleCaptureArtifacts } from './artifact';
 export { normalizeInterpretation } from './interpret';
 
 const MIN_USABLE_TEXT = 200;
@@ -467,40 +467,6 @@ export async function listRunnableCaptureJobs(now = new Date(), limit = 10): Pro
 }
 
 /** Claims and runs runnable captures one at a time until none are left. */
-const ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
-
-/**
- * Failed or cancelled captures keep their artifact (and uploaded file) for a
- * week so the user can retry; after that both are removed.
- */
-export async function purgeStaleCaptureArtifacts(now = new Date(), limit = 50): Promise<number> {
-  const cutoff = new Date(now.getTime() - ARTIFACT_RETENTION_MS);
-  const stale = await db.$queryRaw<
-    Array<{ id: string; userId: string; captureMeta: unknown; transcriptId: string | null }>
-  >`
-    SELECT id, "userId", "captureMeta", "transcriptId" FROM "Job"
-    WHERE type IN ('CAPTURE_LINK', 'CAPTURE_UPLOAD')
-      AND status IN ('FAILED', 'CANCELLED')
-      AND "finishedAt" < ${cutoff}
-      AND COALESCE(("captureMeta" ->> 'artifactPurged')::boolean, false) = false
-    ORDER BY "finishedAt" ASC
-    LIMIT ${limit}
-  `;
-  for (const job of stale) {
-    const meta = (job.captureMeta ?? {}) as Record<string, unknown>;
-    await storageDeletePrefix(captureArtifactPrefix(job.userId, job.id)).catch(() => {});
-    const upload = meta.upload as { objectKey?: unknown } | undefined;
-    if (!job.transcriptId && typeof upload?.objectKey === 'string') {
-      await storageDelete(upload.objectKey).catch(() => {});
-    }
-    await db.job.updateMany({
-      where: { id: job.id, userId: job.userId, status: { in: ['FAILED', 'CANCELLED'] } },
-      data: { captureMeta: { ...meta, artifactPurged: true } as Prisma.InputJsonValue },
-    });
-  }
-  return stale.length;
-}
-
 export function drainCaptureJobs(deps: CaptureDeps): Promise<void> {
   if (draining) return draining;
   const owner = `web-capture-${randomUUID()}`;

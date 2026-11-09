@@ -1,7 +1,9 @@
 // Capture artifact storage (spec 220): the worker result for a job lives at
 // workspaces/<userId>/captures/<jobId>/capture.json so retries skip downloads.
 
-import { storageGet, storagePut } from '../storage';
+import type { Prisma } from '../../../prisma-generated/client';
+import { db } from '../db';
+import { storageDelete, storageDeletePrefix, storageGet, storagePut } from '../storage';
 import type { ClaimedCaptureJob } from './lease';
 import type { CaptureArtifact, CaptureImageRef, CapturePlatformName } from './types';
 import type { WorkerExtraction } from './worker-client';
@@ -102,4 +104,38 @@ export async function artifactFromWorker(
     extractor: result.extractor,
     upload: upload ?? null,
   };
+}
+
+const ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * Failed or cancelled captures keep their artifact (and uploaded file) for a
+ * week so the user can retry; after that both are removed.
+ */
+export async function purgeStaleCaptureArtifacts(now = new Date(), limit = 50): Promise<number> {
+  const cutoff = new Date(now.getTime() - ARTIFACT_RETENTION_MS);
+  const stale = await db.$queryRaw<
+    Array<{ id: string; userId: string; captureMeta: unknown; transcriptId: string | null }>
+  >`
+    SELECT id, "userId", "captureMeta", "transcriptId" FROM "Job"
+    WHERE type IN ('CAPTURE_LINK', 'CAPTURE_UPLOAD')
+      AND status IN ('FAILED', 'CANCELLED')
+      AND "finishedAt" < ${cutoff}
+      AND COALESCE(("captureMeta" ->> 'artifactPurged')::boolean, false) = false
+    ORDER BY "finishedAt" ASC
+    LIMIT ${limit}
+  `;
+  for (const job of stale) {
+    const meta = (job.captureMeta ?? {}) as Record<string, unknown>;
+    await storageDeletePrefix(captureArtifactPrefix(job.userId, job.id)).catch(() => {});
+    const upload = meta.upload as { objectKey?: unknown } | undefined;
+    if (!job.transcriptId && typeof upload?.objectKey === 'string') {
+      await storageDelete(upload.objectKey).catch(() => {});
+    }
+    await db.job.updateMany({
+      where: { id: job.id, userId: job.userId, status: { in: ['FAILED', 'CANCELLED'] } },
+      data: { captureMeta: { ...meta, artifactPurged: true } as Prisma.InputJsonValue },
+    });
+  }
+  return stale.length;
 }

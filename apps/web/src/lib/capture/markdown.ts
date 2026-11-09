@@ -59,7 +59,7 @@ function timestampLink(input: CaptureMarkdownInput, seconds: number): string {
 function escapeInline(text: string): string {
   return text
     .replace(/\s+/g, ' ')
-    .replace(/([[\]<>])/g, '\\$1')
+    .replace(/([\\[\]<>])/g, '\\$1')
     .trim();
 }
 
@@ -74,6 +74,9 @@ export function sanitizeModelText(text: string): string {
       // Reference definitions: `[id]: url` lines carry the target of any link.
       .replace(/^[ \t]{0,3}\[[^\]\n]*\]:.*$/gm, '')
       .replace(/<[^>]*>/g, '')
+      // Any `<` left (nested tags such as `<scr<script>ipt>`) is escaped so the
+      // renderer can never see raw HTML.
+      .replace(/</g, '&lt;')
       .replace(/(?:\b(?:https?|ftp|data|javascript|file|mailto):|\/\/)[^\s)\]]+/gi, '')
       .replace(/\bwww\.\S+/gi, '')
       .replace(/[ \t]+\n/g, '\n')
@@ -190,9 +193,12 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     const body = stripImages(artifact.text ?? '')
       .replace(/\r\n/g, '\n')
       .replace(/<[^>]*>/g, '')
+      // Any `<` left (nested tags such as `<scr<script>ipt>`) is escaped so the
+      // renderer can never see raw HTML.
+      .replace(/</g, '&lt;')
       .trim();
     if (body) lines.push('## Conteúdo', '', body, '');
-    plainText = body.replace(/\s+/g, ' ').trim();
+    plainText = body.replace(/&lt;/g, '<').replace(/\s+/g, ' ').trim();
   }
   if (descriptions.length > 0) plainText = [plainText, ...descriptions].filter(Boolean).join(' ');
 
