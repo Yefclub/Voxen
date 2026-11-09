@@ -1,5 +1,47 @@
 [
   {
+    "version": "0.15.1-dev.1794265099",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Configure your own AI providers in Account → AI providers",
+    "body": "A new **AI providers** page under your account lets you add API keys for OpenAI, Anthropic, OpenRouter and xAI. Each key is checked with the provider when you save it, stored encrypted on your server, and never shown again — only its last four characters appear. You then pick a model for each role (fast, standard, vision and speech-to-text) from a curated list with estimated prices; saving your first valid key fills these roles automatically. Anthropic has no speech-to-text, so transcription needs OpenAI, xAI or OpenRouter. These keys will power link capture in an upcoming release; the knowledge base keeps working without any of them.",
+    "pr": 1036,
+    "author": "Kalyel",
+    "date": "2026-11-09T19:51:05-03:00",
+    "translations": {
+      "en": {
+        "title": "Configure your own AI providers in Account → AI providers",
+        "body": "A new **AI providers** page under your account lets you add API keys for OpenAI, Anthropic, OpenRouter and xAI. Each key is checked with the provider when you save it, stored encrypted on your server, and never shown again — only its last four characters appear. You then pick a model for each role (fast, standard, vision and speech-to-text) from a curated list with estimated prices; saving your first valid key fills these roles automatically. Anthropic has no speech-to-text, so transcription needs OpenAI, xAI or OpenRouter. These keys will power link capture in an upcoming release; the knowledge base keeps working without any of them."
+      },
+      "pt-BR": {
+        "title": "Configure seus provedores de IA em Conta → Provedores de IA",
+        "body": "A nova página **Provedores de IA**, na sua conta, permite adicionar chaves de API da OpenAI, Anthropic, OpenRouter e xAI. Cada chave é verificada com o provedor ao salvar, fica cifrada no seu servidor e nunca é exibida de novo — só os quatro últimos caracteres aparecem. Depois você escolhe o modelo de cada papel (rápido, padrão, visão e transcrição) numa lista curada com preços estimados; a primeira chave válida já preenche esses papéis. A Anthropic não oferece transcrição, então ela exige OpenAI, xAI ou OpenRouter. Essas chaves vão alimentar a captura de links numa próxima versão; a base de conhecimento continua funcionando sem nenhuma delas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1036"
+  },
+  {
+    "version": "0.15.1-dev.1794265099",
+    "channel": "dev",
+    "type": "infra",
+    "title": "New capture worker container for link capture",
+    "body": "Voxen now ships a `capture-worker` service that downloads and extracts content from web pages, YouTube, TikTok, Instagram, X posts and uploaded files. It runs isolated: it holds no encryption key, no AI provider keys and no database access, and every outbound request goes through a built-in egress filter that blocks private and internal addresses. `make ensure-env` generates its access token. The capture screens that use it arrive in a later release; the knowledge base keeps working without it.",
+    "pr": 1037,
+    "author": "Kalyel",
+    "date": "2026-11-09T19:47:12-03:00",
+    "translations": {
+      "en": {
+        "title": "New capture worker container for link capture",
+        "body": "Voxen now ships a `capture-worker` service that downloads and extracts content from web pages, YouTube, TikTok, Instagram, X posts and uploaded files. It runs isolated: it holds no encryption key, no AI provider keys and no database access, and every outbound request goes through a built-in egress filter that blocks private and internal addresses. `make ensure-env` generates its access token. The capture screens that use it arrive in a later release; the knowledge base keeps working without it."
+      },
+      "pt-BR": {
+        "title": "Novo container de captura para links",
+        "body": "A Voxen agora inclui o serviço `capture-worker`, que baixa e extrai o conteúdo de páginas web, YouTube, TikTok, Instagram, posts do X e arquivos enviados. Ele roda isolado: não guarda chave de criptografia, chaves de provedores de IA nem acesso ao banco, e toda requisição de saída passa por um filtro embutido que bloqueia endereços privados e internos. O `make ensure-env` gera o token de acesso. As telas de captura que usam o serviço chegam numa próxima versão; a base continua funcionando sem ele."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1037"
+  },
+  {
     "version": "0.15.1-dev.1794261802",
     "channel": "dev",
     "type": "chore",

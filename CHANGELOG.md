@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.15.1-dev.1794265099 — 2026-11-09 · Dev
+
+### ✨ Configure your own AI providers in Account → AI providers
+
+A new **AI providers** page under your account lets you add API keys for OpenAI, Anthropic, OpenRouter and xAI. Each key is checked with the provider when you save it, stored encrypted on your server, and never shown again — only its last four characters appear. You then pick a model for each role (fast, standard, vision and speech-to-text) from a curated list with estimated prices; saving your first valid key fills these roles automatically. Anthropic has no speech-to-text, so transcription needs OpenAI, xAI or OpenRouter. These keys will power link capture in an upcoming release; the knowledge base keeps working without any of them.
+
+## v0.15.1-dev.1794265099 — 2026-11-09 · Dev
+
+### 🛠️ New capture worker container for link capture
+
+Voxen now ships a `capture-worker` service that downloads and extracts content from web pages, YouTube, TikTok, Instagram, X posts and uploaded files. It runs isolated: it holds no encryption key, no AI provider keys and no database access, and every outbound request goes through a built-in egress filter that blocks private and internal addresses. `make ensure-env` generates its access token. The capture screens that use it arrive in a later release; the knowledge base keeps working without it.
+
 ## v0.15.1-dev.1794261802 — 2026-11-09 · Dev
 
 ### 🧹 Link capture with cloud AI is now planned in spec 220
