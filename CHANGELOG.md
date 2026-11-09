@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794265985 — 2026-11-09 · Dev
+
+### 🔒 The capture worker image no longer ships setuid binaries
+
+The capture worker image removes every setuid and setgid bit at build time, so deployments that cannot set `no-new-privileges` or drop capabilities (such as Easypanel or Openship) still have no privilege-escalation path inside the container.
+
 ## v0.15.1-dev.1794265099 — 2026-11-09 · Dev
 
 ### ✨ Configure your own AI providers in Account → AI providers
