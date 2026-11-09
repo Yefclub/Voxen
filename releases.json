@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794265985",
+    "channel": "dev",
+    "type": "security",
+    "title": "The capture worker image no longer ships setuid binaries",
+    "body": "The capture worker image removes every setuid and setgid bit at build time, so deployments that cannot set `no-new-privileges` or drop capabilities (such as Easypanel or Openship) still have no privilege-escalation path inside the container.",
+    "pr": 1039,
+    "author": "Kalyel",
+    "date": "2026-11-09T20:12:41-03:00",
+    "translations": {
+      "en": {
+        "title": "The capture worker image no longer ships setuid binaries",
+        "body": "The capture worker image removes every setuid and setgid bit at build time, so deployments that cannot set `no-new-privileges` or drop capabilities (such as Easypanel or Openship) still have no privilege-escalation path inside the container."
+      },
+      "pt-BR": {
+        "title": "A imagem do worker de captura não traz mais binários setuid",
+        "body": "A imagem do worker de captura remove todos os bits setuid e setgid no build, então deploys que não conseguem aplicar `no-new-privileges` nem remover capabilities (como Easypanel ou Openship) continuam sem caminho de escalada de privilégio dentro do container."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1039"
+  },
+  {
     "version": "0.15.1-dev.1794265099",
     "channel": "dev",
     "type": "feat",
