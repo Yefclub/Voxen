@@ -208,6 +208,38 @@ describeIfDb('capture API', () => {
     expect(row).toMatchObject({ status: 'QUEUED', attempt: 0, captureErrorCode: null });
   });
 
+  it('retry clears the purge marker and refuses an upload whose file expired', async () => {
+    const res = await postUrl(a.cookie, 'https://example.com/purged-link');
+    const { job } = (await res.json()) as { job: { id: string } };
+    await db.job.update({
+      where: { id: job.id },
+      data: { status: 'FAILED', captureMeta: { artifactPurged: true, platform: 'web' } },
+    });
+    expect(
+      (await call(`/api/captures/${job.id}/retry`, { cookie: a.cookie, method: 'POST' })).status,
+    ).toBe(202);
+    const row = await db.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect((row.captureMeta as Record<string, unknown>).artifactPurged).toBeUndefined();
+
+    const upload = await db.job.create({
+      data: {
+        userId: a.userId,
+        type: 'CAPTURE_UPLOAD',
+        status: 'FAILED',
+        sourceUrl: 'upload://00000000-0000-4000-8000-000000000001/x.mp3',
+        captureMeta: {
+          artifactPurged: true,
+          upload: { objectKey: 'gone', filename: 'x.mp3', mimeType: 'audio/mpeg' },
+        },
+      },
+    });
+    const refused = await call(`/api/captures/${upload.id}/retry`, {
+      cookie: a.cookie,
+      method: 'POST',
+    });
+    expect(refused.status).toBe(409);
+  });
+
   it('reprocess queues a refresh job only for the owner', async () => {
     const doc = await db.transcript.create({
       data: {

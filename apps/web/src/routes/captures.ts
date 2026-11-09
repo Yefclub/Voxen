@@ -265,11 +265,18 @@ captureRoutes.post('/:id/retry', async (c) => {
       409,
     );
   }
+  const meta = (current.captureMeta ?? {}) as Record<string, unknown>;
+  if (meta.artifactPurged === true && current.type === 'CAPTURE_UPLOAD') {
+    // The stored upload was removed by the retention sweep; it must be sent again.
+    return c.json(errorBody('UNSUPPORTED', await locale(), { reason: 'upload_expired' }), 409);
+  }
+  const { artifactPurged: _purged, ...freshMeta } = meta;
   try {
     await db.job.updateMany({
       where: { id, userId, status: { in: ['FAILED', 'CANCELLED'] } },
       data: {
         status: 'QUEUED',
+        captureMeta: freshMeta as Prisma.InputJsonValue,
         attempt: 0,
         notBefore: null,
         captureErrorCode: null,
