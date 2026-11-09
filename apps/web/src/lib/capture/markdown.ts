@@ -73,9 +73,8 @@ export function sanitizeModelText(text: string): string {
     collapseLinks(stripImages(text))
       // Reference definitions: `[id]: url` lines carry the target of any link.
       .replace(/^[ \t]{0,3}\[[^\]\n]*\]:.*$/gm, '')
-      .replace(/<[^>]*>/g, '')
-      // Any `<` left (nested tags such as `<scr<script>ipt>`) is escaped so the
-      // renderer can never see raw HTML.
+      // Escape every `<` instead of stripping tags (tag-stripping regexes are
+      // bypassable with nested tags): the renderer never sees raw HTML.
       .replace(/</g, '&lt;')
       .replace(/(?:\b(?:https?|ftp|data|javascript|file|mailto):|\/\/)[^\s)\]]+/gi, '')
       .replace(/\bwww\.\S+/gi, '')
@@ -192,9 +191,8 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     // images (tracking pixels) or raw HTML when the document is rendered.
     const body = stripImages(artifact.text ?? '')
       .replace(/\r\n/g, '\n')
-      .replace(/<[^>]*>/g, '')
-      // Any `<` left (nested tags such as `<scr<script>ipt>`) is escaped so the
-      // renderer can never see raw HTML.
+      // Escape every `<` instead of stripping tags (tag-stripping regexes are
+      // bypassable with nested tags): the renderer never sees raw HTML.
       .replace(/</g, '&lt;')
       .trim();
     if (body) lines.push('## Conteúdo', '', body, '');
