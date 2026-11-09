@@ -425,10 +425,30 @@ function usableText(artifact: CaptureArtifact): string {
   return artifact.text ?? '';
 }
 
+const SPOKEN_PLATFORMS = new Set<CapturePlatformName>(['youtube', 'tiktok', 'instagram', 'upload']);
+
+/** `required`: no usable text; `preferred`: only a description/post for spoken media. */
+export function needsSpeechToText(artifact: CaptureArtifact): 'none' | 'preferred' | 'required' {
+  if (!artifact.hasAudio || artifact.textKind === 'stt' || artifact.textKind === 'captions') {
+    return 'none';
+  }
+  if (usableText(artifact).trim().length < MIN_USABLE_TEXT) return 'required';
+  if (
+    SPOKEN_PLATFORMS.has(artifact.platform) &&
+    (artifact.textKind === 'description' ||
+      artifact.textKind === 'post' ||
+      artifact.textKind === 'none')
+  ) {
+    return 'preferred';
+  }
+  return 'none';
+}
+
 function pickMethod(artifact: CaptureArtifact): TranscriptionMethod {
   if (artifact.textKind === 'stt') return 'API';
   if (artifact.textKind === 'captions') return 'SUBTITLES';
   if (artifact.textKind === 'document') return 'DOCUMENT';
+  if (artifact.platform === 'upload' && artifact.textKind === 'page') return 'DOCUMENT';
   if (artifact.textKind === 'none' && (artifact.imageDescriptions?.length ?? 0) > 0)
     return 'VISION';
   return 'SCRAPE';
@@ -493,15 +513,16 @@ async function executeCapture(
     await saveArtifact(job.userId, job.id, artifact);
   }
 
-  // 2. Speech-to-text only when there is no usable text.
-  if (
-    usableText(artifact).trim().length < MIN_USABLE_TEXT &&
-    artifact.hasAudio &&
-    artifact.textKind !== 'stt'
-  ) {
+  // 2. Speech-to-text when there is no usable text. For video platforms and
+  // media uploads a description or caption-less post is not the content, so
+  // STT runs when configured; without STT those publish with a warning.
+  const sttDecision = needsSpeechToText(artifact);
+  const sttConfigured =
+    sttDecision === 'none' ? false : await deps.ai.isRoleConfigured(job.userId, 'stt');
+  if (sttDecision === 'required' && !sttConfigured) throw new CaptureError('STT_NOT_CONFIGURED');
+  if (sttDecision === 'preferred' && !sttConfigured) warnings = true;
+  if (sttDecision !== 'none' && sttConfigured) {
     await ensureLease(job, controller);
-    if (!(await deps.ai.isRoleConfigured(job.userId, 'stt')))
-      throw new CaptureError('STT_NOT_CONFIGURED');
     await progress(job, 'transcribing', 35);
     try {
       const audio =

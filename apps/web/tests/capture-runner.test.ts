@@ -178,6 +178,43 @@ describeIfDb('capture runner', () => {
     expect(calls.audio).toBe(0);
   });
 
+  it('publishes a caption-less video from its description with a warning when STT is missing', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://youtu.be/desc${Date.now()}`.slice(0, 40));
+    const deps = makeDeps({
+      calls,
+      roles: ['standard'],
+      extract: async () =>
+        extraction({
+          platform: 'youtube',
+          text: 'Descrição longa do vídeo sobre arquitetura de software. '.repeat(10),
+          textKind: 'description',
+          hasAudio: true,
+        }),
+    });
+    const done = await claimAndRun(job.id, deps);
+    expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
+    expect(calls.audio).toBe(0);
+  });
+
+  it('prefers STT over a video description when STT is configured', async () => {
+    const calls = freshCalls();
+    const job = await queue(`https://youtu.be/stt${Date.now()}`.slice(0, 40));
+    const deps = makeDeps({
+      calls,
+      extract: async () =>
+        extraction({
+          platform: 'youtube',
+          text: 'Descrição longa do vídeo sobre arquitetura de software. '.repeat(10),
+          textKind: 'description',
+          hasAudio: true,
+        }),
+    });
+    const done = await claimAndRun(job.id, deps);
+    expect(done.status).toBe('DONE');
+    expect(calls.stt).toBe(1);
+  });
+
   it('transcribes audio-only content when STT is configured', async () => {
     const calls = freshCalls();
     const job = await queue(`https://vt.tiktok.com/Y${Date.now()}`);
