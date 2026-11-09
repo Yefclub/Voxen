@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794261802 — 2026-11-09 · Dev
+
+### 🧹 Link capture with cloud AI is now planned in spec 220
+
+Voxen's scope now includes capturing links (web, YouTube, TikTok, Instagram, X, uploads and the PWA share target) and interpreting them with the AI provider you configure (OpenAI, Anthropic, OpenRouter or xAI). This change records the design and project rules; the feature ships in the next releases. The knowledge base keeps working without any provider key.
+
 ## v0.15.1-dev.1793607598 — 2026-11-02 · Dev
 
 ### 🧹 Touch coverage in the rendered visual matrix
