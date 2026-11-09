@@ -27,9 +27,11 @@ FROM ${PYTHON_IMAGE} AS tools
 ARG DENO_VERSION=2.9.8
 ARG DENO_SHA256=e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609
 # BtbN `linux64-lgpl` static build: LGPL, unmodified, used only as a separate
-# subprocess (ADR-014). BtbN prunes old autobuilds; bump both values together.
-ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-08-12-35/ffmpeg-n8.1.3-34-ga35157abb9-linux64-lgpl-8.1.tar.xz
-ARG FFMPEG_SHA256=d8f66e659eff73333b1125fd28a47c440ecac38349fe37b79aa201ed56a481c0
+# subprocess (ADR-014). BtbN keeps daily builds for 14 days but the last build
+# of each month for two years, so only month-end builds are pinned here; bump
+# the URL and checksum together.
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n8.1.3-27-g8dca1586f4-linux64-lgpl-8.1.tar.xz
+ARG FFMPEG_SHA256=a64f3171e6ad1f7d358d28890a907ee478c331d1177ec696a93418f79ac3f1f3
 ADD --checksum=sha256:${DENO_SHA256} \
     https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
 ADD --checksum=sha256:${FFMPEG_SHA256} ${FFMPEG_URL} /tmp/ffmpeg.tar.xz

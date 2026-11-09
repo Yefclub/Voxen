@@ -131,3 +131,33 @@ def test_http_status_mapping_for_responses() -> None:
 
 def test_redact_strips_urls() -> None:
     assert "token" not in errors.redact("failed https://x.test/a?token=abc here")
+
+
+def test_ytdlp_error_lines_win_over_warnings() -> None:
+    from capture_worker.errors import classify_ytdlp_stderr
+
+    stderr = (
+        "WARNING: [youtube] fragment 3: HTTP Error 403: Forbidden, retrying\n"
+        "ERROR: [youtube] abc: Video unavailable. This video has been removed by the uploader\n"
+    )
+    assert classify_ytdlp_stderr(stderr).code == "REMOVED"
+
+
+def test_copyright_takedown_is_removed_not_ip_blocked() -> None:
+    from capture_worker.errors import classify_message
+
+    assert (
+        classify_message("ERROR: This video has been blocked it on copyright grounds").code
+        == "REMOVED"
+    )
+
+
+def test_disk_full_is_too_large() -> None:
+    from capture_worker.errors import classify_ytdlp_stderr
+
+    assert (
+        classify_ytdlp_stderr(
+            "ERROR: unable to write data: [Errno 28] No space left on device"
+        ).code
+        == "TOO_LARGE"
+    )

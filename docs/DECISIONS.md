@@ -446,7 +446,7 @@ e sem GPU, então inferência local não é viável.
   worker. No mesmo worker, MPL sem modificação é aceito só para dependências
   transitivas sem alternativa permissiva: `certifi` (bundle de CAs da Mozilla,
   os mesmos dados do `ca-certificates` já presente nas imagens), `tld`
-  (tri-licença, usada sob MPL-1.1, via trafilatura → courlan) e `go-cleanhttp`
+  (tri-licença, usada sob MPL-1.1, via trafilatura → courlan) e `golang-lru`
   (MPL-2.0, compilado no Smokescreen). MPL é copyleft por arquivo e não cria
   obrigação para o código da Voxen.
 

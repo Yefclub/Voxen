@@ -3,9 +3,10 @@ name = "voxen-capture-worker"
 version = "0.0.0"
 description = "Voxen capture worker: downloads and extracts source content behind an egress proxy"
 requires-python = ">=3.13,<3.14"
-license = "Apache-2.0"
-# Every runtime dependency must be MIT, Apache-2.0, BSD, ISC or Unlicense
-# (CLAUDE.md, ADR-014). Do not add yt-dlp's `default` extra: it pulls GPL code.
+license = "MIT"
+# Runtime dependencies must be permissive (MIT, Apache-2.0, BSD, ISC, MIT-0,
+# PSF-2.0, CNRI-Python, Unlicense) or one of the unmodified MPL exceptions in
+# ADR-014 (certifi, tld). Do not add yt-dlp's `default` extra: it pulls GPL code.
 dependencies = [
     "yt-dlp==2026.10.26",
     "yt-dlp-ejs==0.8.0",

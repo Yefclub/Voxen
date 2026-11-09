@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import io
+import json
+import os
 import re
+import sys
+import uuid
 from typing import Any
 
 import trafilatura
 from lxml import html as lxml_html
 from pypdf import PdfReader
 
-from . import config, http, images
+from . import config, http, images, proc
 from .errors import NO_TEXT, UNSUPPORTED, CaptureError, error
 from .result import empty_result, iso_date, language_code
 
@@ -22,7 +25,7 @@ async def extract(url: str, tmp_dir: str) -> dict[str, Any]:
     ctype = fetched.content_type.split(";", 1)[0].strip()
     body = fetched.body
     if ctype == "application/pdf" or body.startswith(b"%PDF-"):
-        text, title = pdf_text(body)
+        text, title = await pdf_text_isolated(_spill(body, tmp_dir, ".pdf"), tmp_dir)
         result = empty_result("web", fetched.url, "pypdf")
         result.update(title=title, text=text, textKind="page")
         _require_text(result)
@@ -40,7 +43,7 @@ async def extract(url: str, tmp_dir: str) -> dict[str, Any]:
         return result
     if ctype and ctype not in _HTML_TYPES and not ctype.startswith("text/"):
         raise error(UNSUPPORTED)
-    result = parse_html(body, fetched.url)
+    result = await parse_html_isolated(_spill(body, tmp_dir, ".html"), fetched.url, tmp_dir)
     og_image = result.pop("_og_image", None)
     _require_text(result)
     if og_image:
@@ -84,9 +87,46 @@ def _html_lang(body: bytes) -> str | None:
     return language_code(root.get("lang") or root.get("xml:lang"))
 
 
-def pdf_text(body: bytes) -> tuple[str | None, str | None]:
+def _spill(body: bytes, tmp_dir: str, suffix: str) -> str:
+    path = os.path.join(tmp_dir, f"parse-{uuid.uuid4().hex}{suffix}")
+    with open(path, "wb") as handle:
+        handle.write(body)
+    return path
+
+
+def _parse_command() -> list[str]:
+    return [sys.executable, os.path.join(os.path.dirname(__file__), "parse_child.py")]
+
+
+async def _run_child(args: list[str], tmp_dir: str) -> dict[str, Any]:
+    result = await proc.run(
+        [*_parse_command(), *args],
+        tmp_dir=tmp_dir,
+        timeout=config.PARSE_TIMEOUT_SEC,
+    )
     try:
-        reader = PdfReader(io.BytesIO(body))
+        payload = json.loads(result.stdout or b"{}")
+    except ValueError:
+        payload = {}
+    if result.returncode != 0 or not isinstance(payload, dict) or "error" in payload:
+        code = payload.get("error") if isinstance(payload, dict) else None
+        raise error(NO_TEXT if code == NO_TEXT else UNSUPPORTED)
+    return payload
+
+
+async def pdf_text_isolated(path: str, tmp_dir: str) -> tuple[str | None, str | None]:
+    payload = await _run_child(["pdf", path], tmp_dir)
+    return payload.get("text"), payload.get("title")
+
+
+async def parse_html_isolated(path: str, url: str, tmp_dir: str) -> dict[str, Any]:
+    return await _run_child(["html", path, url], tmp_dir)
+
+
+def pdf_text_from_path(path: str) -> tuple[str | None, str | None]:
+    """Runs only inside parse_child; reads the PDF lazily from disk."""
+    try:
+        reader = PdfReader(path)
         if reader.is_encrypted:
             raise error(UNSUPPORTED)
         parts: list[str] = []

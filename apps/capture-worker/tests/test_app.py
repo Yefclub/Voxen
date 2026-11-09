@@ -257,3 +257,18 @@ def test_child_env_has_no_secrets_or_bypass(monkeypatch: pytest.MonkeyPatch, tmp
     assert TOKEN not in env.values()
     assert not {k for k in env if k.lower() == "no_proxy"}
     assert env["https_proxy"] == config.proxy_url()
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["__GERE_COM_openssl_rand_hex_32__", "change-me-change-me-change-me-12345", "a" * 31 + " "],
+)
+def test_placeholder_tokens_are_rejected(monkeypatch: pytest.MonkeyPatch, token: str) -> None:
+    monkeypatch.setenv("CAPTURE_WORKER_TOKEN", token)
+    with pytest.raises(SystemExit):
+        config.load_token()
+
+
+def test_generated_hex_token_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CAPTURE_WORKER_TOKEN", "0123456789abcdef" * 4)
+    assert config.load_token() == "0123456789abcdef" * 4

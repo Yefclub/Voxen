@@ -110,7 +110,22 @@ def test_pdf_link_uses_pypdf(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert "Linha de texto do relatorio 19" in result["text"]
 
 
-def test_corrupt_pdf_is_unsupported() -> None:
+def test_corrupt_pdf_is_unsupported(tmp_path) -> None:
+    path = tmp_path / "bad.pdf"
+    path.write_bytes(b"%PDF-1.7 garbage")
     with pytest.raises(CaptureError) as caught:
-        web.pdf_text(b"%PDF-1.7 garbage")
+        web.pdf_text_from_path(str(path))
     assert caught.value.code == "UNSUPPORTED"
+
+
+def test_parsing_runs_in_a_killable_child(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A parser that never returns must time out instead of freezing the loop."""
+    from capture_worker import config
+
+    monkeypatch.setattr(config, "PARSE_TIMEOUT_SEC", 1)
+    monkeypatch.setattr(
+        web, "_parse_command", lambda: [web.sys.executable, "-c", "import time; time.sleep(30)"]
+    )
+    with pytest.raises(CaptureError) as caught:
+        _run(web.pdf_text_isolated(str(tmp_path / "x.pdf"), str(tmp_path)))
+    assert caught.value.code == "TIMEOUT"

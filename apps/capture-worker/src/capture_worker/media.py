@@ -14,7 +14,47 @@ from .errors import TOO_LARGE, UNSUPPORTED, error
 
 FFMPEG = os.path.join(config.FFMPEG_DIR, "ffmpeg")
 FFPROBE = os.path.join(config.FFMPEG_DIR, "ffprobe")
-_INPUT_FLAGS = ["-protocol_whitelist", "file"]
+# Local files only, and only plain container/image demuxers: playlist-style
+# demuxers (hls, concat, dash) could make ffmpeg read other local files.
+_FORMAT_WHITELIST = ",".join(
+    [
+        "aac",
+        "aiff",
+        "amr",
+        "amrnb",
+        "amrwb",
+        "asf",
+        "avi",
+        "caf",
+        "flac",
+        "flv",
+        "gif",
+        "gif_pipe",
+        "image2",
+        "image2pipe",
+        "jpeg_pipe",
+        "png_pipe",
+        "webp_pipe",
+        "bmp_pipe",
+        "tiff_pipe",
+        "mjpeg",
+        "matroska",
+        "webm",
+        "mov",
+        "mp4",
+        "m4a",
+        "3gp",
+        "3g2",
+        "mj2",
+        "mp3",
+        "mpeg",
+        "mpegts",
+        "ogg",
+        "wav",
+        "w64",
+    ]
+)
+_INPUT_FLAGS = ["-protocol_whitelist", "file", "-format_whitelist", _FORMAT_WHITELIST]
 _FF = ["-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
 
 

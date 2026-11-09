@@ -73,7 +73,7 @@ Pinned in the `Dockerfile` by exact version and checksum:
 Python dependencies are pinned in `uv.lock` (hashes included). Three
 unmodified MPL dependencies are documented exceptions (ADR-014): `certifi`
 (Mozilla CA bundle), `tld` (used under MPL-1.1, via trafilatura → courlan)
-and `go-cleanhttp` (compiled into Smokescreen). Never install
+and `golang-lru` (compiled into Smokescreen). Never install
 yt-dlp's `default` extra (it pulls GPL code) or `markitdown[all]`.
 
 ## Development

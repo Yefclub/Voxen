@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 MIN_TOKEN_LENGTH = 32
 
@@ -28,6 +29,8 @@ MAX_DOWNLOAD_BYTES = 700 * 1024 * 1024
 MIN_WEB_TEXT_CHARS = 200
 MAX_PDF_PAGES = 1000
 
+PARSE_TIMEOUT_SEC = 120
+
 DENO_PATH = "/usr/local/bin/deno"
 FFMPEG_DIR = "/usr/local/bin"
 
@@ -39,7 +42,13 @@ def proxy_url() -> str:
 def load_token() -> str:
     """Refuse to start without a strong token."""
     token = os.environ.get("CAPTURE_WORKER_TOKEN", "")
-    if len(token) < MIN_TOKEN_LENGTH:
+    # Example-file placeholders are long enough to pass a length check.
+    placeholder = re.search(r"__|openssl|gere|change|example|placeholder", token, re.IGNORECASE)
+    if (
+        len(token) < MIN_TOKEN_LENGTH
+        or placeholder
+        or not re.fullmatch(r"[A-Za-z0-9+/=_-]+", token)
+    ):
         raise SystemExit(
             f"CAPTURE_WORKER_TOKEN must be set and at least {MIN_TOKEN_LENGTH} characters long"
         )

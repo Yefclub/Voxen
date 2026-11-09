@@ -99,7 +99,12 @@ _MESSAGE_RULES: tuple[tuple[re.Pattern[str], str, bool], ...] = tuple(
         (r"egress proxying is denied|request rejected by proxy|\b407\b", BLOCKED_ADDRESS, False),
         (r"not a bot|confirm you.?re not a robot", IP_BLOCKED, False),
         (r"\b429\b|too many requests|rate.?limit", RATE_LIMITED, True),
-        (r"larger than max-filesize|file is larger than|too large", TOO_LARGE, False),
+        (
+            r"larger than max-filesize|file is larger than|too large|no space left on device",
+            TOO_LARGE,
+            False,
+        ),
+        (r"copyright", REMOVED, False),
         (
             r"confirm your age|age.?restricted|inappropriate for some users|"
             r"private (video|account|post)|this (video|account|post) is private|"
@@ -145,6 +150,17 @@ def classify_message(text: str) -> CaptureError:
         if pattern.search(text):
             return CaptureError(code, retryable)
     return error(UNKNOWN)
+
+
+def classify_ytdlp_stderr(stderr: str) -> CaptureError:
+    """yt-dlp prints WARNING lines (e.g. a 403 on one fragment retry) before
+    the final ERROR line; classify the ERROR lines first."""
+    errors_only = "\n".join(line for line in stderr.splitlines() if line.startswith("ERROR:"))
+    if errors_only:
+        classified = classify_message(errors_only)
+        if classified.code != UNKNOWN:
+            return classified
+    return classify_message(stderr)
 
 
 def classify_exception(exc: BaseException) -> CaptureError:

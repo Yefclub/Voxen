@@ -46,7 +46,7 @@ X 44%, web 17%, YouTube 12%, TikTok 13%, uploads 13%. 26% of the library
   as a separate binary inside the capture worker. Every other dependency
   stays MIT, Apache-2.0, BSD, ISC or Unlicense (CLAUDE.md, ADR-014), except
   the unmodified MPL transitive dependencies listed in ADR-014 (`certifi`,
-  `tld`, `go-cleanhttp`), all confined to the capture worker.
+  `tld`, `golang-lru`), all confined to the capture worker.
 - D4. Provider keys are per user, stored in `Setting` (scope USER) encrypted
   with MASTER_KEY, entered through the UI. Never in `.env`, logs, commits,
   fixtures, job rows or progress events.
@@ -234,5 +234,6 @@ contract version 2, and MCP tools that start captures.
       job with `BLOCKED_ADDRESS` (automated tests).
 - [ ] Killing the web process mid-capture resumes the job after restart.
 - [ ] Sharing a link to the installed PWA creates a capture job.
-- [ ] Every new dependency has an allowed license (ffmpeg LGPL and
-      Unlicense as the only documented exceptions).
+- [ ] Every new dependency has an allowed license; the only exceptions are
+      the ones documented in ADR-014 (Unlicense, LGPL ffmpeg binary and the
+      unmodified MPL transitive dependencies of the capture worker).

@@ -124,7 +124,7 @@ Decision:
   dependencies with no permissive alternative: `certifi` (the Mozilla CA
   bundle, the same data as the `ca-certificates` package already in the
   images), `tld` (tri-licensed, used under MPL-1.1, via trafilatura → courlan)
-  and `go-cleanhttp` (MPL-2.0, compiled into Smokescreen). MPL is file-level
+  and `golang-lru` (MPL-2.0, compiled into Smokescreen). MPL is file-level
   copyleft and places no obligation on Voxen's own code.
 
 Rejected: a separate product outside the app (more operations, no gain for a

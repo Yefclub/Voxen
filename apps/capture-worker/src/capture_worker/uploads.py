@@ -103,8 +103,7 @@ async def handle(request: Request, tmp_dir: str) -> dict[str, Any]:
     if kind == "pdf":
         if os.path.getsize(path) > config.MAX_UPLOAD_BYTES:
             raise error(TOO_LARGE)
-        with open(path, "rb") as handle_:
-            text, title = web.pdf_text(handle_.read())
+        text, title = await web.pdf_text_isolated(path, tmp_dir)
         if not text:
             raise error(NO_TEXT)
         result.update(text=text, textKind="page", title=title or result["title"])

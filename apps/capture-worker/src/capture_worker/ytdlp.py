@@ -18,7 +18,7 @@ from .errors import (
     TOO_LARGE,
     UNSUPPORTED,
     CaptureError,
-    classify_message,
+    classify_ytdlp_stderr,
     error,
     redact,
 )
@@ -75,7 +75,7 @@ async def _run(extra: list[str], url: str, tmp_dir: str, timeout: float) -> proc
     )
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", errors="replace")
-        classified = classify_message(stderr)
+        classified = classify_ytdlp_stderr(stderr)
         log.warning("yt-dlp failed (%s): %s", classified.code, redact(stderr))
         raise classified
     return result
@@ -189,8 +189,12 @@ async def download_audio(url: str, tmp_dir: str) -> str:
     os.makedirs(out_dir, exist_ok=True)
     await _run(
         [
+            # Smallest usable stream: speech-to-text needs little bitrate, and a
+            # muxed HD fallback could otherwise fill the tmpfs.
             "--format",
-            "ba/b/bv*+ba",
+            "ba/wa/b/w",
+            "--format-sort",
+            "+size,+br,+res",
             "--max-filesize",
             str(config.MAX_DOWNLOAD_BYTES),
             # Live streams stop the run (exit 101, classified UNSUPPORTED);

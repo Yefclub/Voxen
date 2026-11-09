@@ -65,7 +65,20 @@ def _extract(client: TestClient, url: str) -> dict:
     return response.json()["error"]
 
 
-@pytest.mark.parametrize("url", ["http://127.0.0.1:1/", METADATA_URL, "https://10.0.0.1/"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/",
+        "http://127.0.0.1:1/",
+        METADATA_URL,
+        "https://10.0.0.1/",
+        "http://2130706433/",
+        "http://localhost/",
+        "http://[::1]/",
+        "http://[::ffff:169.254.169.254]/",
+        "https://1.1.1.1:8443/",
+    ],
+)
 def test_private_destinations_are_blocked(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, url: str
 ) -> None:
