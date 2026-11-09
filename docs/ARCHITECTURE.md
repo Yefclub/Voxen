@@ -1,8 +1,10 @@
 # Arquitetura — Voxen
 
 Voxen é uma plataforma self-hosted de conhecimento com um serviço de
-aplicação e dois serviços de infraestrutura. Docker Compose é a referência; a
-imagem combinada `voxen` é o caminho recomendado no Easypanel.
+aplicação, um serviço opcional de captura e dois serviços de infraestrutura.
+Docker Compose é a referência; a imagem combinada `voxen` é o caminho
+recomendado no Easypanel, com o `capture-worker` como segundo serviço quando
+a captura de links for usada.
 
 ## Visão do sistema
 
@@ -13,11 +15,16 @@ Navegador
 apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, grafo, usuários, jobs, configurações)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  `---- volume local compartilhado (padrão) ou S3 compatível
+  |---- volume local compartilhado (padrão) ou S3 compatível
+  |---- OpenAI / Anthropic / OpenRouter / xAI (endpoints fixos, chave por usuário)
+  `---- capture-worker (rede interna, token bearer)
+          `---- proxy de saída Smokescreen ---> só internet pública
 ```
 
-O web é a única aplicação. A manutenção retida (exclusões de conhecimento)
-roda no próprio processo web com leases duráveis no Postgres. Redis acelera
+O web concentra todo acesso a banco, storage e provedores. Jobs de captura,
+exclusões de conhecimento e manutenção rodam no próprio processo web com
+leases duráveis no Postgres. O capture worker só baixa e converte mídia; não
+tem `MASTER_KEY`, chave de provedor nem credencial de banco. Redis acelera
 notificações, mas o Postgres continua sendo a fonte durável dos jobs e do
 estado da aplicação.
 
@@ -37,14 +44,57 @@ Configurações administrativas ficam em `/admin/*`. Perfil, contas de
 plataforma e MCP pertencentes ao usuário ficam em `/conta/*`. Toda query de
 dado pessoal deriva `userId` da sessão autenticada, nunca do request.
 
-## Manutenção retida (sem worker)
+## Jobs em segundo plano
 
-Não há worker separado. As exclusões de conhecimento (`DELETE_KNOWLEDGE`)
-são executadas pelo próprio processo web (`knowledge-deletion-executor`),
-com claim `FOR UPDATE SKIP LOCKED`, lease com heartbeat e orçamento de 3
-tentativas. Leases expirados são retomados pelo drain de startup e pelo
-intervalo periódico. Conteúdo preparado chega por contratos versionados
-HTTP/MCP; a Voxen nunca executa modelos, transcrição ou scraping.
+Exclusões de conhecimento (`DELETE_KNOWLEDGE`) e capturas (`CAPTURE_LINK`,
+`CAPTURE_UPLOAD`) rodam no processo web com claim `FOR UPDATE SKIP LOCKED`,
+lease com heartbeat e orçamento de 3 tentativas com backoff para erros
+transitórios. Leases expirados são retomados pelo drain de startup e pelo
+intervalo periódico; um restart retoma o trabalho em vez de perdê-lo.
+
+## `capture-worker` (spec 220)
+
+Container separado com yt-dlp, Deno, ffmpeg/ffprobe (build BtbN
+`linux64-lgpl` sem modificação, só como binário separado) e Trafilatura. Não
+publica portas, só aceita requisições com `CAPTURE_WORKER_TOKEN`, roda como
+usuário não-root com root filesystem somente leitura, todas as capabilities
+removidas e `no-new-privileges`, e envia toda saída de rede pelo Smokescreen,
+que bloqueia faixas privadas, loopback, link-local e de metadados depois do
+DNS e dos redirects.
+
+O web acessa o worker por `CAPTURE_WORKER_URL`. Sem o worker, a base continua
+funcionando e as capturas terminam com `WORKER_UNAVAILABLE` depois das
+tentativas.
+
+## Fluxo de captura
+
+1. O usuário envia um link (`POST /api/captures`), um arquivo
+   (`POST /api/captures/upload`) ou um compartilhamento do PWA
+   (`POST /share-target`). As verificações rodam de forma síncrona e em ordem:
+   formato da URL e endereços privados literais, captura ativa do mesmo link,
+   mesmo link já na biblioteca (oferece reprocessar) e papel de texto
+   configurado. Só então o job é criado.
+2. O runner pede ao worker primeiro o texto (legendas, post, página ou
+   documento). STT roda só quando não há texto útil e a fonte tem áudio; até
+   quatro imagens são descritas quando o texto é curto e existe papel de
+   visão. O resultado do worker fica guardado como artefato de captura, então
+   uma nova tentativa não baixa de novo.
+3. Uma única chamada estruturada, sem ferramentas e sem busca na web, gera
+   título, resumo, pontos-chave, tags e entidades; o conteúdo capturado entra
+   como dado não confiável.
+4. O documento é publicado pelo contrato interno de publicação versão 2
+   (`DOCUMENT`) no mesmo storage, índice e grafo do conteúdo preparado.
+   Reprocessar atualiza o mesmo documento e guarda o texto anterior como versão
+   da fonte.
+5. Eventos de progresso (`extracting`, `transcribing`, `describing_images`,
+   `interpreting`, `publishing`) são persistidos e transmitidos por SSE com
+   replay por `Last-Event-ID`. Cancelar, tentar de novo (mesma linha, tentativa
+   zerada) e reprocessar ficam em `/capturar` e na página do documento.
+
+Chaves de provedor são por usuário, cifradas com `MASTER_KEY`, e usadas só
+contra os endpoints fixos de OpenAI, Anthropic, OpenRouter e xAI. Toda falha
+tem código estável (`AI_NOT_CONFIGURED`, `LOGIN_REQUIRED`, `NO_TEXT`, …),
+mensagem localizada e ação sugerida.
 
 Tabelas aposentadas do Produto 2 (chat, aprovações, custos, automações,
 pesquisa, memória) foram removidas por migrations forward com o histórico

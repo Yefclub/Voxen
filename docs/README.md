@@ -7,6 +7,13 @@ documentation currently has two tracks:
 - **Português (Brasil)** remains available for the existing community and must
   be updated when a change affects translated operational guidance.
 
+Voxen é uma base de conhecimento self-hosted. Além da ingestão por contratos
+HTTP/MCP, ela captura links e arquivos (web, YouTube, TikTok, Instagram, X,
+upload e compartilhamento do PWA) pelo container `capture-worker` e interpreta
+o conteúdo com o provedor de IA na nuvem que cada usuário configura em Conta →
+Provedores de IA (OpenAI, Anthropic, OpenRouter ou xAI). Sem modelos locais e
+sem embeddings; a base funciona sem nenhuma chave.
+
 ## English
 
 | Document                                             | Topic                                                 |

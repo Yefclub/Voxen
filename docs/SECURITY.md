@@ -9,7 +9,10 @@ usuários. Vulnerabilidades devem seguir [`../SECURITY.md`](../SECURITY.md).
 | Ameaça                 | Vetor                      | Mitigação                                      |
 | ---------------------- | -------------------------- | ---------------------------------------------- |
 | Brute force            | endpoints de login         | rate limits, hash forte e IdP opcional         |
-| SSRF                   | URL de ingestão maliciosa  | validação e allowlist antes da extração        |
+| SSRF                   | URL de captura maliciosa   | checagem no submit e saída só pelo Smokescreen |
+| Prompt injection       | página ou post capturado   | interpretação sem ferramentas e com schema     |
+| Vazamento de chave     | banco, logs, leituras      | chave por usuário cifrada, nunca devolvida     |
+| Share forjado          | POST de outro site         | exige sessão e recusa `Sec-Fetch-Site` externo |
 | Acesso entre usuários  | identificador forjado      | `userId` sempre derivado da sessão             |
 | Escalada de privilégio | rotas administrativas      | guards server-side por role                    |
 | Vazamento de secrets   | dump ou log                | settings cifrados e logs sem valores sensíveis |
@@ -37,8 +40,13 @@ plataforma e credenciais MCP pertencem ao usuário autenticado em `/conta/*`.
 
 ## Secrets
 
-Secrets de infraestrutura ficam somente no `.env` da raiz. OIDC e outros
-settings de aplicação são cifrados com AES-256-GCM usando `MASTER_KEY`.
+Secrets de infraestrutura ficam somente no `.env` da raiz, incluindo o
+`CAPTURE_WORKER_TOKEN`, entregue só ao `web` e ao `capture-worker`. OIDC,
+outros settings de aplicação e as chaves de provedor de IA de cada usuário são
+cifrados com AES-256-GCM usando `MASTER_KEY`. A chave é informada na UI
+(Conta → Provedores de IA), validada com uma chamada autenticada barata e
+nunca devolvida a cliente nenhum: a leitura mostra só provedor, os quatro
+últimos caracteres, status de validação e data.
 
 ```bash
 openssl rand -base64 32
@@ -49,9 +57,30 @@ cookies ou a master key.
 
 ## Segurança de rede e conteúdo
 
-- O web é a única aplicação exposta.
-- URLs remotas de origem são tratadas como metadados; a Voxen nunca
-  busca, transcreve ou analisa conteúdo automaticamente.
+- O web é a única aplicação exposta. O capture worker não publica portas,
+  recusa requisições sem o bearer `CAPTURE_WORKER_TOKEN` e não tem
+  `MASTER_KEY`, chave de provedor nem credencial de banco.
+- O worker roda como usuário não-root, root filesystem somente leitura, todas
+  as capabilities removidas, `no-new-privileges` e limites de CPU/memória. O
+  yt-dlp roda com `--ignore-config --no-plugin-dirs --no-remote-components` e
+  `--` antes da URL. Sem cookies, login, APIs pagas de scraping ou bypass
+  anti-bot; plataforma bloqueada termina em `LOGIN_REQUIRED`, `IP_BLOCKED`,
+  `RATE_LIMITED` ou `REMOVED` e sugere enviar o arquivo.
+- SSRF: o submit recusa na hora URLs não http(s), `localhost` e endereços
+  privados, loopback ou link-local literais (`BLOCKED_ADDRESS`). Depois, toda
+  requisição do worker passa pelo Smokescreen, que bloqueia faixas privadas,
+  loopback, link-local e de metadados após DNS e redirects; um link público
+  que redireciona para dentro falha com `BLOCKED_ADDRESS`.
+- Chamadas de modelo vão só para os endpoints fixos de OpenAI, Anthropic,
+  OpenRouter e xAI; não existe base URL customizada.
+- Prompt injection: a interpretação roda sem ferramentas, sem busca na web e
+  com schema de saída estrito. Texto e imagens capturados entram como dados
+  não confiáveis, e links e imagens são removidos do resumo gerado; uma página
+  hostil no máximo distorce o próprio documento.
+- O share target do PWA (`POST /share-target`) só cria jobs para usuário
+  logado e aprovado, recusa `Sec-Fetch-Site` de outro site, não guarda nada
+  sem sessão e redireciona só com ids ou códigos fixos de erro — texto
+  compartilhado nunca vira HTML.
 - Storage local rejeita chaves absolutas/traversal e symlinks, usa permissões
   restritivas, escrita atômica e nunca é servido como diretório estático público.
 - Credenciais S3 opcionais devem acessar somente o bucket da Voxen.
@@ -85,7 +114,9 @@ escopo, responsável e data de revisão.
 
 ## Resposta a incidentes
 
-1. Rotacionar credenciais afetadas de host, aplicação, OIDC e modelos.
+1. Rotacionar credenciais afetadas de host, aplicação, OIDC,
+   `CAPTURE_WORKER_TOKEN` e provedores (cada usuário troca a própria chave em
+   Conta → Provedores de IA).
 2. Revogar sessões e desabilitar contas comprometidas.
 3. Auditar eventos de autenticação, jobs, automações e custos.
 4. Restaurar backups do Postgres, storage e `MASTER_KEY` quando necessário.

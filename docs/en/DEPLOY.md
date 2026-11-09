@@ -37,6 +37,9 @@ POSTGRES_PASSWORD=...
 REDIS_PASSWORD=...
 BETTER_AUTH_SECRET=...
 MASTER_KEY=...
+# Link capture (optional): shared by web and capture-worker only.
+CAPTURE_WORKER_TOKEN=...
+CAPTURE_WORKER_URL=http://capture-worker:8080
 
 STORAGE_DRIVER=local
 STORAGE_LOCAL_PATH=/data/storage
@@ -101,12 +104,34 @@ without a trailing slash). If Easypanel exposes both a temporary domain and a
 final domain, add the extra origin to `BETTER_AUTH_TRUSTED_ORIGINS`; otherwise
 Better Auth rejects signup/login requests with `Invalid origin`.
 
-## Media Capture (removed)
+## Link capture (`capture-worker`)
 
-> Note (spec 215, issue #894): media capture and extraction (downloads,
-> transcription, scraping, extraction proxying, and platform cookies) were
-> removed from Voxen. Content arrives as prepared material through versioned
-> HTTP/MCP contracts.
+Link and file capture (spec 220) needs a second service, `capture-worker`,
+built from `apps/capture-worker/Dockerfile`. Compose already defines it on the
+internal network with no published ports, a read-only root filesystem, all
+capabilities dropped, `no-new-privileges`, and CPU/memory limits. It runs
+yt-dlp, Deno, ffmpeg/ffprobe, Trafilatura, and the Smokescreen egress proxy.
+
+- Generate `CAPTURE_WORKER_TOKEN` with `openssl rand -base64 32` (`make dev`
+  does it for you) and give it to `web` and `capture-worker` only. The worker
+  never receives `MASTER_KEY`, provider keys, or database credentials.
+- `web` reaches the worker at `CAPTURE_WORKER_URL`
+  (`http://capture-worker:8080` in Compose).
+- Without the worker, the knowledge base, search, MCP, notes, and
+  prepared-content ingestion keep working; captures end with
+  `WORKER_UNAVAILABLE` after their retries.
+- AI interpretation and speech-to-text use the key each user adds under
+  **Account → AI providers** (`/conta/ia`): OpenAI, Anthropic, OpenRouter, or
+  xAI. Nothing provider-related goes into `.env`.
+- The worker image ships an unmodified LGPL ffmpeg/ffprobe build (BtbN
+  `linux64-lgpl`) used only as a separate binary; it is never linked into
+  Voxen code. Every other dependency is MIT, Apache-2.0, BSD, ISC, or
+  Unlicense (yt-dlp). See ADR-014 in [`DECISIONS.md`](DECISIONS.md).
+- No cookies or logged-in capture are used. A home-lab residential IP is less
+  likely to be blocked by media platforms than a datacenter IP; when a platform
+  blocks the server, the capture suggests uploading the file instead.
+- To share links from a phone, install the PWA from the browser menu; it
+  registers as a share target and opens `/capturar` with the new capture.
 
 ## Home-Lab
 
@@ -159,8 +184,9 @@ docker compose --profile nginx up -d --build
 
 Easypanel is supported. The recommended topology is **one Voxen App** from the
 published combined image, PostgreSQL, Redis, and one persistent App volume
-mounted at `/data/storage`. Do not deploy separate services: the combined
-image runs the web/API.
+mounted at `/data/storage`. The combined image runs the web/API. Link capture
+additionally needs a second App for `capture-worker`; without it, Voxen still
+works and captures report `WORKER_UNAVAILABLE`.
 
 Provision PostgreSQL and Redis first, attach the persistent storage volume,
 then deploy the App from a Docker image:
@@ -174,6 +200,15 @@ set `APP_BASE_URL`, `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`,
 After deployment, verify both `/health` and `/health/deep`; the deep health
 check confirms PostgreSQL, Redis, and read/write access to the selected storage.
 
+To enable capture, add a second App named `capture-worker` from the GitHub
+source with Dockerfile path `apps/capture-worker/Dockerfile` (it needs no
+build-time secrets). Do not expose a domain or port for it. Set only
+`CAPTURE_WORKER_TOKEN` in its Environment, then add the same
+`CAPTURE_WORKER_TOKEN` and `CAPTURE_WORKER_URL=http://<project>_capture-worker:8080`
+(the internal service hostname Easypanel shows for that App) to the Voxen App
+and redeploy it. Apply the hardening from the Compose service where Easypanel
+allows it (read-only filesystem, dropped capabilities, memory limit).
+
 Stable release automation publishes the versioned combined image and advances
 `latest` from the same `vX.Y.Z` tag. On `dev`, the combined image is published
 only after the automatic version pull request passes CI and merges, keeping the
@@ -185,8 +220,8 @@ but build-time environment handling may expose secrets in build logs.
 Image-based deployment is the recommended production path because secrets are
 supplied only at runtime.
 
-On a home lab, this single App is all the Voxen application infrastructure you
-need. No separate agent image is required.
+On a home lab, the Voxen App plus the optional `capture-worker` App is all the
+application infrastructure you need. No separate agent image is required.
 
 For SSE notifications behind Traefik/HTTP2, deploy a version with the
 HTTP2-safe SSE writer. It avoids `Connection` and `Transfer-Encoding` headers
