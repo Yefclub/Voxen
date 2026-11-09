@@ -1,0 +1,53 @@
+[project]
+name = "voxen-capture-worker"
+version = "0.0.0"
+description = "Voxen capture worker: downloads and extracts source content behind an egress proxy"
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+# Runtime dependencies must be permissive (MIT, Apache-2.0, BSD, ISC, MIT-0,
+# PSF-2.0, CNRI-Python, Unlicense) or one of the unmodified MPL exceptions in
+# ADR-014 (certifi, tld). Do not add yt-dlp's `default` extra: it pulls GPL code.
+dependencies = [
+    "yt-dlp==2026.10.26",
+    "yt-dlp-ejs==0.8.0",
+    "curl-cffi==0.17.0",
+    "trafilatura==2.3.1",
+    "starlette==1.10.0",
+    "uvicorn==0.54.0",
+    "python-multipart==0.0.33",
+    "pypdf==7.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "ruff==0.17.4",
+    "httpx2==2.16.0",
+]
+
+[tool.uv]
+# The worker runs from `src/` on PYTHONPATH; it is not an installable package.
+package = false
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "B", "UP", "S", "ASYNC"]
+# ASYNC109/230/240: subprocess timeouts are explicit so the child can be
+# killed, and file operations only touch small files on the local tmpfs.
+ignore = ["S101", "ASYNC109", "ASYNC230", "ASYNC240"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S310", "S603", "E501"]
+# Whitespace-only lines are part of the YouTube VTT fixture.
+"tests/test_captions.py" = ["W293"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: needs the running container (egress proxy, ffmpeg); run inside the built image",
+]
+addopts = "-m 'not integration'"

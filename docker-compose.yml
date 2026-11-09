@@ -128,6 +128,9 @@ services:
       GARAGE_BUCKET: ${GARAGE_BUCKET:-}
       GARAGE_REGION: ${GARAGE_REGION:-}
       GARAGE_CREDS_PATH: ${GARAGE_CREDS_PATH:-}
+      # Link capture worker (spec 220). Shared bearer token, internal network only.
+      CAPTURE_WORKER_URL: ${CAPTURE_WORKER_URL:-http://capture-worker:8080}
+      CAPTURE_WORKER_TOKEN: ${CAPTURE_WORKER_TOKEN:-}
     ports:
       - '3000:3000'
     volumes:
@@ -140,6 +143,46 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------------------------------------------------------------------------
+  # capture-worker — downloads and extracts link content for capture (spec 220)
+  # Holds no MASTER_KEY, provider keys or database credentials; its only secret
+  # is CAPTURE_WORKER_TOKEN. All egress goes through the Smokescreen proxy that
+  # runs inside the container. No published ports: only `web` reaches it.
+  # ---------------------------------------------------------------------------
+  capture-worker:
+    build:
+      context: .
+      dockerfile: apps/capture-worker/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      # The worker refuses to start when this is unset or shorter than 32
+      # chars; `make ensure-env` generates it. Product 1 does not need it.
+      CAPTURE_WORKER_TOKEN: ${CAPTURE_WORKER_TOKEN:-}
+    user: '10001:10001'
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,uid=10001,gid=10001,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+    networks:
+      - voxen-net
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request as u; o=u.build_opener(u.ProxyHandler({})); assert o.open('http://127.0.0.1:8080/health', timeout=4).status == 200",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
   # ---------------------------------------------------------------------------
   # nginx — reverse proxy opcional (profile `nginx`)

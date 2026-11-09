@@ -120,6 +120,12 @@ Decision:
   xAI through AI SDK v7, with per-user keys encrypted in `Setting`.
 - License exceptions: Unlicense (yt-dlp) and an unmodified LGPL ffmpeg build
   (BtbN `linux64-lgpl`), the latter only as a separate binary in the worker.
+  Inside the same worker, unmodified MPL code is accepted only for transitive
+  dependencies with no permissive alternative: `certifi` (the Mozilla CA
+  bundle, the same data as the `ca-certificates` package already in the
+  images), `tld` (tri-licensed, used under MPL-1.1, via trafilatura → courlan)
+  and `golang-lru` (MPL-2.0, compiled into Smokescreen). MPL is file-level
+  copyleft and places no obligation on Voxen's own code.
 
 Rejected: a separate product outside the app (more operations, no gain for a
 single-tenant install); local models (host CPU too weak); ffmpeg-free
