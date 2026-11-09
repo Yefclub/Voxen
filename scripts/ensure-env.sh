@@ -17,6 +17,15 @@ random_b64_32() {
   fi
 }
 
+random_hex_32() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+    printf '\n'
+  fi
+}
+
 has_key() {
   grep -Eq "^$1=" "$ENV_FILE"
 }
@@ -38,6 +47,7 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 append_if_missing "MASTER_KEY" "$(random_b64_32)"
+append_if_missing "CAPTURE_WORKER_TOKEN" "$(random_hex_32)"
 if ! has_key "STORAGE_DRIVER"; then
   if [ "$env_existed" = true ] && grep -Eq '^(S3_|GARAGE_)[^=]*=.+$' "$ENV_FILE"; then
     append_if_missing "STORAGE_DRIVER" "s3"
