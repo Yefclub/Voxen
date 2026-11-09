@@ -37,7 +37,13 @@ export type GlobalSettingKey =
  * instância. Manter esta lista pequena evita que uma configuração operacional
  * seja gravada acidentalmente no workspace de um usuário.
  */
-export type UserSettingKey = never;
+export type UserSettingKey =
+  /** Provider API key (spec 220), secret. */
+  | `ai_provider_key:${string}`
+  /** Non-secret provider status: last4, validation status and time. */
+  | `ai_provider_meta:${string}`
+  /** JSON role → {provider, model} assignment. */
+  | 'ai_model_roles';
 
 export type AppLanguage = 'pt-BR' | 'en';
 
@@ -317,10 +323,10 @@ export async function isSetupComplete(): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
-// Preferências por usuário (SettingScope.USER) — não-secrets de produto.
+// Configuração por usuário (SettingScope.USER), cifrada com a master key.
 // ---------------------------------------------------------------------------
 
-export async function getUserSetting(userId: string, key: string): Promise<string | null> {
+export async function getUserSetting(userId: string, key: UserSettingKey): Promise<string | null> {
   const row = await db.setting.findFirst({
     where: { scope: 'USER', userId, key },
     select: { valueEnc: true },
@@ -329,7 +335,11 @@ export async function getUserSetting(userId: string, key: string): Promise<strin
   return decrypt(row.valueEnc, getMasterKey());
 }
 
-export async function setUserSetting(userId: string, key: string, value: string): Promise<void> {
+export async function setUserSetting(
+  userId: string,
+  key: UserSettingKey,
+  value: string,
+): Promise<void> {
   const valueEnc = encrypt(value, getMasterKey());
   await db.$transaction(async (tx) => {
     const existing = await tx.setting.findFirst({
@@ -342,4 +352,12 @@ export async function setUserSetting(userId: string, key: string, value: string)
       await tx.setting.create({ data: { scope: 'USER', userId, key, valueEnc } });
     }
   });
+}
+
+export async function deleteUserSettings(
+  userId: string,
+  keys: readonly UserSettingKey[],
+): Promise<void> {
+  if (keys.length === 0) return;
+  await db.setting.deleteMany({ where: { scope: 'USER', userId, key: { in: [...keys] } } });
 }

@@ -17,6 +17,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.99",
+    "@ai-sdk/openai": "4.0.111",
+    "@ai-sdk/xai": "5.0.40",
     "@animateicons/react": "^0.3.5",
     "@aws-sdk/client-s3": "^3.1050.0",
     "@aws-sdk/s3-request-presigner": "^3.1050.0",
@@ -33,6 +36,7 @@
     "@hono/node-server": "^2.1.0",
     "@lezer/highlight": "^1.2.3",
     "@modelcontextprotocol/server": "2.3.1",
+    "@openrouter/ai-sdk-provider": "3.1.0",
     "@prisma/client": "^6.0.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.23",
@@ -47,6 +51,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4",
     "@uiw/react-codemirror": "^4.25.11",
+    "ai": "7.0.166",
     "better-auth": "1.7.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -1,4 +1,4 @@
-import { KeyRound, User as UserIcon } from '@/components/ui/icons';
+import { BrainCircuit, KeyRound, User as UserIcon } from '@/components/ui/icons';
 import { NavLink } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 const accountSections = [
   { to: '/conta', label: 'account.title', icon: UserIcon, end: true },
   { to: '/conta/mcp', label: 'account.mcp.title', icon: KeyRound, end: false },
+  { to: '/conta/ia', label: 'account.ai.title', icon: BrainCircuit, end: false },
 ] as const;
 
 export function AccountPageNav(): React.ReactElement {

@@ -71,12 +71,12 @@ describe('integrated visual verification (spec 219 §acceptance)', () => {
     expect(CONTROLS_SOURCE).toContain('data-graph-controls');
   });
 
-  test('no Product 2 behavior returns with the workspace port', () => {
+  test('the graph canvas stays free of AI and 3D dependencies', () => {
+    // Spec 220 brings cloud AI providers back to apps/web (lib/ai); the graph
+    // workspace itself must still not depend on them or on a 3D engine.
     for (const source of [WEB_PACKAGE_JSON, PACKAGE_JSON]) {
-      expect(source).not.toContain('"ai"');
-      expect(source).not.toContain('openrouter');
       expect(source).not.toMatch(/"three"/);
     }
-    expect(CANVAS_SOURCE).not.toMatch(/openrouter|cuelume|from 'ai'|from "ai"/);
+    expect(CANVAS_SOURCE).not.toMatch(/openrouter|cuelume|@ai-sdk|from 'ai'|from "ai"/);
   });
 });

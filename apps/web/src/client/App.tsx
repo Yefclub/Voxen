@@ -52,6 +52,9 @@ const ContaPage = lazy(() =>
 const ContaMcpPage = lazy(() =>
   import('./pages/conta-mcp').then(({ ContaMcpPage }) => ({ default: ContaMcpPage })),
 );
+const ContaIaPage = lazy(() =>
+  import('./pages/conta-ia').then(({ ContaIaPage }) => ({ default: ContaIaPage })),
+);
 const OAuthConsentPage = lazy(() =>
   import('./pages/oauth-consent').then(({ OAuthConsentPage }) => ({ default: OAuthConsentPage })),
 );
@@ -174,6 +177,7 @@ function AppRoutes(): React.ReactElement {
         </Route>
         <Route path="/conta" element={<ContaPage />} />
         <Route path="/conta/mcp" element={<ContaMcpPage />} />
+        <Route path="/conta/ia" element={<ContaIaPage />} />
         <Route path="/oauth/consent" element={<OAuthConsentPage />} />
         <Route path="/fila" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/jobs" element={<Navigate to="/transcricoes" replace />} />
