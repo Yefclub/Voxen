@@ -5,6 +5,7 @@
 // PATCH  /api/account            — atualizar name (email é imutável aqui)
 // POST   /api/account/password   — trocar senha (precisa da senha atual)
 // POST   /api/account/qr-login   — gera URL de login por QR (one-time token)
+// /api/account/ai/*        — provedores de IA e papéis de modelo (spec 220)
 // O upload de avatar reaproveita /api/onboarding/avatar (qualquer user).
 // ============================================================================
 
@@ -13,6 +14,7 @@ import { z } from 'zod';
 import { auth, QR_LOGIN_TTL_SEC } from '../lib/auth';
 import { db } from '../lib/db';
 import { rateLimit } from '../lib/rate-limit';
+import { registerAccountAiRoutes } from './account-ai';
 import { registerAccountInterestRoutes } from './account-interests';
 
 type Vars = { userId: string };
@@ -34,6 +36,7 @@ accountRoutes.use('*', async (c, next) => {
 });
 
 registerAccountInterestRoutes(accountRoutes);
+registerAccountAiRoutes(accountRoutes);
 
 accountRoutes.get('/', async (c) => {
   const userId = c.get('userId');
