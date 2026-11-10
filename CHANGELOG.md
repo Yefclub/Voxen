@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794268985 — 2026-11-09 · Dev
+
+### ✨ Captured links become finished documents
+
+Voxen can now capture a link or uploaded file in the background: it takes captions, post or page text first, transcribes audio only when no text exists, describes images when the text is short, and publishes a searchable document with summary, key points, and tags using your configured AI provider. Captures retry transient failures, survive restarts, can be cancelled, retried, or reprocessed, and end with a clear reason and next step when a platform blocks access.
+
 ## v0.15.1-dev.1794265985 — 2026-11-09 · Dev
 
 ### 🔒 The capture worker image no longer ships setuid binaries
