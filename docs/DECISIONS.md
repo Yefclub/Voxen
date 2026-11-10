@@ -461,3 +461,20 @@ e sem GPU, então inferência local não é viável.
 - A base continua funcionando sem nenhuma chave de provedor.
 - Plataformas que bloqueiam o IP do servidor viram erro tipado com ação
   sugerida (upload do arquivo), não falha silenciosa.
+
+## ADR-015 — Gemini, fallback de provedores e STT local opcional
+
+**Data**: 2026-11-10
+**Status**: Aceita (spec 221; emenda o ADR-014)
+
+Depois de validar a captura no deploy, o owner adicionou o Gemini como
+quinto provedor (texto, visão e `gemini-3.5-transcribe`), cadeias de fallback
+ordenadas por função e um único modelo local opcional: um sidecar de STT
+(Parakeet TDT 0.6B v3 int8 em ONNX Runtime) com endpoint compatível com a
+OpenAI, sem segredos e sem saída de rede. Modelos locais de texto ou visão e
+embeddings continuam fora. Vídeos passam a ser sempre transcritos e ter
+frames analisados; os 50 comentários mais relevantes são capturados.
+
+Consequências: o plano grátis do Gemini pode usar o conteúdo enviado para
+melhorar produtos do Google, então a UI avisa; o sidecar local custa cerca de
+2 GB de RAM e processa uma transcrição por vez.

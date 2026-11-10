@@ -1,5 +1,10 @@
 # Spec 220 — Link capture and cloud AI interpretation (Product 2 as a Voxen extension)
 
+> Amended 2026-11-10 by spec 221: Gemini provider, per-role fallback, an
+> optional local STT sidecar, full video processing (speech + keyframes even
+> when a description exists) and top-50 comments. Where they conflict, spec
+> 221 wins.
+
 ## Context
 
 On 2026-11-09 the owner reversed part of spec 215. Voxen again captures
