@@ -28,7 +28,6 @@ import {
 import {
   getModelRoles,
   getModelSettings,
-  MAX_CHAIN_LENGTH,
   listProviderStatuses,
   removeProviderKey,
   saveProviderKey,
