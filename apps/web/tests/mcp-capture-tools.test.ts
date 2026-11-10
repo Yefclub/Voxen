@@ -300,6 +300,53 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP capture tools (spec 222)', () =>
     expect((await db.job.findUniqueOrThrow({ where: { id } })).status).toBe('QUEUED');
   });
 
+  test.each(['DONE', 'COMPLETED_WITH_WARNINGS'] as const)(
+    'completed reprocess capture %s returns the owned document title',
+    async (terminal) => {
+      const doc = await db.transcript.create({
+        data: {
+          userId: owner,
+          source: 'WEB',
+          url: 'https://example.com/reprocessed',
+          title: 'Reprocessed title',
+          durationSec: 0,
+          language: 'en',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: 'test.md',
+          plainText: 'Refreshed content.',
+          frontmatter: {},
+        },
+      });
+      const job = await db.job.create({
+        data: {
+          userId: owner,
+          type: 'CAPTURE_LINK',
+          sourceUrl: doc.url,
+          status: terminal,
+          refreshTranscriptId: doc.id,
+          transcriptId: null,
+        },
+      });
+      for (const response of [
+        await status(job.id),
+        await tool('voxen_cancel_capture', { capture_id: job.id }),
+      ]) {
+        expect(response.isError).not.toBe(true);
+        expect(response.structuredContent.capture.transcript).toMatchObject({
+          id: doc.id,
+          title: doc.title,
+        });
+      }
+      const list = await tool('voxen_list_captures', {});
+      expect(list.structuredContent.captures[0]?.transcript).toMatchObject({
+        id: doc.id,
+        title: doc.title,
+      });
+      await db.transcript.update({ where: { id: doc.id }, data: { userId: other } });
+      expect((await status(job.id)).structuredContent.capture.transcript).toBeNull();
+    },
+  );
+
   test('paginates by time/id, binds cursors to the owner and survives boundary deletion', async () => {
     const queuedAt = new Date('2026-01-01T00:00:00Z');
     for (const [userId, id] of [

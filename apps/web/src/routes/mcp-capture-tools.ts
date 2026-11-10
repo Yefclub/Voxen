@@ -1,6 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { CAPTURE_ERROR_CODES, describeCaptureError } from '../lib/capture/errors';
+import {
+  CAPTURE_ERROR_CODES,
+  describeCaptureError,
+  type CaptureLocale,
+} from '../lib/capture/errors';
 import { cancelCapture, JOB_SELECT, locale, readJob, serializeJob } from '../lib/capture/jobs';
 import { CAPTURE_TYPES, submitCaptureUrl, submitRateLimited } from '../lib/capture/submit';
 import { db } from '../lib/db';
@@ -32,6 +36,39 @@ const CAPTURE_SCHEMA = z.object({
 });
 const CAPTURE_ID = { capture_id: z.string().trim().min(1).max(256).describe('Capture job ID.') };
 
+async function serializeMcpCaptures(
+  userId: string,
+  jobs: Parameters<typeof serializeJob>[0][],
+  lang: CaptureLocale,
+) {
+  // Refresh jobs keep the document in refreshTranscriptId, not transcriptId.
+  const captures = jobs.map((job) => serializeJob(job, lang));
+  const refreshIds = captures.flatMap((capture, index) =>
+    !jobs[index]!.transcript && capture.transcript ? [capture.transcript.id] : [],
+  );
+  const documents = refreshIds.length
+    ? await db.transcript.findMany({
+        where: { userId, id: { in: refreshIds } },
+        select: { id: true, title: true, transcriptionMethod: true, model: true },
+      })
+    : [];
+  const byId = new Map(documents.map((document) => [document.id, document]));
+  return captures.map((capture, index) => {
+    if (!jobs[index]!.transcript && capture.transcript) {
+      const document = byId.get(capture.transcript.id);
+      capture.transcript = document
+        ? {
+            id: document.id,
+            title: document.title,
+            method: document.transcriptionMethod,
+            model: document.model,
+          }
+        : null;
+    }
+    return capture;
+  });
+}
+
 export function registerMcpCaptureReadTools(server: McpServer, userId: string): void {
   server.registerTool(
     'voxen_capture_status',
@@ -46,7 +83,8 @@ export function registerMcpCaptureReadTools(server: McpServer, userId: string): 
     async (args) => {
       const job = await readJob(userId, args.capture_id);
       if (!job) return fail('Capture not found.');
-      return ok({ capture: serializeJob(job, await locale()) });
+      const [capture] = await serializeMcpCaptures(userId, [job], await locale());
+      return ok({ capture });
     },
   );
 
@@ -105,7 +143,7 @@ export function registerMcpCaptureReadTools(server: McpServer, userId: string): 
       const last = page.at(-1);
       const hasMore = rows.length > limit;
       return ok({
-        captures: page.map((job) => serializeJob(job, lang)),
+        captures: await serializeMcpCaptures(userId, page, lang),
         hasMore,
         nextCursor:
           hasMore && last
@@ -169,10 +207,11 @@ export function registerMcpCaptureWriteTools(server: McpServer, userId: string):
       }
       const job = await readJob(userId, outcome.jobId);
       if (!job) return fail('Capture no longer exists. List captures before submitting again.');
+      const [capture] = await serializeMcpCaptures(userId, [job], lang);
       return ok({
         existing: false,
         transcript: null,
-        job: serializeJob(job, lang),
+        job: capture,
         deduped: outcome.deduped,
         nextTool: 'voxen_capture_status',
       });
@@ -193,8 +232,9 @@ export function registerMcpCaptureWriteTools(server: McpServer, userId: string):
       const lang = await locale();
       const result = await cancelCapture(userId, args.capture_id, lang);
       if (!result.job) return fail('Capture not found.');
+      const [capture] = await serializeMcpCaptures(userId, [result.job], lang);
       return ok({
-        capture: serializeJob(result.job, lang),
+        capture,
         alreadyFinished: result.alreadyFinished,
       });
     },
