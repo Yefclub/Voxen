@@ -38,13 +38,13 @@ function canPrompt(): boolean {
   }
 }
 
-/** Rotas de login e OAuth: instalar ali tira a aba do fluxo e o perde. */
+/** Sign-in and OAuth routes: installing there takes the tab out of the flow. */
 const NO_INSTALL_PREFIXES = ['/entrar', '/cadastro', '/pendente', '/oauth'];
 
 /**
- * Oferecer instalação só no app em si: nunca durante login/consentimento OAuth
- * nem numa janela aberta por outro app (popup de conector MCP), em que instalar
- * reabre o Voxen na biblioteca e abandona o fluxo de quem abriu a janela.
+ * Offer installation only inside the app itself: never during sign-in or the
+ * OAuth consent, nor in a window opened by another app (an MCP connector
+ * popup), where installing reopens Voxen on the library and drops the flow.
  */
 export function shouldOfferInstall(pathname: string, openedByAnotherWindow: boolean): boolean {
   if (openedByAnotherWindow) return false;

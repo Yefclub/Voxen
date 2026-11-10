@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { mcpOAuthSsoCallback, pendingOAuthQuery } from '../../lib/mcp-oauth-login';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { SessionUnavailable } from '../session-unavailable';
@@ -22,6 +24,10 @@ export function AuthLayout(): React.ReactElement {
     if (!data.onboardingDone && data.user.role === 'ADMIN') {
       return <Navigate to="/onboarding" replace />;
     }
+    // Already signed in while an MCP client waits for authorization: resume it
+    // on the server instead of dropping the flow on the library.
+    const resume = location.pathname === '/entrar' ? pendingOAuthQuery(location.search) : undefined;
+    if (resume) return <ResumeAuthorization query={resume} />;
     return <Navigate to="/" replace />;
   }
 
@@ -30,6 +36,18 @@ export function AuthLayout(): React.ReactElement {
   return (
     <div className="h-dvh overflow-y-auto overscroll-contain">
       <Outlet key={location.pathname} />
+    </div>
+  );
+}
+
+function ResumeAuthorization({ query }: { query: string }): React.ReactElement {
+  useEffect(() => {
+    const target = mcpOAuthSsoCallback(query);
+    if (target) window.location.replace(target);
+  }, [query]);
+  return (
+    <div className="min-h-dvh flex items-center justify-center">
+      <Spinner size={20} className="text-[var(--color-app-muted)]" />
     </div>
   );
 }
