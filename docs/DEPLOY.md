@@ -144,11 +144,10 @@ modelo CC-BY-4.0) estão em
   internet. O isolamento descrito acima só é garantido no Docker Compose.
   Mantenha-o sem exposição; ele continua rodando como usuário sem privilégios,
   numa imagem sem binários setuid/setgid e sem segredos.
-- Deixe `STT_LOCAL_URL` vazio quando o serviço não estiver rodando. A Voxen
-  passa a usar o sidecar quando o provedor `local` (sem chave) chegar ao app web
-  (próxima versão da captura); aí cada usuário adiciona a entrada `local` à sua
-  cadeia de STT em **Conta → Provedores de IA**, e se o sidecar cair essa
-  entrada falha como retentável e a cadeia segue.
+- Deixe `STT_LOCAL_URL` vazio quando o serviço não estiver rodando. Cada
+  usuário adiciona a entrada `local` (sem chave) à sua cadeia de STT em
+  **Conta → Provedores de IA**; enquanto o sidecar estiver fora, essa entrada é
+  pulada e a cadeia segue.
 
 ### Drivers de storage e atualização segura
 
@@ -904,15 +903,15 @@ ressalva acima.
 
 ## Troubleshooting
 
-| Sintoma                              | Causa                                      | Fix                                                                                                                                                                  |
-| ------------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `EADDRINUSE :3000`                   | Porta já ocupada                           | Mude a porta exposta no compose ou pare o processo conflitante                                                                                                       |
-| 502 do nginx                         | Web container ainda iniciando              | `docker compose logs web` — esperar healthcheck passar                                                                                                               |
-| Setup incompleto                       | Admin não fez onboarding                   | Login como admin → `/onboarding` e conclua idioma/fuso                                                                                                              |
-| Job fica eternamente RUNNING         | Migration pendente ou lease vencido      | Confirme `prisma migrate deploy`; leases vencidos voltam à fila automaticamente ou viram FAILED após 3 tentativas                                                    |
-| SSE corta a cada 60s                 | nginx com `proxy_buffering on`             | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`)                                                                                           |
-| `MASTER_KEY não definido`            | Environment sem master key                 | Gere com `openssl rand -base64 32` e salve no `.env`/Environment                                                                                                     |
-| `NoSuchBucket` no `/health/deep`     | Bucket MinIO não criado                    | `make minio-init` ou crie `voxen-transcripts` na console                                                                                                             |
-| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube      | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab ou importar conteúdo já preparado via HTTP/MCP                                                              |
+| Sintoma                              | Causa                                 | Fix                                                                                                                  |
+| ------------------------------------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `EADDRINUSE :3000`                   | Porta já ocupada                      | Mude a porta exposta no compose ou pare o processo conflitante                                                       |
+| 502 do nginx                         | Web container ainda iniciando         | `docker compose logs web` — esperar healthcheck passar                                                               |
+| Setup incompleto                     | Admin não fez onboarding              | Login como admin → `/onboarding` e conclua idioma/fuso                                                               |
+| Job fica eternamente RUNNING         | Migration pendente ou lease vencido   | Confirme `prisma migrate deploy`; leases vencidos voltam à fila automaticamente ou viram FAILED após 3 tentativas    |
+| SSE corta a cada 60s                 | nginx com `proxy_buffering on`        | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`)                                           |
+| `MASTER_KEY não definido`            | Environment sem master key            | Gere com `openssl rand -base64 32` e salve no `.env`/Environment                                                     |
+| `NoSuchBucket` no `/health/deep`     | Bucket MinIO não criado               | `make minio-init` ou crie `voxen-transcripts` na console                                                             |
+| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab ou importar conteúdo já preparado via HTTP/MCP |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).

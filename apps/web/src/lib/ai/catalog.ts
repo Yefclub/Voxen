@@ -11,8 +11,17 @@
 // https://openrouter.ai/api/v1/models (2026-11-10), which lists the same models.
 // ============================================================================
 
+/** Providers that take a per-user API key. Key routes and key storage accept only these. */
 export const AI_PROVIDERS = ['openai', 'anthropic', 'openrouter', 'xai', 'google'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
+
+/** Keyless speech-to-text on the optional `stt-local` sidecar (spec 221). */
+export const LOCAL_PROVIDER = 'local';
+export type LocalProvider = typeof LOCAL_PROVIDER;
+
+/** Providers a role chain may hold: the key providers plus keyless `local`. */
+export const CHAIN_PROVIDERS = [...AI_PROVIDERS, LOCAL_PROVIDER] as const;
+export type ChainProvider = (typeof CHAIN_PROVIDERS)[number];
 
 export const AI_ROLES = ['fast', 'standard', 'vision', 'stt'] as const;
 export type AiRole = (typeof AI_ROLES)[number];
@@ -323,6 +332,19 @@ const GOOGLE: ProviderCatalog = {
   },
 };
 
+/** Model served by the `stt-local` sidecar; it runs on the user's own server, so it costs 0. */
+export const LOCAL_STT_MODEL: CatalogModel = {
+  // Source: apps/stt-local (achetronic/parakeet v0.11.0, `GET /v1/models`).
+  id: 'parakeet-tdt-0.6b-v3',
+  label: 'Parakeet TDT 0.6B v3',
+  roles: ['stt'],
+  vision: false,
+  contextWindow: null,
+  reasoning: false,
+  maxOutputTokens: null,
+  pricing: { kind: 'minutes', perMinute: 0 },
+};
+
 export const AI_CATALOG: Readonly<Record<AiProvider, ProviderCatalog>> = {
   openai: OPENAI,
   anthropic: ANTHROPIC,
@@ -335,12 +357,13 @@ export function isAiProvider(value: string): value is AiProvider {
   return (AI_PROVIDERS as readonly string[]).includes(value);
 }
 
-export function findCatalogModel(provider: AiProvider, modelId: string): CatalogModel | null {
+export function findCatalogModel(provider: ChainProvider, modelId: string): CatalogModel | null {
+  if (provider === LOCAL_PROVIDER) return modelId === LOCAL_STT_MODEL.id ? LOCAL_STT_MODEL : null;
   return AI_CATALOG[provider].models.find((model) => model.id === modelId) ?? null;
 }
 
 /** True when the catalog lists `modelId` for `provider` and it can serve `role`. */
-export function modelServesRole(provider: AiProvider, modelId: string, role: AiRole): boolean {
+export function modelServesRole(provider: ChainProvider, modelId: string, role: AiRole): boolean {
   const model = findCatalogModel(provider, modelId);
   return model !== null && model.roles.includes(role);
 }
@@ -378,6 +401,8 @@ export function estimateSttCostUsd(
 ): number | null {
   if (model.pricing.kind !== 'minutes') return null;
   const rates = model.pricing.tokens;
+  // A free model costs 0 even when the duration is unknown.
+  if (!rates && model.pricing.perMinute === 0) return 0;
   if (rates && usage) {
     return roundUsd(
       (usage.inputTokens * rates.inputPerMTok + usage.outputTokens * rates.outputPerMTok) /

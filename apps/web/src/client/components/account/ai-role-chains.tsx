@@ -1,10 +1,13 @@
 import { ChevronDown, ChevronUp, Plus, X } from '@/components/ui/icons';
 import type { TranslateFn } from '../../lib/i18n';
+import { Badge } from '../ui/badge';
 import { IconButton } from '../ui/icon-button';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 export type AiProviderId = 'openai' | 'anthropic' | 'openrouter' | 'xai' | 'google';
+/** Chains also hold keyless `local` (speech-to-text on this server, spec 221). */
+export type ChainProviderId = AiProviderId | 'local';
 export type AiRoleId = 'fast' | 'standard' | 'vision' | 'stt';
 
 export interface AiCatalogModel {
@@ -24,7 +27,8 @@ export interface AiProviderCatalog {
   models: AiCatalogModel[];
 }
 
-export type ChainEntry = { provider: AiProviderId; model: string };
+export type ChainEntry = { provider: ChainProviderId; model: string };
+export type LocalStt = { available: boolean; model: string };
 export type Chains = Partial<Record<AiRoleId, ChainEntry[]>>;
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high';
 /** Speech-to-text has no reasoning, so only text roles carry an effort. */
@@ -67,6 +71,7 @@ function priceHint(model: AiCatalogModel, t: TranslateFn, locale: string): strin
 interface RoleChainsEditorProps {
   catalog: AiProviderCatalog[];
   configured: ReadonlySet<AiProviderId>;
+  local: LocalStt;
   chains: Chains;
   onChange: (next: Chains) => void;
   reasoning: Reasoning;
@@ -80,6 +85,7 @@ interface RoleChainsEditorProps {
 export function RoleChainsEditor({
   catalog,
   configured,
+  local,
   chains,
   onChange,
   reasoning,
@@ -88,10 +94,15 @@ export function RoleChainsEditor({
   t,
   locale,
 }: RoleChainsEditorProps): React.ReactElement {
-  function lookup(entry: ChainEntry) {
+  function describe(entry: ChainEntry): { label: string; hint: string | null } {
+    if (entry.provider === 'local') {
+      return { label: t('account.ai.local.label'), hint: t('account.ai.local.free') };
+    }
     const provider = catalog.find((item) => item.provider === entry.provider);
     const model = provider?.models.find((item) => item.id === entry.model);
-    return provider && model ? { provider, model } : null;
+    return provider && model
+      ? { label: `${model.label} · ${provider.label}`, hint: priceHint(model, t, locale) }
+      : { label: `${entry.provider}:${entry.model}`, hint: null };
   }
 
   function update(role: AiRoleId, next: ChainEntry[]): void {
@@ -116,9 +127,16 @@ export function RoleChainsEditor({
           .flatMap((provider) =>
             provider.models
               .filter((model) => model.roles.includes(role))
-              .map((model) => ({ provider, model })),
-          )
-          .filter(({ provider, model }) => !used.has(`${provider.provider}::${model.id}`));
+              .map((model) => ({
+                value: `${provider.provider}::${model.id}`,
+                label: `${model.label} · ${provider.label}`,
+              })),
+          );
+        // Offered only while the sidecar answers; adding it is always the user's choice.
+        if (role === 'stt' && local.available) {
+          options.push({ value: `local::${local.model}`, label: t('account.ai.local.label') });
+        }
+        const available = options.filter((option) => !used.has(option.value));
         const full = chain.length >= MAX_CHAIN_LENGTH;
         const addId = `ai-chain-add-${role}`;
         return (
@@ -137,7 +155,8 @@ export function RoleChainsEditor({
             ) : (
               <ol className="space-y-1.5">
                 {chain.map((entry, index) => {
-                  const found = lookup(entry);
+                  const shown = describe(entry);
+                  const unavailable = entry.provider === 'local' && !local.available;
                   return (
                     <li
                       key={entryKey(entry)}
@@ -149,15 +168,16 @@ export function RoleChainsEditor({
                             ? t('account.ai.chainPrimary')
                             : t('account.ai.chainFallback', { n: index })}
                         </p>
-                        <p className="break-words text-sm text-[var(--color-app-fg)]">
-                          {found
-                            ? `${found.model.label} · ${found.provider.label}`
-                            : `${entry.provider}:${entry.model}`}
+                        <p className="flex flex-wrap items-center gap-1.5 break-words text-sm text-[var(--color-app-fg)]">
+                          {shown.label}
+                          {unavailable && (
+                            <Badge variant="muted" className="px-1.5 text-[10px]">
+                              {t('account.ai.local.unavailable')}
+                            </Badge>
+                          )}
                         </p>
-                        {found && (
-                          <p className="text-[11px] text-[var(--color-app-muted)]">
-                            {priceHint(found.model, t, locale)}
-                          </p>
+                        {shown.hint && (
+                          <p className="text-[11px] text-[var(--color-app-muted)]">{shown.hint}</p>
                         )}
                       </div>
                       <IconButton
@@ -196,11 +216,11 @@ export function RoleChainsEditor({
             )}
             <Select
               value=""
-              disabled={disabled || full || options.length === 0}
+              disabled={disabled || full || available.length === 0}
               onValueChange={(value) => {
                 const [provider, model] = value.split('::');
                 if (provider && model) {
-                  update(role, [...chain, { provider: provider as AiProviderId, model }]);
+                  update(role, [...chain, { provider: provider as ChainProviderId, model }]);
                 }
               }}
             >
@@ -213,12 +233,9 @@ export function RoleChainsEditor({
                 </span>
               </SelectTrigger>
               <SelectContent>
-                {options.map(({ provider, model }) => (
-                  <SelectItem
-                    key={`${provider.provider}::${model.id}`}
-                    value={`${provider.provider}::${model.id}`}
-                  >
-                    {model.label} · {provider.label}
+                {available.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
                   </SelectItem>
                 ))}
               </SelectContent>

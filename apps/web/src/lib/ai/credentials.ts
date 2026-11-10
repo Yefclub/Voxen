@@ -5,7 +5,8 @@
 //   ai_provider_key:<provider>   the API key — never leaves the server
 //   ai_provider_meta:<provider>  { last4, status, validatedAt, error }
 //   ai_model_chains              { chains: { fast?, standard?, vision?, stt? } →
-//                                  ordered [{provider, model}, …], first = primary,
+//                                  ordered [{provider, model}, …], first = primary
+//                                  (keyless `local` only in `stt`),
 //                                  reasoning: { fast, standard, vision } →
 //                                  'off' | 'low' | 'medium' | 'high' } (spec 221)
 //   ai_model_roles               legacy spec 220 { role → {provider, model} }: read
@@ -29,6 +30,7 @@ import {
   AI_PROVIDERS,
   AI_ROLES,
   AI_TEXT_ROLES,
+  CHAIN_PROVIDERS,
   DEFAULT_REASONING_EFFORT,
   modelServesRole,
   providerDefaults,
@@ -36,8 +38,10 @@ import {
   type AiProvider,
   type AiRole,
   type AiTextRole,
+  type ChainProvider,
   type ReasoningEffort,
 } from './catalog';
+import { isLocalSttAvailable } from './local-stt-availability';
 import type { ProbeProviderKey, ProbeStatus } from './probe';
 
 export interface ProviderMeta {
@@ -57,7 +61,7 @@ export interface ProviderStatus {
 }
 
 export interface RoleEntry {
-  provider: AiProvider;
+  provider: ChainProvider;
   model: string;
 }
 
@@ -80,7 +84,7 @@ const MetaSchema = z.object({
 });
 
 const EntrySchema = z.object({
-  provider: z.enum(AI_PROVIDERS),
+  provider: z.enum(CHAIN_PROVIDERS),
   model: z.string().min(1).max(120),
 });
 
@@ -341,22 +345,35 @@ export type RoleValidationError = {
   role: AiRole;
   /** Position in the submitted chain; null for chain-level errors. */
   index: number | null;
-  reason: 'UNKNOWN_MODEL' | 'PROVIDER_NOT_CONFIGURED' | 'DUPLICATE_ENTRY' | 'CHAIN_TOO_LONG';
+  reason:
+    | 'UNKNOWN_MODEL'
+    | 'PROVIDER_NOT_CONFIGURED'
+    | 'PROVIDER_UNAVAILABLE'
+    | 'DUPLICATE_ENTRY'
+    | 'CHAIN_TOO_LONG';
 };
 
 /**
  * Validates and stores every role chain (absent or empty roles are cleared)
  * and, when given, the reasoning effort of text roles (others keep theirs).
+ * A `local` entry is accepted for `stt` only, and only while the sidecar is
+ * available or when it is already stored (an unavailable entry is kept, so
+ * saving other changes never deletes it).
  */
 export async function setModelRoles(
   userId: string,
   roles: Partial<Record<AiRole, readonly RoleEntry[]>>,
   reasoning: Partial<RoleReasoning> = {},
+  localAvailable: () => Promise<boolean> = isLocalSttAvailable,
 ): Promise<{ ok: true; settings: ModelSettings } | { ok: false; errors: RoleValidationError[] }> {
   const [configured, current] = await Promise.all([
     listConfiguredProviders(userId),
     getModelSettings(userId),
   ]);
+  let local: Promise<boolean> | undefined;
+  const localAccepted = async (role: AiRole, entry: RoleEntry) =>
+    (current.chains[role] ?? []).some((item) => sameEntry(item, entry)) ||
+    (await (local ??= localAvailable()));
   const errors: RoleValidationError[] = [];
   const next: ModelRoles = {};
   for (const role of AI_ROLES) {
@@ -366,17 +383,19 @@ export async function setModelRoles(
       continue;
     }
     const accepted: RoleEntry[] = [];
-    chain.forEach((entry, index) => {
+    for (const [index, entry] of chain.entries()) {
       if (!modelServesRole(entry.provider, entry.model, role)) {
         errors.push({ role, index, reason: 'UNKNOWN_MODEL' });
-      } else if (!configured.has(entry.provider)) {
+      } else if (entry.provider === 'local' && !(await localAccepted(role, entry))) {
+        errors.push({ role, index, reason: 'PROVIDER_UNAVAILABLE' });
+      } else if (entry.provider !== 'local' && !configured.has(entry.provider)) {
         errors.push({ role, index, reason: 'PROVIDER_NOT_CONFIGURED' });
       } else if (accepted.some((item) => sameEntry(item, entry))) {
         errors.push({ role, index, reason: 'DUPLICATE_ENTRY' });
       } else {
         accepted.push({ provider: entry.provider, model: entry.model });
       }
-    });
+    }
     if (accepted.length > 0) next[role] = accepted;
   }
   if (errors.length > 0) return { ok: false, errors };

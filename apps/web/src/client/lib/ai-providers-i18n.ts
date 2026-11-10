@@ -62,6 +62,9 @@ export const ptBrAiProviderMessages = {
     'No plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos dele, e pessoas podem revisá-lo. Chaves com faturamento ativo não são usadas assim.',
   'account.ai.priceTokens': '{input} entrada · {output} saída por 1M tokens',
   'account.ai.priceMinute': '{price} por minuto de áudio',
+  'account.ai.local.label': 'Local (Parakeet, no servidor)',
+  'account.ai.local.free': 'Sem custo',
+  'account.ai.local.unavailable': 'indisponível',
 } as const;
 
 export const enAiProviderMessages: Record<keyof typeof ptBrAiProviderMessages, string> = {
@@ -128,4 +131,7 @@ export const enAiProviderMessages: Record<keyof typeof ptBrAiProviderMessages, s
     'On the free tier, Google may use submitted content to improve its products, and humans may review it. Billing-enabled keys are not used that way.',
   'account.ai.priceTokens': '{input} input · {output} output per 1M tokens',
   'account.ai.priceMinute': '{price} per audio minute',
+  'account.ai.local.label': 'Local (Parakeet, on this server)',
+  'account.ai.local.free': 'No cost',
+  'account.ai.local.unavailable': 'unavailable',
 };

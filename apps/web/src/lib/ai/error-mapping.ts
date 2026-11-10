@@ -1,7 +1,7 @@
 // Maps provider and AI SDK failures to typed, secret-free AiErrors (spec 220).
 
 import { APICallError } from 'ai';
-import type { AiProvider } from './catalog';
+import type { ChainProvider } from './catalog';
 import type { ResolvedRole } from './client';
 import { AiError, redactSecrets } from './errors';
 
@@ -68,7 +68,7 @@ export function toAiError(error: unknown, resolved: Pick<ResolvedRole, 'provider
   return new AiError('LLM_FAILED', 'The provider call failed.', { provider });
 }
 
-function isKeyRejection(provider: AiProvider, body: string): boolean {
+function isKeyRejection(provider: ChainProvider, body: string): boolean {
   if (provider === 'xai') return /(incorrect|invalid)[^.]{0,40}api key/i.test(body);
   if (provider === 'google') return /API_KEY_INVALID|API key not valid|API key expired/i.test(body);
   return false;

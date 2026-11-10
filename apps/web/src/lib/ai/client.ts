@@ -37,6 +37,7 @@ import {
   type AiProvider,
   type AiRole,
   type CatalogModel,
+  type LocalProvider,
   type ReasoningEffort,
 } from './catalog';
 import {
@@ -48,6 +49,8 @@ import {
 } from './credentials';
 import { AiError, AiNotConfiguredError } from './errors';
 import { toAiError } from './error-mapping';
+import { isWavChunk, transcribeWithLocal } from './local-stt';
+import { localSttEndpoint } from './local-stt-availability';
 import {
   providerTranscriptionModel,
   roundSec,
@@ -80,12 +83,24 @@ export const PROVIDER_BASE_URLS: Readonly<Record<AiProvider, string>> = {
 export const MODEL_CALL_TIMEOUT_MS = 3 * 60_000;
 export const STT_TIMEOUT_MS = 20 * 60_000;
 
-export interface ResolvedRole {
+export interface KeyedResolvedRole {
   provider: AiProvider;
   model: string;
   apiKey: string;
   catalog: CatalogModel;
 }
+
+/** Keyless `local` entry (spec 221): resolved only while the sidecar is available. */
+export interface LocalResolvedRole {
+  provider: LocalProvider;
+  model: string;
+  apiKey: '';
+  /** Sidecar base URL from STT_LOCAL_URL. Server-only: never serialize or log it. */
+  baseUrl: string;
+  catalog: CatalogModel;
+}
+
+export type ResolvedRole = KeyedResolvedRole | LocalResolvedRole;
 
 export interface GenerateStructuredInput<T> {
   userId: string;
@@ -149,10 +164,12 @@ export interface AiClientDependencies {
   /** Reasoning effort per text role; defaults to the user's stored setting. */
   getReasoning?: (userId: string) => Promise<RoleReasoning>;
   getKey?: (userId: string, provider: AiProvider) => Promise<string | null>;
+  /** Base URL of the `stt-local` sidecar while it is available, else null. */
+  localSttEndpoint?: () => Promise<string | null>;
   /** Test seam: replaces the provider-backed language model. */
-  languageModel?: (resolved: ResolvedRole) => LanguageModel;
+  languageModel?: (resolved: KeyedResolvedRole) => LanguageModel;
   /** Test seam: replaces the SDK-backed transcription model. */
-  transcriptionModel?: (resolved: ResolvedRole) => TranscriptionModel;
+  transcriptionModel?: (resolved: KeyedResolvedRole) => TranscriptionModel;
 }
 
 /** One entry's outcome; `costUsd` counts even when the entry failed. */
@@ -166,19 +183,22 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
   const getRoles = dependencies.getRoles ?? getModelRoles;
   const getReasoning = dependencies.getReasoning ?? getRoleReasoning;
   const getKey = dependencies.getKey ?? getProviderKey;
+  const getLocalEndpoint = dependencies.localSttEndpoint ?? localSttEndpoint;
   const languageModel = dependencies.languageModel ?? providerLanguageModel;
   const transcriptionModel =
     dependencies.transcriptionModel ??
-    ((resolved: ResolvedRole) => providerTranscriptionModel(resolved, fetchImpl));
+    ((resolved: KeyedResolvedRole) => providerTranscriptionModel(resolved, fetchImpl));
 
   /**
-   * Usable entries of the role's chain, in order. Entries whose key is gone
-   * are skipped. `standard` and `fast` borrow each other's chain only when
-   * their own has no usable entry; vision and STT never borrow.
+   * Usable entries of the role's chain, in order. Entries whose key is gone,
+   * and `local` entries while the sidecar is unavailable, are skipped (never
+   * deleted). `standard` and `fast` borrow each other's chain only when their
+   * own has no usable entry; vision and STT never borrow.
    */
   async function resolveRoleChain(userId: string, role: AiRole): Promise<ResolvedRole[]> {
     const roles = await getRoles(userId);
     const keys = new Map<AiProvider, string | null>();
+    let localBaseUrl: Promise<string | null> | undefined;
     const candidates = [role, ROLE_FALLBACK[role]].filter(
       (candidate): candidate is AiRole => candidate !== undefined,
     );
@@ -187,7 +207,13 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
       for (const entry of roles[candidate] ?? []) {
         const catalog = findCatalogModel(entry.provider, entry.model);
         if (!catalog || !catalog.roles.includes(candidate)) continue;
-        // Keyless providers (spec 221 `local`) will resolve their endpoint here.
+        if (entry.provider === 'local') {
+          localBaseUrl ??= getLocalEndpoint();
+          const baseUrl = await localBaseUrl;
+          if (baseUrl)
+            chain.push({ provider: 'local', model: entry.model, apiKey: '', baseUrl, catalog });
+          continue;
+        }
         if (!keys.has(entry.provider))
           keys.set(entry.provider, await getKey(userId, entry.provider));
         const apiKey = keys.get(entry.provider);
@@ -234,7 +260,7 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     throw failure;
   }
 
-  function providerLanguageModel(resolved: ResolvedRole): LanguageModel {
+  function providerLanguageModel(resolved: KeyedResolvedRole): LanguageModel {
     const { provider, model, apiKey } = resolved;
     const baseURL = PROVIDER_BASE_URLS[provider];
     switch (provider) {
@@ -261,6 +287,13 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     input: GenerateStructuredInput<T>,
     effort: ReasoningEffort,
   ): Promise<Attempt<{ output: T; usage: TokenUsage }>> {
+    // `local` serves speech-to-text only, so it never answers a text call.
+    if (resolved.provider === 'local') {
+      const error = new AiError('LLM_FAILED', 'The local provider has no text model.', {
+        provider: 'local',
+      });
+      return { ok: false, error, costUsd: 0 };
+    }
     const provider = resolved.provider;
     if (!resolved.catalog.vision && input.untrusted.some((part) => 'image' in part)) {
       const error = new AiError('LLM_FAILED', 'The selected model does not accept images.', {
@@ -352,7 +385,7 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     return { output: value.output, modelRef, usage: value.usage, costUsd };
   }
 
-  /** STT transport switch; keyless `local` (spec 221) plugs in here. */
+  /** STT transport switch. */
   function transcribeChunk(
     resolved: ResolvedRole,
     chunk: AudioChunk,
@@ -360,6 +393,8 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     signal: AbortSignal,
   ): Promise<ChunkTranscript> {
     switch (resolved.provider) {
+      case 'local':
+        return transcribeWithLocal(resolved.baseUrl, chunk, language, signal, fetchImpl);
       case 'openrouter':
         return transcribeWithOpenRouter(resolved, chunk, language, signal, fetchImpl);
       default:
@@ -407,14 +442,33 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
   }
 
   async function transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioResult> {
-    const chain = await resolveRoleChain(input.userId, 'stt');
+    // The sidecar decodes WAV only: with any other audio its entries are
+    // skipped, and a chain left empty counts as no STT chain (spec 221).
+    const wav = input.chunks.every(isWavChunk);
+    const chain = (await resolveRoleChain(input.userId, 'stt')).filter(
+      (entry) => wav || entry.provider !== 'local',
+    );
+    if (chain.length === 0) throw new AiNotConfiguredError('STT_NOT_CONFIGURED');
     const { value, costUsd, modelRef } = await runChain(chain, input.signal, (resolved) =>
       transcribeWithEntry(resolved, input),
     );
     return { ...value, model: modelRef, costUsd };
   }
 
-  return { resolveRole, resolveRoleChain, generateStructured, transcribeAudio };
+  /**
+   * True when the first available entry of the user's STT chain is `local`,
+   * so the capture pipeline asks the worker for WAV audio (spec 221).
+   */
+  async function sttPrefersWav(userId: string): Promise<boolean> {
+    try {
+      return (await resolveRoleChain(userId, 'stt'))[0]?.provider === 'local';
+    } catch (error) {
+      if (error instanceof AiNotConfiguredError) return false;
+      throw error;
+    }
+  }
+
+  return { resolveRole, resolveRoleChain, generateStructured, transcribeAudio, sttPrefersWav };
 }
 
 const defaultClient = createAiClient();
@@ -422,6 +476,7 @@ export const resolveRole = defaultClient.resolveRole;
 export const resolveRoleChain = defaultClient.resolveRoleChain;
 export const generateStructured = defaultClient.generateStructured;
 export const transcribeAudio = defaultClient.transcribeAudio;
+export const sttPrefersWav = defaultClient.sttPrefersWav;
 
 /** Null-propagating USD sum: an unknown attempt makes the total unknown. */
 function addCost(total: number | null, next: number | null): number | null {

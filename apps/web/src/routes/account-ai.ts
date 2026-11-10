@@ -1,7 +1,8 @@
 // ============================================================================
 // /api/account/ai — per-user AI provider keys and model chains (spec 220/221)
 // ============================================================================
-// GET    /ai                          status per provider, chains, catalog
+// GET    /ai                          status per key provider, chains, catalog and
+//                                     local: { available, model } (keyless STT, spec 221)
 // PUT    /ai/providers/:provider      { apiKey } → probe, save, status
 // POST   /ai/providers/:provider/test re-probe the stored key
 // DELETE /ai/providers/:provider      remove key, status and its chain entries
@@ -20,7 +21,9 @@ import {
   AI_CATALOG,
   AI_PROVIDERS,
   AI_ROLES,
+  CHAIN_PROVIDERS,
   isAiProvider,
+  LOCAL_STT_MODEL,
   REASONING_EFFORTS,
   type AiProvider,
   type AiRole,
@@ -35,6 +38,7 @@ import {
   testProviderKey,
   type RoleEntry,
 } from '../lib/ai/credentials';
+import { isLocalSttAvailable } from '../lib/ai/local-stt-availability';
 import { probeProviderKey, type ProbeProviderKey } from '../lib/ai/probe';
 import { rateLimit } from '../lib/rate-limit';
 
@@ -50,9 +54,10 @@ const ApiKeyBody = z.object({
     .regex(/^[\x21-\x7E]+$/),
 });
 
+// Chain entries also accept keyless `local`; the key routes never do (isAiProvider).
 const Entry = z
   .object({
-    provider: z.enum(AI_PROVIDERS),
+    provider: z.enum(CHAIN_PROVIDERS),
     model: z.string().trim().min(1).max(120),
   })
   .strict();
@@ -80,6 +85,8 @@ const CATALOG = AI_PROVIDERS.map((provider) => AI_CATALOG[provider]);
 
 export interface AccountAiRouteDependencies {
   probe?: ProbeProviderKey;
+  /** Whether the `stt-local` sidecar is configured and healthy. */
+  localSttAvailable?: () => Promise<boolean>;
 }
 
 export function registerAccountAiRoutes(
@@ -87,6 +94,7 @@ export function registerAccountAiRoutes(
   dependencies: AccountAiRouteDependencies = {},
 ): void {
   const probe = dependencies.probe ?? probeProviderKey;
+  const localSttAvailable = dependencies.localSttAvailable ?? isLocalSttAvailable;
 
   async function limitWrites(c: Context<{ Variables: Vars }>): Promise<Response | null> {
     const rl = await rateLimit(`voxen:rl:ai-providers:${c.get('userId')}`, 20, 60);
@@ -111,15 +119,18 @@ export function registerAccountAiRoutes(
 
   routes.get('/ai', async (c) => {
     const userId = c.get('userId');
-    const [providers, settings] = await Promise.all([
+    const [providers, settings, localAvailable] = await Promise.all([
       listProviderStatuses(userId),
       getModelSettings(userId),
+      localSttAvailable(),
     ]);
     return c.json({
       providers,
       chains: settings.chains,
       reasoning: settings.reasoning,
       catalog: CATALOG,
+      // Never the sidecar URL: it is server-side infra config.
+      local: { available: localAvailable, model: LOCAL_STT_MODEL.id },
     });
   });
 
@@ -192,7 +203,7 @@ export function registerAccountAiRoutes(
     const reasoning = Object.fromEntries(
       Object.entries(parsed.data.reasoning ?? {}).filter(([, effort]) => effort !== undefined),
     );
-    const result = await setModelRoles(c.get('userId'), chains, reasoning);
+    const result = await setModelRoles(c.get('userId'), chains, reasoning, localSttAvailable);
     if (!result.ok) {
       return c.json(
         {

@@ -2,7 +2,7 @@
 // fixed English strings built by Voxen, never upstream response bodies, so a
 // provider echoing a credential cannot leak it through an error.
 
-import type { AiProvider } from './catalog';
+import type { ChainProvider } from './catalog';
 
 export type AiErrorCode =
   | 'AI_NOT_CONFIGURED'
@@ -14,7 +14,7 @@ export type AiErrorCode =
 
 export class AiError extends Error {
   readonly code: AiErrorCode;
-  readonly provider: AiProvider | null;
+  readonly provider: ChainProvider | null;
   readonly status: number | null;
   readonly retryable: boolean;
   /** Billed cost of every chain attempt behind this failure (spec 221). */
@@ -23,7 +23,7 @@ export class AiError extends Error {
   constructor(
     code: AiErrorCode,
     message: string,
-    options: { provider?: AiProvider | null; status?: number | null; retryable?: boolean } = {},
+    options: { provider?: ChainProvider | null; status?: number | null; retryable?: boolean } = {},
   ) {
     super(redactSecrets(message));
     this.name = 'AiError';
