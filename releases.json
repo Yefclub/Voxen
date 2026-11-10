@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794273800",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Capture worker returns comments, video keyframes and WAV audio",
+    "body": "The capture worker now returns up to 50 top-level comments for YouTube,\nTikTok and Instagram links (most liked first; X posts have none because\nreplies require sign-in) and reports whether a link has video. A new\n`/v1/frames` endpoint extracts up to 4 keyframes from a small video stream so\nvideos can be analyzed visually, and audio can be requested as 16 kHz WAV for\nthe optional local speech-to-text service. Comment failures never fail a\ncapture.",
+    "pr": 1048,
+    "author": "Kalyel",
+    "date": "2026-11-09T22:23:06-03:00",
+    "translations": {
+      "en": {
+        "title": "Capture worker returns comments, video keyframes and WAV audio",
+        "body": "The capture worker now returns up to 50 top-level comments for YouTube,\nTikTok and Instagram links (most liked first; X posts have none because\nreplies require sign-in) and reports whether a link has video. A new\n`/v1/frames` endpoint extracts up to 4 keyframes from a small video stream so\nvideos can be analyzed visually, and audio can be requested as 16 kHz WAV for\nthe optional local speech-to-text service. Comment failures never fail a\ncapture."
+      },
+      "pt-BR": {
+        "title": "Worker de captura retorna comentários, quadros de vídeo e áudio WAV",
+        "body": "O worker de captura agora retorna até 50 comentários principais de links do\nYouTube, TikTok e Instagram (os mais curtidos primeiro; posts do X não têm\ncomentários porque as respostas exigem login) e informa se o link tem vídeo.\nUm novo endpoint `/v1/frames` extrai até 4 quadros-chave de um stream de vídeo\npequeno para a análise visual dos vídeos, e o áudio pode ser pedido em WAV de\n16 kHz para o serviço opcional de transcrição local. Falhas ao buscar\ncomentários nunca derrubam a captura."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1048"
+  },
+  {
     "version": "0.15.1-dev.1794272430",
     "channel": "dev",
     "type": "chore",
