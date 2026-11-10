@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794275140",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Optional local speech-to-text sidecar",
+    "body": "Self-hosted installs can now run an optional `stt-local` container that\ntranscribes speech on the server's own CPU with NVIDIA Parakeet TDT 0.6B v3,\nwithout any provider key and without sending audio to the internet. Enable it\nwith the `stt-local` Compose profile and set `STT_LOCAL_URL`; it runs on an\ninternal-only network reachable by the web app alone (under Docker Compose),\nkeeps about 2.5 GB of RAM resident once used and handles one transcription at\na time. The web app starts using it with the upcoming `local` STT provider;\nenabling the profile recreates `web` on the next `up`. Voxen keeps working\nwithout it.",
+    "pr": 1050,
+    "author": "Kalyel",
+    "date": "2026-11-09T22:45:27-03:00",
+    "translations": {
+      "en": {
+        "title": "Optional local speech-to-text sidecar",
+        "body": "Self-hosted installs can now run an optional `stt-local` container that\ntranscribes speech on the server's own CPU with NVIDIA Parakeet TDT 0.6B v3,\nwithout any provider key and without sending audio to the internet. Enable it\nwith the `stt-local` Compose profile and set `STT_LOCAL_URL`; it runs on an\ninternal-only network reachable by the web app alone (under Docker Compose),\nkeeps about 2.5 GB of RAM resident once used and handles one transcription at\na time. The web app starts using it with the upcoming `local` STT provider;\nenabling the profile recreates `web` on the next `up`. Voxen keeps working\nwithout it."
+      },
+      "pt-BR": {
+        "title": "Transcrição de fala local opcional",
+        "body": "Instalações self-hosted agora podem rodar um container opcional `stt-local` que\ntranscreve fala na própria CPU do servidor com o NVIDIA Parakeet TDT 0.6B v3,\nsem chave de provedor e sem enviar áudio para a internet. Ative com o profile\n`stt-local` do Compose e defina `STT_LOCAL_URL`; ele roda numa rede só interna,\nacessível apenas pelo app web (no Docker Compose), mantém cerca de 2,5 GB de RAM\nresidentes depois de usado e processa uma transcrição por vez. O app web passa\na usá-lo com o próximo provedor `local` de STT; ativar o profile recria o `web`\nno próximo `up`. A Voxen continua funcionando sem ele."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1050"
+  },
+  {
     "version": "0.15.1-dev.1794273800",
     "channel": "dev",
     "type": "feat",
