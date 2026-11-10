@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.1-dev.1794275140 — 2026-11-09 · Dev
+
+### ✨ Optional local speech-to-text sidecar
+
+Self-hosted installs can now run an optional `stt-local` container that
+transcribes speech on the server's own CPU with NVIDIA Parakeet TDT 0.6B v3,
+without any provider key and without sending audio to the internet. Enable it
+with the `stt-local` Compose profile and set `STT_LOCAL_URL`; it runs on an
+internal-only network reachable by the web app alone (under Docker Compose),
+keeps about 2.5 GB of RAM resident once used and handles one transcription at
+a time. The web app starts using it with the upcoming `local` STT provider;
+enabling the profile recreates `web` on the next `up`. Voxen keeps working
+without it.
+
 ## v0.15.1-dev.1794273800 — 2026-11-09 · Dev
 
 ### ✨ Capture worker returns comments, video keyframes and WAV audio
