@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.15.1-dev.1794273800 — 2026-11-09 · Dev
+
+### ✨ Capture worker returns comments, video keyframes and WAV audio
+
+The capture worker now returns up to 50 top-level comments for YouTube,
+TikTok and Instagram links (most liked first; X posts have none because
+replies require sign-in) and reports whether a link has video. A new
+`/v1/frames` endpoint extracts up to 4 keyframes from a small video stream so
+videos can be analyzed visually, and audio can be requested as 16 kHz WAV for
+the optional local speech-to-text service. Comment failures never fail a
+capture.
+
 ## v0.15.1-dev.1794272430 — 2026-11-09 · Dev
 
 ### 🧹 Capture v2 planned: Gemini, provider fallback, local STT, full video and comments
