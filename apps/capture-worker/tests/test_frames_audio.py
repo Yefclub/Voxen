@@ -452,6 +452,25 @@ def _format(fid: str, vcodec: str, acodec: str, size: int, ext: str = "mp4") -> 
             ],
             "h264_540p-0",
         ),
+        # TikTok: a smaller video-only stream never wins over the muxed one.
+        (
+            [
+                _format("audio", "none", "aac", 2_000_000, "m4a"),
+                _format("bytevc1_540p-0", "h265", "none", 1_000_000),
+                _format("h264_540p-0", "h264", "aac", 4_000_000),
+            ],
+            "h264_540p-0",
+        ),
+        # TikTok slideshow: the music track is the only audio there is.
+        ([_format("audio", "none", "aac", 2_000_000, "m4a")], "audio"),
+        # Only an "audio" stream next to video-only streams: still that audio.
+        (
+            [
+                _format("audio", "none", "mp4a", 2_000_000, "m4a"),
+                _format("720p", "avc1", "none", 9_000_000),
+            ],
+            "audio",
+        ),
         # YouTube-like: smallest audio-only stream still wins.
         (
             [

@@ -278,8 +278,9 @@ async def _fetch_captions(track: captions.Track) -> list[captions.Segment]:
 
 # TikTok lists its background music track as the audio-only format "audio"
 # (a separate CDN file, often longer than the video and without the creator's
-# voice). Skip it so the audio comes from the video's own muxed stream.
-AUDIO_FORMAT = "ba[format_id!=audio]/wa[format_id!=audio]/b/w"
+# voice). Skip it so the audio comes from the video's own muxed stream; the
+# trailing ba/wa keeps sources whose only audio stream is literally "audio".
+AUDIO_FORMAT = "ba[format_id!=audio]/wa[format_id!=audio]/b/w/ba/wa"
 AUDIO_SORT = "+size,+br,+res"
 
 
