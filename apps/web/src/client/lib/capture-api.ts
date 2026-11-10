@@ -27,6 +27,8 @@ export interface CaptureJob {
   sourceUrl: string | null;
   filename: string | null;
   platform: string | null;
+  /** Non-fatal problems of a capture that still published (spec 221). */
+  warnings: string[];
   stage: string | null;
   percent: number | null;
   attempt: number;

@@ -2,7 +2,12 @@
 // Canonical Markdown for captured documents (docs/TRANSCRIPT-FORMAT.md)
 // ============================================================================
 
-import type { CaptureArtifact, CaptureInterpretation, CaptureSegment } from './types';
+import type {
+  CaptureArtifact,
+  CaptureComment,
+  CaptureInterpretation,
+  CaptureSegment,
+} from './types';
 
 export type CaptureMarkdownInput = {
   id: string;
@@ -56,7 +61,7 @@ function timestampLink(input: CaptureMarkdownInput, seconds: number): string {
 }
 
 /** Escapes characters that would let captured text start Markdown links. */
-function escapeInline(text: string): string {
+export function escapeInline(text: string): string {
   return text
     .replace(/\s+/g, ' ')
     .replace(/([\\[\]<>])/g, '\\$1')
@@ -112,6 +117,43 @@ export function segmentsToPlainText(segments: CaptureSegment[]): string {
     .map((segment) => segment.text.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .join(' ');
+}
+
+/** Captured multi-line text (page, post, description): no remote images, no raw HTML. */
+function capturedBody(text: string | null): string {
+  return (
+    stripImages(text ?? '')
+      .replace(/\r\n/g, '\n')
+      // Escape every `<` instead of stripping tags (tag-stripping regexes are
+      // bypassable with nested tags): the renderer never sees raw HTML.
+      .replace(/</g, '&lt;')
+      .trim()
+  );
+}
+
+function bodyPlainText(body: string): string {
+  return body.replace(/&lt;/g, '<').replace(/\s+/g, ' ').trim();
+}
+
+/** One untrusted line: no links, images, raw URLs, HTML or line breaks. */
+function untrustedInline(text: string): string {
+  return escapeInline(sanitizeModelText(text));
+}
+
+/** `## Comentários`, most relevant first (spec 221); comments are untrusted. */
+export function commentsMarkdown(comments: CaptureComment[]): string[] {
+  const items: string[] = [];
+  for (const comment of comments) {
+    const text = untrustedInline(comment.text);
+    if (!text) continue;
+    const author = untrustedInline(comment.author ?? '') || 'Anônimo';
+    const likes =
+      comment.likes === null
+        ? ''
+        : ` (${comment.likes} ${comment.likes === 1 ? 'curtida' : 'curtidas'})`;
+    items.push(`${items.length + 1}. ${author}${likes}: ${text}`);
+  }
+  return items.length > 0 ? ['## Comentários', '', ...items, ''] : [];
 }
 
 export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
@@ -174,6 +216,26 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     lines.push('');
   }
 
+  const frames = (artifact.frameDescriptions ?? [])
+    .map((item) => ({ timeSec: item.timeSec, text: sanitizeModelText(item.description) }))
+    .filter((item) => item.text);
+  if (frames.length > 0) {
+    lines.push('## Quadros do vídeo', '');
+    for (const frame of frames) {
+      const at = frame.timeSec === null ? '' : `**${formatTimestamp(frame.timeSec)}** `;
+      lines.push(`- ${at}${frame.text.replace(/\n+/g, ' ')}`);
+    }
+    lines.push('');
+  }
+
+  // The post text or description stays next to a transcript (spec 221);
+  // without one (web pages, posts) the text itself is the content.
+  const transcript =
+    artifact.segments.length > 0 || artifact.textKind === 'stt' || artifact.textKind === 'captions';
+  const description = transcript ? capturedBody(artifact.description) : '';
+  const showDescription = description !== '';
+  if (showDescription) lines.push('## Descrição', '', description, '');
+
   let plainText: string;
   if (artifact.segments.length > 0) {
     lines.push('## Transcrição', '');
@@ -189,16 +251,19 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
   } else {
     // Captured page Markdown keeps its links but never auto-loads remote
     // images (tracking pixels) or raw HTML when the document is rendered.
-    const body = stripImages(artifact.text ?? '')
-      .replace(/\r\n/g, '\n')
-      // Escape every `<` instead of stripping tags (tag-stripping regexes are
-      // bypassable with nested tags): the renderer never sees raw HTML.
-      .replace(/</g, '&lt;')
-      .trim();
+    const body = capturedBody(artifact.text);
     if (body) lines.push('## Conteúdo', '', body, '');
-    plainText = body.replace(/&lt;/g, '<').replace(/\s+/g, ' ').trim();
+    plainText = bodyPlainText(body);
   }
-  if (descriptions.length > 0) plainText = [plainText, ...descriptions].filter(Boolean).join(' ');
+  lines.push(...commentsMarkdown(artifact.comments ?? []));
+  plainText = [
+    plainText,
+    showDescription ? bodyPlainText(description) : '',
+    ...descriptions,
+    ...frames.map((frame) => frame.text),
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return { markdown: `${lines.join('\n').trimEnd()}\n`, plainText };
 }

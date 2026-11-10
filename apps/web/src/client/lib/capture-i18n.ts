@@ -44,6 +44,10 @@ export const ptBrCaptureMessages = {
   'capture.cost': 'custo {cost}',
   'capture.progress': 'Progresso da captura',
   'capture.method.scrape': 'Texto extraído',
+  'capture.warning.speech_not_transcribed':
+    'A fala não foi transcrita; o documento usa a descrição e o texto do post.',
+  'capture.warning.frames_unavailable': 'Não foi possível extrair quadros do vídeo.',
+  'capture.warning.images_not_described': 'As imagens e quadros do vídeo não foram descritos.',
   'capture.sharedReady': 'Link compartilhado pronto. Toque em Capturar para confirmar.',
   'capture.genericError': 'Não foi possível enviar a captura. Tente de novo.',
   'capture.error.INVALID_URL': 'Link inválido. Use um endereço http ou https completo.',
@@ -123,6 +127,10 @@ export const enCaptureMessages: Record<keyof typeof ptBrCaptureMessages, string>
   'capture.cost': 'cost {cost}',
   'capture.progress': 'Capture progress',
   'capture.method.scrape': 'Extracted text',
+  'capture.warning.speech_not_transcribed':
+    'The speech was not transcribed; the document uses the description and post text.',
+  'capture.warning.frames_unavailable': 'Video frames could not be extracted.',
+  'capture.warning.images_not_described': 'Images and video frames were not described.',
   'capture.sharedReady': 'Shared link ready. Tap Capture to confirm.',
   'capture.genericError': 'Could not send the capture. Try again.',
   'capture.error.INVALID_URL': 'Invalid link. Use a full http or https address.',

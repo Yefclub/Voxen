@@ -33,8 +33,11 @@ Owner decisions (closed):
 D2 (no local inference) → G3; the provider glossary and "fixed endpoints of
 the four providers" → five cloud providers plus the keyless `local` STT
 endpoint from `STT_LOCAL_URL`; "STT only when no usable text exists" → G4;
-the vision gate (text below 1,500 chars) → still applies to thumbnails and
-post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
+the vision gate (text below 1,500 chars) → video keyframes are always
+analyzed when a vision chain exists, and up to 2 thumbnails/post images ride
+along in the same call whatever the text length; without keyframes,
+thumbnails and post images keep the gate (described only below 1,500 chars);
+vision `LLM_AUTH` /
 `LLM_QUOTA` failing the job → now a warning; "local models" in out of scope
 → only local text/vision models stay out; the lowest-reasoning call options
 → G6 (per-role effort, default `medium`).

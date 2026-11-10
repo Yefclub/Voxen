@@ -103,6 +103,9 @@ function serializeJob(job: JobRow, lang: CaptureLocale) {
     sourceUrl: job.type === 'CAPTURE_UPLOAD' ? null : job.sourceUrl,
     filename: upload?.filename ?? null,
     platform: typeof meta.platform === 'string' ? meta.platform : null,
+    warnings: Array.isArray(meta.warnings)
+      ? meta.warnings.filter((code): code is string => typeof code === 'string').slice(0, 10)
+      : [],
     stage: job.progressStage,
     percent: job.progressPercent,
     attempt: job.attempt,

@@ -48,9 +48,10 @@ credentials, private content, or unredacted logs in a public report.
    retrieval make no model calls.
 3. Optionally, a user pastes a link, uploads a file, or shares from the phone
    to the `/capturar` page. The capture worker extracts captions, post or page
-   text, audio, and images; the web app transcribes audio only when no text
-   exists and publishes a document with summary, key points, and tags through
-   the user's own AI provider key.
+   text, audio, video keyframes, images, and top comments; the web app
+   transcribes the speech of every video or audio without captions, keeps the
+   description as context, describes keyframes, and publishes a document with
+   summary, key points, and tags through the user's own AI provider keys.
 4. It stores structured Markdown with source metadata, timestamps, canonical
    links, and summaries.
 5. It organizes the library into folders and exposes it through MCP and

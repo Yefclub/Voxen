@@ -46,9 +46,11 @@ then pastes a link, uploads a file, or shares from the installed PWA to
    filtered search and progressive reads.
 
 Capture adds a second entry point: a link or file becomes a durable capture
-job; the worker extracts text, audio, and images; the web app transcribes
-audio only when no text exists, interprets the content with one structured
-model call, and publishes a document through the same storage and index.
+job; the worker extracts text, audio, video keyframes, images, and top
+comments; the web app transcribes the speech of every video or audio without
+captions (keeping the description as context), describes keyframes,
+interprets the content with one structured model call, and publishes a
+document through the same storage and index.
 
 ## Branch and Release Flow
 

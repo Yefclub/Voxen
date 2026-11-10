@@ -6,9 +6,12 @@ import { db } from '../db';
 import { storageDelete, storageDeletePrefix, storageGet, storagePut } from '../storage';
 import type { ClaimedCaptureJob } from './lease';
 import type { CaptureArtifact, CaptureImageRef, CapturePlatformName } from './types';
-import type { WorkerExtraction } from './worker-client';
+import { normalizeComments } from './comments';
+import type { WorkerExtraction, WorkerImage } from './worker-client';
 
 export const MAX_IMAGES = 4;
+/** Keyframes per capture (spec 221). */
+export const MAX_FRAMES = 4;
 const MAX_IMAGE_BYTES = 1_500_000;
 
 export function captureArtifactPrefix(userId: string, jobId: string): string {
@@ -67,21 +70,42 @@ const PLATFORMS = new Set<CapturePlatformName>([
   'upload',
 ]);
 
+/** Stores worker images next to the artifact; only refs live in capture.json. */
+export async function storeImages(
+  job: Pick<ClaimedCaptureJob, 'id' | 'userId'>,
+  source: WorkerImage[],
+  prefix: 'image' | 'frame',
+  limit: number,
+): Promise<CaptureImageRef[]> {
+  const refs: CaptureImageRef[] = [];
+  for (const [index, image] of source.slice(0, limit).entries()) {
+    const ext = IMAGE_EXT[image.mime];
+    if (!ext) continue;
+    const bytes = Buffer.from(image.dataBase64, 'base64');
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) continue;
+    const key = `${captureArtifactPrefix(job.userId, job.id)}${prefix}-${index}.${ext}`;
+    await storagePut({ key, body: new Uint8Array(bytes), contentType: image.mime });
+    refs.push({
+      kind: image.kind,
+      mime: image.mime,
+      key,
+      bytes: bytes.byteLength,
+      ...(prefix === 'frame' ? { timeSec: image.timeSec ?? null } : {}),
+    });
+  }
+  return refs;
+}
+
 export async function artifactFromWorker(
   job: ClaimedCaptureJob,
   result: WorkerExtraction,
   upload: CaptureArtifact['upload'],
 ): Promise<CaptureArtifact> {
-  const images: CaptureImageRef[] = [];
-  for (const [index, image] of result.images.slice(0, MAX_IMAGES).entries()) {
-    const ext = IMAGE_EXT[image.mime];
-    if (!ext) continue;
-    const bytes = Buffer.from(image.dataBase64, 'base64');
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) continue;
-    const key = `workspaces/${job.userId}/captures/${job.id}/image-${index}.${ext}`;
-    await storagePut({ key, body: new Uint8Array(bytes), contentType: image.mime });
-    images.push({ kind: image.kind, mime: image.mime, key, bytes: bytes.byteLength });
-  }
+  // Upload keyframes arrive with the extraction and count as video frames.
+  const frames = result.images.filter((image) => image.kind === 'frame');
+  const stills = result.images.filter((image) => image.kind !== 'frame');
+  const images = await storeImages(job, stills, 'image', MAX_IMAGES);
+  const frameRefs = await storeImages(job, frames, 'frame', MAX_FRAMES);
   const platform = upload ? 'upload' : (result.platform as CapturePlatformName);
   return {
     version: 1,
@@ -100,7 +124,10 @@ export async function artifactFromWorker(
     textKind: result.textKind,
     segments: Array.isArray(result.segments) ? result.segments : [],
     hasAudio: Boolean(result.hasAudio),
+    hasVideo: Boolean(result.hasVideo),
     images,
+    frames: frameRefs,
+    comments: normalizeComments(result.comments),
     extractor: result.extractor,
     upload: upload ?? null,
   };

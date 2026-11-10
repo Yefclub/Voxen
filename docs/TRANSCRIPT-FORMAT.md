@@ -61,21 +61,40 @@ A captura grava o mesmo schema, com estas particularidades:
 - `transcription_method`: `subtitles` (legendas da plataforma), `scrape`
   (texto do post, da página ou da descrição), `api` (STT pelo provedor do
   usuário), `vision` (descrição de imagens) ou `document` (arquivo enviado).
+  Vídeos e áudios sem legenda são sempre transcritos quando há papel de STT
+  (spec 221), mesmo com descrição; com legenda, o STT não roda.
 - `model`: modelo usado na interpretação, no formato do provedor escolhido
   pelo usuário (por exemplo `anthropic/claude-haiku-4-5`).
-- `cost_usd`: custo estimado da captura (STT + visão + interpretação) quando
-  o catálogo tem preço; `null` quando não há estimativa.
+- `cost_usd`: custo estimado da captura (STT + visão + interpretação, incluindo
+  tentativas que falharam) quando o catálogo tem preço; `null` quando não há
+  estimativa.
 - `video_id`: id da plataforma quando existe (YouTube, TikTok, Instagram,
   status do X); omitido em páginas web e uploads.
 - `producer: voxen-capture`: identifica documentos gerados pela captura.
 
 Campos nulos são omitidos, exceto `cost_usd`. O corpo de um documento
-capturado tem, em ordem: thumbnail opcional, título, uma citação com o link
-"Original", canal, duração e data de publicação, `## Resumo`, `## Pontos-chave`,
-`## Imagens` (descrições, quando houver) e então `## Transcrição` (linhas com
-timestamp, como abaixo) ou `## Conteúdo` (texto da página/post). Resumo,
-pontos-chave e descrições vêm do modelo e saem sem links, imagens, URLs nem
-HTML; o texto capturado nunca carrega imagens remotas nem HTML cru.
+capturado tem, em ordem (cada seção só aparece quando tem conteúdo):
+
+1. thumbnail opcional, título e uma citação com o link "Original", canal,
+   duração e data de publicação;
+2. `## Resumo` e `## Pontos-chave` (quando há comentários, o último ponto é
+   `Recepção do público: …`);
+3. `## Imagens`: descrições de thumbnails e imagens do post, numeradas;
+4. `## Quadros do vídeo`: descrições de até 4 quadros do vídeo, cada uma
+   começando pelo instante em negrito (`- **00:01:23** …`);
+5. `## Descrição`: o texto do post ou a descrição, quando existe uma
+   transcrição (legenda ou STT) ao lado dele;
+6. `## Transcrição` (linhas com timestamp, como abaixo) ou `## Conteúdo`
+   (texto da página/post quando não há transcrição);
+7. `## Comentários`: até 50 comentários de primeiro nível, os mais relevantes
+   primeiro (curtidas, depois data), no formato `1. autor (N curtidas): texto`.
+
+Resumo, pontos-chave e descrições de imagens e quadros vêm do modelo e saem sem
+links, imagens, URLs nem HTML. Comentários são conteúdo não confiável: saem em
+uma linha cada, sem links, imagens, URLs nem HTML. O texto capturado nunca
+carrega imagens remotas nem HTML cru. `plainText` (FTS) inclui a transcrição ou
+o conteúdo, a descrição (quando aparece) e as descrições de imagens e quadros,
+mas não os comentários.
 
 ### Campos obrigatórios
 
@@ -134,9 +153,9 @@ HTML; o texto capturado nunca carrega imagens remotas nem HTML cru.
 ### Quando veio de transcrição via API (`transcription_method=api`, legado)
 
 > Histórico: os passos abaixo descrevem como documentos antigos (antes da
-> spec 215) foram produzidos. A captura atual (spec 220) só transcreve quando
-> não há texto, pelo provedor de STT que o usuário configurou, e grava o mesmo
-> formato de linhas com timestamp.
+> spec 215) foram produzidos. A captura atual (specs 220 e 221) transcreve
+> sempre que a fonte tem fala e não tem legenda, pela cadeia de STT que o
+> usuário configurou, e grava o mesmo formato de linhas com timestamp.
 
 - o extrator de mídia baixava áudio
 - ffmpeg segmentava em chunks (~5min com overlap 5s pra não cortar palavras)
