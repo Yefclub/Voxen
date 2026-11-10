@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794272430 — 2026-11-09 · Dev
+
+### 🧹 Capture v2 planned: Gemini, provider fallback, local STT, full video and comments
+
+Spec 221 extends link capture: Gemini joins as a provider, each AI role gets an ordered fallback chain, an optional local speech-to-text service is allowed, videos are always transcribed and their frames analyzed, and the top 50 comments are captured. The features ship in the next releases.
+
 ## v0.15.1-dev.1794270114 — 2026-11-09 · Dev
 
 ### ✨ Capture links from the library, the capture page, or your phone
