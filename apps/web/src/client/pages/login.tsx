@@ -103,8 +103,12 @@ export function LoginPage(): React.ReactElement {
         password,
         oauth_query: oauthQuery(location.search),
       });
+      // An OAuth authorization continues on the server's URL right away;
+      // refreshing the session first lets the app route to the library for a
+      // moment, which is enough to lose the flow (e.g. an install prompt).
+      if (continueOAuth(response)) return;
       await refresh();
-      if (!continueOAuth(response)) navigate(nextPath());
+      navigate(nextPath());
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setError(err.message);

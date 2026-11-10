@@ -8,7 +8,7 @@ import { AuthLayout } from './components/layout/auth-layout';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { ThemeProvider } from './lib/theme-provider';
 import { useMe } from './lib/hooks';
-import { PwaInstallPrompt } from './components/pwa-install-prompt';
+import { PwaInstallPrompt, shouldOfferInstall } from './components/pwa-install-prompt';
 
 // Telas carregadas somente quando a rota precisa delas. O shell, a sessao e a
 // navegacao continuam no bundle inicial; areas com editor, grafo e Markdown
@@ -97,7 +97,9 @@ export function App(): React.ReactElement {
 
 function PwaInstallGate(): React.ReactElement {
   const { data } = useMe();
-  return <PwaInstallPrompt enabled={Boolean(data?.user)} />;
+  const { pathname } = useLocation();
+  const offer = shouldOfferInstall(pathname, Boolean(window.opener));
+  return <PwaInstallPrompt enabled={Boolean(data?.user) && offer} />;
 }
 
 function PublicRouteBoundary({ children }: { children: ReactNode }): React.ReactElement {
