@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.15.1-dev.1794330578 — 2026-11-10 · Dev
+
+### ✨ Add links to your knowledge base through MCP
+
+MCP clients with write access can now submit links for capture and analysis
+using your configured AI providers. Follow progress, list recent captures or
+cancel an active capture, then read the resulting document through the
+existing knowledge-base tools. Repeated links reuse an active capture or an
+existing document. Submissions share the app's limit of 30 per minute and may
+incur AI provider charges.
+
 ## v0.15.1-dev.1794321327 — 2026-11-10 · Dev
 
 ### 🐛 Connecting an MCP client no longer detours through the library
