@@ -17,7 +17,8 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${SMOKESCREEN_TAG}" https://github.com/stripe/smokescreen.git . \
     && test "$(git rev-parse HEAD)" = "${SMOKESCREEN_COMMIT}"
 # Smokescreen v0.1.0 pins dependency versions with known HIGH CVEs; raise
-# only those modules (checked against the Go checksum database).
+# them (checked against the Go checksum database). This also lifts the go.mod
+# `go` line to 1.26 and x/sys, which those modules require.
 RUN go get golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 \
         github.com/sirupsen/logrus@v1.10.2
 # Our main.go only wires an allowed-ports policy into the unmodified library.
