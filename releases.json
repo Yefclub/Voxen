@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794311274",
+    "channel": "dev",
+    "type": "fix",
+    "title": "TikTok speech is transcribed from the video's own audio",
+    "body": "The capture worker no longer downloads TikTok's background music track, which\nyt-dlp lists as the audio-only format. That track is often longer than the\nvideo and has no speech, so transcripts came back empty. Audio now comes from\nthe video's own stream.",
+    "pr": 1058,
+    "author": "Kalyel",
+    "date": "2026-11-10T08:47:44-03:00",
+    "translations": {
+      "en": {
+        "title": "TikTok speech is transcribed from the video's own audio",
+        "body": "The capture worker no longer downloads TikTok's background music track, which\nyt-dlp lists as the audio-only format. That track is often longer than the\nvideo and has no speech, so transcripts came back empty. Audio now comes from\nthe video's own stream."
+      },
+      "pt-BR": {
+        "title": "A fala dos TikToks é transcrita do áudio do próprio vídeo",
+        "body": "O worker de captura não baixa mais a música de fundo do TikTok, que o yt-dlp\nlista como formato só de áudio. Essa faixa costuma ser mais longa que o vídeo e\nnão tem fala, então a transcrição voltava vazia. Agora o áudio vem do próprio\nvídeo."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1058"
+  },
+  {
     "version": "0.15.1-dev.1794306811",
     "channel": "dev",
     "type": "feat",
