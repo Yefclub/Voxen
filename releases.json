@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794321327",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Connecting an MCP client no longer detours through the library",
+    "body": "After signing in to authorize an MCP client, Voxen now goes straight to the\nconsent screen. Before, the app showed the library for a moment, and the\n\"install Voxen\" prompt could appear there; installing reopened Voxen on the\nlibrary and the authorization was lost. The install prompt is no longer offered\non sign-in, sign-up, pending-approval and OAuth screens, or in windows opened by\nanother app.",
+    "pr": 1066,
+    "author": "Kalyel",
+    "date": "2026-11-10T11:35:13-03:00",
+    "translations": {
+      "en": {
+        "title": "Connecting an MCP client no longer detours through the library",
+        "body": "After signing in to authorize an MCP client, Voxen now goes straight to the\nconsent screen. Before, the app showed the library for a moment, and the\n\"install Voxen\" prompt could appear there; installing reopened Voxen on the\nlibrary and the authorization was lost. The install prompt is no longer offered\non sign-in, sign-up, pending-approval and OAuth screens, or in windows opened by\nanother app."
+      },
+      "pt-BR": {
+        "title": "Conectar um cliente MCP não passa mais pela biblioteca",
+        "body": "Depois de entrar para autorizar um cliente MCP, a Voxen agora vai direto para a\ntela de consentimento. Antes, o app mostrava a biblioteca por um instante e o\nconvite \"instalar a Voxen\" podia aparecer ali; ao instalar, a Voxen reabria na\nbiblioteca e a autorização se perdia. O convite de instalação não aparece mais\nnas telas de login, cadastro, aprovação pendente e OAuth, nem em janelas abertas\npor outro app."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1066"
+  },
+  {
     "version": "0.15.1-dev.1794316387",
     "channel": "dev",
     "type": "security",

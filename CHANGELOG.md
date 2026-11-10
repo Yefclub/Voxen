@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.15.1-dev.1794321327 — 2026-11-10 · Dev
+
+### 🐛 Connecting an MCP client no longer detours through the library
+
+After signing in to authorize an MCP client, Voxen now goes straight to the
+consent screen. Before, the app showed the library for a moment, and the
+"install Voxen" prompt could appear there; installing reopened Voxen on the
+library and the authorization was lost. The install prompt is no longer offered
+on sign-in, sign-up, pending-approval and OAuth screens, or in windows opened by
+another app.
+
 ## v0.15.1-dev.1794316387 — 2026-11-10 · Dev
 
 ### 🔒 Capture worker and local STT images without known HIGH vulnerabilities
