@@ -302,6 +302,38 @@ jobs:
           docker logs voxen-easypanel
           exit 1
 
+  # capture-worker (spec 220): its pytest suite runs only inside the image
+  # (`--target test`, real ffmpeg/yt-dlp). The test stage is built on top of
+  # the runtime stage, so this one build also proves the runtime image builds
+  # and exports its cache for the Trivy scan. The run flags mirror Compose.
+  docker-build-capture-worker:
+    name: Docker build (capture-worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build capture-worker (runtime + tests)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/capture-worker/Dockerfile
+          target: test
+          push: false
+          load: true
+          tags: voxen-capture-worker:test
+          cache-from: type=gha,scope=capture-worker
+          cache-to: type=gha,mode=max,scope=capture-worker
+      - name: Lint capture-worker
+        run: |
+          docker run --rm --entrypoint sh -e RUFF_CACHE_DIR=/tmp/ruff \
+            --read-only --tmpfs /tmp:size=64m voxen-capture-worker:test \
+            -c 'ruff check src tests && ruff format --check src tests'
+      - name: Run capture-worker tests
+        run: |
+          docker run --rm --read-only --tmpfs /tmp:size=1g,mode=1777 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 256 --memory 2g voxen-capture-worker:test
+
   # ==========================================================================
   # Agregador. Existe por causa do NOME: `Docker build (apps + Easypanel)` é
   # um required status check da proteção de `dev`/`main` E está escrito por
@@ -318,17 +350,18 @@ jobs:
     name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest
     if: always()
-    needs: [docker-build-web, docker-build-easypanel]
+    needs: [docker-build-web, docker-build-easypanel, docker-build-capture-worker]
     steps:
       - name: Assert image builds succeeded
         env:
           WEB: ${{ needs.docker-build-web.result }}
           EASYPANEL: ${{ needs.docker-build-easypanel.result }}
+          CAPTURE_WORKER: ${{ needs.docker-build-capture-worker.result }}
         run: |
           set -eu
-          echo "web=$WEB easypanel=$EASYPANEL"
+          echo "web=$WEB easypanel=$EASYPANEL capture-worker=$CAPTURE_WORKER"
           failed=0
-          for pair in "web:$WEB" "easypanel:$EASYPANEL"; do
+          for pair in "web:$WEB" "easypanel:$EASYPANEL" "capture-worker:$CAPTURE_WORKER"; do
             if [ "${pair#*:}" != "success" ]; then
               echo "::error::Image build ${pair%%:*} did not pass (${pair#*:})."
               failed=1
