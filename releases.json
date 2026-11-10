@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794315680",
+    "channel": "dev",
+    "type": "security",
+    "title": "Capture worker and local STT images without known HIGH vulnerabilities",
+    "body": "The Go builder of `capture-worker` (Smokescreen egress proxy) and `stt-local`\nmoves from Go 1.25.14 to 1.27.3, and Smokescreen's `golang.org/x/net`,\n`golang.org/x/text` and `logrus` are raised to fixed versions. Trivy reports no\nCRITICAL or HIGH findings with a fix available in either image.",
+    "pr": 1062,
+    "author": "Kalyel",
+    "date": "2026-11-10T10:01:08-03:00",
+    "translations": {
+      "en": {
+        "title": "Capture worker and local STT images without known HIGH vulnerabilities",
+        "body": "The Go builder of `capture-worker` (Smokescreen egress proxy) and `stt-local`\nmoves from Go 1.25.14 to 1.27.3, and Smokescreen's `golang.org/x/net`,\n`golang.org/x/text` and `logrus` are raised to fixed versions. Trivy reports no\nCRITICAL or HIGH findings with a fix available in either image."
+      },
+      "pt-BR": {
+        "title": "Imagens do worker de captura e do STT local sem vulnerabilidades HIGH conhecidas",
+        "body": "O builder Go do `capture-worker` (proxy de saída Smokescreen) e do `stt-local`\npassa do Go 1.25.14 para o 1.27.3, e as dependências `golang.org/x/net`,\n`golang.org/x/text` e `logrus` do Smokescreen sobem para versões corrigidas. O\nTrivy não aponta nenhum achado CRITICAL ou HIGH com correção disponível nas\nduas imagens."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1062"
+  },
+  {
     "version": "0.15.1-dev.1794314292",
     "channel": "dev",
     "type": "fix",
