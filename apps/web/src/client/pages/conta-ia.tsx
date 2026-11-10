@@ -10,6 +10,7 @@ import {
   type AiProviderCatalog as ProviderCatalog,
   type AiProviderId as Provider,
   type Chains,
+  type LocalStt,
 } from '../components/account/ai-role-chains';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -38,6 +39,7 @@ interface AiSettings {
   chains: Chains;
   reasoning: Reasoning;
   catalog: ProviderCatalog[];
+  local: LocalStt;
 }
 
 const MIN_KEY_LENGTH = 20;
@@ -137,6 +139,13 @@ export function ContaIaPage(): React.ReactElement {
       ),
     [settings],
   );
+
+  // The editor shows with no key when local STT is offered or already in the chain.
+  const canEditRoles =
+    settings !== null &&
+    (configured.size > 0 ||
+      settings.local.available ||
+      (settings.chains.stt ?? []).some((entry) => entry.provider === 'local'));
 
   const rolesChanged =
     settings !== null &&
@@ -314,7 +323,7 @@ export function ContaIaPage(): React.ReactElement {
               <CardDescription>{t('account.ai.rolesDescription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {configured.size === 0 ? (
+              {!canEditRoles ? (
                 <p className="py-2 text-sm text-[var(--color-app-muted)]">
                   {t('account.ai.rolesEmpty')}
                 </p>
@@ -323,6 +332,7 @@ export function ContaIaPage(): React.ReactElement {
                   <RoleChainsEditor
                     catalog={settings.catalog}
                     configured={configured}
+                    local={settings.local}
                     chains={draftChains}
                     onChange={setDraftChains}
                     reasoning={draftReasoning}

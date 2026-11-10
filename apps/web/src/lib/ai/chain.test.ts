@@ -8,7 +8,7 @@ import {
   findCatalogModel,
   type AiProvider,
 } from './catalog';
-import { createAiClient, type ResolvedRole } from './client';
+import { createAiClient, type KeyedResolvedRole } from './client';
 import { parseModelRoles, type ModelRoles } from './credentials';
 import type { AiError } from './errors';
 
@@ -69,7 +69,7 @@ function aiWith(
     getRoles: async () => roles,
     getReasoning: async () => ({ fast: 'medium', standard: 'medium', vision: 'medium' }),
     getKey: async (_userId, provider) => keys[provider] ?? null,
-    languageModel: (resolved: ResolvedRole) => models[resolved.provider]!,
+    languageModel: (resolved: KeyedResolvedRole) => models[resolved.provider]!,
   });
 }
 

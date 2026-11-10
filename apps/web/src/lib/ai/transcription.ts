@@ -10,7 +10,7 @@ import { z } from 'zod';
 import {
   PROVIDER_BASE_URLS,
   type AudioChunk,
-  type ResolvedRole,
+  type KeyedResolvedRole,
   type TranscriptSegment,
 } from './client';
 import { AiError } from './errors';
@@ -33,7 +33,7 @@ export interface ChunkTranscript {
 }
 
 export function providerTranscriptionModel(
-  resolved: ResolvedRole,
+  resolved: KeyedResolvedRole,
   fetchImpl: typeof fetch,
 ): TranscriptionModel {
   const baseURL = PROVIDER_BASE_URLS[resolved.provider];
@@ -54,7 +54,7 @@ export function providerTranscriptionModel(
 
 export async function transcribeWithSdk(
   model: TranscriptionModel,
-  resolved: ResolvedRole,
+  resolved: KeyedResolvedRole,
   chunk: AudioChunk,
   language: string | undefined,
   signal: AbortSignal,
@@ -85,7 +85,7 @@ export async function transcribeWithSdk(
 }
 
 function sttProviderOptions(
-  provider: ResolvedRole['provider'],
+  provider: KeyedResolvedRole['provider'],
   language: string | undefined,
 ): Record<string, Record<string, JSONValue>> | undefined {
   if (provider === 'google') {
@@ -143,7 +143,7 @@ export function openRouterAudioFormat(mime: string): string {
 
 /** OpenRouter STT: JSON body with base64 audio (no AI SDK transcription model). */
 export async function transcribeWithOpenRouter(
-  resolved: ResolvedRole,
+  resolved: KeyedResolvedRole,
   chunk: AudioChunk,
   language: string | undefined,
   signal: AbortSignal,
@@ -207,7 +207,7 @@ export async function transcribeWithOpenRouter(
   };
 }
 
-function wholeChunkSegment(text: string, durationSec: number | null): TranscriptSegment[] {
+export function wholeChunkSegment(text: string, durationSec: number | null): TranscriptSegment[] {
   const trimmed = text.trim();
   return trimmed ? [{ startSec: 0, endSec: durationSec ?? 0, text: trimmed }] : [];
 }

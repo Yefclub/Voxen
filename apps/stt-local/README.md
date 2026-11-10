@@ -5,20 +5,20 @@ NVIDIA Parakeet TDT 0.6B v3 (int8 ONNX), served by the
 [`achetronic/parakeet`](https://github.com/achetronic/parakeet) Go server
 behind an OpenAI-compatible endpoint. It needs no provider key, holds no
 secrets and, under Docker Compose, has no network egress. Voxen works without
-it. The web app uses it through the keyless `local` STT provider (shipping with
-the next capture release); when the sidecar is not running, that entry fails
-as retryable and the chain moves on.
+it. The web app uses it through the keyless `local` STT provider; when the sidecar
+is not running, that entry is skipped (or fails as retryable mid-call) and the
+chain moves on.
 
 ## Endpoint
 
 Port `5092`, reachable only from `web` on the internal `stt-net` network
 (Compose; see the deploy docs for the Easypanel/Openship residual risk).
 
-| Method and path                  | Purpose                                                                 |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| `GET /health`                    | `{"status":"ok"}` once the model is loaded.                             |
-| `POST /v1/audio/transcriptions`  | OpenAI-compatible multipart (`file`, optional `language`, `response_format` `json`/`text`/`verbose_json`/`srt`/`vtt`). |
-| `GET /v1/models`                 | Model list.                                                             |
+| Method and path                 | Purpose                                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                   | `{"status":"ok"}` once the model is loaded.                                                                            |
+| `POST /v1/audio/transcriptions` | OpenAI-compatible multipart (`file`, optional `language`, `response_format` `json`/`text`/`verbose_json`/`srt`/`vtt`). |
+| `GET /v1/models`                | Model list.                                                                                                            |
 
 Input must be **WAV** (16 kHz mono PCM is what the worker sends); anything
 else returns HTTP 400 because the image has no ffmpeg. Audio longer than 60 s
@@ -30,15 +30,15 @@ chunks of at most 8 minutes.
 The entrypoint always runs `-workers=1 -ffmpeg=false -enable-diarization=false`
 (one transcription at a time, WAV only, no diarization). The image sets:
 
-| Variable                               | Value                     |
-| -------------------------------------- | ------------------------- |
-| `PARAKEET_PORT`                        | `5092`                    |
-| `PARAKEET_MODELS`                      | `/models`                 |
-| `PARAKEET_MODEL_PRECISION`             | `int8`                    |
-| `PARAKEET_LONG_AUDIO`                  | `true`                    |
-| `PARAKEET_DISABLE_VAD_BASED_CHUNKING`  | `true` (no Silero VAD; chunk boundaries use mel energy) |
-| `PARAKEET_LOG_FORMAT`                  | `json`                    |
-| `GOMEMLIMIT`                           | `600MiB`                  |
+| Variable                              | Value                                                   |
+| ------------------------------------- | ------------------------------------------------------- |
+| `PARAKEET_PORT`                       | `5092`                                                  |
+| `PARAKEET_MODELS`                     | `/models`                                               |
+| `PARAKEET_MODEL_PRECISION`            | `int8`                                                  |
+| `PARAKEET_LONG_AUDIO`                 | `true`                                                  |
+| `PARAKEET_DISABLE_VAD_BASED_CHUNKING` | `true` (no Silero VAD; chunk boundaries use mel energy) |
+| `PARAKEET_LOG_FORMAT`                 | `json`                                                  |
+| `GOMEMLIMIT`                          | `600MiB`                                                |
 
 `PARAKEET_CHUNK_SECONDS` lowers peak memory at the cost of speed (40 s
 windows: about 1.9 GiB peak but roughly 40% slower). Do not set
@@ -59,8 +59,15 @@ docker compose up -d web
 joins and `capture-worker` does not. It publishes no ports and runs as uid
 10002 with a read-only root filesystem, a 256 MiB `/tmp` tmpfs (multipart
 uploads), all capabilities dropped, `no-new-privileges`, 2 CPUs and a 3 GB
-memory limit. Once the `local` provider ships, users add the `local` entry to
-their STT chain in **Account → AI providers**.
+memory limit.
+
+Then each user adds it to their speech-to-text chain in **Account → AI
+providers** (`/conta/ia`): in the **Transcription (STT)** list, pick "Local
+(Parakeet, on this server)" and save. It is never added automatically. The
+option appears only while `STT_LOCAL_URL` is set and `GET /health` answers
+(checked with a 2 s timeout, cached 30 s); a stored entry shows "unavailable"
+and is skipped while the sidecar is down. Put it first in the chain to have the
+worker send WAV audio to it; cloud entries after it act as fallbacks.
 
 Easypanel and Openship: see "Optional local speech-to-text" in
 [`docs/en/DEPLOY.md`](../../docs/en/DEPLOY.md).
@@ -70,11 +77,11 @@ Easypanel and Openship: see "Optional local speech-to-text" in
 Measured on a 2014 4-core host (Intel Core i5-4590S, no GPU) with the Compose
 limits (2 CPUs):
 
-| Audio                         | Latency | Peak RAM  |
-| ----------------------------- | ------- | --------- |
-| idle, model loaded            | n/a     | ~0.9 GiB  |
-| 30 s PT-BR speech             | ~7 s    | ~1.2 GiB  |
-| 8 min PT-BR speech (one chunk)| ~155 s  | ~2.5 GiB  |
+| Audio                          | Latency | Peak RAM |
+| ------------------------------ | ------- | -------- |
+| idle, model loaded             | n/a     | ~0.9 GiB |
+| 30 s PT-BR speech              | ~7 s    | ~1.2 GiB |
+| 8 min PT-BR speech (one chunk) | ~155 s  | ~2.5 GiB |
 
 Memory is mostly the ONNX Runtime arena and stays near the peak after the
 first long request. The image is about 755 MB on disk (510 MB compressed),
