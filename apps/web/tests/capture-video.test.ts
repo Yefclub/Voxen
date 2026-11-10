@@ -439,6 +439,134 @@ describeIfDb('capture runner: full video, description and comments', () => {
     ).not.toContain('## Comentários');
   });
 
+  it('keeps a web page meta description out of the body and the search text', async () => {
+    const calls = freshCalls();
+    const job = await queue('https://example.com/page-');
+    const deps = makeDeps({
+      calls,
+      extract: async () =>
+        extraction({ description: 'Meta descrição exclusiva zebraquartzo da página.' }),
+    });
+    const done = await claimAndRun(job.id, deps);
+    expect(done.status).toBe('DONE');
+    const markdown = await markdownOf(done.transcriptId!);
+    expect(markdown).not.toContain('## Descrição');
+    expect(markdown).toContain('## Conteúdo');
+    const doc = await db.transcript.findUniqueOrThrow({ where: { id: done.transcriptId! } });
+    expect(doc.plainText).not.toContain('zebraquartzo');
+  });
+
+  it('publishes with a warning when a transient STT failure hits the last attempt', async () => {
+    const calls = freshCalls();
+    const job = await queue();
+    await db.job.update({
+      where: { id: job.id },
+      data: { attempt: runner.CAPTURE_MAX_ATTEMPTS - 1 },
+    });
+    const deps = makeDeps({
+      calls,
+      extract: async () => tiktok(),
+      transcribe: async () => {
+        throw sttFailure({ code: 'TIMEOUT', retryable: true });
+      },
+    });
+    const done = await claimAndRun(job.id, deps);
+    expect(done.attempt).toBe(runner.CAPTURE_MAX_ATTEMPTS);
+    expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
+    expect(warningsOf(done)).toEqual(['speech_not_transcribed']);
+  });
+
+  it('skips the audio download when the known duration is over three hours', async () => {
+    const calls = freshCalls();
+    const job = await queue();
+    const done = await claimAndRun(
+      job.id,
+      makeDeps({ calls, extract: async () => tiktok({ durationSec: 3 * 3600 + 1 }) }),
+    );
+    expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
+    expect(warningsOf(done)).toEqual(['speech_not_transcribed']);
+    expect(calls.audio).toBe(0);
+    expect(calls.stt).toBe(0);
+  });
+
+  it('warns when the worker answered keyframes but none was usable', async () => {
+    const calls = freshCalls();
+    const job = await queue();
+    const deps = makeDeps({
+      calls,
+      extract: async () => tiktok({ hasVideo: true }),
+      frames: async () => ({
+        durationSec: 10,
+        images: [{ kind: 'frame', mime: 'image/bmp', dataBase64: PNG_1PX, timeSec: 1 }],
+      }),
+    });
+    const done = await claimAndRun(job.id, deps);
+    expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
+    expect(warningsOf(done)).toEqual(['frames_unavailable']);
+    expect(calls.generate).toEqual(['standard']);
+  });
+
+  it('stops without a warning or a document when the job is cancelled during /v1/frames', async () => {
+    const calls = freshCalls();
+    const job = await queue();
+    const deps = makeDeps({
+      calls,
+      extract: async () => tiktok({ hasVideo: true }),
+      frames: async () => {
+        await db.job.update({ where: { id: job.id }, data: { status: 'CANCELLED' } });
+        // An aborted worker call surfaces as TIMEOUT from the worker client.
+        throw new CaptureError('TIMEOUT');
+      },
+    });
+    const after = await claimAndRun(job.id, deps);
+    expect(after.status).toBe('CANCELLED');
+    expect(after.transcriptId).toBeNull();
+    expect(warningsOf(after)).toBeUndefined();
+    expect(calls.generate).toEqual([]);
+  });
+
+  it('bills reused STT and failed attempts of earlier runs in the final cost', async () => {
+    const calls = freshCalls();
+    const job = await queue();
+    const base = makeDeps({ calls, extract: async () => tiktok() });
+    let failNext = true;
+    const deps = {
+      ...base,
+      ai: {
+        ...base.ai,
+        generateStructured: async <T>(
+          input: Parameters<CaptureDeps['ai']['generateStructured']>[0],
+        ) => {
+          if (input.role === 'standard' && failNext) {
+            failNext = false;
+            throw Object.assign(new Error('busy'), {
+              code: 'LLM_FAILED',
+              retryable: true,
+              costUsd: 0.0005,
+            });
+          }
+          return base.ai.generateStructured<T>(input as never);
+        },
+      },
+    } as CaptureDeps;
+    const requeued = await claimAndRun(job.id, deps);
+    expect(requeued.status).toBe('QUEUED');
+    expect((requeued.captureMeta as { failedCostUsd?: number }).failedCostUsd).toBeCloseTo(
+      0.0005,
+      8,
+    );
+    const later = new Date(Date.now() + 60 * 60_000);
+    const reclaimed = await runner.claimCaptureJob(job.id, 'test-owner', later);
+    expect(reclaimed).not.toBeNull();
+    await runner.runCaptureJob(reclaimed!, deps);
+    const done = await db.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(done.status).toBe('DONE');
+    expect(calls.extract).toBe(1);
+    expect(calls.stt).toBe(1);
+    // 0.0005 failed interpretation + 0.003 reused STT + 0.0003 interpretation.
+    expect(Number(done.captureCostUsd)).toBeCloseTo(0.0038, 6);
+  });
+
   it('stops when the job is cancelled during STT', async () => {
     const calls = freshCalls();
     const job = await queue();

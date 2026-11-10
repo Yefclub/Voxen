@@ -75,14 +75,25 @@ unreachable, the knowledge base keeps working and capture jobs end with
    addresses, an active capture of the same URL, the same URL already in the
    library (offers reprocessing instead), and a configured text model role.
    Only then is a job created.
-2. The runner asks the worker for text first (captions, post, page, or
-   document text). Speech-to-text runs only when no usable text exists and the
-   source has audio; up to four images are described when the text is short
-   and a vision role exists. The worker result is stored as a capture artifact
-   so a retry skips the download.
+2. The runner asks the worker for text (captions, post, page, or document
+   text), metadata, and up to 50 comments. Videos and audio are processed in
+   full (spec 221): without captions, speech is always transcribed by the STT
+   chain, and the description or post text stays in the document as context;
+   with captions, STT does not run. When there is video and a vision role, the
+   worker returns up to four keyframes (`/v1/frames`), described in a single
+   call together with up to two thumbnails or post images (six images at
+   most). Without video, images are described only when the text is short.
+   The audio format (MP3, or WAV for the local STT) is chosen before the
+   download. If STT fails on the whole chain while at least 200 chars of other
+   text exist, or keyframe extraction or vision fails, the document is
+   published with `COMPLETED_WITH_WARNINGS` and the warning shows on the
+   capture card. The worker result is stored as a capture artifact so a retry
+   skips the download.
 3. One structured model call with no tools and no web search produces title,
-   summary, key points, tags, and entities from the captured content, which is
-   passed as untrusted data.
+   summary, key points, tags, and entities from the captured content
+   (including up to 20,000 chars of comments), which is passed as untrusted
+   data. With comments, the schema also asks for a key point on how the
+   audience received the content.
 4. The document is published through the internal publication contract
    version 2 (`DOCUMENT`) into the same storage, index, and graph as prepared
    content. Reprocessing updates the same document in place and keeps the

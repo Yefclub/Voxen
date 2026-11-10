@@ -38,9 +38,15 @@ import {
   withTimeout,
   type ClaimedCaptureJob,
 } from './lease';
-import { aiSignal, type CaptureDeps, type StepContext } from './ports';
+import {
+  aiSignal,
+  billFailure,
+  type CaptureCost,
+  type CaptureDeps,
+  type StepContext,
+} from './ports';
 import { publishCapturedDocument } from './publish';
-import { failedAttemptCost, pickMethod, uploadBlob, usableText } from './steps';
+import { pickMethod, uploadBlob, usableText } from './steps';
 import { speechStep } from './stt-step';
 import type { CaptureArtifact, CaptureInterpretation, CaptureWarning } from './types';
 import { framesStep, visionStep } from './vision-step';
@@ -76,7 +82,11 @@ async function extractStep(
   const { job, deps, signal } = ctx;
   await ensureLease(job, ctx.controller);
   const stored = await loadArtifact(job.userId, job.id);
-  if (stored) return { artifact: stored, audioFromFile: null };
+  if (stored) {
+    // STT and vision done by an earlier attempt are reused, and still billed.
+    ctx.cost.usd += (stored.stt?.costUsd ?? 0) + (stored.visionCostUsd ?? 0);
+    return { artifact: stored, audioFromFile: null };
+  }
   const upload = (job.captureMeta.upload ?? null) as CaptureArtifact['upload'];
   await progress(job, 'extracting', 10);
   let artifact: CaptureArtifact;
@@ -141,7 +151,7 @@ async function interpretStep(
       interpretation: normalizeInterpretation(result.output, artifact.title ?? job.sourceUrl),
     };
   } catch (error) {
-    ctx.cost.usd += failedAttemptCost(error);
+    billFailure(ctx, error);
     throw mapUnknownError(error, ctx.signal);
   }
 }
@@ -150,6 +160,7 @@ async function executeCapture(
   job: ClaimedCaptureJob,
   deps: CaptureDeps,
   controller: AbortController,
+  cost: CaptureCost,
 ): Promise<RunOutcome> {
   const ctx: StepContext = {
     job,
@@ -157,7 +168,7 @@ async function executeCapture(
     controller,
     signal: controller.signal,
     warnings: new Set(),
-    cost: { usd: 0 },
+    cost,
   };
 
   // Fail before paying for downloads or STT when no text model is configured.
@@ -186,7 +197,7 @@ async function executeCapture(
   const { interpretation, modelRef } = await interpretStep(ctx, artifact);
   await ensureLease(job, controller);
   await progress(job, 'publishing', 90);
-  const cost = ctx.cost.usd;
+  const total = ctx.cost.usd;
   const published = await publishCapturedDocument({
     jobId: job.id,
     userId: job.userId,
@@ -196,13 +207,13 @@ async function executeCapture(
     interpretation,
     method: pickMethod(artifact),
     model: modelRef,
-    costUsd: Math.round(cost * 1e6) / 1e6,
+    costUsd: Math.round(total * 1e6) / 1e6,
   });
   const warnings = [...ctx.warnings];
   return {
     status: warnings.length > 0 ? 'COMPLETED_WITH_WARNINGS' : 'DONE',
     transcriptId: published.transcriptId,
-    costUsd: cost,
+    costUsd: total,
     warnings,
   };
 }
@@ -211,17 +222,29 @@ export function captureBackoffMs(attempt: number): number {
   return Math.min(30_000 * 2 ** Math.max(0, attempt - 1), 10 * 60_000);
 }
 
+/** Failed-attempt cost of earlier runs of this job (spec 221: every attempt is billed). */
+function carriedFailedCost(job: ClaimedCaptureJob): number {
+  const value = job.captureMeta.failedCostUsd;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 async function finishFailure(
   job: ClaimedCaptureJob,
   error: CaptureError,
   now: Date,
+  failedCostUsd: number,
 ): Promise<void> {
   const retry = error.retryable && job.attempt < CAPTURE_MAX_ATTEMPTS;
   const code: CaptureErrorCode = error.code;
+  const captureMeta = {
+    ...job.captureMeta,
+    failedCostUsd: Math.round(failedCostUsd * 1e8) / 1e8,
+  } as Prisma.InputJsonValue;
   const updated = await db.job.updateMany({
     where: fence(job),
     data: retry
       ? {
+          captureMeta,
           status: 'QUEUED',
           workerId: null,
           heartbeatAt: null,
@@ -233,6 +256,7 @@ async function finishFailure(
           progressedAt: now,
         }
       : {
+          captureMeta,
           status: 'FAILED',
           workerId: null,
           heartbeatAt: null,
@@ -258,8 +282,10 @@ export async function runCaptureJob(job: ClaimedCaptureJob, deps: CaptureDeps): 
   const controller = new AbortController();
   const stopHeartbeat = startHeartbeat(job, controller);
   const now = deps.now ?? (() => new Date());
+  const carried = carriedFailedCost(job);
+  const cost: CaptureCost = { usd: carried, failedUsd: carried };
   try {
-    const outcome = await executeCapture(job, deps, controller);
+    const outcome = await executeCapture(job, deps, controller, cost);
     const finishedAt = now();
     const updated = await db.job.updateMany({
       where: fence(job),
@@ -300,7 +326,7 @@ export async function runCaptureJob(job: ClaimedCaptureJob, deps: CaptureDeps): 
         error: error instanceof Error ? error.message.slice(0, 300) : 'unknown',
       });
     }
-    await finishFailure(job, mapped, now()).catch(() => {});
+    await finishFailure(job, mapped, now(), cost.failedUsd).catch(() => {});
   } finally {
     stopHeartbeat();
   }

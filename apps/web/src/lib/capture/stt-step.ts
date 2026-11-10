@@ -6,12 +6,11 @@
 import { saveArtifact } from './artifact';
 import { CaptureError } from './errors';
 import { CAPTURE_MAX_ATTEMPTS, ensureLease, mapUnknownError, progress, withTimeout } from './lease';
-import { aiSignal, type StepContext } from './ports';
+import { aiSignal, billFailure, stopIfLeaseLost, type StepContext } from './ports';
 import {
   MIN_USABLE_TEXT,
   contextTextLength,
   decodeAudio,
-  failedAttemptCost,
   needsSpeechToText,
   preservedDescription,
   uploadBlob,
@@ -83,6 +82,8 @@ export async function speechStep(
   await progress(job, 'transcribing', 35);
   let next: CaptureArtifact;
   try {
+    // Known to be too long: no download at all.
+    if ((artifact.durationSec ?? 0) > MAX_AUDIO_SEC) throw new CaptureError('TOO_LARGE');
     const audio = await fetchAudio(ctx, artifact, audioFromFile, sttFormat);
     if (audio.durationSec > MAX_AUDIO_SEC) throw new CaptureError('TOO_LARGE');
     if (audio.chunks.length === 0) throw new CaptureError('NO_TEXT');
@@ -109,8 +110,8 @@ export async function speechStep(
       : // No speech (music, silence): keep the text the source already had.
         { ...artifact, durationSec: artifact.durationSec ?? audio.durationSec, stt: sttInfo };
   } catch (error) {
-    ctx.cost.usd += failedAttemptCost(error);
-    // Lease loss (cancel included) is rethrown by mapUnknownError itself.
+    billFailure(ctx, error);
+    await stopIfLeaseLost(ctx);
     const mapped = mapUnknownError(error, ctx.signal);
     if (!canDegrade) throw mapped;
     if (mapped.retryable && job.attempt < CAPTURE_MAX_ATTEMPTS) throw mapped;

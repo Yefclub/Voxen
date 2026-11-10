@@ -93,8 +93,8 @@ Resumo, pontos-chave e descrições de imagens e quadros vêm do modelo e saem s
 links, imagens, URLs nem HTML. Comentários são conteúdo não confiável: saem em
 uma linha cada, sem links, imagens, URLs nem HTML. O texto capturado nunca
 carrega imagens remotas nem HTML cru. `plainText` (FTS) inclui a transcrição ou
-o conteúdo, a descrição e as descrições de imagens e quadros, mas não os
-comentários.
+o conteúdo, a descrição (quando aparece) e as descrições de imagens e quadros,
+mas não os comentários.
 
 ### Campos obrigatórios
 

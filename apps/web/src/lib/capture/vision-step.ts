@@ -7,10 +7,10 @@
 
 import { MAX_FRAMES, MAX_IMAGES, readImage, saveArtifact, storeImages } from './artifact';
 import { VisionSchema } from './interpret';
-import { ensureLease, mapUnknownError, progress, withTimeout } from './lease';
+import { ensureLease, progress, withTimeout } from './lease';
 import { formatTimestamp } from './markdown';
-import { aiSignal, type StepContext } from './ports';
-import { failedAttemptCost, usableText } from './steps';
+import { aiSignal, billFailure, stopIfLeaseLost, type StepContext } from './ports';
+import { usableText } from './steps';
 import type { CaptureArtifact, CaptureImageRef } from './types';
 
 const VISION_TEXT_THRESHOLD = 1_500;
@@ -39,12 +39,15 @@ export async function framesStep(
       withTimeout(ctx.signal, FRAMES_TIMEOUT_MS),
     );
     const frames = await storeImages(job, result.images, 'frame', MAX_FRAMES);
+    if (frames.length === 0) {
+      ctx.warnings.add('frames_unavailable');
+      return artifact;
+    }
     const next: CaptureArtifact = { ...artifact, frames, framesFetched: true };
     await saveArtifact(job.userId, job.id, next);
     return next;
-  } catch (error) {
-    // Lease loss (cancel included) is rethrown by mapUnknownError itself.
-    mapUnknownError(error, ctx.signal);
+  } catch {
+    await stopIfLeaseLost(ctx);
     ctx.warnings.add('frames_unavailable');
     return artifact;
   }
@@ -130,10 +133,9 @@ export async function visionStep(
       visionCostUsd: vision.costUsd,
     };
   } catch (error) {
-    ctx.cost.usd += failedAttemptCost(error);
-    // Lease loss (cancel included) is rethrown by mapUnknownError itself;
-    // every provider error (LLM_AUTH and LLM_QUOTA included) is a warning.
-    mapUnknownError(error, ctx.signal);
+    billFailure(ctx, error);
+    await stopIfLeaseLost(ctx);
+    // Every provider error (LLM_AUTH and LLM_QUOTA included) is a warning.
     ctx.warnings.add('images_not_described');
     return artifact;
   }

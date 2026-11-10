@@ -228,11 +228,12 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     lines.push('');
   }
 
-  // The post text or description stays next to a transcript (spec 221).
-  const description = capturedBody(artifact.description);
-  const showDescription =
-    description !== '' &&
-    (artifact.segments.length > 0 || description !== capturedBody(artifact.text));
+  // The post text or description stays next to a transcript (spec 221);
+  // without one (web pages, posts) the text itself is the content.
+  const transcript =
+    artifact.segments.length > 0 || artifact.textKind === 'stt' || artifact.textKind === 'captions';
+  const description = transcript ? capturedBody(artifact.description) : '';
+  const showDescription = description !== '';
   if (showDescription) lines.push('## Descrição', '', description, '');
 
   let plainText: string;

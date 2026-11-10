@@ -59,21 +59,41 @@ Capture writes the same schema with these specifics:
 - `transcription_method`: `subtitles` (platform captions), `scrape` (post,
   page, or description text), `api` (speech-to-text through the user's
   provider), `vision` (image descriptions), or `document` (uploaded file).
+  Videos and audio without captions are always transcribed when an STT role
+  exists (spec 221), even when there is a description; with captions, STT does
+  not run.
 - `model`: the interpretation model in the chosen provider's format (for
   example `anthropic/claude-haiku-4-5`).
-- `cost_usd`: estimated capture cost (STT + vision + interpretation) when the
-  catalog has a price; `null` when there is no estimate.
+- `cost_usd`: estimated capture cost (STT + vision + interpretation, failed
+  attempts included) when the catalog has a price; `null` when there is no
+  estimate.
 - `video_id`: the platform id when one exists (YouTube, TikTok, Instagram, X
   status); omitted for web pages and uploads.
 - `producer: voxen-capture` marks documents produced by capture.
 
-Null fields are omitted except `cost_usd`. A captured body contains, in order:
-an optional thumbnail, the title, a quote line with an "Original" link,
-channel, duration, and publication date, `## Resumo`, `## Pontos-chave`, `## Imagens`
-(image descriptions, when present), and then `## Transcrição` (timestamped
-lines as below) or `## Conteúdo` (page or post text). Summary, key points, and
-image descriptions come from the model and are stripped of links, images,
-URLs, and HTML; captured text never auto-loads remote images or raw HTML.
+Null fields are omitted except `cost_usd`. A captured body contains, in order
+(each section only when it has content):
+
+1. an optional thumbnail, the title, and a quote line with an "Original" link,
+   channel, duration, and publication date;
+2. `## Resumo` and `## Pontos-chave` (with comments, the last point is
+   `Recepção do público: …`);
+3. `## Imagens`: numbered descriptions of thumbnails and post images;
+4. `## Quadros do vídeo`: descriptions of up to 4 video keyframes, each
+   starting with its time in bold (`- **00:01:23** …`);
+5. `## Descrição`: the post text or description, only when a transcript
+   (captions or STT) exists next to it;
+6. `## Transcrição` (timestamped lines as below) or `## Conteúdo` (page or
+   post text when there is no transcript);
+7. `## Comentários`: up to 50 top-level comments, most relevant first (likes,
+   then date), as `1. author (N curtidas): text`.
+
+Summary, key points, and image and keyframe descriptions come from the model
+and are stripped of links, images, URLs, and HTML. Comments are untrusted
+content: one line each, without links, images, URLs, or HTML. Captured text
+never auto-loads remote images or raw HTML. `plainText` (FTS) includes the
+transcript or content, the description (when shown), and the image and
+keyframe descriptions, but not the comments.
 
 Optional fields:
 
@@ -110,7 +130,7 @@ Optional fields:
 
 ## Transcription Methods
 
-`subtitles` means the source had official captions. `api` means speech-to-text: historically through OpenRouter, and since spec 220 through the STT provider the user configured, only when no usable text exists. `scrape` is used for web pages and post or description text. `vision` marks content described from images, and `document` marks uploaded documents.
+`subtitles` means the source had official captions. `api` means speech-to-text: historically through OpenRouter, and since specs 220 and 221 through the user's STT chain, whenever the source has speech and no captions. `scrape` is used for web pages and post or description text. `vision` marks content described from images, and `document` marks uploaded documents.
 
 ## Postgres Mirror
 

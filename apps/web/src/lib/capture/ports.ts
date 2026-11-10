@@ -5,7 +5,8 @@
 
 import type { z } from 'zod';
 
-import { withTimeout, type ClaimedCaptureJob } from './lease';
+import { ensureLease, withTimeout, type ClaimedCaptureJob } from './lease';
+import { failedAttemptCost } from './steps';
 import type { CaptureWarning } from './types';
 import type { AudioFormat, CaptureWorkerClient } from './worker-client';
 
@@ -59,9 +60,31 @@ export type StepContext = {
   controller: AbortController;
   signal: AbortSignal;
   warnings: Set<CaptureWarning>;
-  /** Sum of every AI attempt of this run, failed ones included. */
-  cost: { usd: number };
+  cost: CaptureCost;
 };
+
+export type CaptureCost = {
+  /** Job cost so far: every AI attempt, failed ones included. */
+  usd: number;
+  /** The failed-attempt part, carried in captureMeta across requeues. */
+  failedUsd: number;
+};
+
+/** Adds the billed attempts carried by a failed AI call to the job cost. */
+export function billFailure(ctx: StepContext, error: unknown): void {
+  const usd = failedAttemptCost(error);
+  ctx.cost.usd += usd;
+  ctx.cost.failedUsd += usd;
+}
+
+/**
+ * Before a step turns a failure into a warning: a cancel or lease loss must
+ * stop the run instead. The worker client reports an aborted call as
+ * TIMEOUT, so the fence is checked here rather than inferred from the error.
+ */
+export async function stopIfLeaseLost(ctx: StepContext): Promise<void> {
+  await ensureLease(ctx.job, ctx.controller);
+}
 
 /**
  * Per-step signal for an AI chain (spec 221): every chain entry has its own
