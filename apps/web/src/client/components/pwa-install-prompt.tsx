@@ -38,6 +38,21 @@ function canPrompt(): boolean {
   }
 }
 
+/** Sign-in and OAuth routes: installing there takes the tab out of the flow. */
+const NO_INSTALL_PREFIXES = ['/entrar', '/cadastro', '/pendente', '/oauth'];
+
+/**
+ * Offer installation only inside the app itself: never during sign-in or the
+ * OAuth consent, nor in a window opened by another app (an MCP connector
+ * popup), where installing reopens Voxen on the library and drops the flow.
+ */
+export function shouldOfferInstall(pathname: string, openedByAnotherWindow: boolean): boolean {
+  if (openedByAnotherWindow) return false;
+  return !NO_INSTALL_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 /** Instalação nativa no Chromium e instrução equivalente para Safari iOS. */
 export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.ReactElement | null {
   const { t } = useI18n();

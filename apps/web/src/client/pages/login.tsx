@@ -9,7 +9,12 @@ import { useMe } from '../lib/hooks';
 import type { InstanceState } from '../lib/types';
 import { Logo } from '../components/ui/logo';
 import { useI18n } from '../lib/i18n';
-import { mcpOAuthSsoCallback } from '../lib/mcp-oauth-login';
+import {
+  mcpOAuthSsoCallback,
+  mcpOAuthSsoErrorCallback,
+  oauthContinuationUrl,
+  pendingOAuthQuery,
+} from '../lib/mcp-oauth-login';
 
 /** Path relativo seguro para redirect pós-login (?next= ou state.from). */
 function safeNextPath(raw: string | null | undefined, fallback = '/'): string {
@@ -17,26 +22,6 @@ function safeNextPath(raw: string | null | undefined, fallback = '/'): string {
   if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
   if (raw.includes('://')) return fallback;
   return raw;
-}
-
-function oauthQuery(search: string): string | undefined {
-  const value = search.replace(/^\?/, '');
-  return value.includes('sig=') ? value : undefined;
-}
-
-function continueOAuth(response: unknown): boolean {
-  if (!response || typeof response !== 'object') return false;
-  const value = response as { url?: unknown; redirect_uri?: unknown };
-  const raw = typeof value.url === 'string' ? value.url : value.redirect_uri;
-  if (typeof raw !== 'string') return false;
-  try {
-    const target = new URL(raw, window.location.origin);
-    if (target.protocol !== 'https:' && target.protocol !== 'http:') return false;
-    window.location.assign(target.toString());
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function LoginPage(): React.ReactElement {
@@ -97,14 +82,24 @@ export function LoginPage(): React.ReactElement {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    let leaving = false;
     try {
       const response = await apiPost('/api/auth/sign-in/email', {
         email,
         password,
-        oauth_query: oauthQuery(location.search),
+        oauth_query: pendingOAuthQuery(location.search),
       });
+      // An OAuth authorization continues on the server's URL right away;
+      // refreshing the session first lets the app route to the library for a
+      // moment, which is enough to lose the flow (e.g. an install prompt).
+      const continuation = oauthContinuationUrl(response, window.location.origin);
+      if (continuation) {
+        leaving = true;
+        window.location.assign(continuation);
+        return;
+      }
       await refresh();
-      if (!continueOAuth(response)) navigate(nextPath());
+      navigate(nextPath());
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setError(err.message);
@@ -114,7 +109,8 @@ export function LoginPage(): React.ReactElement {
         setError(t('auth.unexpectedError'));
       }
     } finally {
-      setLoading(false);
+      // Keep the spinner while the page leaves, so the form is not resubmitted.
+      if (!leaving) setLoading(false);
     }
   }
 
@@ -126,12 +122,12 @@ export function LoginPage(): React.ReactElement {
     setError(null);
     setSsoLoading(true);
     try {
-      const pendingOAuthQuery = oauthQuery(location.search);
+      const pendingQuery = pendingOAuthQuery(location.search);
       const response = await apiPost<{ url: string; redirect: true }>('/api/auth/sign-in/sso', {
         email: email.trim(),
         loginHint: email.trim(),
-        callbackURL: mcpOAuthSsoCallback(pendingOAuthQuery) ?? nextPath(),
-        errorCallbackURL: pendingOAuthQuery ? `/entrar?${pendingOAuthQuery}` : '/entrar',
+        callbackURL: mcpOAuthSsoCallback(pendingQuery) ?? nextPath(),
+        errorCallbackURL: mcpOAuthSsoErrorCallback(pendingQuery),
         newUserCallbackURL: '/pendente',
         providerType: 'oidc',
       });
