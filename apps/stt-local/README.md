@@ -66,8 +66,10 @@ providers** (`/conta/ia`): in the **Transcription (STT)** list, pick "Local
 (Parakeet, on this server)" and save. It is never added automatically. The
 option appears only while `STT_LOCAL_URL` is set and `GET /health` answers
 (checked with a 2 s timeout, cached 30 s); a stored entry shows "unavailable"
-and is skipped while the sidecar is down. Put it first in the chain to have the
-worker send WAV audio to it; cloud entries after it act as fallbacks.
+and is skipped while the sidecar is down. It only takes WAV: when it is the
+first available entry the capture pipeline requests WAV audio from the worker;
+with MP3 audio `local` entries are skipped. Cloud entries after it act as
+fallbacks.
 
 Easypanel and Openship: see "Optional local speech-to-text" in
 [`docs/en/DEPLOY.md`](../../docs/en/DEPLOY.md).

@@ -166,11 +166,9 @@ Details, pins and licenses (model weights CC-BY-4.0) are in
   has internet egress. The isolation described above is guaranteed only under
   Docker Compose. Keep it unexposed; it still runs as an unprivileged user from
   an image with no setuid/setgid binaries and no secrets.
-- Leave `STT_LOCAL_URL` empty when the service is not running. Voxen starts
-  using the sidecar once the keyless `local` provider ships in the web app
-  (the next capture release); each user then adds the `local` entry to their
-  STT chain in **Account → AI providers**, and if the sidecar is down that entry
-  fails as retryable and the chain moves on.
+- Leave `STT_LOCAL_URL` empty when the service is not running. Each user adds
+  the keyless `local` entry to their STT chain in **Account → AI providers**;
+  while the sidecar is down that entry is skipped and the chain moves on.
 
 ## Home-Lab
 

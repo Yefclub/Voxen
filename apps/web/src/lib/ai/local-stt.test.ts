@@ -271,7 +271,7 @@ describe('local STT transport', () => {
     expect((calls[0]!.init?.body as FormData).has('language')).toBe(false);
   });
 
-  test('an MP3 chunk fails the local entry without a call and the chain falls back', async () => {
+  test('MP3 audio skips local entries without a call and the chain uses the rest', async () => {
     const { calls, fetchImpl } = sidecar(() => jsonResponse(verbose('local')));
     const cloud = cloudModel();
     const ai = client({ stt: [{ ...LOCAL }, { ...OPENAI }] }, { fetch: fetchImpl, cloud });
@@ -282,8 +282,7 @@ describe('local STT transport', () => {
 
     const only = client({ stt: [{ ...LOCAL }] }, { fetch: fetchImpl });
     await expect(only.transcribeAudio({ userId: USER, chunks: [mp3(0)] })).rejects.toMatchObject({
-      code: 'LLM_FAILED',
-      provider: 'local',
+      code: 'STT_NOT_CONFIGURED',
     });
     expect(calls).toHaveLength(0);
   });

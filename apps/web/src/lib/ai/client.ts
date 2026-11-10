@@ -407,13 +407,6 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     resolved: ResolvedRole,
     input: TranscribeAudioInput,
   ): Promise<Attempt<Omit<TranscribeAudioResult, 'costUsd' | 'model'>>> {
-    // The sidecar decodes WAV only: an MP3 chunk fails the entry before any call.
-    if (resolved.provider === 'local' && !input.chunks.every(isWavChunk)) {
-      const error = new AiError('LLM_FAILED', 'The local model accepts WAV audio only.', {
-        provider: 'local',
-      });
-      return { ok: false, error, costUsd: 0 };
-    }
     const segments: TranscriptSegment[] = [];
     const texts: string[] = [];
     let language: string | null = input.language ?? null;
@@ -449,7 +442,13 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
   }
 
   async function transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioResult> {
-    const chain = await resolveRoleChain(input.userId, 'stt');
+    // The sidecar decodes WAV only: with any other audio its entries are
+    // skipped, and a chain left empty counts as no STT chain (spec 221).
+    const wav = input.chunks.every(isWavChunk);
+    const chain = (await resolveRoleChain(input.userId, 'stt')).filter(
+      (entry) => wav || entry.provider !== 'local',
+    );
+    if (chain.length === 0) throw new AiNotConfiguredError('STT_NOT_CONFIGURED');
     const { value, costUsd, modelRef } = await runChain(chain, input.signal, (resolved) =>
       transcribeWithEntry(resolved, input),
     );
