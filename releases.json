@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794314292",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Deleted TikTok posts report \"removed\" instead of an IP block",
+    "body": "TikTok answers status 10204 (\"status_deleted\") for deleted or unavailable\nposts, and yt-dlp words it as \"Your IP address is blocked\". Captures of those\nposts now fail as removed content instead of telling the user that the\nserver's IP is blocked.",
+    "pr": 1060,
+    "author": "Kalyel",
+    "date": "2026-11-10T09:38:00-03:00",
+    "translations": {
+      "en": {
+        "title": "Deleted TikTok posts report \"removed\" instead of an IP block",
+        "body": "TikTok answers status 10204 (\"status_deleted\") for deleted or unavailable\nposts, and yt-dlp words it as \"Your IP address is blocked\". Captures of those\nposts now fail as removed content instead of telling the user that the\nserver's IP is blocked."
+      },
+      "pt-BR": {
+        "title": "TikToks apagados mostram \"removido\" em vez de bloqueio de IP",
+        "body": "O TikTok responde o status 10204 (\"status_deleted\") para posts apagados ou\nindisponíveis, e o yt-dlp traduz isso como \"Your IP address is blocked\". A\ncaptura desses posts agora falha como conteúdo removido, em vez de dizer que\no IP do servidor foi bloqueado."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1060"
+  },
+  {
     "version": "0.15.1-dev.1794311274",
     "channel": "dev",
     "type": "fix",

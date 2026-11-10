@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794314292 — 2026-11-10 · Dev
+
+### 🐛 Deleted TikTok posts report "removed" instead of an IP block
+
+TikTok answers status 10204 ("status_deleted") for deleted or unavailable
+posts, and yt-dlp words it as "Your IP address is blocked". Captures of those
+posts now fail as removed content instead of telling the user that the
+server's IP is blocked.
+
 ## v0.15.1-dev.1794311274 — 2026-11-10 · Dev
 
 ### 🐛 TikTok speech is transcribed from the video's own audio
