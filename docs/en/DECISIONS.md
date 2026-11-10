@@ -133,3 +133,19 @@ decoding (no permissively licensed AAC decoder).
 
 Consequences: Product 1 keeps working without any provider key, and platforms
 that block the server IP become typed errors with a suggested action.
+
+## ADR-015: Gemini, provider fallback and an optional local STT
+
+Date: 2026-11-10. Status: accepted (spec 221; amends ADR-014).
+
+After validating capture on the live deploy, the owner added Gemini as a
+fifth provider (text, vision and `gemini-3.5-transcribe`), ordered fallback
+chains per role, and one optional local model: a speech-to-text sidecar
+(Parakeet TDT 0.6B v3 int8 on ONNX Runtime) behind an OpenAI-compatible
+endpoint, with no secrets and no network egress. Local text or vision models
+and embeddings remain out. Videos are always transcribed and their keyframes
+analyzed; the top 50 comments are captured.
+
+Consequences: the Gemini free tier may use submitted content to improve
+Google products, so the UI warns about it; the local sidecar costs about 2 GB
+of RAM and runs one transcription at a time.
