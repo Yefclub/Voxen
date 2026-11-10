@@ -10,12 +10,16 @@
 ARG PYTHON_IMAGE=python:3.13.18-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 # ---- Egress proxy: Stripe Smokescreen (MIT) from a pinned tag --------------
-FROM golang:1.25.14-trixie@sha256:2c4c60ef415fbfa5e90300722293bef36c5e63fae17570ce18f580af933dbd73 AS egress
+FROM golang:1.27.3-trixie@sha256:af1bfc2614ebb1dbd31af514b78740fd678850e76498762b425ecee4c5c6ea80 AS egress
 ARG SMOKESCREEN_TAG=v0.1.0
 ARG SMOKESCREEN_COMMIT=609eb8931420453daf5893509be0b25b21bd9edb
 WORKDIR /src
 RUN git clone --depth 1 --branch "${SMOKESCREEN_TAG}" https://github.com/stripe/smokescreen.git . \
     && test "$(git rev-parse HEAD)" = "${SMOKESCREEN_COMMIT}"
+# Smokescreen v0.1.0 pins dependency versions with known HIGH CVEs; raise
+# only those modules (checked against the Go checksum database).
+RUN go get golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 \
+        github.com/sirupsen/logrus@v1.10.2
 # Our main.go only wires an allowed-ports policy into the unmodified library.
 COPY apps/capture-worker/egress/main.go ./main.go
 RUN CGO_ENABLED=0 GOFLAGS=-mod=readonly go build -trimpath -ldflags="-s -w" -o /out/smokescreen . \

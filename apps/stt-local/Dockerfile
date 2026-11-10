@@ -31,7 +31,7 @@ f2ab8a752a7b356d18dcdd0eb18d0c57dec3c2fda8a35c95837bdc44fe9ea0f6  decoder_joint-
 EOF
 
 # ---- Server: achetronic/parakeet (Apache-2.0) from a pinned tag and commit --
-FROM golang:1.25.14-trixie@sha256:2c4c60ef415fbfa5e90300722293bef36c5e63fae17570ce18f580af933dbd73 AS server
+FROM golang:1.27.3-trixie@sha256:af1bfc2614ebb1dbd31af514b78740fd678850e76498762b425ecee4c5c6ea80 AS server
 ARG PARAKEET_TAG=v0.11.0
 ARG PARAKEET_COMMIT=28125a56bcb69e603eb731951e1657ae3a86e264
 # onnxruntime_go v1.30.1 (pinned by the server's go.sum) targets the ONNX
