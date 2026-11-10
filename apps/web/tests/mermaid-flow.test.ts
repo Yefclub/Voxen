@@ -112,7 +112,7 @@ describe('Mermaid transcript flow contract', () => {
     ]);
 
     expect(pkg.dependencies.mermaid).toBe('11.16.1');
-    expect(pkg.dependencies.dompurify).toBe('3.4.13');
+    expect(pkg.dependencies.dompurify).toBe('3.4.17');
     expect(markdown).toContain("await import('mermaid')");
     expect(markdown).toContain("securityLevel: 'strict'");
     expect(markdown).toContain('validateMermaidFlow(source)');
