@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794330578",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Add links to your knowledge base through MCP",
+    "body": "MCP clients with write access can now submit links for capture and analysis\nusing your configured AI providers. Follow progress, list recent captures or\ncancel an active capture, then read the resulting document through the\nexisting knowledge-base tools. Repeated links reuse an active capture or an\nexisting document. Submissions share the app's limit of 30 per minute and may\nincur AI provider charges.",
+    "pr": 1068,
+    "author": "Kalyel",
+    "date": "2026-11-10T14:09:21-03:00",
+    "translations": {
+      "en": {
+        "title": "Add links to your knowledge base through MCP",
+        "body": "MCP clients with write access can now submit links for capture and analysis\nusing your configured AI providers. Follow progress, list recent captures or\ncancel an active capture, then read the resulting document through the\nexisting knowledge-base tools. Repeated links reuse an active capture or an\nexisting document. Submissions share the app's limit of 30 per minute and may\nincur AI provider charges."
+      },
+      "pt-BR": {
+        "title": "Adicione links à sua base de conhecimento pelo MCP",
+        "body": "Clientes MCP com acesso de escrita agora podem enviar links para captura e\nanálise com seus provedores de IA configurados. Acompanhe o progresso, liste\ncapturas recentes ou cancele uma captura ativa e leia o documento resultante\npelas ferramentas da base de conhecimento. Links repetidos reutilizam a\ncaptura ativa ou o documento existente. Os envios compartilham o limite de\n30 por minuto do aplicativo e podem gerar custos nos provedores de IA."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1068"
+  },
+  {
     "version": "0.15.1-dev.1794321327",
     "channel": "dev",
     "type": "fix",
