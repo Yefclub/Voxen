@@ -65,6 +65,10 @@ REDIS_PASSWORD=...
 BETTER_AUTH_SECRET=...    # min 32 chars
 MASTER_KEY=...            # openssl rand -base64 32
 
+# Captura de links (opcional): só web e capture-worker recebem
+CAPTURE_WORKER_TOKEN=...  # openssl rand -hex 32
+CAPTURE_WORKER_URL=http://capture-worker:8080
+
 # Padrão recomendado para instalação em um único host
 STORAGE_DRIVER=local
 STORAGE_LOCAL_PATH=/data/storage
@@ -73,6 +77,38 @@ STORAGE_LOCAL_PATH=/data/storage
 > `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. O
 > formato é o mesmo em todos os modos: `openssl rand -base64 32`. Faça backup
 > desse valor junto com Postgres e o storage selecionado.
+
+### 4. Captura de links (`capture-worker`)
+
+A captura de links e arquivos (spec 220) precisa de um segundo serviço, o
+`capture-worker`, construído a partir de `apps/capture-worker/Dockerfile`. O
+Compose já o define na rede interna, sem portas publicadas, com root
+filesystem somente leitura, todas as capabilities removidas,
+`no-new-privileges` e limites de CPU/memória. Ele roda yt-dlp, Deno,
+ffmpeg/ffprobe, Trafilatura e o proxy de saída Smokescreen.
+
+- Gere `CAPTURE_WORKER_TOKEN` com `openssl rand -hex 32` (o `make dev` já
+  gera; placeholders são recusados na inicialização) e entregue só ao `web` e ao `capture-worker`. O worker nunca recebe
+  `MASTER_KEY`, chaves de provedor nem credenciais de banco.
+- O `web` acessa o worker por `CAPTURE_WORKER_URL`
+  (`http://capture-worker:8080` no Compose).
+- Sem o worker, base, busca, MCP, notas e ingestão de conteúdo preparado
+  continuam funcionando; as capturas terminam com `WORKER_UNAVAILABLE` depois
+  das tentativas.
+- Interpretação e STT usam a chave que cada usuário cadastra em **Conta →
+  Provedores de IA** (`/conta/ia`): OpenAI, Anthropic, OpenRouter ou xAI. Nada
+  de provedor vai para o `.env`.
+- A imagem do worker traz ffmpeg/ffprobe LGPL sem modificação (build BtbN
+  `linux64-lgpl`), usado só como binário separado e nunca linkado ao código da
+  Voxen. As demais dependências são MIT, Apache-2.0, BSD, ISC ou Unlicense
+  (yt-dlp), exceto três dependências transitivas MPL sem modificação e
+  restritas ao worker (`certifi`, `tld`, `golang-lru`). Ver ADR-014 em
+  [`DECISIONS.md`](DECISIONS.md).
+- Sem cookies e sem captura logada. IP residencial (home-lab) é bloqueado
+  com menos frequência que IP de datacenter; quando a plataforma bloqueia, a
+  captura sugere enviar o arquivo.
+- Para compartilhar links do celular, instale o PWA pelo menu do navegador;
+  ele vira destino de compartilhamento e abre `/capturar` com a captura nova.
 
 ### Drivers de storage e atualização segura
 
@@ -422,9 +458,10 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. O
 caminho recomendado é **um único App via Source → Docker image**, com Postgres,
 Redis e um volume persistente do App montado em `/data/storage`. A
-imagem combinada do Voxen executa o `web/API`
-integrado no mesmo App; não crie serviços atuais separados para `voxen-web`,
-`voxen-web`.
+imagem combinada do Voxen executa o `web/API` integrado no mesmo App. A
+captura de links precisa de um segundo App, `capture-worker` (ver
+[Captura no Easypanel](#captura-no-easypanel)); sem ele a Voxen funciona e as
+capturas terminam com `WORKER_UNAVAILABLE`.
 
 ### 1. Provisionar dependências
 
@@ -476,8 +513,9 @@ Trate logs de build desse modo como sensíveis. Não cole logs públicos sem
 redigir `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`, `REDIS_URL` e
 `S3_*`.
 
-Em home-lab, este App único já reúne toda a aplicação Voxen. O mesmo vale
-para VPS ou datacenter: não há agente ou túnel separado.
+Em home-lab, este App mais o App opcional `capture-worker` reúnem toda a
+aplicação Voxen. O mesmo vale para VPS ou datacenter: não há agente ou túnel
+separado.
 
 ### 3. Variáveis de ambiente
 
@@ -542,6 +580,23 @@ curl https://voxen.seudominio.com/health/deep
 ```
 
 `/health/deep` precisa retornar `ok: true`; ele valida Postgres, Redis e storage.
+
+### Captura no Easypanel
+
+1. Crie um segundo App `capture-worker` com **Source → GitHub**, Dockerfile
+   `apps/capture-worker/Dockerfile` e build path `/`. Ele não precisa de
+   secrets em build-time.
+2. Não adicione domínio nem porta pública a ele.
+3. No Environment dele, defina só `CAPTURE_WORKER_TOKEN`.
+4. No App Voxen, adicione o mesmo `CAPTURE_WORKER_TOKEN` e
+   `CAPTURE_WORKER_URL=http://<projeto>_capture-worker:8080` (o hostname
+   interno que o Easypanel mostra para o App) e faça redeploy.
+5. Defina limite de memória (2 GB) no App do worker. O Easypanel (como o
+   Openship) não aplica o filesystem somente leitura, a remoção de
+   capabilities nem o `no-new-privileges` do serviço do Compose; lá o worker
+   ainda roda como usuário sem privilégios, numa imagem sem binários
+   setuid/setgid e sem outro segredo além do token, mas o hardening completo
+   do container exige Docker Compose.
 
 ### 6. Backups
 
@@ -781,12 +836,13 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
 | IP fixo / portas 80-443    | Geralmente não — use Cloudflare Tunnel | Sim, padrão                |
 | Hardware                   | Você compra/reaproveita                | Provisionado pelo provedor |
 
-### Captura de mídia removida
+### Captura de mídia
 
-> Nota (spec 215, issue #894): a captura e extração de mídia (downloads,
-> transcrição, scraping, proxy de extração e cookies de plataforma) foram
-> removidas do Voxen. O conteúdo chega como material preparado através de
-> contratos versionados HTTP/MCP.
+A captura voltou na spec 220 como extensão da Voxen, no container
+`capture-worker`, sem cookies e sem proxy residencial. Em VPS, plataformas
+como YouTube e Instagram bloqueiam o IP de datacenter com mais frequência;
+nesse caso a captura termina com `IP_BLOCKED` ou `LOGIN_REQUIRED` e sugere
+enviar o arquivo.
 
 ### Decisão arquitetural
 
@@ -803,8 +859,8 @@ ressalva acima.
 > Nota (spec 215, issue #894): o serviço dedicado de proxy/túnel
 > (`apps/proxy-agent`, imagem `ghcr.io/yefclub/voxen-proxy-agent`, servidor
 > chisel embutido e rotas `/api/admin/proxy-agent*`) foi removido do Voxen.
-> A captura e extração de mídia saíram do produto; conteúdo chega como
-> material preparado via contratos versionados HTTP/MCP.
+> A captura de links voltou na spec 220 pelo `capture-worker`, sem proxy
+> residencial nem túnel.
 
 ## Troubleshooting
 

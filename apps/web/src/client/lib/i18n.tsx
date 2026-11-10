@@ -22,6 +22,7 @@ import {
 import * as featureMessages from './feature-messages';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enJobStageMessages, ptBrJobStageMessages } from './job-stage-i18n';
+import { enCaptureMessages, ptBrCaptureMessages } from './capture-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 import { enAiProviderMessages, ptBrAiProviderMessages } from './ai-providers-i18n';
 import {
@@ -40,6 +41,7 @@ const STORAGE_KEY = 'voxen:locale';
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
   ...ptBrJobStageMessages,
+  ...ptBrCaptureMessages,
   ...ptBrTranscriptAnnotationMessages,
   ...featureMessages.ptBrFeatureMessages,
   ...ptBrChatReferenceCanvasMessages,
@@ -144,6 +146,7 @@ const ptBRMessages = {
   'shell.nav.home': 'Início',
   'shell.nav.chat': 'Conversar',
   'shell.nav.library': 'Biblioteca',
+  'shell.nav.capture': 'Capturar',
   'shell.nav.queue': 'Fila',
   'shell.nav.notes': 'Notas',
   'shell.nav.automations': 'Automações',
@@ -1193,6 +1196,7 @@ const enMessages: Record<I18nKey, string> = {
   ...enNoteVersioningMessages,
   ...enReleaseUpdateMessages,
   ...enJobStageMessages,
+  ...enCaptureMessages,
   ...enTranscriptAnnotationMessages,
   ...featureMessages.enFeatureMessages,
   ...enKnowledgeDeletionMessages,
@@ -1293,6 +1297,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.nav.home': 'Home',
   'shell.nav.chat': 'Chat',
   'shell.nav.library': 'Library',
+  'shell.nav.capture': 'Capture',
   'shell.nav.queue': 'Queue',
   'shell.nav.notes': 'Notes',
   'shell.nav.automations': 'Automations',

@@ -11,7 +11,10 @@ Report vulnerabilities through [`../../SECURITY.md`](../../SECURITY.md).
 | Threat                  | Vector                    | Mitigation                                                                |
 | ----------------------- | ------------------------- | ------------------------------------------------------------------------- |
 | Brute-force login       | Public auth endpoints     | Rate limits, strong password hashing, optional external identity provider |
-| SSRF                    | Malicious ingestion URL   | URL validation and public-host allowlists before extraction               |
+| SSRF                    | Malicious capture URL     | Submit-time URL checks; worker egress only through Smokescreen            |
+| Prompt injection        | Captured page or post     | Tool-free, schema-bound interpretation; content passed as untrusted data  |
+| Provider key leak       | Database, logs, API reads | Per-user keys encrypted with `MASTER_KEY`; never returned or logged       |
+| Forged share            | Cross-site POST           | Share target needs a session and rejects cross-site `Sec-Fetch-Site`      |
 | Cross-user access       | Forged identifiers        | Session-derived `userId` on every user-owned query and tool               |
 | Privilege escalation    | Administrative routes     | Server-side role guards; role never accepted from request input           |
 | Secret exposure         | Database or log leak      | AES-256-GCM encrypted settings and secret-safe logs                       |
@@ -42,9 +45,13 @@ authenticated user under `/conta/*`.
 
 ## Secrets
 
-Infrastructure secrets live only in the root `.env`. Runtime application
-secrets such as OIDC credentials are stored encrypted with
-AES-256-GCM using `MASTER_KEY`.
+Infrastructure secrets live only in the root `.env`, including
+`CAPTURE_WORKER_TOKEN`, which is given only to `web` and `capture-worker`.
+Runtime application secrets such as OIDC credentials and each user's AI
+provider keys are stored encrypted with AES-256-GCM using `MASTER_KEY`.
+Provider keys are entered in the UI (Account → AI providers), validated with a
+cheap authenticated call, and never returned to any client: reads expose only
+the provider, the last four characters, validation status, and time.
 
 ```bash
 openssl rand -base64 32
@@ -56,9 +63,32 @@ master key.
 
 ## Network and Content Safety
 
-- The web service is the only application.
-- Source URLs are treated as metadata; Voxen never fetches, transcribes,
-  or analyzes content automatically.
+- The web service is the only exposed application. The capture worker
+  publishes no ports, rejects requests without the `CAPTURE_WORKER_TOKEN`
+  bearer token, and holds no `MASTER_KEY`, provider key, or database
+  credential.
+- The worker runs as a non-root user on a read-only root filesystem with all
+  capabilities dropped, `no-new-privileges`, and CPU/memory limits. yt-dlp is
+  hardened with `--ignore-config --no-plugin-dirs --no-remote-components` and
+  `--` before the URL. No cookies, logged-in capture, paid scraping APIs, or
+  anti-bot bypass are used; a blocked platform ends with `LOGIN_REQUIRED`,
+  `IP_BLOCKED`, `RATE_LIMITED`, or `REMOVED` and suggests uploading the file.
+- SSRF: submits are rejected synchronously for non-http(s) URLs, `localhost`,
+  and literal private, loopback, or link-local addresses (`BLOCKED_ADDRESS`).
+  Every worker request then goes through Smokescreen, which denies private,
+  loopback, link-local, and metadata ranges after DNS resolution and
+  redirects, so a public URL that redirects inward fails with
+  `BLOCKED_ADDRESS` and never reaches the internal address.
+- Model requests go only to the fixed endpoints of OpenAI, Anthropic,
+  OpenRouter, and xAI; users cannot set custom base URLs.
+- Prompt injection: interpretation runs with no tools and no web search under
+  a strict output schema. Captured text and images are passed as untrusted
+  data, and links and images are stripped from the generated summary, so a
+  hostile page can at worst distort its own document, not act or exfiltrate.
+- The PWA share target (`POST /share-target`) creates jobs only for a signed-in,
+  approved user, rejects cross-site `Sec-Fetch-Site`, stores nothing without a
+  session, and redirects with ids or fixed error codes only — shared text is
+  never rendered as HTML.
 - Local storage rejects absolute/traversal keys and symlinks, uses restrictive
   modes, atomic writes, and is never exposed as a public static directory.
 - Optional S3 credentials should be limited to the Voxen bucket.
@@ -94,7 +124,9 @@ documented scope, owner, and review date.
 
 ## Incident Response
 
-1. Rotate affected host, application, OIDC, and model credentials.
+1. Rotate affected host, application, OIDC, `CAPTURE_WORKER_TOKEN`, and
+   provider credentials (users replace their own keys under Account → AI
+   providers).
 2. Revoke affected sessions and disable compromised accounts.
 3. Inspect authentication, job, automation, and cost events.
 4. Restore PostgreSQL, the selected storage backend, and `MASTER_KEY` backups when required.

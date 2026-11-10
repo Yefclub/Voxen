@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Folder,
   FolderOpen,
@@ -40,6 +40,7 @@ import {
 } from '../lib/library-organization';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { LibrarySearch } from '../components/library/library-search';
+import { CaptureComposer } from '../components/capture/capture-composer';
 import { TagFilterMenu } from '../components/library/tag-filter-menu';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
@@ -132,6 +133,7 @@ function useDebounced<T>(value: T, ms = 250): T {
 
 export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = normalizeStatusFilter(searchParams.get('status'));
   const inbox = searchParams.get('view') === 'inbox';
@@ -380,6 +382,11 @@ export function TranscricoesPage(): React.ReactElement {
         confirmLabel={t('library.clearFolders')}
         loading={clearingFolders}
         onConfirm={clearAllFolders}
+      />
+
+      <CaptureComposer
+        variant="compact"
+        onJob={(job) => navigate(`/capturar?job=${encodeURIComponent(job.id)}`)}
       />
 
       <LibrarySearch

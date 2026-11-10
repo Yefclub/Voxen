@@ -12,6 +12,7 @@ import {
   Languages,
   MessageSquare,
   RotateCcw,
+  RotateCw,
   Sparkles,
   Tags,
   Trash2,
@@ -54,6 +55,9 @@ import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 import { TranscriptCorrectionsCard } from '../components/library/transcript-corrections-card';
 import { TranscriptKnowledgeGraph } from '../components/library/transcript-knowledge-graph';
 import { TranscriptInterestFeedback } from '../components/library/transcript-interest-feedback';
+import { CaptureJobCard } from '../components/capture/capture-job-card';
+import { captureErrorText } from '../components/capture/capture-notice';
+import { reprocessDocument, type CaptureJob } from '../lib/capture-api';
 
 interface TranscriptDetail {
   id: string;
@@ -151,6 +155,49 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
   const [linkedNotesOpen, setLinkedNotesOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmReprocess, setConfirmReprocess] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessJob, setReprocessJob] = useState<CaptureJob | null>(null);
+  const reprocessStatus = reprocessJob?.status;
+
+  useEffect(() => {
+    setReprocessJob(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (reprocessStatus !== 'DONE' && reprocessStatus !== 'COMPLETED_WITH_WARNINGS') return;
+    toast.success(translate('capture.reprocessDone'));
+    refresh();
+  }, [reprocessStatus, refresh, translate]);
+
+  async function reprocess(): Promise<void> {
+    if (!id) return;
+    setReprocessing(true);
+    try {
+      const result = await reprocessDocument(id);
+      if (result.kind === 'job') {
+        setReprocessJob(result.job);
+        setConfirmReprocess(false);
+        return;
+      }
+      const code = result.kind === 'error' ? (result.error?.code ?? 'UNKNOWN') : 'UNKNOWN';
+      const message = captureErrorText(
+        translate,
+        code,
+        result.kind === 'error' ? (result.error?.message ?? result.message) : null,
+      );
+      setConfirmReprocess(false);
+      if (code === 'AI_NOT_CONFIGURED') {
+        toast.error(message, {
+          action: { label: translate('capture.configure'), onClick: () => navigate('/conta/ia') },
+        });
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setReprocessing(false);
+    }
+  }
 
   useEffect(() => {
     setLinkedNotesOpen(false);
@@ -335,6 +382,8 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
+  const canReprocess = t.status !== 'TRASH' && t.source !== 'UPLOAD' && isExternalSourceUrl(t.url);
+  const reprocessActive = reprocessJob?.status === 'QUEUED' || reprocessJob?.status === 'RUNNING';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
   const renderMode = transcriptRenderMode({
     source: t.source,
@@ -603,8 +652,28 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </div>
             )}
 
+            {reprocessJob && (
+              <div className="order-1 lg:order-none">
+                <CaptureJobCard job={reprocessJob} live onChange={setReprocessJob} />
+              </div>
+            )}
+
             <Card elevated className="order-1 lg:order-none">
               <CardContent className="space-y-3 pb-5 pt-5">
+                {canReprocess && (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="w-full"
+                    disabled={reprocessing || reprocessActive}
+                    onClick={() => setConfirmReprocess(true)}
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    {reprocessActive
+                      ? translate('capture.reprocessing')
+                      : translate('capture.reprocess')}
+                  </Button>
+                )}
                 {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
                   <Button
                     variant="outline"
@@ -685,6 +754,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </aside>
         </div>
       </PageShell>
+
+      <ConfirmDialog
+        open={confirmReprocess}
+        onOpenChange={setConfirmReprocess}
+        title={translate('capture.reprocessTitle')}
+        description={translate('capture.reprocessDescription')}
+        confirmLabel={translate('capture.reprocess')}
+        cancelLabel={translate('common.cancel')}
+        onConfirm={() => reprocess()}
+        loading={reprocessing}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

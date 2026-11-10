@@ -1,6 +1,6 @@
 # Transcript Markdown Format — Voxen
 
-> Note (spec 215/216, issues #894/#895): the capture and transcription pipeline was removed. This document describes the format of already-stored documents — new documents arrive as prepared content through versioned contracts.
+Documents arrive in two ways: prepared content through versioned HTTP/MCP contracts, and Voxen's own link and file capture (spec 220). This document describes the canonical format for both.
 
 Each processed source becomes a Markdown file with YAML frontmatter, a readable header, and transcript content.
 
@@ -51,6 +51,30 @@ Required fields:
 - `transcription_method`
 - `transcribed_at`
 
+### Captured documents (spec 220)
+
+Capture writes the same schema with these specifics:
+
+- `source` also accepts `x` and `upload`.
+- `transcription_method`: `subtitles` (platform captions), `scrape` (post,
+  page, or description text), `api` (speech-to-text through the user's
+  provider), `vision` (image descriptions), or `document` (uploaded file).
+- `model`: the interpretation model in the chosen provider's format (for
+  example `anthropic/claude-haiku-4-5`).
+- `cost_usd`: estimated capture cost (STT + vision + interpretation) when the
+  catalog has a price; `null` when there is no estimate.
+- `video_id`: the platform id when one exists (YouTube, TikTok, Instagram, X
+  status); omitted for web pages and uploads.
+- `producer: voxen-capture` marks documents produced by capture.
+
+Null fields are omitted except `cost_usd`. A captured body contains, in order:
+an optional thumbnail, the title, a quote line with an "Original" link,
+channel, duration, and publication date, `## Resumo`, `## Pontos-chave`, `## Imagens`
+(image descriptions, when present), and then `## Transcrição` (timestamped
+lines as below) or `## Conteúdo` (page or post text). Summary, key points, and
+image descriptions come from the model and are stripped of links, images,
+URLs, and HTML; captured text never auto-loads remote images or raw HTML.
+
 Optional fields:
 
 - `channel`
@@ -84,9 +108,9 @@ Optional fields:
 - Instagram and TikTok do not have reliable timestamp deep links, so the original URL is used.
 - Segments should represent natural speech chunks, usually around 10 to 30 seconds.
 
-## Transcription Methods (stored values — the capture pipeline was removed under spec 215)
+## Transcription Methods
 
-`subtitles` means the source had official captions. `api` means audio was downloaded, segmented, and sent to OpenRouter transcription (historical). `scrape` is used for web pages.
+`subtitles` means the source had official captions. `api` means speech-to-text: historically through OpenRouter, and since spec 220 through the STT provider the user configured, only when no usable text exists. `scrape` is used for web pages and post or description text. `vision` marks content described from images, and `document` marks uploaded documents.
 
 ## Postgres Mirror
 

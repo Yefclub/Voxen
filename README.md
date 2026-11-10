@@ -7,8 +7,14 @@ producers publish documents, notes, and assets with provenance through
 versioned HTTP/MCP contracts, and MCP clients retrieve them fast and
 precisely with deterministic full-text search, progressive reads, and a
 knowledge graph. Retrieval is evidence-first and
-does not require vector embeddings. Voxen itself runs no models,
-transcription, or scraping.
+does not require vector embeddings.
+
+Voxen can also capture links and files itself (web pages, YouTube, TikTok,
+Instagram, X, uploads, and the installed PWA share sheet): a separate
+`capture-worker` container downloads the content, and the web app interprets
+it with the cloud AI provider each user configures (OpenAI, Anthropic,
+OpenRouter, or xAI). Voxen runs no local models and no embeddings, and the
+knowledge base keeps working without any provider key.
 
 > [!IMPORTANT]
 > **Project status: beta / active validation.** Voxen is already useful in the
@@ -38,13 +44,18 @@ credentials, private content, or unredacted logs in a public report.
 1. An external producer publishes a prepared document, note, or asset through
    the versioned HTTP/MCP ingestion contract (idempotent retries return the
    original instead of duplicating).
-2. Voxen validates, stores, and deterministically indexes it — no model calls,
-   transcription, or scraping.
-3. It stores structured Markdown with source metadata, timestamps, canonical
-   links, and producer-supplied summaries.
-4. It organizes the library into folders and exposes it through MCP and
+2. Voxen validates, stores, and deterministically indexes it — ingestion and
+   retrieval make no model calls.
+3. Optionally, a user pastes a link, uploads a file, or shares from the phone
+   to the `/capturar` page. The capture worker extracts captions, post or page
+   text, audio, and images; the web app transcribes audio only when no text
+   exists and publishes a document with summary, key points, and tags through
+   the user's own AI provider key.
+4. It stores structured Markdown with source metadata, timestamps, canonical
+   links, and summaries.
+5. It organizes the library into folders and exposes it through MCP and
    the Brain knowledge graph, with deterministic search and progressive reads.
-5. Notes can preserve verified transcript passages by line and timestamp.
+6. Notes can preserve verified transcript passages by line and timestamp.
 
 ## Stack
 
@@ -60,6 +71,10 @@ credentials, private content, or unredacted logs in a public report.
 - **Content:** prepared documents, notes, and assets are ingested through versioned
   HTTP/MCP contracts; retrieval is deterministic full-text search with
   progressive reads — no built-in model execution
+- **Capture (optional):** `capture-worker` container with yt-dlp, Deno,
+  ffmpeg/ffprobe (unmodified LGPL build), Trafilatura, and the Smokescreen
+  egress proxy; interpretation and speech-to-text through per-user keys for
+  OpenAI, Anthropic, OpenRouter, or xAI
 
 ## Local quick start
 
@@ -73,10 +88,11 @@ make dev
 
 Open `http://localhost:3000`. The first account becomes the administrator and
 enters onboarding. No model-provider account or key is required: setup only
-asks for instance language and timezone.
+asks for instance language and timezone. To capture links, each user adds
+their own provider key under **Account → AI providers** (`/conta/ia`).
 
 `make dev` creates or completes `.env` when necessary and starts PostgreSQL,
-Redis, and the web app. Canonical Markdown and media use the shared
+Redis, the web app, and the capture worker. Canonical Markdown and media use the shared
 `storage_data` volume; MinIO is no longer required for a new single-host install.
 Use `make dev-s3` with [`.env.s3.example`](.env.s3.example) only when you
 deliberately want MinIO or another S3-compatible backend.
@@ -90,7 +106,9 @@ supported. See the [deployment guide](docs/en/DEPLOY.md) for the complete
 instructions.
 
 For Easypanel, prefer the combined published image. One Voxen App already runs
-the web/API:
+the web/API; link capture additionally needs the `capture-worker` service built
+from `apps/capture-worker/Dockerfile` (without it, the knowledge base still
+works and captures end with `WORKER_UNAVAILABLE`):
 
 ```text
 ghcr.io/yefclub/voxen:latest

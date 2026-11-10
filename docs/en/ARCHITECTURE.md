@@ -1,8 +1,10 @@
 # Architecture — Voxen
 
-Voxen is a self-hosted knowledge platform with one application service and
-two required infrastructure services. Docker Compose provides the reference
-deployment; the combined `voxen` image is the recommended Easypanel path.
+Voxen is a self-hosted knowledge platform with one application service, one
+optional capture service, and two required infrastructure services. Docker
+Compose provides the reference deployment; the combined `voxen` image is the
+recommended Easypanel path, with `capture-worker` added as a second service
+when link capture is wanted.
 
 ## System Overview
 
@@ -13,11 +15,16 @@ Browser
 apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, graph data, users, jobs, settings)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  `---- shared local volume (default) or S3-compatible storage
+  |---- shared local volume (default) or S3-compatible storage
+  |---- OpenAI / Anthropic / OpenRouter / xAI (fixed endpoints, per-user keys)
+  `---- capture-worker (internal network, bearer token)
+          `---- Smokescreen egress proxy ---> public internet only
 ```
 
-The web application is the only service. Retained maintenance (knowledge
-deletions) runs in the web process itself with durable Postgres leases. Redis
+The web application owns every database, storage, and provider call. Capture
+jobs, knowledge deletions, and retained maintenance run in the web process
+with durable Postgres leases. The capture worker only downloads and converts
+media; it holds no `MASTER_KEY`, provider key, or database credential. Redis
 accelerates delivery, but Postgres remains the durable source of truth for jobs
 and application state.
 
@@ -38,14 +45,57 @@ platform-account, and MCP controls live under `/conta/*`. Every user-owned
 query derives `userId` from the authenticated session, never from request
 input.
 
-## Retained maintenance (no worker)
+## Background jobs
 
-There is no separate worker. Knowledge deletions (`DELETE_KNOWLEDGE`) run in
-the web process itself (`knowledge-deletion-executor`), with `FOR UPDATE
-SKIP LOCKED` claims, heartbeat leases, and a 3-attempt budget. Expired leases
-are reclaimed by the startup drain and the periodic interval. Prepared content
-arrives through versioned HTTP/MCP contracts; Voxen never runs models,
-transcription, or scraping.
+Knowledge deletions (`DELETE_KNOWLEDGE`) and captures (`CAPTURE_LINK`,
+`CAPTURE_UPLOAD`) run in the web process with `FOR UPDATE SKIP LOCKED`
+claims, heartbeat leases, and a 3-attempt budget with backoff for transient
+errors. Expired leases are reclaimed by the startup drain and the periodic
+interval, so a restart resumes work instead of losing it.
+
+## `capture-worker` (spec 220)
+
+A separate container runs yt-dlp, Deno, ffmpeg/ffprobe (unmodified BtbN
+`linux64-lgpl` build, used only as a separate binary), and Trafilatura. It
+publishes no ports, accepts only requests carrying `CAPTURE_WORKER_TOKEN`, runs
+as a non-root user on a read-only root filesystem with all capabilities
+dropped and `no-new-privileges`, and sends every outbound request through
+Smokescreen, which denies private, loopback, link-local, and metadata ranges
+after DNS resolution and redirects.
+
+The web app reaches it at `CAPTURE_WORKER_URL`. When the worker is missing or
+unreachable, the knowledge base keeps working and capture jobs end with
+`WORKER_UNAVAILABLE` after their retries.
+
+## Capture flow
+
+1. A user submits a link (`POST /api/captures`), a file
+   (`POST /api/captures/upload`), or a PWA share (`POST /share-target`). The
+   submit checks run synchronously and in order: URL shape and literal private
+   addresses, an active capture of the same URL, the same URL already in the
+   library (offers reprocessing instead), and a configured text model role.
+   Only then is a job created.
+2. The runner asks the worker for text first (captions, post, page, or
+   document text). Speech-to-text runs only when no usable text exists and the
+   source has audio; up to four images are described when the text is short
+   and a vision role exists. The worker result is stored as a capture artifact
+   so a retry skips the download.
+3. One structured model call with no tools and no web search produces title,
+   summary, key points, tags, and entities from the captured content, which is
+   passed as untrusted data.
+4. The document is published through the internal publication contract
+   version 2 (`DOCUMENT`) into the same storage, index, and graph as prepared
+   content. Reprocessing updates the same document in place and keeps the
+   previous text as a source version.
+5. Progress events (`extracting`, `transcribing`, `describing_images`,
+   `interpreting`, `publishing`) are persisted and streamed over SSE with
+   `Last-Event-ID` replay. Cancel, retry (same row, attempt reset), and
+   reprocess are available from `/capturar` and the document page.
+
+Provider keys are per user, encrypted with `MASTER_KEY`, and used only against
+the fixed endpoints of OpenAI, Anthropic, OpenRouter, and xAI. Every failure
+carries a stable code (`AI_NOT_CONFIGURED`, `LOGIN_REQUIRED`, `NO_TEXT`, …),
+a localized message, and a suggested next action.
 
 ## Main Flows
 

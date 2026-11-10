@@ -168,7 +168,8 @@ async function respondOutcome(
   );
 }
 
-async function submitRateLimited(userId: string): Promise<boolean> {
+/** Shared by the API and the PWA share target: 30 submits per minute per user. */
+export async function submitRateLimited(userId: string): Promise<boolean> {
   const limit = await rateLimit(`capture-submit:${userId}`, 30, 60).catch(() => ({
     allowed: true,
   }));
@@ -417,7 +418,13 @@ captureRoutes.get('/:id/events', async (c) => {
           after = anchor?.createdAt ?? null;
         }
         const history = await db.jobProgressEvent.findMany({
-          where: { jobId: id, userId, ...(after ? { createdAt: { gt: after } } : {}) },
+          // Only the current attempt: a retry resets queuedAt, so the previous
+          // attempt's terminal event is never replayed onto the running job.
+          where: {
+            jobId: id,
+            userId,
+            createdAt: after && after > job.queuedAt ? { gt: after } : { gte: job.queuedAt },
+          },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           take: 120,
         });

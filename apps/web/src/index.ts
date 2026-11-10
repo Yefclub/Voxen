@@ -33,6 +33,7 @@ import { mcpOAuthAccountRoutes } from './routes/mcp-oauth-account';
 import { MAX_MEDIA_UPLOAD_REQUEST_BYTES } from './lib/media-upload';
 import { requestLogging } from './lib/request-logging';
 import { captureRoutes } from './routes/captures';
+import { shareTargetRoutes } from './routes/share-target';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -191,7 +192,8 @@ app.route('/api/graph', graphRoutes);
 app.route('/api/guide', guideRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
-// PWA Web Share Target (Android/Chrome instalado)
+// PWA Web Share Target (installed Android/Chrome app) → capture jobs
+app.route('/share-target', shareTargetRoutes);
 
 // Authenticated avatar proxy for the selected storage driver.
 app.get('/api/avatar/:userId', async (c) => {

@@ -191,7 +191,8 @@ Produtores externos publicam documentos prontos via `voxen_create_note`
 independente por item: `created`, `duplicate` ou `error`). O HTTP
 `POST /api/notes` usa a mesma semântica: 201 na criação, 200 na repetição.
 
-- `contract_version`: atualmente somente `"1"`; versão desconhecida é rejeitada.
+- `contract_version`: produtores só podem enviar `"1"`; versão desconhecida é
+  rejeitada. A versão `"1"` (alvo `NOTE`) não muda com a captura de links.
 - `idempotency_key`: opcional, escopo do workspace (letras, dígitos, `:`/`_`/`-`,
   até 128 chars). Repetir a mesma chave devolve a nota original com
   `duplicate: true`, sem criar documento ou revisão.
@@ -200,9 +201,16 @@ independente por item: `created`, `duplicate` ou `error`). O HTTP
   `published_at`): proveniência do documento externo, sem valores fabricados
   de mídia. Nível de documento (não revisionado): curadoria posterior usa o
   caminho revisionado de título/conteúdo e preserva os metadados.
-- URL de origem é metadado: recebê-la nunca dispara busca, transcrição ou
-  análise. Conteúdo chega pronto; o Voxen nunca executa modelos.
+- URL de origem é metadado: recebê-la por este contrato nunca dispara busca,
+  transcrição ou análise. Conteúdo chega pronto e a ingestão não executa
+  modelos.
 - Cargas acima do orçamento da chamada devem ser divididas em vários lotes.
+
+A captura de links (spec 220) publica seus documentos por um contrato interno
+versão `2`, alvo `DOCUMENT` (documento da biblioteca com Markdown canônico,
+tags e resumo, idempotente por job de captura). A versão 2 não é endpoint
+público HTTP/MCP e nenhuma ferramenta MCP inicia captura. Documentos
+capturados são lidos pelas mesmas ferramentas de busca e leitura progressiva.
 
 O administrador pode habilitar OAuth 2.1 em **Administração → Integrações → MCP
 Server**. O acesso OAuth continua vinculado ao usuário Voxen que aprova o

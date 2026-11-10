@@ -1,8 +1,8 @@
 # Formato do `.md` de transcrição — Voxen
 
-> Nota (spec 215/216): o pipeline de captura e transcrição foi removido.
-> Este documento descreve o formato dos documentos já armazenados — novos
-> documentos chegam como conteúdo preparado via contratos versionados.
+Documentos chegam por dois caminhos: conteúdo preparado via contratos
+versionados HTTP/MCP e a captura de links e arquivos da própria Voxen
+(spec 220). Este documento descreve o formato canônico dos dois.
 
 Cada vídeo transcrito vira um arquivo Markdown com:
 
@@ -52,6 +52,30 @@ O campo `video_id` muda de **formato e significado** conforme a plataforma:
 | `web`       | (campo vazio ou ausente) | `""`                  | sem ID semântico — usa hash da URL se precisar |
 
 Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_id`. Para cross-source uniqueness, prefira o `url` (que já vem canonical).
+
+### Campos de documentos capturados (spec 220)
+
+A captura grava o mesmo schema, com estas particularidades:
+
+- `source`: também aceita `x` e `upload`.
+- `transcription_method`: `subtitles` (legendas da plataforma), `scrape`
+  (texto do post, da página ou da descrição), `api` (STT pelo provedor do
+  usuário), `vision` (descrição de imagens) ou `document` (arquivo enviado).
+- `model`: modelo usado na interpretação, no formato do provedor escolhido
+  pelo usuário (por exemplo `anthropic/claude-haiku-4-5`).
+- `cost_usd`: custo estimado da captura (STT + visão + interpretação) quando
+  o catálogo tem preço; `null` quando não há estimativa.
+- `video_id`: id da plataforma quando existe (YouTube, TikTok, Instagram,
+  status do X); omitido em páginas web e uploads.
+- `producer: voxen-capture`: identifica documentos gerados pela captura.
+
+Campos nulos são omitidos, exceto `cost_usd`. O corpo de um documento
+capturado tem, em ordem: thumbnail opcional, título, uma citação com o link
+"Original", canal, duração e data de publicação, `## Resumo`, `## Pontos-chave`,
+`## Imagens` (descrições, quando houver) e então `## Transcrição` (linhas com
+timestamp, como abaixo) ou `## Conteúdo` (texto da página/post). Resumo,
+pontos-chave e descrições vêm do modelo e saem sem links, imagens, URLs nem
+HTML; o texto capturado nunca carrega imagens remotas nem HTML cru.
 
 ### Campos obrigatórios
 
@@ -109,9 +133,10 @@ Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_i
 
 ### Quando veio de transcrição via API (`transcription_method=api`, legado)
 
-> Histórico (spec 215): o pipeline de captura/transcrição foi removido. Os
-> passos abaixo descrevem como os documentos já armazenados foram produzidos;
-> novos documentos chegam como conteúdo preparado.
+> Histórico: os passos abaixo descrevem como documentos antigos (antes da
+> spec 215) foram produzidos. A captura atual (spec 220) só transcreve quando
+> não há texto, pelo provedor de STT que o usuário configurou, e grava o mesmo
+> formato de linhas com timestamp.
 
 - o extrator de mídia baixava áudio
 - ffmpeg segmentava em chunks (~5min com overlap 5s pra não cortar palavras)
