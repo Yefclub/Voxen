@@ -18,6 +18,7 @@ import { registerDiscoveryTools } from './mcp-discovery-tools';
 import { registerTranscriptTools } from './mcp-transcript-discovery-tools';
 import { registerNoteTools } from './mcp-note-tools';
 import { registerBrainTools } from './mcp-graph-tools';
+import { registerMcpCaptureReadTools, registerMcpCaptureWriteTools } from './mcp-capture-tools';
 
 // Owner-scoped MCP tools served through the official v2 Web Standard transport.
 // Each request creates a fresh server. Modern 2026 and legacy 2025 clients
@@ -60,6 +61,9 @@ const VOXEN_INSTRUCTIONS = [
   '   se não houver evidência suficiente, diga isso — não invente.',
   '',
   'Fluxo de escrita:',
+  '- Para adicionar um link à base com análise de IA, use voxen_capture_url (pode gerar custo nos',
+  '  provedores configurados). Acompanhe com voxen_capture_status até terminar e leia transcript.id',
+  '  com voxen_outline. voxen_list_captures lista capturas e voxen_cancel_capture cancela uma ativa.',
   '- voxen_create_note salva informação; voxen_read_note devolve revision/checksum.',
   '  Para editar, localize a passagem com voxen_search_note_content, pré-visualize com',
   '  voxen_patch_note e aplique somente com a mesma expected_revision. voxen_update_note',
@@ -173,6 +177,7 @@ function buildVoxenMcpServer(
   );
   installMcpToolExecution(server, { userId, requestId });
   if (scopes.includes('READ')) {
+    registerMcpCaptureReadTools(server, userId);
     registerMcpJobStatusTool(server, userId);
     registerDiscoveryTools(server, userId, publicOrigin);
     registerTranscriptTools(server, userId, publicOrigin);
@@ -181,6 +186,7 @@ function buildVoxenMcpServer(
     registerBrainTools(server, userId);
   }
   if (scopes.includes('WRITE')) {
+    registerMcpCaptureWriteTools(server, userId);
     registerWriteTools(server, userId);
   }
   // The catalog is static for this authenticated request; no notification bus is exposed.

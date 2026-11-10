@@ -2,6 +2,10 @@ import type { McpScope } from '../lib/mcp-tokens';
 
 // The single source of truth for permission checks and tool registration policy.
 export const MCP_TOOL_SCOPES = {
+  voxen_capture_status: 'READ',
+  voxen_list_captures: 'READ',
+  voxen_capture_url: 'WRITE',
+  voxen_cancel_capture: 'WRITE',
   voxen_brain_compilation_status: 'READ',
   voxen_brain_hubs: 'READ',
   voxen_brain_neighbors: 'READ',
@@ -44,6 +48,8 @@ export const MCP_TOOL_SCOPES = {
 
 type WriteEffects = { destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
 const WRITE_EFFECTS = {
+  voxen_capture_url: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  voxen_cancel_capture: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
   voxen_create_note: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
   voxen_update_note: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
   voxen_import_notes: { destructiveHint: false, idempotentHint: true, openWorldHint: false },

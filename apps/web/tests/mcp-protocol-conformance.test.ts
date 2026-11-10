@@ -11,10 +11,25 @@ const endpoint = new URL('/mcp', process.env.APP_BASE_URL || 'http://localhost:3
 const localFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
   app.fetch(new Request(input, init));
 
+async function expectCaptureReads(
+  callTool: (request: { name: string; arguments: Record<string, unknown> }) => Promise<unknown>,
+  captureId: string,
+) {
+  for (const name of ['voxen_capture_status', 'voxen_list_captures']) {
+    const result = await callTool({
+      name,
+      arguments: name === 'voxen_capture_status' ? { capture_id: captureId } : {},
+    });
+    expect(result).not.toHaveProperty('isError', true);
+    expect(JSON.stringify(result)).toContain(captureId);
+  }
+}
+
 describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
   let userId = '';
   let token = '';
   let noteId = '';
+  let captureId = '';
   const headers = () => ({
     authorization: `Bearer ${token}`,
     'content-type': 'application/json',
@@ -30,6 +45,11 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
       },
     });
     userId = user.id;
+    captureId = (
+      await db.job.create({
+        data: { userId, type: 'CAPTURE_LINK', sourceUrl: 'https://example.test/protocol-capture' },
+      })
+    ).id;
     token = (
       await createMcpToken({ userId, label: 'Protocol tests', scopes: ['READ'], expiresAt: null })
     ).token;
@@ -73,6 +93,7 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
     });
     try {
       await client.connect(transport);
+      await expectCaptureReads((request) => client.callTool(request), captureId);
       expect((await client.listTools()).tools.some((tool) => tool.name === 'voxen_read_note')).toBe(
         true,
       );
@@ -118,6 +139,7 @@ describe.skipIf(!process.env.DATABASE_URL)('MCP protocol conformance', () => {
       });
       try {
         await client.connect(transport);
+        await expectCaptureReads((request) => client.callTool(request), captureId);
         expect(client.getProtocolEra()).toBe('modern');
         expect(client.getServerCapabilities()?.tools?.listChanged).not.toBe(true);
         expect(

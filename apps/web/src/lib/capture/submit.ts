@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
+import { rateLimit } from '../rate-limit';
 import { notifyNewJob, publishJobEvent } from '../job-events';
 import {
   MAX_MEDIA_UPLOAD_BYTES,
@@ -149,4 +150,13 @@ export async function submitCaptureUpload(userId: string, file: File): Promise<S
     captureMeta: { platform: 'upload', upload: { objectKey, filename, mimeType: contentType } },
   });
   return { kind: 'job', jobId: job.id, deduped: job.deduped };
+}
+
+/** One submission window for HTTP, the PWA share target and MCP. */
+export async function submitRateLimited(userId: string): Promise<boolean> {
+  // Preserve the capture API's availability policy when Redis is unavailable.
+  const limit = await rateLimit(`capture-submit:${userId}`, 30, 60).catch(() => ({
+    allowed: true,
+  }));
+  return !limit.allowed;
 }

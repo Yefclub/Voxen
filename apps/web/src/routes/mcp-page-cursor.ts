@@ -2,7 +2,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getMasterKey } from '../lib/master-key';
 
 type PagePosition = { createdAt: Date; id: string };
-type PageContext = { userId: string; tool: 'notes' | 'transcripts'; transcriptId?: string };
+type PageContext = {
+  userId: string;
+  tool: 'notes' | 'transcripts' | 'captures';
+  transcriptId?: string;
+};
 function mac(value: string, context: PageContext): Buffer {
   return createHmac('sha256', getMasterKey())
     .update('voxen-mcp-page-v1\0')
