@@ -35,6 +35,11 @@ const PROBE_REQUESTS: Record<
     url: 'https://openrouter.ai/api/v1/key',
     headers: { authorization: `Bearer ${apiKey}` },
   }),
+  // Header auth, never `?key=`: the key must not sit in a URL or access log.
+  google: (apiKey) => ({
+    url: 'https://generativelanguage.googleapis.com/v1beta/models',
+    headers: { 'x-goog-api-key': apiKey },
+  }),
 };
 
 export function createKeyProbe(fetchImpl: typeof fetch = fetch): ProbeProviderKey {
@@ -56,11 +61,12 @@ export function createKeyProbe(fetchImpl: typeof fetch = fetch): ProbeProviderKe
     // The body is never read: it may echo request data and is not needed.
     await response.body?.cancel().catch(() => undefined);
     if (response.ok) return { status: 'valid', error: null };
-    // xAI answers 400 to a rejected key; a parameterless GET has no other 400 cause.
+    // xAI and Gemini answer 400 to a rejected key (Gemini: `API_KEY_INVALID`);
+    // a parameterless models GET has no other 400 cause.
     if (
       response.status === 401 ||
       response.status === 403 ||
-      (provider === 'xai' && response.status === 400)
+      ((provider === 'xai' || provider === 'google') && response.status === 400)
     ) {
       return { status: 'invalid', error: `HTTP_${response.status}` };
     }

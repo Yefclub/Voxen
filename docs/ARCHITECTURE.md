@@ -16,7 +16,7 @@ apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, grafo, usuários, jobs, configurações)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
   |---- volume local compartilhado (padrão) ou S3 compatível
-  |---- OpenAI / Anthropic / OpenRouter / xAI (endpoints fixos, chave por usuário)
+  |---- OpenAI / Anthropic / OpenRouter / xAI / Gemini (endpoints fixos, chave por usuário)
   `---- capture-worker (rede interna, token bearer)
           `---- proxy de saída Smokescreen ---> só internet pública
 ```
@@ -92,7 +92,9 @@ tentativas.
    zerada) e reprocessar ficam em `/capturar` e na página do documento.
 
 Chaves de provedor são por usuário, cifradas com `MASTER_KEY`, e usadas só
-contra os endpoints fixos de OpenAI, Anthropic, OpenRouter e xAI. Toda falha
+contra os endpoints fixos de OpenAI, Anthropic, OpenRouter, xAI e Gemini. Cada
+papel (rápido, padrão, visão, STT) tem uma cadeia ordenada de até 4 modelos: se
+um falha, o próximo é tentado (spec 221). Toda falha
 tem código estável (`AI_NOT_CONFIGURED`, `LOGIN_REQUIRED`, `NO_TEXT`, …),
 mensagem localizada e ação sugerida.
 

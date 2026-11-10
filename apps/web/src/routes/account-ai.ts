@@ -1,25 +1,39 @@
 // ============================================================================
-// /api/account/ai — per-user AI provider keys and model roles (spec 220)
+// /api/account/ai — per-user AI provider keys and model chains (spec 220/221)
 // ============================================================================
-// GET    /ai                          status per provider, roles, catalog
+// GET    /ai                          status per provider, chains, catalog
 // PUT    /ai/providers/:provider      { apiKey } → probe, save, status
 // POST   /ai/providers/:provider/test re-probe the stored key
-// DELETE /ai/providers/:provider      remove key, status and roles using it
-// PUT    /ai/roles                    { fast?, standard?, vision?, stt? }
+// DELETE /ai/providers/:provider      remove key, status and its chain entries
+// PUT    /ai/roles                    { fast?, standard?, vision?, stt?, reasoning? }:
+//                                     each role an ordered chain [{provider, model}, …]
+//                                     (max 4) or, as in spec 220, a single entry;
+//                                     reasoning { fast?, standard?, vision? } →
+//                                     'off' | 'low' | 'medium' | 'high'
 // Mounted under accountRoutes, whose middleware sets userId from the session.
 // No response ever contains a stored key.
 // ============================================================================
 
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
-import { AI_CATALOG, AI_PROVIDERS, isAiProvider, type AiProvider } from '../lib/ai/catalog';
+import {
+  AI_CATALOG,
+  AI_PROVIDERS,
+  AI_ROLES,
+  isAiProvider,
+  REASONING_EFFORTS,
+  type AiProvider,
+  type AiRole,
+} from '../lib/ai/catalog';
 import {
   getModelRoles,
+  getModelSettings,
   listProviderStatuses,
   removeProviderKey,
   saveProviderKey,
   setModelRoles,
   testProviderKey,
+  type RoleEntry,
 } from '../lib/ai/credentials';
 import { probeProviderKey, type ProbeProviderKey } from '../lib/ai/probe';
 import { rateLimit } from '../lib/rate-limit';
@@ -36,17 +50,29 @@ const ApiKeyBody = z.object({
     .regex(/^[\x21-\x7E]+$/),
 });
 
-const Assignment = z.object({
-  provider: z.enum(AI_PROVIDERS),
-  model: z.string().trim().min(1).max(120),
-});
+const Entry = z
+  .object({
+    provider: z.enum(AI_PROVIDERS),
+    model: z.string().trim().min(1).max(120),
+  })
+  .strict();
+
+// A chain, or the spec 220 single entry (read as a one-entry chain).
+const Chain = z
+  .union([z.array(Entry).max(16), Entry])
+  .nullish()
+  .transform((value): RoleEntry[] => (value == null ? [] : Array.isArray(value) ? value : [value]));
+
+const Effort = z.enum(REASONING_EFFORTS).optional();
 
 const RolesBody = z
   .object({
-    fast: Assignment.nullish(),
-    standard: Assignment.nullish(),
-    vision: Assignment.nullish(),
-    stt: Assignment.nullish(),
+    fast: Chain,
+    standard: Chain,
+    vision: Chain,
+    stt: Chain,
+    // Speech-to-text has no reasoning, so `stt` is not accepted here.
+    reasoning: z.object({ fast: Effort, standard: Effort, vision: Effort }).strict().optional(),
   })
   .strict();
 
@@ -85,11 +111,16 @@ export function registerAccountAiRoutes(
 
   routes.get('/ai', async (c) => {
     const userId = c.get('userId');
-    const [providers, roles] = await Promise.all([
+    const [providers, settings] = await Promise.all([
       listProviderStatuses(userId),
-      getModelRoles(userId),
+      getModelSettings(userId),
     ]);
-    return c.json({ providers, roles, catalog: CATALOG });
+    return c.json({
+      providers,
+      chains: settings.chains,
+      reasoning: settings.reasoning,
+      catalog: CATALOG,
+    });
   });
 
   routes.put('/ai/providers/:provider', async (c) => {
@@ -111,12 +142,12 @@ export function registerAccountAiRoutes(
           code: 'LLM_AUTH',
           result: outcome.result,
           provider: outcome.status,
-          roles,
+          chains: roles,
         },
         422,
       );
     }
-    return c.json({ result: outcome.result, provider: outcome.status, roles });
+    return c.json({ result: outcome.result, provider: outcome.status, chains: roles });
   });
 
   routes.post('/ai/providers/:provider/test', async (c) => {
@@ -129,7 +160,7 @@ export function registerAccountAiRoutes(
     if (!status) {
       return c.json({ error: 'Nenhuma chave salva para este provedor.', code: 'NOT_FOUND' }, 404);
     }
-    return c.json({ provider: status, roles: await getModelRoles(userId) });
+    return c.json({ provider: status, chains: await getModelRoles(userId) });
   });
 
   routes.delete('/ai/providers/:provider', async (c) => {
@@ -143,7 +174,10 @@ export function registerAccountAiRoutes(
       listProviderStatuses(userId),
       getModelRoles(userId),
     ]);
-    return c.json({ provider: providers.find((item) => item.provider === provider), roles });
+    return c.json({
+      provider: providers.find((item) => item.provider === provider),
+      chains: roles,
+    });
   });
 
   routes.put('/ai/roles', async (c) => {
@@ -153,10 +187,12 @@ export function registerAccountAiRoutes(
     }
     const limited = await limitWrites(c);
     if (limited) return limited;
-    const roles = Object.fromEntries(
-      Object.entries(parsed.data).filter(([, assignment]) => assignment != null),
+    const chains: Partial<Record<AiRole, RoleEntry[]>> = {};
+    for (const role of AI_ROLES) chains[role] = parsed.data[role];
+    const reasoning = Object.fromEntries(
+      Object.entries(parsed.data.reasoning ?? {}).filter(([, effort]) => effort !== undefined),
     );
-    const result = await setModelRoles(c.get('userId'), roles);
+    const result = await setModelRoles(c.get('userId'), chains, reasoning);
     if (!result.ok) {
       return c.json(
         {
@@ -167,6 +203,6 @@ export function registerAccountAiRoutes(
         400,
       );
     }
-    return c.json({ roles: result.roles });
+    return c.json({ chains: result.settings.chains, reasoning: result.settings.reasoning });
   });
 }

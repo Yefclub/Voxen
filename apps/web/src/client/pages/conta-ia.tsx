@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BrainCircuit, RefreshCw, Save, Trash2 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { AccountPageNav } from '../components/account/account-page-nav';
+import {
+  chainsEqual,
+  reasoningEqual,
+  RoleChainsEditor,
+  type Reasoning,
+  type AiProviderCatalog as ProviderCatalog,
+  type AiProviderId as Provider,
+  type Chains,
+} from '../components/account/ai-role-chains';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -9,19 +18,10 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '../lib/api';
 import { useI18n, type I18nKey, type TranslateFn } from '../lib/i18n';
 
-type Provider = 'openai' | 'anthropic' | 'openrouter' | 'xai';
-type Role = 'fast' | 'standard' | 'vision' | 'stt';
 type ProbeStatus = 'valid' | 'invalid' | 'unknown';
 
 interface ProviderStatus {
@@ -33,44 +33,14 @@ interface ProviderStatus {
   error: string | null;
 }
 
-interface CatalogModel {
-  id: string;
-  label: string;
-  roles: Role[];
-  vision: boolean;
-  contextWindow: number | null;
-  pricing:
-    | { kind: 'tokens'; inputPerMTok: number; outputPerMTok: number }
-    | { kind: 'minutes'; perMinute: number };
-}
-
-interface ProviderCatalog {
-  provider: Provider;
-  label: string;
-  models: CatalogModel[];
-}
-
-type Assignment = { provider: Provider; model: string };
-type Roles = Partial<Record<Role, Assignment>>;
-
 interface AiSettings {
   providers: ProviderStatus[];
-  roles: Roles;
+  chains: Chains;
+  reasoning: Reasoning;
   catalog: ProviderCatalog[];
 }
 
-const ROLES: readonly Role[] = ['fast', 'standard', 'vision', 'stt'];
 const MIN_KEY_LENGTH = 20;
-const NONE = 'none';
-
-const assignmentValue = (assignment: Assignment | undefined) =>
-  assignment ? `${assignment.provider}::${assignment.model}` : NONE;
-
-function parseAssignment(value: string): Assignment | undefined {
-  if (value === NONE) return undefined;
-  const [provider, model] = value.split('::');
-  return provider && model ? { provider: provider as Provider, model } : undefined;
-}
 
 function errorMessage(error: unknown, t: TranslateFn): string {
   if (error instanceof ApiError) {
@@ -83,27 +53,15 @@ function errorMessage(error: unknown, t: TranslateFn): string {
   return t('common.error');
 }
 
-function formatUsd(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: 'USD',
-    maximumSignificantDigits: 3,
-  }).format(value);
-}
-
-function priceHint(model: CatalogModel, t: TranslateFn, locale: string): string {
-  return model.pricing.kind === 'tokens'
-    ? t('account.ai.priceTokens', {
-        input: formatUsd(model.pricing.inputPerMTok, locale),
-        output: formatUsd(model.pricing.outputPerMTok, locale),
-      })
-    : t('account.ai.priceMinute', { price: formatUsd(model.pricing.perMinute, locale) });
-}
-
 export function ContaIaPage(): React.ReactElement {
   const { t, locale } = useI18n();
   const [settings, setSettings] = useState<AiSettings | null>(null);
-  const [draftRoles, setDraftRoles] = useState<Roles>({});
+  const [draftChains, setDraftChains] = useState<Chains>({});
+  const [draftReasoning, setDraftReasoning] = useState<Reasoning>({
+    fast: 'medium',
+    standard: 'medium',
+    vision: 'medium',
+  });
   const [keys, setKeys] = useState<Partial<Record<Provider, string>>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ProviderCatalog | null>(null);
@@ -112,7 +70,8 @@ export function ContaIaPage(): React.ReactElement {
     try {
       const next = await apiGet<AiSettings>('/api/account/ai');
       setSettings(next);
-      setDraftRoles(next.roles);
+      setDraftChains(next.chains);
+      setDraftReasoning(next.reasoning);
     } catch (error) {
       toast.error(errorMessage(error, t));
     }
@@ -166,7 +125,7 @@ export function ContaIaPage(): React.ReactElement {
 
   const saveRoles = () =>
     run('roles', async () => {
-      await apiPut('/api/account/ai/roles', draftRoles);
+      await apiPut('/api/account/ai/roles', { ...draftChains, reasoning: draftReasoning });
       toast.success(t('account.ai.rolesSaved'));
       await refresh();
     });
@@ -181,28 +140,8 @@ export function ContaIaPage(): React.ReactElement {
 
   const rolesChanged =
     settings !== null &&
-    ROLES.some(
-      (role) => assignmentValue(draftRoles[role]) !== assignmentValue(settings.roles[role]),
-    );
-
-  function optionsFor(role: Role): Array<{ provider: ProviderCatalog; model: CatalogModel }> {
-    return (settings?.catalog ?? [])
-      .filter((provider) => configured.has(provider.provider))
-      .flatMap((provider) =>
-        provider.models
-          .filter((model) => model.roles.includes(role))
-          .map((model) => ({ provider, model })),
-      );
-  }
-
-  function findModel(assignment: Assignment | undefined): CatalogModel | null {
-    if (!assignment) return null;
-    return (
-      settings?.catalog
-        .find((provider) => provider.provider === assignment.provider)
-        ?.models.find((model) => model.id === assignment.model) ?? null
-    );
-  }
+    (!chainsEqual(draftChains, settings.chains) ||
+      !reasoningEqual(draftReasoning, settings.reasoning));
 
   function formatDate(value: string): string {
     return new Date(value).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
@@ -279,6 +218,12 @@ export function ContaIaPage(): React.ReactElement {
                     {catalog.provider === 'anthropic' && (
                       <p className="text-xs text-[var(--color-app-muted)]">
                         {t('account.ai.anthropicNoStt')}
+                      </p>
+                    )}
+                    {catalog.provider === 'google' && (
+                      <p className="flex gap-2 text-xs text-[var(--color-app-muted)]">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-app-warning-fg)]" />
+                        {t('account.ai.geminiFreeTier')}
                       </p>
                     )}
                     <form
@@ -375,48 +320,17 @@ export function ContaIaPage(): React.ReactElement {
                 </p>
               ) : (
                 <>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {ROLES.map((role) => {
-                      const options = optionsFor(role);
-                      const selected = findModel(draftRoles[role]);
-                      const triggerId = `ai-role-${role}`;
-                      return (
-                        <div key={role} className="space-y-1.5">
-                          <Label htmlFor={triggerId}>{t(`account.ai.role.${role}`)}</Label>
-                          <p className="text-[11px] text-[var(--color-app-muted)]">
-                            {t(`account.ai.role.${role}Hint`)}
-                          </p>
-                          <Select
-                            value={assignmentValue(draftRoles[role])}
-                            onValueChange={(value) =>
-                              setDraftRoles((current) => ({
-                                ...current,
-                                [role]: parseAssignment(value),
-                              }))
-                            }
-                          >
-                            <SelectTrigger id={triggerId} className="h-10">
-                              <SelectValue placeholder={t('account.ai.roleNone')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={NONE}>{t('account.ai.roleNone')}</SelectItem>
-                              {options.map(({ provider, model }) => (
-                                <SelectItem
-                                  key={`${provider.provider}::${model.id}`}
-                                  value={`${provider.provider}::${model.id}`}
-                                >
-                                  {model.label} · {provider.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="min-h-4 text-[11px] text-[var(--color-app-muted)]">
-                            {selected ? priceHint(selected, t, locale) : ''}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <RoleChainsEditor
+                    catalog={settings.catalog}
+                    configured={configured}
+                    chains={draftChains}
+                    onChange={setDraftChains}
+                    reasoning={draftReasoning}
+                    onReasoningChange={setDraftReasoning}
+                    disabled={busy !== null}
+                    t={t}
+                    locale={locale}
+                  />
                   <Button
                     type="button"
                     variant="primary"

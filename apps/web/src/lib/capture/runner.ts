@@ -12,10 +12,9 @@
 import { randomUUID } from 'node:crypto';
 import type { z } from 'zod';
 
-import type { TranscriptionMethod } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { publishJobEvent } from '../job-events';
-import { storageDeletePrefix, storageGet } from '../storage';
+import { storageDeletePrefix } from '../storage';
 import {
   MAX_IMAGES,
   artifactFromWorker,
@@ -46,6 +45,16 @@ import {
   type ClaimedCaptureJob,
 } from './lease';
 import { publishCapturedDocument } from './publish';
+import {
+  decodeAudio,
+  failedAttemptCost,
+  needsSpeechToText,
+  pickMethod,
+  uploadBlob,
+  usableText,
+} from './steps';
+
+export { needsSpeechToText } from './steps';
 import type { CaptureArtifact, CaptureInterpretation } from './types';
 import type { CaptureWorkerClient, WorkerAudio } from './worker-client';
 
@@ -54,7 +63,6 @@ export type { ClaimedCaptureJob } from './lease';
 export { captureArtifactKey, purgeStaleCaptureArtifacts } from './artifact';
 export { normalizeInterpretation } from './interpret';
 
-const MIN_USABLE_TEXT = 200;
 const VISION_TEXT_THRESHOLD = 1_500;
 const STEP_TIMEOUT_MS = {
   extract: 15 * 60_000,
@@ -70,6 +78,8 @@ export type UntrustedPart = { text: string } | { image: Uint8Array; mime: string
 /** The subset of the AI client (lib/ai) the runner depends on. */
 export interface CaptureAi {
   isRoleConfigured(userId: string, role: AiRole): Promise<boolean>;
+  /** Usable entries in the role's fallback chain; 0 when not configured. */
+  chainLength(userId: string, role: AiRole): Promise<number>;
   generateStructured<T>(input: {
     userId: string;
     role: Exclude<AiRole, 'stt'>;
@@ -103,47 +113,6 @@ export type CaptureDeps = {
 // Job execution
 // ---------------------------------------------------------------------------
 
-function usableText(artifact: CaptureArtifact): string {
-  if (artifact.segments.length > 0) return artifact.segments.map((s) => s.text).join(' ');
-  return artifact.text ?? '';
-}
-
-/**
- * Spec 220: text first (captions, description, post, page text); STT only
- * when no usable text exists and the source has audio.
- */
-export function needsSpeechToText(artifact: CaptureArtifact): boolean {
-  if (!artifact.hasAudio || artifact.textKind === 'stt' || artifact.textKind === 'captions') {
-    return false;
-  }
-  return usableText(artifact).trim().length < MIN_USABLE_TEXT;
-}
-
-async function uploadBlob(upload: NonNullable<CaptureArtifact['upload']>): Promise<Blob> {
-  const object = await storageGet(upload.objectKey);
-  return new Blob([await new Response(object.body).arrayBuffer()], { type: upload.mimeType });
-}
-
-function pickMethod(artifact: CaptureArtifact): TranscriptionMethod {
-  if (artifact.textKind === 'stt') return 'API';
-  if (artifact.textKind === 'captions') return 'SUBTITLES';
-  if (artifact.textKind === 'document') return 'DOCUMENT';
-  if (artifact.platform === 'upload' && artifact.textKind === 'page') return 'DOCUMENT';
-  if (artifact.textKind === 'none' && (artifact.imageDescriptions?.length ?? 0) > 0)
-    return 'VISION';
-  return 'SCRAPE';
-}
-
-function decodeAudio(
-  audio: WorkerAudio,
-): Array<{ data: Uint8Array; mime: string; startSec: number }> {
-  return audio.chunks.map((chunk) => ({
-    data: new Uint8Array(Buffer.from(chunk.dataBase64, 'base64')),
-    mime: chunk.mime,
-    startSec: chunk.startSec,
-  }));
-}
-
 type RunOutcome = {
   status: 'DONE' | 'COMPLETED_WITH_WARNINGS';
   transcriptId: string;
@@ -156,6 +125,9 @@ async function executeCapture(
   controller: AbortController,
 ): Promise<RunOutcome> {
   const signal = controller.signal;
+  // Every chain entry has its own budget (spec 221): a step gets budget × entries.
+  const aiSignal = async (role: AiRole, perEntryMs: number) =>
+    withTimeout(signal, perEntryMs * Math.max(1, await deps.ai.chainLength(job.userId, role)));
   let warnings = false;
   let cost = 0;
   const upload = (job.captureMeta.upload ?? null) as CaptureArtifact['upload'];
@@ -231,7 +203,7 @@ async function executeCapture(
         userId: job.userId,
         chunks: decodeAudio(audio),
         language: artifact.language ?? undefined,
-        signal: withTimeout(signal, STEP_TIMEOUT_MS.stt),
+        signal: await aiSignal('stt', STEP_TIMEOUT_MS.stt),
       });
       cost += stt.costUsd ?? 0;
       artifact = {
@@ -275,7 +247,7 @@ async function executeCapture(
           untrusted: parts,
           schema: VisionSchema,
           maxOutputTokens: 1_200,
-          signal: withTimeout(signal, STEP_TIMEOUT_MS.model),
+          signal: await aiSignal('vision', STEP_TIMEOUT_MS.model),
         });
         cost += vision.costUsd ?? 0;
         artifact = {
@@ -288,6 +260,7 @@ async function executeCapture(
         };
         await saveArtifact(job.userId, job.id, artifact);
       } catch (error) {
+        cost += failedAttemptCost(error);
         const mapped = mapUnknownError(error, signal);
         if (mapped.code === 'LLM_AUTH' || mapped.code === 'LLM_QUOTA') throw mapped;
         warnings = true;
@@ -318,7 +291,7 @@ async function executeCapture(
       untrusted: [{ text: sourceBlock(artifact, clamped.text, clamped.truncated) }],
       schema: InterpretationSchema,
       maxOutputTokens: 2_000,
-      signal: withTimeout(signal, STEP_TIMEOUT_MS.model),
+      signal: await aiSignal('standard', STEP_TIMEOUT_MS.model),
     });
     cost += result.costUsd ?? 0;
     modelRef = result.modelRef;

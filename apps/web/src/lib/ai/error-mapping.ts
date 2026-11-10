@@ -1,6 +1,7 @@
 // Maps provider and AI SDK failures to typed, secret-free AiErrors (spec 220).
 
 import { APICallError } from 'ai';
+import type { AiProvider } from './catalog';
 import type { ResolvedRole } from './client';
 import { AiError, redactSecrets } from './errors';
 
@@ -31,12 +32,9 @@ export function toAiError(error: unknown, resolved: Pick<ResolvedRole, 'provider
         status,
       });
     }
-    // xAI answers HTTP 400 "Incorrect API key provided" for a rejected key.
-    if (
-      status === 400 &&
-      provider === 'xai' &&
-      /(incorrect|invalid)[^.]{0,40}api key/i.test(error.responseBody ?? '')
-    ) {
+    // xAI answers HTTP 400 "Incorrect API key provided" and Gemini HTTP 400
+    // `API_KEY_INVALID` ("API key not valid") for a rejected key.
+    if (status === 400 && isKeyRejection(provider, error.responseBody ?? '')) {
       return new AiError('LLM_AUTH', 'The provider rejected the API key (HTTP 400).', {
         provider,
         status,
@@ -68,6 +66,12 @@ export function toAiError(error: unknown, resolved: Pick<ResolvedRole, 'provider
     );
   }
   return new AiError('LLM_FAILED', 'The provider call failed.', { provider });
+}
+
+function isKeyRejection(provider: AiProvider, body: string): boolean {
+  if (provider === 'xai') return /(incorrect|invalid)[^.]{0,40}api key/i.test(body);
+  if (provider === 'google') return /API_KEY_INVALID|API key not valid|API key expired/i.test(body);
+  return false;
 }
 
 function isAbortLike(error: unknown): boolean {

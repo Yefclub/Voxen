@@ -16,7 +16,7 @@ apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, graph data, users, jobs, settings)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
   |---- shared local volume (default) or S3-compatible storage
-  |---- OpenAI / Anthropic / OpenRouter / xAI (fixed endpoints, per-user keys)
+  |---- OpenAI / Anthropic / OpenRouter / xAI / Gemini (fixed endpoints, per-user keys)
   `---- capture-worker (internal network, bearer token)
           `---- Smokescreen egress proxy ---> public internet only
 ```
@@ -93,7 +93,9 @@ unreachable, the knowledge base keeps working and capture jobs end with
    reprocess are available from `/capturar` and the document page.
 
 Provider keys are per user, encrypted with `MASTER_KEY`, and used only against
-the fixed endpoints of OpenAI, Anthropic, OpenRouter, and xAI. Every failure
+the fixed endpoints of OpenAI, Anthropic, OpenRouter, xAI, and Gemini. Each
+role (fast, standard, vision, STT) has an ordered chain of up to 4 models: when
+one fails, the next is tried (spec 221). Every failure
 carries a stable code (`AI_NOT_CONFIGURED`, `LOGIN_REQUIRED`, `NO_TEXT`, …),
 a localized message, and a suggested next action.
 
