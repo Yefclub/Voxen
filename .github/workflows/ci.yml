@@ -302,6 +302,52 @@ jobs:
           docker logs voxen-easypanel
           exit 1
 
+  # capture-worker (spec 220): its pytest suite runs only inside the image
+  # (`--target test`, real ffmpeg/yt-dlp), with the same hardening as Compose.
+  docker-build-capture-worker:
+    name: Docker build (capture-worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build capture-worker runtime
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/capture-worker/Dockerfile
+          push: false
+          cache-from: type=gha,scope=capture-worker
+          cache-to: type=gha,mode=max,scope=capture-worker
+      - name: Build capture-worker tests
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/capture-worker/Dockerfile
+          target: test
+          push: false
+          load: true
+          tags: voxen-capture-worker:test
+          cache-from: type=gha,scope=capture-worker
+      - name: Run capture-worker tests
+        run: docker run --rm --read-only --tmpfs /tmp:size=1g --cap-drop ALL voxen-capture-worker:test
+
+  # stt-local (spec 221) is optional and its build downloads the pinned model,
+  # so it is checked here but kept out of the required aggregator below.
+  docker-build-stt-local:
+    name: Docker build (stt-local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build stt-local
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/stt-local/Dockerfile
+          push: false
+          cache-from: type=gha,scope=stt-local
+          cache-to: type=gha,mode=max,scope=stt-local
+
   # ==========================================================================
   # Agregador. Existe por causa do NOME: `Docker build (apps + Easypanel)` é
   # um required status check da proteção de `dev`/`main` E está escrito por
@@ -318,17 +364,18 @@ jobs:
     name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest
     if: always()
-    needs: [docker-build-web, docker-build-easypanel]
+    needs: [docker-build-web, docker-build-easypanel, docker-build-capture-worker]
     steps:
       - name: Assert image builds succeeded
         env:
           WEB: ${{ needs.docker-build-web.result }}
           EASYPANEL: ${{ needs.docker-build-easypanel.result }}
+          CAPTURE_WORKER: ${{ needs.docker-build-capture-worker.result }}
         run: |
           set -eu
-          echo "web=$WEB easypanel=$EASYPANEL"
+          echo "web=$WEB easypanel=$EASYPANEL capture-worker=$CAPTURE_WORKER"
           failed=0
-          for pair in "web:$WEB" "easypanel:$EASYPANEL"; do
+          for pair in "web:$WEB" "easypanel:$EASYPANEL" "capture-worker:$CAPTURE_WORKER"; do
             if [ "${pair#*:}" != "success" ]; then
               echo "::error::Image build ${pair%%:*} did not pass (${pair#*:})."
               failed=1
