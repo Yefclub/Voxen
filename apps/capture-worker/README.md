@@ -11,12 +11,64 @@ All endpoints except `GET /health` require
 `Authorization: Bearer $CAPTURE_WORKER_TOKEN`. Bodies are JSON (16 KiB max)
 except `/v1/file` (multipart, 500 MB max, streamed to tmpfs).
 
-| Method and path     | Purpose                                                                                                                                                                |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`       | `{ok, ytDlp}`; 503 when the egress proxy is down.                                                                                                                      |
-| `POST /v1/extract`  | `{url}` → text-first extraction (captions, post text, page text, description), metadata and up to 4 JPEG images. Never downloads media streams.                        |
-| `POST /v1/audio`    | `{url}` → best audio only, converted to mono 16 kHz MP3 at 32 kbps and split into chunks of at most 20 minutes: `{durationSec, chunks:[{startSec, mime, dataBase64}]}`. |
-| `POST /v1/file`     | Multipart `file`, `filename`, `contentType` → audio/video (audio chunks plus 4 keyframes), image (JPEG), PDF (pypdf text) or text/Markdown.                             |
+| Method and path    | Purpose                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /health`      | `{ok, ytDlp}`; 503 when the egress proxy is down.                                                                                                                                                      |
+| `POST /v1/extract` | `{url}` → text-first extraction (captions, post text, page text, description), metadata, `hasAudio`, `hasVideo`, up to 4 JPEG images and up to 50 top-level `comments`. Never downloads media streams. |
+| `POST /v1/audio`   | `{url, format?}` → best audio only as speech-ready chunks: `{durationSec, chunks:[{startSec, mime, dataBase64}]}`. See "Audio formats".                                                                |
+| `POST /v1/frames`  | `{url}` → up to 4 JPEG keyframes from a small video stream: `{durationSec, images:[{kind:"frame", mime, dataBase64, width, height, timeSec}]}`. See "Keyframes".                                       |
+| `POST /v1/file`    | Multipart `file`, `filename`, `contentType`, optional `format` → audio/video (audio chunks plus 4 keyframes with `timeSec`, `hasVideo`), image (JPEG), PDF (pypdf text) or text/Markdown.              |
+
+### Audio formats
+
+`format` is optional on `/v1/audio` and `/v1/file`:
+
+- `mp3` (default): mono 16 kHz MP3 at 32 kbps, chunks of at most 20 minutes,
+  audio up to 3 h.
+- `wav`: 16 kHz mono PCM s16le WAV (for the `stt-local` sidecar, which
+  decodes WAV only), chunks of at most 8 minutes. Only for audio of **known
+  duration up to 1 h**; longer or unknown-duration audio returns `TOO_LARGE`
+  and the caller requests `mp3` instead.
+
+Any other value returns `UNSUPPORTED`.
+
+### Comments
+
+`comments` is `[{author, text, likes, publishedAt}]`: top-level comments only,
+at most 50, sorted by likes desc, then `publishedAt` desc, then id, with
+unknown values last; text is trimmed to 1,000 characters and empty or deleted
+comments are dropped. Fetching has its own 60-second budget, runs alongside
+captions and thumbnails, and any failure is logged and returns `[]`; it never
+fails the capture.
+
+- **YouTube**: a second, bounded yt-dlp call with `--skip-download
+  --dump-single-json --write-comments --extractor-args
+  "youtube:max_comments=50,all,0,0;comment_sort=top"` (top comments, no
+  replies). A separate call because a comment error inside the metadata call
+  would fail the whole extraction. YouTube reports approximate like counts
+  ("4.8M") and relative dates, so `likes` and `publishedAt` are approximate.
+- **Instagram**: the same call without extractor args (yt-dlp has no
+  `max_comments` for Instagram; the list is capped after the fetch). Usually
+  empty without login.
+- **TikTok**: yt-dlp's TikTok extractor does not extract comments, so the
+  worker calls TikTok's public comment API
+  (`/api/comment/list/?aweme_id=<id>&count=50`, no login, through the egress
+  proxy).
+- **X**: always `[]`. Replies need a login; syndication and fxtwitter only
+  report a reply count.
+- Other extractors and web pages: `[]`.
+
+### Keyframes
+
+`/v1/frames` downloads the smallest video stream between 240p and 480p
+(`bv*[height>=240][height<=?480]/bv*[height<=?480]/b[height<=?480]/wv*/w`
+with `--format-sort +size,+br`; streams that do not report a height can
+still be picked), at most 300 MB, with its own 10-minute budget (time spent
+waiting for the heavy-work slot does not count). Frames are evenly spaced over
+the known duration, or taken at 10/35/60/85% of the video packets when the
+container reports none; videos under 4 s get one frame per whole second (at
+least one). Videos over 3 h and live streams are rejected (`TOO_LARGE`,
+`UNSUPPORTED`). Errors use the same classifier as the other endpoints.
 
 Routing is decided by host: YouTube, TikTok and Instagram use yt-dlp; X posts
 use the public syndication endpoint with an fxtwitter fallback; unknown hosts
@@ -54,7 +106,7 @@ output.
   escalation path.
 - **Container.** Non-root uid 10001, read-only root filesystem, 1 GiB tmpfs
   `/tmp`, all capabilities dropped, `no-new-privileges`, 2 GiB memory, 2 CPUs,
-  PID limit, no published ports. Audio and upload work is serialized.
+  PID limit, no published ports. Audio, frames and upload work is serialized.
 
 Known limitation: the proxy is enforced by configuration, not by the network.
 A component that ignored the proxy settings could still open direct

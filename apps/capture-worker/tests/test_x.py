@@ -120,5 +120,25 @@ def test_result_shape(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert result["text"] == "Texto do post https://t.co/abc\n\n> @outra: post citado"
     assert result["textKind"] == "post"
     assert result["hasAudio"] is True
+    assert result["hasVideo"] is True
+    assert result["comments"] == []
     assert result["language"] == "pt"
     assert result["extractor"] == "x-syndication"
+
+
+def test_extract_returns_no_comments_and_fetches_no_replies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import asyncio
+
+    fetched: list[str] = []
+
+    async def fake_get_json(url: str):
+        fetched.append(url)
+        return SYNDICATION
+
+    monkeypatch.setattr(x, "_get_json", fake_get_json)
+    monkeypatch.setattr(x.images, "download", _no_images)
+    result = asyncio.run(x.extract("1460323737035677698", str(tmp_path)))
+    assert result["comments"] == []
+    assert len(fetched) == 1 and fetched[0].startswith("https://cdn.syndication.twimg.com/")

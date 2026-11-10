@@ -23,7 +23,9 @@ def empty_result(platform: str, canonical_url: str, extractor: str) -> dict[str,
         "textKind": "none",
         "segments": [],
         "hasAudio": False,
+        "hasVideo": False,
         "images": [],
+        "comments": [],
         "extractor": extractor,
     }
 

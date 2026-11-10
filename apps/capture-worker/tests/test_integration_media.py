@@ -71,6 +71,11 @@ def test_upload_video_returns_audio_and_keyframes(client: TestClient, tmp_path) 
     assert 5.5 < body["durationSec"] < 6.5
     assert len(body["images"]) == 4
     assert all(img["mime"] == "image/jpeg" and img["width"] == 320 for img in body["images"])
+    assert body["hasVideo"] is True
+    assert [img["kind"] for img in body["images"]] == ["post_media"] * 4
+    assert [img["timeSec"] for img in body["images"]] == pytest.approx(
+        [1.2, 2.4, 3.6, 4.8], abs=0.1
+    )
     audio = body["audio"]
     assert len(audio["chunks"]) == 1
     chunk = audio["chunks"][0]
@@ -93,6 +98,41 @@ def test_upload_video_returns_audio_and_keyframes(client: TestClient, tmp_path) 
         text=True,
     ).stdout
     assert "codec_name=mp3" in probe and "sample_rate=16000" in probe and "channels=1" in probe
+
+
+def test_frames_endpoint_extracts_keyframes_with_real_ffmpeg(
+    client: TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    from capture_worker import ytdlp
+
+    sample = str(tmp_path / "sample.mp4")
+    _make_video(sample, 10)
+    copies: list[str] = []
+
+    async def fake_download(url: str, tmp_dir: str) -> str:
+        target = os.path.join(tmp_dir, "video.mp4")
+        shutil.copyfile(sample, target)
+        copies.append(target)
+        return target
+
+    monkeypatch.setattr(ytdlp, "download_video", fake_download)
+    response = client.post(
+        "/v1/frames", json={"url": "https://www.youtube.com/watch?v=abc123"}, headers=AUTH
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert 9.5 < body["durationSec"] < 10.5
+    assert len(body["images"]) == 4
+    times = [img["timeSec"] for img in body["images"]]
+    assert times == pytest.approx([2.0, 4.0, 6.0, 8.0], abs=0.15)
+    for img in body["images"]:
+        assert img["kind"] == "frame" and img["mime"] == "image/jpeg"
+        data = base64.b64decode(img["dataBase64"])
+        assert data[:3] == b"\xff\xd8\xff" and len(data) <= 1.5 * 1024 * 1024
+        assert img["width"] == 320 and img["height"] == 240
+    assert not os.path.exists(copies[0])
 
 
 def test_audio_is_split_into_twenty_minute_chunks(tmp_path) -> None:
@@ -128,6 +168,105 @@ def test_audio_is_split_into_twenty_minute_chunks(tmp_path) -> None:
     assert starts[0] == 0 and 1195 < starts[1] < 1205 and 2395 < starts[2] < 2405
     assert 2495 < result["durationSec"] < 2505
     assert os.listdir(work) == []
+
+
+def _make_silence(path: str, seconds: int) -> None:
+    subprocess.run(
+        [
+            media.FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=16000:cl=mono",
+            "-t",
+            str(seconds),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "16k",
+            path,
+        ],
+        check=True,
+    )
+
+
+def _stream_info(path: str) -> str:
+    return subprocess.run(
+        [
+            media.FFPROBE,
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=sample_rate,channels,codec_name:format=format_name",
+            "-of",
+            "default=nw=1",
+            path,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def test_upload_video_returns_wav_when_asked(client: TestClient, tmp_path) -> None:
+    source = str(tmp_path / "clip.mp4")
+    _make_video(source, 6)
+    with open(source, "rb") as handle:
+        response = client.post(
+            "/v1/file",
+            files={"file": ("clip.mp4", handle, "video/mp4")},
+            data={"filename": "clip.mp4", "contentType": "video/mp4", "format": "wav"},
+            headers=AUTH,
+        )
+    assert response.status_code == 200, response.text
+    audio = response.json()["audio"]
+    assert len(audio["chunks"]) == 1 and audio["chunks"][0]["mime"] == "audio/wav"
+    wav = tmp_path / "out.wav"
+    wav.write_bytes(base64.b64decode(audio["chunks"][0]["dataBase64"]))
+    info = _stream_info(str(wav))
+    assert "codec_name=pcm_s16le" in info and "sample_rate=16000" in info
+    assert "channels=1" in info and "format_name=wav" in info
+
+
+def test_wav_is_split_into_eight_minute_chunks(tmp_path) -> None:
+    import asyncio
+
+    source = str(tmp_path / "long.m4a")
+    _make_silence(source, 2500)
+    work = tmp_path / "work"
+    work.mkdir()
+    result = asyncio.run(media.audio_chunks(source, str(work), "wav"))
+    starts = [c["startSec"] for c in result["chunks"]]
+    assert len(starts) == 6
+    for index, start in enumerate(starts):
+        assert abs(start - index * 480) < 2
+    assert all(c["mime"] == "audio/wav" for c in result["chunks"])
+    first = base64.b64decode(result["chunks"][0]["dataBase64"])
+    # 480 s of 16 kHz mono s16le, plus the RIFF header.
+    assert abs(len(first) - 480 * 16000 * 2) < 16000 * 2
+    assert 2495 < result["durationSec"] < 2505
+    assert os.listdir(work) == []
+
+
+def test_wav_longer_than_one_hour_is_too_large(tmp_path) -> None:
+    import asyncio
+
+    from capture_worker.errors import CaptureError
+
+    source = str(tmp_path / "very-long.m4a")
+    _make_silence(source, 60 * 60 + 60)
+    work = tmp_path / "work"
+    work.mkdir()
+    with pytest.raises(CaptureError) as caught:
+        asyncio.run(media.audio_chunks(source, str(work), "wav"))
+    assert caught.value.code == "TOO_LARGE"
+    # MP3 still accepts it (up to 3 h).
+    result = asyncio.run(media.audio_chunks(source, str(work), "mp3"))
+    assert len(result["chunks"]) == 4
 
 
 def test_upload_image_is_reencoded(client: TestClient, tmp_path) -> None:
