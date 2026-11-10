@@ -276,6 +276,13 @@ async def _fetch_captions(track: captions.Track) -> list[captions.Segment]:
     return []
 
 
+# TikTok lists its background music track as the audio-only format "audio"
+# (a separate CDN file, often longer than the video and without the creator's
+# voice). Skip it so the audio comes from the video's own muxed stream.
+AUDIO_FORMAT = "ba[format_id!=audio]/wa[format_id!=audio]/b/w"
+AUDIO_SORT = "+size,+br,+res"
+
+
 async def download_audio(url: str, tmp_dir: str) -> str:
     """Best audio only; falls back to muxed files for sites without audio-only."""
     out_dir = os.path.join(tmp_dir, "dl")
@@ -285,9 +292,9 @@ async def download_audio(url: str, tmp_dir: str) -> str:
             # Smallest usable stream: speech-to-text needs little bitrate, and a
             # muxed HD fallback could otherwise fill the tmpfs.
             "--format",
-            "ba/wa/b/w",
+            AUDIO_FORMAT,
             "--format-sort",
-            "+size,+br,+res",
+            AUDIO_SORT,
             "--max-filesize",
             str(config.MAX_DOWNLOAD_BYTES),
             # Live streams stop the run (exit 101, classified UNSUPPORTED);

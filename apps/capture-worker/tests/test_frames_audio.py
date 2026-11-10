@@ -425,3 +425,81 @@ def test_frame_selector_picks_the_expected_stream(
         check=True,
     )
     assert result.stdout.strip() == expected
+
+
+def _format(fid: str, vcodec: str, acodec: str, size: int, ext: str = "mp4") -> dict[str, Any]:
+    return {
+        "format_id": fid,
+        "url": f"https://media.example/{fid}",
+        "ext": ext,
+        "protocol": "https",
+        "vcodec": vcodec,
+        "acodec": acodec,
+        "filesize": size,
+        "tbr": size / 1000,
+    }
+
+
+@pytest.mark.parametrize(
+    ("formats", "expected"),
+    [
+        # TikTok: the "audio" format is the background music track, not the video's audio.
+        (
+            [
+                _format("audio", "none", "aac", 2_000_000, "m4a"),
+                _format("h264_540p-0", "h264", "aac", 4_000_000),
+                _format("bytevc1_1080p-0", "h265", "aac", 12_000_000),
+            ],
+            "h264_540p-0",
+        ),
+        # YouTube-like: smallest audio-only stream still wins.
+        (
+            [
+                _format("139", "none", "mp4a", 800_000, "m4a"),
+                _format("251", "none", "opus", 1_500_000, "webm"),
+                _format("18", "avc1", "mp4a", 9_000_000),
+            ],
+            "139",
+        ),
+    ],
+)
+def test_audio_selector_picks_the_expected_stream(
+    tmp_path, formats: list[dict[str, Any]], expected: str
+) -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+
+    info = {
+        "id": "fixture",
+        "title": "fixture",
+        "extractor": "generic",
+        "extractor_key": "Generic",
+        "webpage_url": "https://media.example/watch",
+        "formats": formats,
+    }
+    path = tmp_path / "info.json"
+    path.write_text(json.dumps(info))
+    exe = shutil.which("yt-dlp") or sys.executable
+    prefix = [exe] if exe != sys.executable else [sys.executable, "-m", "yt_dlp"]
+    result = subprocess.run(  # noqa: S603 - fixed local invocation in a test
+        [
+            *prefix,
+            "--ignore-config",
+            "--load-info-json",
+            str(path),
+            "--simulate",
+            "--print",
+            "format_id",
+            "-f",
+            ytdlp.AUDIO_FORMAT,
+            "-S",
+            ytdlp.AUDIO_SORT,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert result.stdout.strip() == expected
