@@ -1,0 +1,67 @@
+name: stt-local
+
+# Optional local speech-to-text sidecar (spec 221). Its build downloads the
+# pinned Parakeet model (~700 MB), so it runs only when the sidecar changes
+# and weekly, outside the CI workflow that gates merges and the dev version
+# bump.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'apps/stt-local/**'
+      - '.github/workflows/stt-local.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'apps/stt-local/**'
+      - '.github/workflows/stt-local.yml'
+  schedule:
+    - cron: '0 4 * * 1' # every Monday 04:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stt-local-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-scan:
+    name: Build and scan (stt-local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build stt-local
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/stt-local/Dockerfile
+          push: false
+          load: true
+          tags: voxen-stt-local:scan
+          cache-from: type=gha,scope=stt-local
+          # min: only the final image layers, not the model/Go build stages,
+          # to keep the shared GHA cache for the required builds.
+          cache-to: type=gha,mode=min,scope=stt-local
+      - name: Health check
+        run: |
+          set -eu
+          docker run -d --name stt-local --read-only --tmpfs /tmp:size=256m \
+            --cap-drop ALL --security-opt no-new-privileges voxen-stt-local:scan
+          for i in $(seq 1 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' stt-local)
+            [ "$status" = healthy ] && exit 0
+            sleep 3
+          done
+          docker logs stt-local
+          exit 1
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: voxen-stt-local:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+          scanners: vuln,misconfig
