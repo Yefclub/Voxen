@@ -70,6 +70,8 @@ export type UntrustedPart = { text: string } | { image: Uint8Array; mime: string
 /** The subset of the AI client (lib/ai) the runner depends on. */
 export interface CaptureAi {
   isRoleConfigured(userId: string, role: AiRole): Promise<boolean>;
+  /** Usable entries in the role's fallback chain; 0 when not configured. */
+  chainLength(userId: string, role: AiRole): Promise<number>;
   generateStructured<T>(input: {
     userId: string;
     role: Exclude<AiRole, 'stt'>;
@@ -156,6 +158,9 @@ async function executeCapture(
   controller: AbortController,
 ): Promise<RunOutcome> {
   const signal = controller.signal;
+  // Every chain entry has its own budget (spec 221): a step gets budget × entries.
+  const aiSignal = async (role: AiRole, perEntryMs: number) =>
+    withTimeout(signal, perEntryMs * Math.max(1, await deps.ai.chainLength(job.userId, role)));
   let warnings = false;
   let cost = 0;
   const upload = (job.captureMeta.upload ?? null) as CaptureArtifact['upload'];
@@ -231,7 +236,7 @@ async function executeCapture(
         userId: job.userId,
         chunks: decodeAudio(audio),
         language: artifact.language ?? undefined,
-        signal: withTimeout(signal, STEP_TIMEOUT_MS.stt),
+        signal: await aiSignal('stt', STEP_TIMEOUT_MS.stt),
       });
       cost += stt.costUsd ?? 0;
       artifact = {
@@ -275,7 +280,7 @@ async function executeCapture(
           untrusted: parts,
           schema: VisionSchema,
           maxOutputTokens: 1_200,
-          signal: withTimeout(signal, STEP_TIMEOUT_MS.model),
+          signal: await aiSignal('vision', STEP_TIMEOUT_MS.model),
         });
         cost += vision.costUsd ?? 0;
         artifact = {
@@ -318,7 +323,7 @@ async function executeCapture(
       untrusted: [{ text: sourceBlock(artifact, clamped.text, clamped.truncated) }],
       schema: InterpretationSchema,
       maxOutputTokens: 2_000,
-      signal: withTimeout(signal, STEP_TIMEOUT_MS.model),
+      signal: await aiSignal('standard', STEP_TIMEOUT_MS.model),
     });
     cost += result.costUsd ?? 0;
     modelRef = result.modelRef;

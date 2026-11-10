@@ -24,6 +24,9 @@ Owner decisions (closed):
   is spent then), and descriptions become extra context.
 - G5. Comments: the top 50 comments by relevance (likes, then recency) are
   extracted where the platform exposes them without login.
+- G6. Reasoning is enabled on every provider (decision of 2026-11-10): each
+  text role has a reasoning effort `off | low | medium | high`, default
+  `medium`. Replaces spec 220's "lowest reasoning each provider supports".
 
 ## Spec 220 clauses replaced
 
@@ -33,7 +36,8 @@ endpoint from `STT_LOCAL_URL`; "STT only when no usable text exists" → G4;
 the vision gate (text below 1,500 chars) → still applies to thumbnails and
 post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
 `LLM_QUOTA` failing the job → now a warning; "local models" in out of scope
-→ only local text/vision models stay out.
+→ only local text/vision models stay out; the lowest-reasoning call options
+→ G6 (per-role effort, default `medium`).
 
 ## Requirements
 
@@ -93,6 +97,28 @@ post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
 - An STT fallback restarts the whole audio with the next entry (no mixed
   transcripts).
 - The runner step budgets become per-entry budget × chain length.
+
+### Reasoning effort
+
+- Each text role (`fast`, `standard`, `vision`) shall store a reasoning
+  effort `off | low | medium | high` with its chain in `ai_model_chains`
+  (`{ chains, reasoning }`); a missing or invalid value reads as `medium`.
+  STT has no reasoning. `GET /api/account/ai` returns `reasoning`, `PUT
+/api/account/ai/roles` accepts it, and `/conta/ia` shows a selector per text
+  role noting that more effort costs more and takes longer.
+- When a text call runs, the system shall send the role's effort through each
+  provider's own option: OpenAI and xAI `reasoningEffort`, Anthropic adaptive
+  thinking with `effort`, Gemini `thinkingLevel`, OpenRouter
+  `reasoning.effort` (keeping `require_parameters` and
+  `data_collection: 'deny'`). `off` sends the provider's minimum (`none`,
+  disabled thinking or the model's lowest level). Temperature is never sent.
+- Catalog models carry a `reasoning` flag; a model flagged `false` gets no
+  reasoning option. If a provider finds no endpoint for the requested
+  reasoning, then the entry fails and the chain moves on.
+- Because reasoning tokens count as output, the call's output budget shall be
+  the requested tokens plus 2,000 (`low`), 6,000 (`medium`) or 16,000
+  (`high`), capped by the model's maximum output in the catalog; reasoning
+  tokens are priced as output tokens.
 
 ### Local STT sidecar
 
@@ -189,6 +215,10 @@ login; X posts return no comments).
 - [ ] Vision never falls back to a non-vision model; `standard` uses `fast`
       only when its own chain is empty.
 - [ ] A legacy `ai_model_roles` value is read as a chain and left unchanged.
+- [ ] With no stored effort every text call reasons at `medium`; setting a
+      role to `off` or `high` changes the provider request accordingly, raises
+      the output budget by the allowance, and the cost includes reasoning
+      tokens.
 - [ ] A TikTok with a description is transcribed when an STT chain exists, and
       its description appears under `## Descrição`.
 - [ ] STT failing on every entry with a description present publishes with

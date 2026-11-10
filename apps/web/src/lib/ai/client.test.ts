@@ -25,11 +25,13 @@ const KEYS: Record<AiProvider, string> = {
   anthropic: 'sk-ant-api03-anthropicTESTKEY1234567890',
   openrouter: 'sk-or-v1-openrouterTESTKEY1234567890',
   xai: 'xai-xaiTESTKEY1234567890abcdef',
+  google: 'AIzaSyGoogleTESTKEY1234567890abcdefghi',
 };
 
 function deps(roles: ModelRoles, extra: Partial<AiClientDependencies> = {}): AiClientDependencies {
   return {
     getRoles: async () => roles,
+    getReasoning: async () => ({ fast: 'medium', standard: 'medium', vision: 'medium' }),
     getKey: async (_userId, provider) => KEYS[provider],
     ...extra,
   };
@@ -57,7 +59,7 @@ function jsonModel(texts: string[]): MockLanguageModelV4 {
 }
 
 const Summary = z.object({ title: z.string() });
-const haikuRoles: ModelRoles = { standard: { provider: 'anthropic', model: 'claude-haiku-5-5' } };
+const haikuRoles: ModelRoles = { standard: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }] };
 
 type CapturedRequest = { url: string; body: Record<string, unknown>; headers: Headers };
 
@@ -82,9 +84,11 @@ describe('resolveRole', () => {
   });
 
   test('standard falls back to fast and fast falls back to standard', async () => {
-    const fastOnly = createAiClient(deps({ fast: { provider: 'openai', model: 'gpt-6-luna' } }));
+    const fastOnly = createAiClient(deps({ fast: [{ provider: 'openai', model: 'gpt-6-luna' }] }));
     expect((await fastOnly.resolveRole(USER, 'standard')).model).toBe('gpt-6-luna');
-    const standardOnly = createAiClient(deps({ standard: { provider: 'xai', model: 'grok-4.3' } }));
+    const standardOnly = createAiClient(
+      deps({ standard: [{ provider: 'xai', model: 'grok-4.3' }] }),
+    );
     expect((await standardOnly.resolveRole(USER, 'fast')).model).toBe('grok-4.3');
   });
 
@@ -118,7 +122,7 @@ describe('resolveRole', () => {
 });
 
 describe('generateStructured', () => {
-  test('wraps untrusted text, sends no tools, lowest reasoning, and computes cost', async () => {
+  test('wraps untrusted text, sends no tools, the role reasoning effort, and computes cost', async () => {
     const model = jsonModel(['{"title":"Ok"}']);
     const client = createAiClient(deps(haikuRoles, { languageModel: () => model }));
     const result = await client.generateStructured({
@@ -138,8 +142,12 @@ describe('generateStructured', () => {
 
     const call = model.doGenerateCalls[0]!;
     expect(call.tools ?? []).toHaveLength(0);
-    expect(call.reasoning).toBe('none');
-    expect(call.maxOutputTokens).toBe(800);
+    expect(call.providerOptions?.anthropic).toEqual({
+      thinking: { type: 'adaptive', display: 'omitted' },
+      effort: 'medium',
+    });
+    // 800 requested + the 6k medium reasoning allowance.
+    expect(call.maxOutputTokens).toBe(6_800);
     expect('temperature' in call && call.temperature !== undefined).toBe(false);
     const system = call.prompt.find((message) => message.role === 'system');
     expect(JSON.stringify(system)).toContain(UNTRUSTED_CONTENT_NOTICE);
@@ -184,7 +192,7 @@ describe('generateStructured', () => {
   test('rejects images for a model without vision', async () => {
     const client = createAiClient(
       deps(
-        { standard: { provider: 'openai', model: 'gpt-6-luna' } },
+        { standard: [{ provider: 'openai', model: 'gpt-6-luna' }] },
         { languageModel: () => jsonModel(['{"title":"x"}']) },
       ),
     );
@@ -212,7 +220,7 @@ describe('generateStructured', () => {
     const captured: CapturedRequest[] = [];
     const client = createAiClient(
       deps(
-        { standard: { provider: 'openai', model: 'gpt-6-luna' } },
+        { standard: [{ provider: 'openai', model: 'gpt-6-luna' }] },
         {
           fetch: failingFetch(
             401,
@@ -246,7 +254,7 @@ describe('generateStructured', () => {
     const captured: CapturedRequest[] = [];
     const client = createAiClient(
       deps(
-        { standard: { provider: 'xai', model: 'grok-4.3' } },
+        { standard: [{ provider: 'xai', model: 'grok-4.3' }] },
         {
           fetch: failingFetch(
             400,
@@ -277,7 +285,7 @@ describe('generateStructured', () => {
     const captured: CapturedRequest[] = [];
     const client = createAiClient(
       deps(
-        { fast: { provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash' } },
+        { fast: [{ provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash' }] },
         { fetch: failingFetch(402, '{"error":{"message":"Insufficient credits"}}', captured) },
       ),
     );
@@ -295,7 +303,7 @@ describe('generateStructured', () => {
     expect(captured[0]!.url).toBe('https://openrouter.ai/api/v1/chat/completions');
     expect(body.model).toBe('deepseek/deepseek-v4.1-flash');
     expect(body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
-    expect(body.reasoning).toBeUndefined();
+    expect(body.reasoning).toEqual({ effort: 'medium', exclude: true });
     expect(body.plugins).toBeUndefined();
     expect(body.tools).toBeUndefined();
     expect(body.temperature).toBeUndefined();
@@ -386,7 +394,7 @@ describe('cost math', () => {
 });
 
 describe('transcribeAudio', () => {
-  const sttRoles: ModelRoles = { stt: { provider: 'openai', model: 'gpt-transcribe' } };
+  const sttRoles: ModelRoles = { stt: [{ provider: 'openai', model: 'gpt-transcribe' }] };
 
   test('merges chunk transcripts with absolute offsets and prices the total duration', async () => {
     let call = 0;
@@ -441,7 +449,7 @@ describe('transcribeAudio', () => {
     }) as typeof fetch;
     const client = createAiClient(
       deps(
-        { stt: { provider: 'openrouter', model: 'openai/whisper-large-v3-turbo' } },
+        { stt: [{ provider: 'openrouter', model: 'openai/whisper-large-v3-turbo' }] },
         { fetch: fakeFetch },
       ),
     );
@@ -464,7 +472,7 @@ describe('transcribeAudio', () => {
   test('maps an OpenRouter STT 401 to LLM_AUTH without echoing the key', async () => {
     const client = createAiClient(
       deps(
-        { stt: { provider: 'openrouter', model: 'openai/whisper-large-v3-turbo' } },
+        { stt: [{ provider: 'openrouter', model: 'openai/whisper-large-v3-turbo' }] },
         { fetch: failingFetch(401, `{"error":"bad key ${KEYS.openrouter}"}`, []) },
       ),
     );

@@ -121,8 +121,8 @@ yt-dlp, Deno, ffmpeg/ffprobe, Trafilatura, and the Smokescreen egress proxy.
   prepared-content ingestion keep working; captures end with
   `WORKER_UNAVAILABLE` after their retries.
 - AI interpretation and speech-to-text use the key each user adds under
-  **Account → AI providers** (`/conta/ia`): OpenAI, Anthropic, OpenRouter, or
-  xAI. Nothing provider-related goes into `.env`.
+  **Account → AI providers** (`/conta/ia`): OpenAI, Anthropic, OpenRouter, xAI,
+  or Google Gemini. Nothing provider-related goes into `.env`.
 - The worker image ships an unmodified LGPL ffmpeg/ffprobe build (BtbN
   `linux64-lgpl`) used only as a separate binary; it is never linked into
   Voxen code. Every other dependency is MIT, Apache-2.0, BSD, ISC, or

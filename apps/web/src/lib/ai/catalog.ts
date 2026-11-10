@@ -4,16 +4,29 @@
 // Static, reviewed list of the models Voxen offers per provider and role.
 // Users pick from this list only; free-form model ids are rejected. Every id
 // and price below was checked against the provider source cited above each
-// block on 2026-11-09. Prices are USD: text per 1M tokens, STT per minute.
+// block on 2026-11-09 (Google: 2026-11-10). Prices are USD: text per 1M tokens, STT per minute.
 // They feed cost *estimates* only; the provider invoice is authoritative.
+// `reasoning` and `maxOutputTokens` of text models come from each model's
+// `supported_parameters` and `top_provider.max_completion_tokens` at
+// https://openrouter.ai/api/v1/models (2026-11-10), which lists the same models.
 // ============================================================================
 
-export const AI_PROVIDERS = ['openai', 'anthropic', 'openrouter', 'xai'] as const;
+export const AI_PROVIDERS = ['openai', 'anthropic', 'openrouter', 'xai', 'google'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
 export const AI_ROLES = ['fast', 'standard', 'vision', 'stt'] as const;
 export type AiRole = (typeof AI_ROLES)[number];
 export type AiTextRole = Exclude<AiRole, 'stt'>;
+export const AI_TEXT_ROLES = [
+  'fast',
+  'standard',
+  'vision',
+] as const satisfies readonly AiTextRole[];
+
+/** Per-role reasoning effort (spec 221); speech-to-text has none. */
+export const REASONING_EFFORTS = ['off', 'low', 'medium', 'high'] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'medium';
 
 export interface TextPricing {
   kind: 'tokens';
@@ -26,6 +39,8 @@ export interface TextPricing {
 export interface SttPricing {
   kind: 'minutes';
   perMinute: number;
+  /** Token rates, preferred when the provider reports token usage. */
+  tokens?: { inputPerMTok: number; outputPerMTok: number };
 }
 
 export interface CatalogModel {
@@ -35,6 +50,10 @@ export interface CatalogModel {
   vision: boolean;
   /** Context window in tokens; null for speech-to-text models. */
   contextWindow: number | null;
+  /** Accepts a reasoning effort; false means no reasoning field is ever sent. */
+  reasoning: boolean;
+  /** Largest output (reasoning included) the model accepts; null for STT. */
+  maxOutputTokens: number | null;
   pricing: TextPricing | SttPricing;
 }
 
@@ -57,6 +76,8 @@ const ANTHROPIC: ProviderCatalog = {
       roles: ['fast', 'standard', 'vision'],
       vision: true,
       contextWindow: 1_000_000,
+      reasoning: true,
+      maxOutputTokens: 128_000,
       pricing: {
         kind: 'tokens',
         inputPerMTok: 0.1,
@@ -70,6 +91,8 @@ const ANTHROPIC: ProviderCatalog = {
       roles: ['standard', 'vision'],
       vision: true,
       contextWindow: 1_000_000,
+      reasoning: true,
+      maxOutputTokens: 128_000,
       pricing: { kind: 'tokens', inputPerMTok: 2, outputPerMTok: 10 },
     },
   ],
@@ -89,6 +112,8 @@ const OPENAI: ProviderCatalog = {
       roles: ['fast', 'standard', 'vision'],
       vision: true,
       contextWindow: 1_050_000,
+      reasoning: true,
+      maxOutputTokens: 128_000,
       pricing: {
         kind: 'tokens',
         inputPerMTok: 0.1,
@@ -102,6 +127,8 @@ const OPENAI: ProviderCatalog = {
       roles: ['standard', 'vision'],
       vision: true,
       contextWindow: 1_050_000,
+      reasoning: true,
+      maxOutputTokens: 128_000,
       pricing: {
         kind: 'tokens',
         inputPerMTok: 1,
@@ -115,6 +142,8 @@ const OPENAI: ProviderCatalog = {
       roles: ['stt'],
       vision: false,
       contextWindow: null,
+      reasoning: false,
+      maxOutputTokens: null,
       pricing: { kind: 'minutes', perMinute: 0.0045 },
     },
   ],
@@ -139,6 +168,8 @@ const XAI: ProviderCatalog = {
       roles: ['standard', 'vision'],
       vision: true,
       contextWindow: 1_000_000,
+      reasoning: true,
+      maxOutputTokens: 900_000,
       pricing: {
         kind: 'tokens',
         inputPerMTok: 1.25,
@@ -152,6 +183,8 @@ const XAI: ProviderCatalog = {
       roles: ['stt'],
       vision: false,
       contextWindow: null,
+      reasoning: false,
+      maxOutputTokens: null,
       // $0.10 per hour on the REST endpoint.
       pricing: { kind: 'minutes', perMinute: 0.1 / 60 },
     },
@@ -172,6 +205,8 @@ const OPENROUTER: ProviderCatalog = {
       roles: ['fast', 'standard', 'vision'],
       vision: true,
       contextWindow: 1_000_000,
+      reasoning: true,
+      maxOutputTokens: 128_000,
       pricing: { kind: 'tokens', inputPerMTok: 0.1, outputPerMTok: 0.5 },
     },
     {
@@ -180,6 +215,8 @@ const OPENROUTER: ProviderCatalog = {
       roles: ['fast', 'standard', 'vision'],
       vision: true,
       contextWindow: 1_050_000,
+      reasoning: true,
+      maxOutputTokens: 128_000,
       pricing: { kind: 'tokens', inputPerMTok: 0.1, outputPerMTok: 0.5 },
     },
     {
@@ -188,6 +225,8 @@ const OPENROUTER: ProviderCatalog = {
       roles: ['fast', 'standard', 'vision'],
       vision: true,
       contextWindow: 1_048_576,
+      reasoning: true,
+      maxOutputTokens: 943_718,
       pricing: { kind: 'tokens', inputPerMTok: 0.051, outputPerMTok: 0.567 },
     },
     {
@@ -196,6 +235,8 @@ const OPENROUTER: ProviderCatalog = {
       roles: ['standard', 'vision'],
       vision: true,
       contextWindow: 1_000_000,
+      reasoning: true,
+      maxOutputTokens: 900_000,
       pricing: { kind: 'tokens', inputPerMTok: 1.25, outputPerMTok: 2.5 },
     },
     {
@@ -204,6 +245,8 @@ const OPENROUTER: ProviderCatalog = {
       roles: ['stt'],
       vision: false,
       contextWindow: null,
+      reasoning: false,
+      maxOutputTokens: null,
       pricing: { kind: 'minutes', perMinute: 0.0002 },
     },
     {
@@ -212,6 +255,8 @@ const OPENROUTER: ProviderCatalog = {
       roles: ['stt'],
       vision: false,
       contextWindow: null,
+      reasoning: false,
+      maxOutputTokens: null,
       pricing: { kind: 'minutes', perMinute: 0.0045 },
     },
   ],
@@ -223,11 +268,67 @@ const OPENROUTER: ProviderCatalog = {
   },
 };
 
+const GOOGLE: ProviderCatalog = {
+  // Sources: https://aistudio.google.com/docs/pricing (Standard paid tier)
+  //          https://aistudio.google.com/docs/models (ids, stability, 3.8 Flash recommended)
+  //          https://aistudio.google.com/docs/models/gemini-3.5-flash-lite (context, inputs)
+  //          https://aistudio.google.com/docs/models/gemini-3.8-flash (context, inputs)
+  //          https://aistudio.google.com/docs/models/gemini-3.5-transcribe (audio up to 1 h)
+  provider: 'google',
+  label: 'Google Gemini',
+  models: [
+    {
+      id: 'gemini-3.5-flash-lite',
+      label: 'Gemini 3.5 Flash-Lite',
+      roles: ['fast', 'standard', 'vision'],
+      vision: true,
+      contextWindow: 1_048_576,
+      reasoning: true,
+      maxOutputTokens: 65_536,
+      pricing: { kind: 'tokens', inputPerMTok: 0.3, outputPerMTok: 2.5 },
+    },
+    {
+      id: 'gemini-3.8-flash',
+      label: 'Gemini 3.8 Flash',
+      roles: ['standard', 'vision'],
+      vision: true,
+      contextWindow: 1_048_576,
+      reasoning: true,
+      maxOutputTokens: 65_536,
+      // Google lists a rise to $1.50 / $7.50 from 2027-01-01.
+      pricing: { kind: 'tokens', inputPerMTok: 0.75, outputPerMTok: 3.75 },
+    },
+    {
+      id: 'gemini-3.5-transcribe',
+      label: 'Gemini 3.5 Transcribe',
+      roles: ['stt'],
+      vision: false,
+      contextWindow: null,
+      reasoning: false,
+      maxOutputTokens: null,
+      // $2 / 1M audio input tokens + $12 / 1M text output tokens; Google's
+      // per-minute equivalent is $0.003 + $0.002, used when usage is missing.
+      pricing: {
+        kind: 'minutes',
+        perMinute: 0.005,
+        tokens: { inputPerMTok: 2, outputPerMTok: 12 },
+      },
+    },
+  ],
+  defaults: {
+    fast: 'gemini-3.5-flash-lite',
+    standard: 'gemini-3.5-flash-lite',
+    vision: 'gemini-3.5-flash-lite',
+    stt: 'gemini-3.5-transcribe',
+  },
+};
+
 export const AI_CATALOG: Readonly<Record<AiProvider, ProviderCatalog>> = {
   openai: OPENAI,
   anthropic: ANTHROPIC,
   openrouter: OPENROUTER,
   xai: XAI,
+  google: GOOGLE,
 };
 
 export function isAiProvider(value: string): value is AiProvider {
@@ -265,11 +366,25 @@ export function estimateTextCostUsd(
   );
 }
 
-/** Estimated USD cost of transcribing `seconds` of audio; null when unknown. */
-export function estimateSttCostUsd(model: CatalogModel, seconds: number | null): number | null {
-  if (model.pricing.kind !== 'minutes' || seconds === null || !Number.isFinite(seconds)) {
-    return null;
+/**
+ * Estimated USD cost of transcribing `seconds` of audio; token usage is used
+ * instead when the provider reports it and the model has token rates. Null
+ * when neither is known.
+ */
+export function estimateSttCostUsd(
+  model: CatalogModel,
+  seconds: number | null,
+  usage?: { inputTokens: number; outputTokens: number } | null,
+): number | null {
+  if (model.pricing.kind !== 'minutes') return null;
+  const rates = model.pricing.tokens;
+  if (rates && usage) {
+    return roundUsd(
+      (usage.inputTokens * rates.inputPerMTok + usage.outputTokens * rates.outputPerMTok) /
+        1_000_000,
+    );
   }
+  if (seconds === null || !Number.isFinite(seconds)) return null;
   return roundUsd((Math.max(0, seconds) / 60) * model.pricing.perMinute);
 }
 

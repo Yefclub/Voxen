@@ -1,9 +1,11 @@
-// Speech-to-text transport for the AI client (spec 220): OpenAI and xAI via
-// the AI SDK transcription API, OpenRouter via its transcription endpoint.
+// Speech-to-text transport for the AI client (spec 220/221): OpenAI, xAI and
+// Gemini via the AI SDK transcription API, OpenRouter via its transcription
+// endpoint.
 
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createXai } from '@ai-sdk/xai';
-import { APICallError, transcribe, type TranscriptionModel } from 'ai';
+import { APICallError, transcribe, type JSONValue, type TranscriptionModel } from 'ai';
 import { z } from 'zod';
 import {
   PROVIDER_BASE_URLS,
@@ -26,6 +28,8 @@ export interface ChunkTranscript {
   segments: TranscriptSegment[];
   language: string | null;
   durationSec: number | null;
+  /** Token usage, when the provider reports it (Gemini). */
+  usage: { inputTokens: number; outputTokens: number } | null;
 }
 
 export function providerTranscriptionModel(
@@ -39,6 +43,8 @@ export function providerTranscriptionModel(
       return createOpenAI(options).transcription(resolved.model);
     case 'xai':
       return createXai(options).transcription(resolved.model);
+    case 'google':
+      return createGoogleGenerativeAI(options).transcription(resolved.model);
     default:
       throw new AiError('LLM_FAILED', 'This provider has no SDK transcription model.', {
         provider: resolved.provider,
@@ -53,14 +59,13 @@ export async function transcribeWithSdk(
   language: string | undefined,
   signal: AbortSignal,
 ): Promise<ChunkTranscript> {
-  const providerKey = resolved.provider === 'openai' ? 'openai' : 'xai';
   const result = await transcribe({
     model,
     audio: chunk.data,
     timestampGranularities: ['segment'],
     maxRetries: 1,
     abortSignal: signal,
-    ...(language ? { providerOptions: { [providerKey]: { language } } } : {}),
+    providerOptions: sttProviderOptions(resolved.provider, language),
   });
   const segments = sentenceSegments(
     result.segments.map((segment) => ({
@@ -75,7 +80,36 @@ export async function transcribeWithSdk(
     segments: segments.length > 0 ? segments : wholeChunkSegment(result.text, durationSec),
     language: result.language ?? null,
     durationSec,
+    usage: googleUsage(result.providerMetadata),
   };
+}
+
+function sttProviderOptions(
+  provider: ResolvedRole['provider'],
+  language: string | undefined,
+): Record<string, Record<string, JSONValue>> | undefined {
+  if (provider === 'google') {
+    // Gemini returns timings only as word annotations (verbatim mode); the
+    // words are merged into sentences below. Chunks are at most 20 minutes,
+    // under the 30-minute limit for word timestamps.
+    return {
+      google: { wordTimestamp: true, ...(language ? { languageCodes: [language] } : {}) },
+    };
+  }
+  return language ? { [provider]: { language } } : undefined;
+}
+
+const GoogleUsage = z.object({
+  total_input_tokens: z.number().nonnegative(),
+  total_output_tokens: z.number().nonnegative(),
+});
+
+function googleUsage(metadata: Record<string, unknown> | undefined): ChunkTranscript['usage'] {
+  const google = metadata?.google as { usage?: unknown } | undefined;
+  const parsed = GoogleUsage.safeParse(google?.usage);
+  return parsed.success
+    ? { inputTokens: parsed.data.total_input_tokens, outputTokens: parsed.data.total_output_tokens }
+    : null;
 }
 
 const OPENROUTER_MIME_FORMATS: Readonly<Record<string, string>> = {
@@ -169,6 +203,7 @@ export async function transcribeWithOpenRouter(
     segments: segments.length > 0 ? segments : wholeChunkSegment(parsed.data.text, durationSec),
     language: parsed.data.language ?? null,
     durationSec,
+    usage: null,
   };
 }
 

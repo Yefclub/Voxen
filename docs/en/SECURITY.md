@@ -80,7 +80,8 @@ master key.
   redirects, so a public URL that redirects inward fails with
   `BLOCKED_ADDRESS` and never reaches the internal address.
 - Model requests go only to the fixed endpoints of OpenAI, Anthropic,
-  OpenRouter, and xAI; users cannot set custom base URLs.
+  OpenRouter, xAI, and Google Gemini; users cannot set custom base URLs. The
+  Gemini key travels only in the `x-goog-api-key` header, never in a URL.
 - Prompt injection: interpretation runs with no tools and no web search under
   a strict output schema. Captured text and images are passed as untrusted
   data, and links and images are stripped from the generated summary, so a

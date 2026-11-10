@@ -96,7 +96,8 @@ ffmpeg/ffprobe, Trafilatura e o proxy de saída Smokescreen.
   continuam funcionando; as capturas terminam com `WORKER_UNAVAILABLE` depois
   das tentativas.
 - Interpretação e STT usam a chave que cada usuário cadastra em **Conta →
-  Provedores de IA** (`/conta/ia`): OpenAI, Anthropic, OpenRouter ou xAI. Nada
+  Provedores de IA** (`/conta/ia`): OpenAI, Anthropic, OpenRouter, xAI ou
+  Google Gemini. Nada
   de provedor vai para o `.env`.
 - A imagem do worker traz ffmpeg/ffprobe LGPL sem modificação (build BtbN
   `linux64-lgpl`), usado só como binário separado e nunca linkado ao código da

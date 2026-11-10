@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { AiProvider } from '../lib/ai/catalog';
 import type { ProbeProviderKey, ProbeResult } from '../lib/ai/probe';
 import { db } from '../lib/db';
+import { getUserSetting, setUserSetting } from '../lib/settings';
 import { getRedisPublisher } from '../lib/redis';
 import { accountRoutes } from './account';
 import { registerAccountAiRoutes } from './account-ai';
@@ -14,6 +15,7 @@ const KEYS = {
   anthropic: 'sk-ant-api03-ownerANTHROPICsecret-0001',
   openai: 'sk-proj-ownerOPENAIsecret-000000002',
   xai: 'xai-ownerXAIsecretvalue-0000000003',
+  google: 'AIzaSyOwnerGOOGLEsecretValue-000000006',
   rejected: 'sk-ant-api03-REJECTEDsecretvalue-0004',
   foreign: 'sk-ant-api03-foreignUSERsecret-00005',
 } as const;
@@ -100,19 +102,20 @@ describeIfServices('account AI provider API', () => {
     }
   });
 
-  test('starts with no providers, no roles and the curated catalog', async () => {
+  test('starts with no providers, no chains and the curated catalog', async () => {
     const { status, json } = await call(owner, 'GET', '/ai');
     expect(status).toBe(200);
     const providers = json.providers as Array<{ provider: string; configured: boolean }>;
     expect(providers.map((item) => item.provider).sort()).toEqual([
       'anthropic',
+      'google',
       'openai',
       'openrouter',
       'xai',
     ]);
     expect(providers.every((item) => !item.configured)).toBe(true);
-    expect(json.roles).toEqual({});
-    expect((json.catalog as unknown[]).length).toBe(4);
+    expect(json.chains).toEqual({});
+    expect((json.catalog as unknown[]).length).toBe(5);
   });
 
   test('rejects unknown providers and malformed keys', async () => {
@@ -130,7 +133,7 @@ describeIfServices('account AI provider API', () => {
     expect((await call(owner, 'DELETE', '/ai/providers/gemini')).status).toBe(400);
   });
 
-  test('saves a valid key encrypted, returns only last4, and auto-assigns roles', async () => {
+  test('saves a valid key encrypted, returns only last4, and fills the empty chains', async () => {
     const { status, json } = await call(owner, 'PUT', '/ai/providers/anthropic', {
       apiKey: `  ${KEYS.anthropic}  `,
     });
@@ -142,10 +145,10 @@ describeIfServices('account AI provider API', () => {
       last4: KEYS.anthropic.slice(-4),
       status: 'valid',
     });
-    expect(json.roles).toEqual({
-      fast: { provider: 'anthropic', model: 'claude-haiku-5-5' },
-      standard: { provider: 'anthropic', model: 'claude-haiku-5-5' },
-      vision: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+    expect(json.chains).toEqual({
+      fast: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
+      standard: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
+      vision: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
     });
     const row = await db.setting.findFirst({
       where: { scope: 'USER', userId: ownerId, key: 'ai_provider_key:anthropic' },
@@ -154,12 +157,23 @@ describeIfServices('account AI provider API', () => {
     expect(row!.valueEnc).not.toContain(KEYS.anthropic);
   });
 
-  test('a second provider only fills roles that are still empty', async () => {
+  test('a second provider only fills chains that are still empty', async () => {
     const { json } = await call(owner, 'PUT', '/ai/providers/openai', { apiKey: KEYS.openai });
-    expect(json.roles).toMatchObject({
-      standard: { provider: 'anthropic', model: 'claude-haiku-5-5' },
-      stt: { provider: 'openai', model: 'gpt-transcribe' },
+    expect(json.chains).toEqual({
+      fast: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
+      standard: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
+      vision: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
+      stt: [{ provider: 'openai', model: 'gpt-transcribe' }],
     });
+  });
+
+  test('a Gemini key never joins a non-empty chain on its own', async () => {
+    const { status, json } = await call(owner, 'PUT', '/ai/providers/google', {
+      apiKey: KEYS.google,
+    });
+    expect(status).toBe(200);
+    expect(json.provider).toMatchObject({ provider: 'google', status: 'valid' });
+    expect(JSON.stringify(json.chains)).not.toContain('"google"');
   });
 
   test('does not store a key the provider rejects', async () => {
@@ -177,7 +191,7 @@ describeIfServices('account AI provider API', () => {
     expect(status).toBe(200);
     expect(json.result).toBe('unknown');
     expect(json.provider).toMatchObject({ status: 'unknown', error: 'PROBE_NETWORK' });
-    expect(JSON.stringify(json.roles)).not.toContain('"xai"');
+    expect(JSON.stringify(json.chains)).not.toContain('"xai"');
   });
 
   test('re-probes a stored key and 404s when none exists', async () => {
@@ -187,7 +201,7 @@ describeIfServices('account AI provider API', () => {
     expect((await call(owner, 'POST', '/ai/providers/openrouter/test')).status).toBe(404);
   });
 
-  test('validates role assignments against the catalog and configured providers', async () => {
+  test('validates chains against the catalog, configured providers, duplicates and length', async () => {
     const unknownModel = await call(owner, 'PUT', '/ai/roles', {
       standard: { provider: 'openai', model: 'gpt-0-imaginary' },
     });
@@ -207,17 +221,108 @@ describeIfServices('account AI provider API', () => {
     expect(JSON.stringify(unconfigured.json.details)).toContain('PROVIDER_NOT_CONFIGURED');
     const unknownField = await call(owner, 'PUT', '/ai/roles', { userId: foreignId });
     expect(unknownField.status).toBe(400);
+    const extraEntryField = await call(owner, 'PUT', '/ai/roles', {
+      standard: [{ provider: 'openai', model: 'gpt-6-luna', baseURL: 'https://evil.example' }],
+    });
+    expect(extraEntryField.status).toBe(400);
+    const duplicate = await call(owner, 'PUT', '/ai/roles', {
+      standard: [
+        { provider: 'openai', model: 'gpt-6-luna' },
+        { provider: 'openai', model: 'gpt-6-luna' },
+      ],
+    });
+    expect(duplicate.status).toBe(400);
+    expect(JSON.stringify(duplicate.json.details)).toContain('DUPLICATE_ENTRY');
+    const tooLong = await call(owner, 'PUT', '/ai/roles', {
+      standard: [
+        { provider: 'openai', model: 'gpt-6-luna' },
+        { provider: 'openai', model: 'gpt-6.1-terra' },
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+        { provider: 'anthropic', model: 'claude-sonnet-5-5' },
+        { provider: 'google', model: 'gemini-3.8-flash' },
+      ],
+    });
+    expect(tooLong.status).toBe(400);
+    const badChain = await call(owner, 'PUT', '/ai/roles', {
+      standard: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }, 'gpt-6-luna'],
+    });
+    expect(badChain.status).toBe(400);
+    const geminiStt = await call(owner, 'PUT', '/ai/roles', {
+      vision: [{ provider: 'google', model: 'gemini-3.5-transcribe' }],
+    });
+    expect(geminiStt.status).toBe(400);
+
+    // Spec 220 single-entry shape is still accepted and stored as a chain.
+    const legacyShape = await call(owner, 'PUT', '/ai/roles', {
+      fast: { provider: 'openai', model: 'gpt-6-luna' },
+    });
+    expect(legacyShape.status).toBe(200);
+    expect(legacyShape.json.chains).toEqual({
+      fast: [{ provider: 'openai', model: 'gpt-6-luna' }],
+    });
 
     const saved = await call(owner, 'PUT', '/ai/roles', {
-      fast: { provider: 'openai', model: 'gpt-6-luna' },
-      standard: { provider: 'openai', model: 'gpt-6.1-terra' },
-      vision: { provider: 'anthropic', model: 'claude-haiku-5-5' },
-      stt: { provider: 'xai', model: 'grok-voice-transcribe-2.0' },
+      fast: [{ provider: 'openai', model: 'gpt-6-luna' }],
+      standard: [
+        { provider: 'openai', model: 'gpt-6.1-terra' },
+        { provider: 'google', model: 'gemini-3.8-flash' },
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+      ],
+      vision: [
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+        { provider: 'google', model: 'gemini-3.5-flash-lite' },
+      ],
+      stt: [
+        { provider: 'xai', model: 'grok-voice-transcribe-2.0' },
+        { provider: 'google', model: 'gemini-3.5-transcribe' },
+      ],
     });
     expect(saved.status).toBe(200);
-    expect(saved.json.roles).toMatchObject({
-      standard: { provider: 'openai', model: 'gpt-6.1-terra' },
-      stt: { provider: 'xai', model: 'grok-voice-transcribe-2.0' },
+    expect(saved.json.chains).toMatchObject({
+      standard: [
+        { provider: 'openai', model: 'gpt-6.1-terra' },
+        { provider: 'google', model: 'gemini-3.8-flash' },
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+      ],
+      stt: [
+        { provider: 'xai', model: 'grok-voice-transcribe-2.0' },
+        { provider: 'google', model: 'gemini-3.5-transcribe' },
+      ],
+    });
+    expect((await call(owner, 'GET', '/ai')).json.chains).toEqual(saved.json.chains);
+  });
+
+  test('stores a reasoning effort per text role, default medium, kept across chain edits', async () => {
+    const initial = await call(owner, 'GET', '/ai');
+    expect(initial.json.reasoning).toEqual({
+      fast: 'medium',
+      standard: 'medium',
+      vision: 'medium',
+    });
+
+    const invalidEffort = await call(owner, 'PUT', '/ai/roles', {
+      reasoning: { standard: 'extreme' },
+    });
+    expect(invalidEffort.status).toBe(400);
+    const sttEffort = await call(owner, 'PUT', '/ai/roles', { reasoning: { stt: 'high' } });
+    expect(sttEffort.status).toBe(400);
+
+    const chains = initial.json.chains as Json;
+    const saved = await call(owner, 'PUT', '/ai/roles', {
+      ...chains,
+      reasoning: { fast: 'off', vision: 'high' },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.json.reasoning).toEqual({ fast: 'off', standard: 'medium', vision: 'high' });
+    expect(saved.json.chains).toEqual(chains);
+
+    // A later chain-only save keeps the stored efforts.
+    const chainOnly = await call(owner, 'PUT', '/ai/roles', chains);
+    expect(chainOnly.json.reasoning).toEqual({ fast: 'off', standard: 'medium', vision: 'high' });
+    expect((await call(owner, 'GET', '/ai')).json.reasoning).toEqual({
+      fast: 'off',
+      standard: 'medium',
+      vision: 'high',
     });
   });
 
@@ -225,13 +330,13 @@ describeIfServices('account AI provider API', () => {
     const read = await call(foreign, 'GET', '/ai');
     const providers = read.json.providers as Array<{ configured: boolean }>;
     expect(providers.every((item) => !item.configured)).toBe(true);
-    expect(read.json.roles).toEqual({});
+    expect(read.json.chains).toEqual({});
 
     expect((await call(foreign, 'POST', '/ai/providers/anthropic/test')).status).toBe(404);
     expect(
       (
         await call(foreign, 'PUT', '/ai/roles', {
-          standard: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+          standard: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
         })
       ).status,
     ).toBe(400);
@@ -243,18 +348,31 @@ describeIfServices('account AI provider API', () => {
       (item) => item.provider === 'anthropic',
     );
     expect(anthropic).toMatchObject({ configured: true, last4: KEYS.anthropic.slice(-4) });
-    expect(ownerView.json.roles).toMatchObject({
-      vision: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+    expect(ownerView.json.chains).toMatchObject({
+      vision: [
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+        { provider: 'google', model: 'gemini-3.5-flash-lite' },
+      ],
     });
   });
 
-  test('removing a key clears its status and every role that used it', async () => {
+  test('removing a key removes only its entries and keeps the order of the rest', async () => {
     const removed = await call(owner, 'DELETE', '/ai/providers/openai');
     expect(removed.status).toBe(200);
     expect(removed.json.provider).toMatchObject({ configured: false, last4: null, status: null });
-    expect(removed.json.roles).toEqual({
-      vision: { provider: 'anthropic', model: 'claude-haiku-5-5' },
-      stt: { provider: 'xai', model: 'grok-voice-transcribe-2.0' },
+    expect(removed.json.chains).toEqual({
+      standard: [
+        { provider: 'google', model: 'gemini-3.8-flash' },
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+      ],
+      vision: [
+        { provider: 'anthropic', model: 'claude-haiku-5-5' },
+        { provider: 'google', model: 'gemini-3.5-flash-lite' },
+      ],
+      stt: [
+        { provider: 'xai', model: 'grok-voice-transcribe-2.0' },
+        { provider: 'google', model: 'gemini-3.5-transcribe' },
+      ],
     });
     const rows = await db.setting.findMany({
       where: { scope: 'USER', userId: ownerId, key: { startsWith: 'ai_provider_' } },
@@ -262,10 +380,41 @@ describeIfServices('account AI provider API', () => {
     });
     expect(rows.map((row) => row.key).sort()).toEqual([
       'ai_provider_key:anthropic',
+      'ai_provider_key:google',
       'ai_provider_key:xai',
       'ai_provider_meta:anthropic',
+      'ai_provider_meta:google',
       'ai_provider_meta:xai',
     ]);
+  });
+
+  test('reads a legacy ai_model_roles value as chains and never rewrites it', async () => {
+    const legacy = JSON.stringify({
+      standard: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+    });
+    // Start from a user that only has the spec 220 value.
+    await db.setting.deleteMany({
+      where: { scope: 'USER', userId: foreignId, key: 'ai_model_chains' },
+    });
+    await setUserSetting(foreignId, 'ai_model_roles', legacy);
+    await call(foreign, 'PUT', '/ai/providers/anthropic', { apiKey: KEYS.foreign });
+    const read = await call(foreign, 'GET', '/ai');
+    expect(read.json.chains).toMatchObject({
+      standard: [{ provider: 'anthropic', model: 'claude-haiku-5-5' }],
+    });
+    // Removing the provider writes ai_model_chains (now empty) and leaves the legacy value.
+    await call(foreign, 'DELETE', '/ai/providers/anthropic');
+    expect((await call(foreign, 'GET', '/ai')).json.chains).toEqual({});
+    const rows = await db.setting.findMany({
+      where: {
+        scope: 'USER',
+        userId: foreignId,
+        key: { in: ['ai_model_roles', 'ai_model_chains'] },
+      },
+      select: { key: true },
+    });
+    expect(rows.map((row) => row.key).sort()).toEqual(['ai_model_chains', 'ai_model_roles']);
+    expect(await getUserSetting(foreignId, 'ai_model_roles')).toBe(legacy);
   });
 
   test('no response ever contained a submitted key', () => {

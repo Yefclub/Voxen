@@ -1,10 +1,16 @@
 // ============================================================================
-// Per-user AI provider credentials and model roles (spec 220)
+// Per-user AI provider credentials, model chains and reasoning (spec 220/221)
 // ============================================================================
 // Storage (Setting, scope USER, encrypted with MASTER_KEY):
 //   ai_provider_key:<provider>   the API key — never leaves the server
 //   ai_provider_meta:<provider>  { last4, status, validatedAt, error }
-//   ai_model_roles               { fast?, standard?, vision?, stt? } → {provider, model}
+//   ai_model_chains              { chains: { fast?, standard?, vision?, stt? } →
+//                                  ordered [{provider, model}, …], first = primary,
+//                                  reasoning: { fast, standard, vision } →
+//                                  'off' | 'low' | 'medium' | 'high' } (spec 221)
+//   ai_model_roles               legacy spec 220 { role → {provider, model} }: read
+//                                as one-entry chains while ai_model_chains is
+//                                absent, never rewritten (a downgrade keeps it)
 // Every function takes the userId from the caller, which must derive it from
 // the session. Nothing here returns a stored key except `getProviderKey`,
 // which only the server-side AI client may use.
@@ -22,10 +28,15 @@ import {
 import {
   AI_PROVIDERS,
   AI_ROLES,
+  AI_TEXT_ROLES,
+  DEFAULT_REASONING_EFFORT,
   modelServesRole,
   providerDefaults,
+  REASONING_EFFORTS,
   type AiProvider,
   type AiRole,
+  type AiTextRole,
+  type ReasoningEffort,
 } from './catalog';
 import type { ProbeProviderKey, ProbeStatus } from './probe';
 
@@ -45,16 +56,21 @@ export interface ProviderStatus {
   error: string | null;
 }
 
-export interface RoleAssignment {
+export interface RoleEntry {
   provider: AiProvider;
   model: string;
 }
 
-export type ModelRoles = Partial<Record<AiRole, RoleAssignment>>;
+/** Ordered fallback chain per role; the first entry is the primary. */
+export type ModelRoles = Partial<Record<AiRole, RoleEntry[]>>;
+
+/** Longest chain a role may hold. */
+export const MAX_CHAIN_LENGTH = 4;
 
 const keySetting = (provider: AiProvider): UserSettingKey => `ai_provider_key:${provider}`;
 const metaSetting = (provider: AiProvider): UserSettingKey => `ai_provider_meta:${provider}`;
-const ROLES_SETTING: UserSettingKey = 'ai_model_roles';
+const CHAINS_SETTING: UserSettingKey = 'ai_model_chains';
+const LEGACY_ROLES_SETTING: UserSettingKey = 'ai_model_roles';
 
 const MetaSchema = z.object({
   last4: z.string().max(4),
@@ -63,7 +79,7 @@ const MetaSchema = z.object({
   error: z.string().max(100).nullable(),
 });
 
-const AssignmentSchema = z.object({
+const EntrySchema = z.object({
   provider: z.enum(AI_PROVIDERS),
   model: z.string().min(1).max(120),
 });
@@ -78,22 +94,78 @@ function parseMeta(raw: string | null): ProviderMeta | null {
   }
 }
 
-/** Parses stored roles, dropping entries that no longer match the catalog. */
-export function parseModelRoles(raw: string | null): ModelRoles {
-  if (!raw) return {};
-  let value: unknown;
+const sameEntry = (a: RoleEntry, b: RoleEntry) => a.provider === b.provider && a.model === b.model;
+
+export type RoleReasoning = Record<AiTextRole, ReasoningEffort>;
+
+export interface ModelSettings {
+  chains: ModelRoles;
+  reasoning: RoleReasoning;
+}
+
+const defaultReasoning = (): RoleReasoning => ({
+  fast: DEFAULT_REASONING_EFFORT,
+  standard: DEFAULT_REASONING_EFFORT,
+  vision: DEFAULT_REASONING_EFFORT,
+});
+
+const EffortSchema = z.enum(REASONING_EFFORTS);
+
+/**
+ * Parses stored settings. The spec 221 shape is `{ chains, reasoning }`; a
+ * bare role map (the legacy spec 220 `ai_model_roles` value, one entry per
+ * role) is read as chains with the default reasoning effort.
+ */
+export function parseModelSettings(raw: string | null): ModelSettings {
+  let value: unknown = null;
   try {
-    value = JSON.parse(raw);
+    value = raw ? JSON.parse(raw) : null;
   } catch {
-    return {};
+    value = null;
   }
+  const record =
+    typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const hasChains = 'chains' in record;
+  const reasoning = defaultReasoning();
+  const storedReasoning = hasChains ? record.reasoning : undefined;
+  for (const role of AI_TEXT_ROLES) {
+    const parsed = EffortSchema.safeParse(
+      typeof storedReasoning === 'object' && storedReasoning !== null
+        ? (storedReasoning as Record<string, unknown>)[role]
+        : undefined,
+    );
+    if (parsed.success) reasoning[role] = parsed.data;
+  }
+  return { chains: parseChains(hasChains ? record.chains : record), reasoning };
+}
+
+export function parseModelRoles(raw: string | null): ModelRoles {
+  return parseModelSettings(raw).chains;
+}
+
+/**
+ * Parses role chains, dropping entries that no longer match the catalog,
+ * duplicates and anything past the chain limit. A single object per role
+ * (spec 220) is read as a one-entry chain.
+ */
+function parseChains(value: unknown): ModelRoles {
   if (typeof value !== 'object' || value === null) return {};
   const roles: ModelRoles = {};
   for (const role of AI_ROLES) {
-    const parsed = AssignmentSchema.safeParse((value as Record<string, unknown>)[role]);
-    if (parsed.success && modelServesRole(parsed.data.provider, parsed.data.model, role)) {
-      roles[role] = parsed.data;
+    const stored = (value as Record<string, unknown>)[role];
+    const candidates = Array.isArray(stored) ? stored : stored == null ? [] : [stored];
+    const chain: RoleEntry[] = [];
+    for (const candidate of candidates) {
+      const parsed = EntrySchema.safeParse(candidate);
+      if (!parsed.success || !modelServesRole(parsed.data.provider, parsed.data.model, role)) {
+        continue;
+      }
+      const entry = { provider: parsed.data.provider, model: parsed.data.model };
+      if (chain.length < MAX_CHAIN_LENGTH && !chain.some((item) => sameEntry(item, entry))) {
+        chain.push(entry);
+      }
     }
+    if (chain.length > 0) roles[role] = chain;
   }
   return roles;
 }
@@ -146,31 +218,47 @@ export async function getProviderKey(userId: string, provider: AiProvider): Prom
   return getUserSetting(userId, keySetting(provider));
 }
 
+export async function getModelSettings(userId: string): Promise<ModelSettings> {
+  const stored = await getUserSetting(userId, CHAINS_SETTING);
+  if (stored !== null) return parseModelSettings(stored);
+  return parseModelSettings(await getUserSetting(userId, LEGACY_ROLES_SETTING));
+}
+
 export async function getModelRoles(userId: string): Promise<ModelRoles> {
-  return parseModelRoles(await getUserSetting(userId, ROLES_SETTING));
+  return (await getModelSettings(userId)).chains;
 }
 
-async function writeModelRoles(userId: string, roles: ModelRoles): Promise<void> {
-  if (Object.keys(roles).length === 0) {
-    await deleteUserSettings(userId, [ROLES_SETTING]);
-    return;
-  }
-  await setUserSetting(userId, ROLES_SETTING, JSON.stringify(roles));
+export async function getRoleReasoning(userId: string): Promise<RoleReasoning> {
+  return (await getModelSettings(userId)).reasoning;
 }
 
-/** Fills roles that have no assignment with the provider's catalog defaults. */
+/** Always writes `ai_model_chains`, even when empty, so the legacy value stays shadowed. */
+async function writeModelSettings(userId: string, settings: ModelSettings): Promise<void> {
+  await setUserSetting(userId, CHAINS_SETTING, JSON.stringify(settings));
+}
+
+/**
+ * Gives every empty chain the provider's catalog default. Non-empty chains
+ * are never touched: adding a provider to an existing chain is the user's
+ * choice, so captured content never reaches a new provider (such as a free
+ * tier) unasked.
+ */
 async function assignDefaultRoles(userId: string, provider: AiProvider): Promise<void> {
-  const roles = await getModelRoles(userId);
+  const settings = await getModelSettings(userId);
+  const roles = settings.chains;
   const defaults = providerDefaults(provider);
   let changed = false;
   for (const role of AI_ROLES) {
     const model = defaults[role];
-    if (!roles[role] && model) {
-      roles[role] = { provider, model };
-      changed = true;
-    }
+    if (!model || (roles[role]?.length ?? 0) > 0) continue;
+    roles[role] = [{ provider, model }];
+    changed = true;
   }
-  if (changed) await writeModelRoles(userId, roles);
+  if (changed) await writeModelSettings(userId, settings);
+}
+
+async function previousStatus(userId: string, provider: AiProvider): Promise<ProbeStatus | null> {
+  return parseMeta(await getUserSetting(userId, metaSetting(provider)))?.status ?? null;
 }
 
 async function writeMeta(
@@ -201,6 +289,7 @@ export async function saveProviderKey(
   probe: ProbeProviderKey,
 ): Promise<SaveKeyOutcome> {
   const result = await probe(provider, apiKey);
+  const before = await previousStatus(userId, provider);
   if (result.status === 'invalid') {
     return {
       saved: false,
@@ -210,7 +299,9 @@ export async function saveProviderKey(
   }
   await setUserSetting(userId, keySetting(provider), apiKey);
   await writeMeta(userId, provider, apiKey, result);
-  if (result.status === 'valid') await assignDefaultRoles(userId, provider);
+  // Defaults fill empty chains only when the provider first becomes valid, so
+  // a re-test or key rotation never re-adds an entry the user removed.
+  if (result.status === 'valid' && before !== 'valid') await assignDefaultRoles(userId, provider);
   return { saved: true, result: result.status, status: await getProviderStatus(userId, provider) };
 }
 
@@ -222,51 +313,77 @@ export async function testProviderKey(
 ): Promise<ProviderStatus | null> {
   const apiKey = await getProviderKey(userId, provider);
   if (!apiKey) return null;
+  const before = await previousStatus(userId, provider);
   const result = await probe(provider, apiKey);
   await writeMeta(userId, provider, apiKey, result);
-  if (result.status === 'valid') await assignDefaultRoles(userId, provider);
+  if (result.status === 'valid' && before !== 'valid') await assignDefaultRoles(userId, provider);
   return getProviderStatus(userId, provider);
 }
 
-/** Deletes the key and its status, and clears every role that used it. */
+/** Deletes the key and its status, and removes the provider from every chain. */
 export async function removeProviderKey(userId: string, provider: AiProvider): Promise<void> {
   await deleteUserSettings(userId, [keySetting(provider), metaSetting(provider)]);
-  const roles = await getModelRoles(userId);
+  const settings = await getModelSettings(userId);
+  const roles = settings.chains;
   let changed = false;
   for (const role of AI_ROLES) {
-    if (roles[role]?.provider === provider) {
-      delete roles[role];
-      changed = true;
-    }
+    const chain = roles[role];
+    if (!chain?.some((entry) => entry.provider === provider)) continue;
+    const kept = chain.filter((entry) => entry.provider !== provider);
+    if (kept.length > 0) roles[role] = kept;
+    else delete roles[role];
+    changed = true;
   }
-  if (changed) await writeModelRoles(userId, roles);
+  if (changed) await writeModelSettings(userId, settings);
 }
 
 export type RoleValidationError = {
   role: AiRole;
-  reason: 'UNKNOWN_MODEL' | 'PROVIDER_NOT_CONFIGURED';
+  /** Position in the submitted chain; null for chain-level errors. */
+  index: number | null;
+  reason: 'UNKNOWN_MODEL' | 'PROVIDER_NOT_CONFIGURED' | 'DUPLICATE_ENTRY' | 'CHAIN_TOO_LONG';
 };
 
-/** Validates and stores a complete role assignment (absent roles are cleared). */
+/**
+ * Validates and stores every role chain (absent or empty roles are cleared)
+ * and, when given, the reasoning effort of text roles (others keep theirs).
+ */
 export async function setModelRoles(
   userId: string,
-  roles: ModelRoles,
-): Promise<{ ok: true; roles: ModelRoles } | { ok: false; errors: RoleValidationError[] }> {
-  const configured = await listConfiguredProviders(userId);
+  roles: Partial<Record<AiRole, readonly RoleEntry[]>>,
+  reasoning: Partial<RoleReasoning> = {},
+): Promise<{ ok: true; settings: ModelSettings } | { ok: false; errors: RoleValidationError[] }> {
+  const [configured, current] = await Promise.all([
+    listConfiguredProviders(userId),
+    getModelSettings(userId),
+  ]);
   const errors: RoleValidationError[] = [];
   const next: ModelRoles = {};
   for (const role of AI_ROLES) {
-    const assignment = roles[role];
-    if (!assignment) continue;
-    if (!modelServesRole(assignment.provider, assignment.model, role)) {
-      errors.push({ role, reason: 'UNKNOWN_MODEL' });
-    } else if (!configured.has(assignment.provider)) {
-      errors.push({ role, reason: 'PROVIDER_NOT_CONFIGURED' });
-    } else {
-      next[role] = { provider: assignment.provider, model: assignment.model };
+    const chain = roles[role] ?? [];
+    if (chain.length > MAX_CHAIN_LENGTH) {
+      errors.push({ role, index: null, reason: 'CHAIN_TOO_LONG' });
+      continue;
     }
+    const accepted: RoleEntry[] = [];
+    chain.forEach((entry, index) => {
+      if (!modelServesRole(entry.provider, entry.model, role)) {
+        errors.push({ role, index, reason: 'UNKNOWN_MODEL' });
+      } else if (!configured.has(entry.provider)) {
+        errors.push({ role, index, reason: 'PROVIDER_NOT_CONFIGURED' });
+      } else if (accepted.some((item) => sameEntry(item, entry))) {
+        errors.push({ role, index, reason: 'DUPLICATE_ENTRY' });
+      } else {
+        accepted.push({ provider: entry.provider, model: entry.model });
+      }
+    });
+    if (accepted.length > 0) next[role] = accepted;
   }
   if (errors.length > 0) return { ok: false, errors };
-  await writeModelRoles(userId, next);
-  return { ok: true, roles: next };
+  const settings: ModelSettings = {
+    chains: next,
+    reasoning: { ...current.reasoning, ...reasoning },
+  };
+  await writeModelSettings(userId, settings);
+  return { ok: true, settings };
 }

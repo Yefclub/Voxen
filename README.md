@@ -13,7 +13,7 @@ Voxen can also capture links and files itself (web pages, YouTube, TikTok,
 Instagram, X, uploads, and the installed PWA share sheet): a separate
 `capture-worker` container downloads the content, and the web app interprets
 it with the cloud AI provider each user configures (OpenAI, Anthropic,
-OpenRouter, or xAI). Voxen runs no local models and no embeddings, and the
+OpenRouter, xAI, or Google Gemini). Voxen runs no local models and no embeddings, and the
 knowledge base keeps working without any provider key.
 
 > [!IMPORTANT]
@@ -74,7 +74,8 @@ credentials, private content, or unredacted logs in a public report.
 - **Capture (optional):** `capture-worker` container with yt-dlp, Deno,
   ffmpeg/ffprobe (unmodified LGPL build), Trafilatura, and the Smokescreen
   egress proxy; interpretation and speech-to-text through per-user keys for
-  OpenAI, Anthropic, OpenRouter, or xAI
+  OpenAI, Anthropic, OpenRouter, xAI, or Google Gemini, with an ordered
+  fallback chain per role
 
 ## Local quick start
 

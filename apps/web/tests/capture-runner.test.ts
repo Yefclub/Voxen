@@ -79,6 +79,8 @@ function makeDeps(opts: {
     ai: {
       isRoleConfigured: async (_userId, role) =>
         roles.has(role) || (role === 'standard' && roles.has('fast')),
+      chainLength: async (_userId, role) =>
+        roles.has(role) || (role === 'standard' && roles.has('fast')) ? 1 : 0,
       generateStructured: async <T>(input: { role: AiRole }) => {
         opts.calls.generate.push(input.role);
         if (input.role === 'vision') {

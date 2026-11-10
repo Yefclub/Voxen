@@ -2,7 +2,7 @@
 
 English | [Português (Brasil)](../README.md)
 
-Voxen is a self-hosted web platform for prepared knowledge bases. Externally prepared content is stored with provenance and retrieved fast and precisely over MCP. Voxen can also capture links and files itself: the `capture-worker` container downloads the content and the web app interprets it with the cloud AI provider each user configures (OpenAI, Anthropic, OpenRouter, or xAI). There are no local models and no embeddings, and the knowledge base works without any provider key.
+Voxen is a self-hosted web platform for prepared knowledge bases. Externally prepared content is stored with provenance and retrieved fast and precisely over MCP. Voxen can also capture links and files itself: the `capture-worker` container downloads the content and the web app interprets it with the cloud AI provider each user configures (OpenAI, Anthropic, OpenRouter, xAI, or Google Gemini). There are no local models and no embeddings, and the knowledge base works without any provider key.
 
 Voxen is not a hosted SaaS. It is designed for individuals and small teams that run the stack on their own server and keep control over data and users.
 

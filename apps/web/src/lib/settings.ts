@@ -42,8 +42,10 @@ export type UserSettingKey =
   | `ai_provider_key:${string}`
   /** Non-secret provider status: last4, validation status and time. */
   | `ai_provider_meta:${string}`
-  /** JSON role → {provider, model} assignment. */
-  | 'ai_model_roles';
+  /** Legacy (spec 220) JSON role → {provider, model}; read-only since spec 221. */
+  | 'ai_model_roles'
+  /** JSON role → ordered [{provider, model}, …] fallback chain (spec 221). */
+  | 'ai_model_chains';
 
 export type AppLanguage = 'pt-BR' | 'en';
 

@@ -72,7 +72,8 @@ cookies ou a master key.
   loopback, link-local e de metadados após DNS e redirects; um link público
   que redireciona para dentro falha com `BLOCKED_ADDRESS`.
 - Chamadas de modelo vão só para os endpoints fixos de OpenAI, Anthropic,
-  OpenRouter e xAI; não existe base URL customizada.
+  OpenRouter, xAI e Google Gemini; não existe base URL customizada. A chave do
+  Gemini vai só no header `x-goog-api-key`, nunca na URL.
 - Prompt injection: a interpretação roda sem ferramentas, sem busca na web e
   com schema de saída estrito. Texto e imagens capturados entram como dados
   não confiáveis, e links e imagens são removidos do resumo gerado; uma página

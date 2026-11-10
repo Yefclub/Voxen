@@ -30,6 +30,7 @@ const deps: CaptureDeps = {
   },
   ai: {
     isRoleConfigured: async (_userId, role) => roles.has(role),
+    chainLength: async (_userId, role) => (roles.has(role) ? 1 : 0),
     generateStructured: async () => {
       throw new Error('unused');
     },

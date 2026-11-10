@@ -47,6 +47,8 @@ export class AiNotConfiguredError extends AiError {
 
 const SECRET_PATTERNS: readonly RegExp[] = [
   /\b(?:sk|xai|pk|rk)-[A-Za-z0-9_-]{6,}/g,
+  // Google API keys (Gemini): `AIza` followed by 35 URL-safe characters.
+  /\bAIza[0-9A-Za-z_-]{20,}/g,
   /\bBearer\s+[^\s"',;]+/gi,
   /\b(x-api-key|api[_-]?key|authorization)(["'\s:=]+)[^\s"',;]+/gi,
 ];
