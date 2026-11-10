@@ -79,6 +79,9 @@ async def handle(request: Request, tmp_dir: str) -> dict[str, Any]:
         raise error(NO_TEXT)
     filename = os.path.basename(fields.get("filename") or "")
     content_type = fields.get("contentType") or ""
+    fmt = fields.get("format", "mp3")
+    if fmt not in media.AUDIO_FORMATS:
+        raise error(UNSUPPORTED)
     result = empty_result("other", "", "upload")
     result["title"] = filename or None
     kind = _kind(content_type, filename)
@@ -86,11 +89,17 @@ async def handle(request: Request, tmp_dir: str) -> dict[str, Any]:
     if kind == "av":
         probe = await media.probe(path, tmp_dir)
         result["durationSec"] = probe.duration
+        result["hasVideo"] = probe.has_video
         if probe.has_video:
-            result["images"] = await media.keyframes(path, probe.duration, tmp_dir)
+            # Upload keyframes are video keyframes (spec 221): same kind and
+            # schedule as /v1/frames.
+            times, _ = await media.video_frame_times(path, probe.duration, tmp_dir)
+            result["images"] = await media.keyframes(
+                path, probe.duration, tmp_dir, kind="frame", times=times
+            )
         if probe.has_audio:
             result["hasAudio"] = True
-            result["audio"] = await media.audio_chunks(path, tmp_dir)
+            result["audio"] = await media.audio_chunks(path, tmp_dir, fmt)
         elif not result["images"]:
             raise error(NO_TEXT)
         return result

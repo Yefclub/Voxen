@@ -125,7 +125,24 @@ def _int(value: object) -> int | None:
         return None
 
 
-async def audio_chunks(source: str, tmp_dir: str) -> dict[str, object]:
+AUDIO_FORMATS = ("mp3", "wav")
+
+
+async def audio_chunks(source: str, tmp_dir: str, fmt: str = "mp3") -> dict[str, object]:
+    """Speech-ready audio chunks: MP3 (default) or WAV. A WAV request for audio
+    of unknown duration or longer than MAX_WAV_SEC returns MP3 instead; the
+    chunk `mime` tells the caller which one it got (no second download)."""
+    if fmt == "wav":
+        info = await probe(source, tmp_dir)
+        if info.duration is not None and info.duration <= config.MAX_WAV_SEC:
+            return await _wav_chunks(source, tmp_dir)
+        return await _mp3_chunks(source, tmp_dir)
+    if fmt != "mp3":
+        raise error(UNSUPPORTED)
+    return await _mp3_chunks(source, tmp_dir)
+
+
+async def _mp3_chunks(source: str, tmp_dir: str) -> dict[str, object]:
     """Mono 16 kHz MP3 at 32 kbps, split into chunks of at most 20 minutes."""
     info = await probe(source, tmp_dir)
     if not info.has_audio:
@@ -182,6 +199,62 @@ async def audio_chunks(source: str, tmp_dir: str) -> dict[str, object]:
         tmp_dir,
     )
     os.remove(mp3)
+    chunks, _ = await _collect_chunks(tmp_dir, "audio/mpeg", config.AUDIO_CHUNK_SEC)
+    return {"durationSec": round(duration, 3), "chunks": chunks}
+
+
+async def _wav_chunks(source: str, tmp_dir: str) -> dict[str, object]:
+    """16 kHz mono PCM s16le WAV in chunks of at most 8 minutes, only for
+    sources of known duration up to 1 h (the caller falls back to MP3 on
+    TOO_LARGE).
+
+    Encoded and split in one pass (no full-length intermediate file); `-t`
+    also bounds the output in case the reported duration is wrong."""
+    info = await probe(source, tmp_dir)
+    if not info.has_audio:
+        raise error(UNSUPPORTED)
+    if info.duration is None or info.duration > config.MAX_WAV_SEC:
+        raise error(TOO_LARGE)
+    await _ffmpeg(
+        [
+            *_INPUT_FLAGS,
+            "-i",
+            source,
+            "-vn",
+            "-sn",
+            "-dn",
+            "-map",
+            "0:a:0",
+            "-t",
+            str(config.MAX_WAV_SEC + 1),
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            "-f",
+            "segment",
+            "-segment_format",
+            "wav",
+            "-segment_time",
+            str(config.WAV_CHUNK_SEC),
+            "-reset_timestamps",
+            "1",
+            os.path.join(tmp_dir, "chunk_%03d.wav"),
+        ],
+        tmp_dir,
+    )
+    # The probe already capped the duration; chunk padding may add a fraction
+    # of a second, so no second size check here (spec 221: no TOO_LARGE).
+    chunks, duration = await _collect_chunks(tmp_dir, "audio/wav", config.WAV_CHUNK_SEC)
+    return {"durationSec": round(duration, 3), "chunks": chunks}
+
+
+async def _collect_chunks(
+    tmp_dir: str, mime: str, chunk_sec: int
+) -> tuple[list[dict[str, object]], float]:
+    """Reads and deletes `chunk_*` files in order; returns them and their total length."""
     chunks: list[dict[str, object]] = []
     start = 0.0
     for name in sorted(f for f in os.listdir(tmp_dir) if f.startswith("chunk_")):
@@ -193,21 +266,90 @@ async def audio_chunks(source: str, tmp_dir: str) -> dict[str, object]:
         chunks.append(
             {
                 "startSec": round(start, 3),
-                "mime": "audio/mpeg",
+                "mime": mime,
                 "dataBase64": base64.b64encode(data).decode("ascii"),
             }
         )
-        start += chunk_probe.duration or float(config.AUDIO_CHUNK_SEC)
-    return {"durationSec": round(duration, 3), "chunks": chunks}
+        start += chunk_probe.duration or float(chunk_sec)
+    return chunks, start
 
 
-async def keyframes(source: str, duration: float | None, tmp_dir: str) -> list[dict[str, object]]:
-    """Up to MAX_IMAGES evenly spaced frames as JPEG."""
-    if not duration or duration <= 0:
-        times = [0.0]
-    else:
-        n = config.MAX_IMAGES
-        times = [duration * (i + 1) / (n + 1) for i in range(n)]
+def evenly_spaced(duration: float) -> list[float]:
+    """Up to MAX_IMAGES times evenly spaced over `duration`, one per whole
+    second for videos shorter than MAX_IMAGES seconds (at least one)."""
+    n = max(1, min(config.MAX_IMAGES, int(duration)))
+    return [duration * (i + 1) / (n + 1) for i in range(n)]
+
+
+_FALLBACK_POSITIONS = (0.10, 0.35, 0.60, 0.85)
+
+
+async def packet_times(source: str, tmp_dir: str) -> list[float]:
+    """Sorted presentation times of the first video stream's packets."""
+    result = await proc.run(
+        [
+            FFPROBE,
+            "-v",
+            "error",
+            *_INPUT_FLAGS,
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "packet=pts_time",
+            "-of",
+            "csv=p=0",
+            source,
+        ],
+        tmp_dir=tmp_dir,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        raise error(UNSUPPORTED)
+    times: list[float] = []
+    for line in result.stdout.decode("ascii", errors="replace").splitlines():
+        value = _float(line.strip().rstrip(","))
+        if value is not None:
+            times.append(value)
+    return sorted(times)
+
+
+async def video_frame_times(
+    source: str, duration: float | None, tmp_dir: str
+) -> tuple[list[float], float | None]:
+    """Frame times for `/v1/frames` and the duration they are based on.
+
+    Evenly spaced over the known duration; otherwise at 10/35/60/85% of the
+    file's video packets (fewer for clips under MAX_IMAGES seconds)."""
+    if duration and duration > 0:
+        return evenly_spaced(duration), duration
+    times = await packet_times(source, tmp_dir)
+    if not times:
+        return [0.0], None
+    # Input `-ss` is relative to the stream start, so packet timestamps are
+    # shifted to start at zero (sources such as MPEG-TS do not start at 0).
+    start = times[0]
+    span = times[-1] - start
+    if span < config.MAX_IMAGES:
+        return evenly_spaced(span), span
+    picked = [times[int(p * (len(times) - 1))] - start for p in _FALLBACK_POSITIONS]
+    return picked, span
+
+
+async def keyframes(
+    source: str,
+    duration: float | None,
+    tmp_dir: str,
+    kind: str = "post_media",
+    times: list[float] | None = None,
+) -> list[dict[str, object]]:
+    """Up to MAX_IMAGES frames as JPEG, each with its `timeSec`. Without
+    explicit `times`, evenly spaced over `duration` (or the first frame)."""
+    if times is None:
+        if not duration or duration <= 0:
+            times = [0.0]
+        else:
+            n = config.MAX_IMAGES
+            times = [duration * (i + 1) / (n + 1) for i in range(n)]
     images: list[dict[str, object]] = []
     for index, at in enumerate(times):
         out = os.path.join(tmp_dir, f"frame_{index}.jpg")
@@ -231,8 +373,9 @@ async def keyframes(source: str, duration: float | None, tmp_dir: str) -> list[d
             )
         except Exception:  # noqa: S112 - a frame past the end is not fatal
             continue
-        image = await _encoded_image(out, "post_media", tmp_dir)
+        image = await _encoded_image(out, kind, tmp_dir)
         if image:
+            image["timeSec"] = round(at, 3)
             images.append(image)
     return images
 

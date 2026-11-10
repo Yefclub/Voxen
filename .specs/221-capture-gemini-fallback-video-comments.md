@@ -106,7 +106,10 @@ post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
   extraction): when the first available entry of the STT chain is `local` and
   the duration is known and at most 1 h, the worker returns 16 kHz mono PCM WAV
   in chunks of at most 8 minutes (cloud providers accept the same WAV if the
-  chain falls back); otherwise MP3 is used and `local` entries are skipped.
+  chain falls back); otherwise MP3 is used and `local` entries are skipped. A
+  WAV request the worker cannot honor (unknown duration or over 1 h) returns
+  MP3 chunks instead of an error; the chunk `mime` tells the web which format
+  it got.
 - If the STT chain contains only `local` entries and none is available, then
   the job shall be treated as having no STT chain (`STT_NOT_CONFIGURED` when
   there is no other usable text).
@@ -132,7 +135,7 @@ post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
   when no STT chain exists).
 - When the worker reports `hasVideo` for a link and a vision chain exists, the
   system shall request up to 4 keyframes from the worker `/v1/frames`
-  (smallest stream ≤480p, ≤300 MB, its own 10-minute budget; evenly spaced
+  (smallest stream whose short side is 240–480 px, else the smallest available, ≤300 MB, its own 10-minute budget; evenly spaced
   over the known duration, else at 10/35/60/85% of the file; fewer for videos
   under 4 s) and analyze them together with up to 2 thumbnails/post images
   (at most 6 images per capture). Upload keyframes count as video keyframes
@@ -140,8 +143,11 @@ post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
 - If keyframe extraction or the whole vision chain fails, then the job shall
   publish with `COMPLETED_WITH_WARNINGS` instead of failing.
 - The worker shall return up to 50 top-level comments (`author`, `text` ≤1,000
-  chars, `likes`, `publishedAt`) for YouTube, TikTok and Instagram via yt-dlp
-  `--write-comments` with bounded extractor args and its own 60-second budget,
+  chars, `likes`, `publishedAt`) for YouTube and Instagram via yt-dlp
+  `--write-comments` with bounded extractor args, and for TikTok via its public
+  comment-list endpoint through the egress proxy (yt-dlp has no TikTok
+  comments; the endpoint is undocumented, so a failure just yields no
+  comments), all within their own 60-second budget,
   sorted by likes desc, then `publishedAt` desc, then id, nulls last. A
   comment fetch failure returns `[]` and never fails the capture.
 - The document shall include `## Comentários` (most relevant first) and the

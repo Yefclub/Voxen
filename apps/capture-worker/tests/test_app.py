@@ -39,7 +39,7 @@ def test_health_reports_dead_proxy(tmp_path) -> None:
         {"Authorization": f"bearer {TOKEN}"},
     ],
 )
-@pytest.mark.parametrize("path", ["/v1/extract", "/v1/audio", "/v1/file"])
+@pytest.mark.parametrize("path", ["/v1/extract", "/v1/audio", "/v1/frames", "/v1/file"])
 def test_endpoints_require_token(client: TestClient, path: str, headers: dict) -> None:
     response = client.post(path, json={"url": "https://example.com"}, headers=headers)
     assert response.status_code == 401
@@ -157,7 +157,12 @@ def test_extract_shape_with_mocked_ytdlp(
         assert limit == 1
         return [{"kind": "thumbnail", "mime": "image/jpeg", "dataBase64": "AAAA"}]
 
+    async def fake_comments(platform, url, info, tmp_dir):
+        assert platform == "youtube" and info["id"] == "abc123"
+        return [{"author": "Fan", "text": "Great talk", "likes": 3, "publishedAt": None}]
+
     monkeypatch.setattr(ytdlp, "metadata", fake_metadata)
+    monkeypatch.setattr(ytdlp, "fetch_comments", fake_comments)
     monkeypatch.setattr(http, "fetch", fake_fetch)
     monkeypatch.setattr(images, "download", fake_images)
     response = client.post("/v1/extract", json={"url": "https://youtu.be/abc123"}, headers=AUTH)
@@ -178,7 +183,9 @@ def test_extract_shape_with_mocked_ytdlp(
         "textKind",
         "segments",
         "hasAudio",
+        "hasVideo",
         "images",
+        "comments",
         "extractor",
     }
     assert body["platform"] == "youtube"
@@ -194,6 +201,10 @@ def test_extract_shape_with_mocked_ytdlp(
         {"startSec": 2.0, "endSec": 4.0, "text": "second line"},
     ]
     assert body["hasAudio"] is True
+    assert body["hasVideo"] is False
+    assert body["comments"] == [
+        {"author": "Fan", "text": "Great talk", "likes": 3, "publishedAt": None}
+    ]
     assert body["extractor"] == "Youtube"
     assert body["images"][0]["kind"] == "thumbnail"
 
@@ -209,7 +220,11 @@ def test_youtube_without_captions_falls_back_to_description(
     async def no_images(sources, tmp_dir, limit=4):
         return []
 
+    async def no_comments(platform, url, info, tmp_dir):
+        return []
+
     monkeypatch.setattr(ytdlp, "metadata", fake_metadata)
+    monkeypatch.setattr(ytdlp, "fetch_comments", no_comments)
     monkeypatch.setattr(images, "download", no_images)
     body = client.post("/v1/extract", json={"url": "https://youtu.be/abc123"}, headers=AUTH).json()
     assert body["textKind"] == "description"

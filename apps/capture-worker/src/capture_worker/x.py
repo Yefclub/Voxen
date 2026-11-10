@@ -190,6 +190,8 @@ async def _to_result(post: dict[str, Any], status_id: str, tmp_dir: str) -> dict
         if screen_name
         else f"https://x.com/i/status/{status_id}"
     )
+    # Replies need a login: syndication and fxtwitter only report a reply
+    # count, so `comments` stays empty for X.
     result = empty_result("x", canonical, "x-syndication")
     text = clean_text(post.get("text")) or ""
     quoted = post.get("quoted")
@@ -205,6 +207,7 @@ async def _to_result(post: dict[str, Any], status_id: str, tmp_dir: str) -> dict
         text=text or None,
         textKind="post" if text else "none",
         hasAudio=bool(post.get("has_video")),
+        hasVideo=bool(post.get("has_video")),
     )
     sources = [("post_media", url) for url in post.get("photos") or []]
     if post.get("video_poster"):
