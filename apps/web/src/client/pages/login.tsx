@@ -11,6 +11,7 @@ import { Logo } from '../components/ui/logo';
 import { useI18n } from '../lib/i18n';
 import {
   mcpOAuthSsoCallback,
+  mcpOAuthSsoErrorCallback,
   oauthContinuationUrl,
   pendingOAuthQuery,
 } from '../lib/mcp-oauth-login';
@@ -126,7 +127,7 @@ export function LoginPage(): React.ReactElement {
         email: email.trim(),
         loginHint: email.trim(),
         callbackURL: mcpOAuthSsoCallback(pendingQuery) ?? nextPath(),
-        errorCallbackURL: pendingOAuthQuery ? `/entrar?${pendingOAuthQuery}` : '/entrar',
+        errorCallbackURL: mcpOAuthSsoErrorCallback(pendingQuery),
         newUserCallbackURL: '/pendente',
         providerType: 'oidc',
       });

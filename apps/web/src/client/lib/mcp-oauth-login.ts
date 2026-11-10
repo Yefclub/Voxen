@@ -10,6 +10,11 @@ export function mcpOAuthSsoCallback(oauthQuery: string | null | undefined): stri
   return `/api/auth/oauth2/authorize?${oauthQuery}`;
 }
 
+/** Where a failed SSO login returns, keeping a pending authorization. */
+export function mcpOAuthSsoErrorCallback(oauthQuery: string | null | undefined): string {
+  return oauthQuery ? `/entrar?${oauthQuery}` : '/entrar';
+}
+
 /**
  * The URL a sign-in response asks the page to continue to (OAuth consent or
  * the client's validated redirect), or null for an ordinary login. Only
@@ -27,4 +32,20 @@ export function oauthContinuationUrl(response: unknown, origin: string): string 
   } catch {
     return null;
   }
+}
+
+/**
+ * The pending authorization to resume for a user who is already signed in, or
+ * null when it must show the login form instead: `prompt=login|create` or a
+ * `max_age` make the authorize endpoint send the browser back to the login
+ * page even with a session, so resuming them would loop.
+ */
+export function resumableAuthorization(search: string): string | null {
+  const query = pendingOAuthQuery(search);
+  if (!query) return null;
+  const params = new URLSearchParams(query);
+  const prompts = (params.get('prompt') ?? '').split(/\s+/);
+  if (prompts.includes('login') || prompts.includes('create')) return null;
+  if (params.has('max_age')) return null;
+  return mcpOAuthSsoCallback(query);
 }

@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
   mcpOAuthSsoCallback,
+  mcpOAuthSsoErrorCallback,
   oauthContinuationUrl,
   pendingOAuthQuery,
+  resumableAuthorization,
 } from '../src/client/lib/mcp-oauth-login';
 
 const ORIGIN = 'https://voxen.example';
@@ -36,5 +38,24 @@ describe('MCP OAuth sign-in continuation', () => {
     expect(mcpOAuthSsoCallback('client_id=a&sig=b')).toBe(
       '/api/auth/oauth2/authorize?client_id=a&sig=b',
     );
+  });
+
+  test('a failed SSO login returns to sign-in with the pending authorization', () => {
+    expect(mcpOAuthSsoErrorCallback('client_id=a&sig=b')).toBe('/entrar?client_id=a&sig=b');
+    expect(mcpOAuthSsoErrorCallback(undefined)).toBe('/entrar');
+  });
+
+  test('a signed-in user resumes a pending authorization on the server', () => {
+    expect(resumableAuthorization('?client_id=a&scope=mcp%3Aread&sig=b')).toBe(
+      '/api/auth/oauth2/authorize?client_id=a&scope=mcp%3Aread&sig=b',
+    );
+    expect(resumableAuthorization('?next=%2F')).toBeNull();
+  });
+
+  test('a request demanding a fresh login is not resumed (it would loop)', () => {
+    expect(resumableAuthorization('?client_id=a&prompt=login&sig=b')).toBeNull();
+    expect(resumableAuthorization('?client_id=a&prompt=consent+create&sig=b')).toBeNull();
+    expect(resumableAuthorization('?client_id=a&max_age=0&sig=b')).toBeNull();
+    expect(resumableAuthorization('?client_id=a&prompt=consent&sig=b')).not.toBeNull();
   });
 });
