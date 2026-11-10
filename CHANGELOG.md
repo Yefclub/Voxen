@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794270114 — 2026-11-09 · Dev
+
+### ✨ Capture links from the library, the capture page, or your phone
+
+Paste a link or drop a file in the new capture bar on the library or on the Capture page, and follow each capture live with its current step and progress. Finished captures link to the new document with its method, model, and cost; failed ones explain why and offer the next step: try again, upload the file instead, or configure your AI providers. Sharing a link or file to the installed app on your phone now starts a capture too, and documents captured from a link can be reprocessed from their page.
+
 ## v0.15.1-dev.1794268985 — 2026-11-09 · Dev
 
 ### ✨ Captured links become finished documents
