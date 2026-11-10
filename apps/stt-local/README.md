@@ -103,7 +103,7 @@ Every artifact is pinned in the `Dockerfile` and checked at build time:
   `decoder_joint-model.int8.onnx` are copied, each verified by sha256.
 - **ONNX Runtime**: 1.25.1 `onnxruntime-linux-x64` CPU build, archive sha256
   `eb566a49cfc49ef0642f809b69340b5bb656c7c4905ba873526d226f2c005816`.
-- **Base images**: `debian:trixie-slim` and `golang:1.25.14-trixie` by digest.
+- **Base images**: `debian:trixie-slim` and `golang:1.27.3-trixie` by digest.
 
 Bump a pin and its checksum together. The image is x86-64 only.
 
