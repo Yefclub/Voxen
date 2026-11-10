@@ -42,7 +42,11 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${PARAKEET_TAG}" https://github.com/achetronic/parakeet.git . \
     && test "$(git rev-parse HEAD)" = "${PARAKEET_COMMIT}"
 RUN CGO_ENABLED=1 GOFLAGS=-mod=readonly go build -trimpath -ldflags="-s -w" -o /out/parakeet . \
-    && install -D -m 0644 LICENSE /out/licenses/parakeet-server/LICENSE
+    && install -D -m 0644 LICENSE /out/licenses/parakeet-server/LICENSE \
+    # Statically linked into the binaries: their notices travel with the image.
+    && install -D -m 0644 "$(go list -m -f '{{.Dir}}' github.com/yalue/onnxruntime_go)/LICENSE" \
+        /out/licenses/onnxruntime_go/LICENSE \
+    && install -D -m 0644 "$(go env GOROOT)/LICENSE" /out/licenses/go/LICENSE
 COPY apps/stt-local/healthcheck /healthcheck
 RUN cd /healthcheck \
     && CGO_ENABLED=0 GOFLAGS=-mod=readonly go build -trimpath -ldflags="-s -w" -o /out/stt-healthcheck .

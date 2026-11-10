@@ -4,12 +4,15 @@ Optional sidecar (spec 221, ADR-015) that transcribes speech on the CPU with
 NVIDIA Parakeet TDT 0.6B v3 (int8 ONNX), served by the
 [`achetronic/parakeet`](https://github.com/achetronic/parakeet) Go server
 behind an OpenAI-compatible endpoint. It needs no provider key, holds no
-secrets and has no network egress. Voxen works without it; when it is not
-running, the `local` STT entry fails as retryable and the chain moves on.
+secrets and, under Docker Compose, has no network egress. Voxen works without
+it. The web app uses it through the keyless `local` STT provider (shipping with
+the next capture release); when the sidecar is not running, that entry fails
+as retryable and the chain moves on.
 
 ## Endpoint
 
-Port `5092`, reachable only from `web` on the internal `stt-net` network.
+Port `5092`, reachable only from `web` on the internal `stt-net` network
+(Compose; see the deploy docs for the Easypanel/Openship residual risk).
 
 | Method and path                  | Purpose                                                                 |
 | -------------------------------- | ----------------------------------------------------------------------- |
@@ -56,8 +59,8 @@ docker compose up -d web
 joins and `capture-worker` does not. It publishes no ports and runs as uid
 10002 with a read-only root filesystem, a 256 MiB `/tmp` tmpfs (multipart
 uploads), all capabilities dropped, `no-new-privileges`, 2 CPUs and a 3 GB
-memory limit. Users then add the `local` entry to their STT chain in
-**Account → AI providers**.
+memory limit. Once the `local` provider ships, users add the `local` entry to
+their STT chain in **Account → AI providers**.
 
 Easypanel and Openship: see "Optional local speech-to-text" in
 [`docs/en/DEPLOY.md`](../../docs/en/DEPLOY.md).
@@ -107,7 +110,9 @@ Bump a pin and its checksum together. The image is x86-64 only.
   at `/usr/share/licenses/parakeet-server/LICENSE`.
 - **ONNX Runtime**: MIT, with its third-party notices at
   `/usr/share/licenses/onnxruntime/`.
-- **onnxruntime_go**: MIT. The healthcheck binary is Voxen code.
+- **onnxruntime_go**: MIT, and the **Go standard library**: BSD-3-Clause, both
+  statically linked; their licenses ship in `/usr/share/licenses/onnxruntime_go`
+  and `/usr/share/licenses/go`. The healthcheck binary is Voxen code.
 
 No ffmpeg, diarization model (Nemotron, openmdw license) or Silero VAD is
 included.

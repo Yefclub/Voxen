@@ -147,5 +147,5 @@ and embeddings remain out. Videos are always transcribed and their keyframes
 analyzed; the top 50 comments are captured.
 
 Consequences: the Gemini free tier may use submitted content to improve
-Google products, so the UI warns about it; the local sidecar costs about 2.5 GB
-of RAM and runs one transcription at a time.
+Google products, so the UI warns about it; the local sidecar keeps about 2.5 GB
+of RAM resident once used and runs one transcription at a time.

@@ -1,5 +1,5 @@
 // Command stt-healthcheck probes the local Parakeet server for the container
-// HEALTHCHECK. The runtime image ships no shell tools, curl or wget.
+// HEALTHCHECK. The runtime image ships no curl or wget.
 package main
 
 import (
