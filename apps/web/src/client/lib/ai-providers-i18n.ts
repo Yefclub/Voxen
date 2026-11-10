@@ -55,7 +55,7 @@ export const ptBrAiProviderMessages = {
   'account.ai.role.vision': 'Visão',
   'account.ai.role.visionHint': 'Descreve imagens de posts com pouco texto.',
   'account.ai.role.stt': 'Transcrição (STT)',
-  'account.ai.role.sttHint': 'Converte áudio em texto quando não há legenda.',
+  'account.ai.role.sttHint': 'Transcreve sempre a fala de vídeos e áudios sem legenda.',
   'account.ai.anthropicNoStt':
     'A Anthropic não oferece transcrição. Para STT, use OpenAI, xAI, OpenRouter ou Gemini.',
   'account.ai.geminiFreeTier':
@@ -124,7 +124,7 @@ export const enAiProviderMessages: Record<keyof typeof ptBrAiProviderMessages, s
   'account.ai.role.vision': 'Vision',
   'account.ai.role.visionHint': 'Describes images from posts with little text.',
   'account.ai.role.stt': 'Transcription (STT)',
-  'account.ai.role.sttHint': 'Turns audio into text when there are no captions.',
+  'account.ai.role.sttHint': 'Always transcribes speech in videos and audio without captions.',
   'account.ai.anthropicNoStt':
     'Anthropic offers no transcription. For STT, use OpenAI, xAI, OpenRouter or Gemini.',
   'account.ai.geminiFreeTier':

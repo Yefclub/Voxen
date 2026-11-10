@@ -74,14 +74,25 @@ tentativas.
    formato da URL e endereços privados literais, captura ativa do mesmo link,
    mesmo link já na biblioteca (oferece reprocessar) e papel de texto
    configurado. Só então o job é criado.
-2. O runner pede ao worker primeiro o texto (legendas, post, página ou
-   documento). STT roda só quando não há texto útil e a fonte tem áudio; até
-   quatro imagens são descritas quando o texto é curto e existe papel de
-   visão. O resultado do worker fica guardado como artefato de captura, então
-   uma nova tentativa não baixa de novo.
+2. O runner pede ao worker o texto (legendas, post, página ou documento),
+   metadados e até 50 comentários. Vídeos e áudios são processados por
+   inteiro (spec 221): sem legenda, a fala é sempre transcrita pela cadeia de
+   STT, e a descrição ou o texto do post continua no documento como contexto;
+   com legenda, o STT não roda. Quando há vídeo e papel de visão, o worker
+   devolve até quatro quadros (`/v1/frames`), descritos numa única chamada
+   junto com até duas thumbnails ou imagens do post (no máximo seis imagens).
+   Sem vídeo, as imagens só são descritas quando o texto é curto. O formato
+   do áudio (MP3 ou WAV para o STT local) é escolhido antes de baixar. Se o STT
+   falha em toda a cadeia e há pelo menos 200 caracteres de outro texto, ou se
+   a extração de quadros ou a visão falham, o documento sai com
+   `COMPLETED_WITH_WARNINGS` e o aviso aparece no card da captura. O resultado
+   do worker fica guardado como artefato de captura, então uma nova tentativa
+   não baixa de novo.
 3. Uma única chamada estruturada, sem ferramentas e sem busca na web, gera
-   título, resumo, pontos-chave, tags e entidades; o conteúdo capturado entra
-   como dado não confiável.
+   título, resumo, pontos-chave, tags e entidades; o conteúdo capturado
+   (incluindo até 20.000 caracteres de comentários) entra como dado não
+   confiável. Com comentários, o schema pede também um ponto sobre a recepção
+   do público.
 4. O documento é publicado pelo contrato interno de publicação versão 2
    (`DOCUMENT`) no mesmo storage, índice e grafo do conteúdo preparado.
    Reprocessar atualiza o mesmo documento e guarda o texto anterior como versão

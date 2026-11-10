@@ -117,7 +117,10 @@ async function copyPreview(
   transcriptId: string,
   artifact: CaptureArtifact,
 ): Promise<{ key: string; mime: string } | null> {
-  const image = artifact.images.find((item) => IMAGE_EXT[item.mime]);
+  // A video upload has no thumbnail: its first keyframe is the preview.
+  const image = [...artifact.images, ...(artifact.frames ?? [])].find(
+    (item) => IMAGE_EXT[item.mime],
+  );
   if (!image) return null;
   try {
     const object = await storageGet(image.key);

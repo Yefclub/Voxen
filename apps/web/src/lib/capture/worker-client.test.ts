@@ -121,4 +121,76 @@ describe('capture worker client', () => {
       ),
     ).toBe('TOO_LARGE');
   });
+
+  test('defaults hasVideo, hasAudio and comments when the worker omits them', async () => {
+    const { impl } = respond(200, { platform: 'web', text: 'x', images: [], segments: [] });
+    const result = await createCaptureWorkerClient(CONFIG, impl).extract(
+      'https://example.com/a',
+      AbortSignal.timeout(1000),
+    );
+    expect(result).toMatchObject({ hasVideo: false, hasAudio: false, comments: [] });
+  });
+
+  test('keeps only bounded images and ranks comments defensively', async () => {
+    const big = 'A'.repeat(2_200_000);
+    const { impl } = respond(200, {
+      platform: 'youtube',
+      hasVideo: true,
+      hasAudio: true,
+      segments: [],
+      images: [
+        { kind: 'thumbnail', mime: 'image/svg+xml', dataBase64: 'PHN2Zz4=' },
+        { kind: 'thumbnail', mime: 'image/jpeg', dataBase64: big },
+        { kind: 'thumbnail', mime: 'image/jpeg', dataBase64: '/9j/' },
+      ],
+      comments: [
+        { author: 'b', text: 'recent', likes: 3, publishedAt: '2026-11-02T00:00:00Z' },
+        { author: 'c', text: 'unknown likes', likes: null, publishedAt: null },
+        { author: 'a', text: 'top', likes: 10, publishedAt: null },
+        { author: 'd', text: 'older', likes: 3, publishedAt: '2026-10-01T00:00:00Z' },
+        { author: 'e', text: '   ', likes: 99, publishedAt: null },
+        { author: 'f', text: 'x'.repeat(5_000), likes: 1, publishedAt: 'not a date' },
+      ],
+    });
+    const result = await createCaptureWorkerClient(CONFIG, impl).extract(
+      'https://youtu.be/x',
+      AbortSignal.timeout(1000),
+    );
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0]!.mime).toBe('image/jpeg');
+    expect(result.comments.map((c) => c.text.slice(0, 13))).toEqual([
+      'top',
+      'recent',
+      'older',
+      'x'.repeat(13),
+      'unknown likes',
+    ]);
+    expect(result.comments[3]).toMatchObject({ publishedAt: null });
+    expect(result.comments[3]!.text).toHaveLength(1_000);
+  });
+
+  test('requests audio and upload formats and normalizes keyframes', async () => {
+    const audio = respond(200, { durationSec: 3, chunks: [] });
+    const client = createCaptureWorkerClient(CONFIG, audio.impl);
+    await client.audio('https://x.example', AbortSignal.timeout(1000), 'wav');
+    expect(await audio.seen[0]!.json()).toEqual({ url: 'https://x.example', format: 'wav' });
+
+    const upload = respond(200, { platform: 'other', images: [], segments: [] });
+    await createCaptureWorkerClient(CONFIG, upload.impl).file(
+      { body: new Blob(['x']), filename: 'a.mp4', contentType: 'video/mp4', format: 'wav' },
+      AbortSignal.timeout(1000),
+    );
+    expect((await upload.seen[0]!.formData()).get('format')).toBe('wav');
+
+    const frame = { kind: 'x', mime: 'image/jpeg', dataBase64: '/9j/', timeSec: 4.5 };
+    const frames = respond(200, { durationSec: 20, images: Array(6).fill(frame) });
+    const result = await createCaptureWorkerClient(CONFIG, frames.impl).frames(
+      'https://x.example',
+      AbortSignal.timeout(1000),
+    );
+    expect(frames.seen[0]!.url).toBe('http://capture-worker:8080/v1/frames');
+    expect(result.durationSec).toBe(20);
+    expect(result.images).toHaveLength(4);
+    expect(result.images[0]).toMatchObject({ kind: 'frame', timeSec: 4.5 });
+  });
 });

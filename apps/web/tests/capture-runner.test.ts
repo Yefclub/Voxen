@@ -2,8 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AiRole, CaptureDeps } from '../src/lib/capture/runner';
-import type { WorkerExtraction, WorkerFileResult } from '../src/lib/capture/worker-client';
+import type { CaptureDeps } from '../src/lib/capture/runner';
+import type { WorkerFileResult } from '../src/lib/capture/worker-client';
+import { PNG_1PX, extraction, freshCalls, makeDeps } from './fixtures/capture-fakes';
 
 const storageRoot = mkdtempSync(join(tmpdir(), 'voxen-capture-runner-'));
 process.env.STORAGE_DRIVER = 'local';
@@ -15,111 +16,6 @@ const { CaptureError } = await import('../src/lib/capture/errors');
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
-
-const PNG_1PX =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-
-function extraction(over: Partial<WorkerExtraction> = {}): WorkerExtraction {
-  return {
-    platform: 'web',
-    canonicalUrl: 'https://example.com/a',
-    platformId: null,
-    title: 'Título da página',
-    author: null,
-    channel: 'Example',
-    publishedAt: null,
-    durationSec: null,
-    language: 'pt',
-    description: null,
-    text: 'Conteúdo longo sobre filas duráveis no Postgres. '.repeat(20),
-    textKind: 'page',
-    segments: [],
-    hasAudio: false,
-    images: [],
-    extractor: 'trafilatura',
-    ...over,
-  };
-}
-
-type Calls = {
-  extract: number;
-  audio: number;
-  file: number;
-  stt: number;
-  generate: Array<AiRole>;
-};
-
-function makeDeps(opts: {
-  extract?: () => Promise<WorkerExtraction>;
-  file?: () => Promise<WorkerFileResult>;
-  audioDurationSec?: number;
-  roles?: AiRole[];
-  calls: Calls;
-}): CaptureDeps {
-  const roles = new Set<AiRole>(opts.roles ?? ['fast', 'standard', 'vision', 'stt']);
-  return {
-    worker: {
-      extract: async () => {
-        opts.calls.extract += 1;
-        return (opts.extract ?? (async () => extraction()))();
-      },
-      audio: async () => {
-        opts.calls.audio += 1;
-        return {
-          durationSec: opts.audioDurationSec ?? 40,
-          chunks: [{ startSec: 0, mime: 'audio/mpeg', dataBase64: 'AAAA' }],
-        };
-      },
-      file: async () => {
-        opts.calls.file += 1;
-        if (!opts.file) throw new Error('not used');
-        return opts.file();
-      },
-    },
-    ai: {
-      isRoleConfigured: async (_userId, role) =>
-        roles.has(role) || (role === 'standard' && roles.has('fast')),
-      chainLength: async (_userId, role) =>
-        roles.has(role) || (role === 'standard' && roles.has('fast')) ? 1 : 0,
-      generateStructured: async <T>(input: { role: AiRole }) => {
-        opts.calls.generate.push(input.role);
-        if (input.role === 'vision') {
-          return {
-            output: { descriptions: [{ index: 1, description: 'Um gráfico de barras.' }] } as T,
-            modelRef: 'anthropic:claude-haiku-5-5',
-            costUsd: 0.0001,
-          };
-        }
-        return {
-          output: {
-            title: 'Filas duráveis no Postgres',
-            language: 'pt',
-            summary_md: 'Explica filas com SKIP LOCKED. Veja https://evil.example.',
-            key_points: ['Usa SKIP LOCKED'],
-            tags: ['Postgres', '#filas', 'postgres'],
-            entities: [{ name: 'PostgreSQL', kind: 'software' }],
-          } as T,
-          modelRef: 'anthropic:claude-haiku-5-5',
-          costUsd: 0.0003,
-        };
-      },
-      transcribeAudio: async () => {
-        opts.calls.stt += 1;
-        return {
-          text: 'Fala transcrita sobre bancos de dados. '.repeat(10),
-          segments: [{ startSec: 0, endSec: 5, text: 'Fala transcrita sobre bancos de dados.' }],
-          language: 'pt',
-          model: 'openai:gpt-transcribe',
-          costUsd: 0.003,
-        };
-      },
-    },
-  };
-}
-
-function freshCalls(): Calls {
-  return { extract: 0, audio: 0, file: 0, stt: 0, generate: [] };
-}
 
 describeIfDb('capture runner', () => {
   let userId = '';
@@ -190,7 +86,7 @@ describeIfDb('capture runner', () => {
     expect(calls.audio).toBe(0);
   });
 
-  it('uses a long video description as text and never calls STT (text first)', async () => {
+  it('publishes a long description without STT when no STT chain exists', async () => {
     const calls = freshCalls();
     const job = await queue(`https://youtu.be/d${Date.now()}`.slice(0, 40));
     const deps = makeDeps({

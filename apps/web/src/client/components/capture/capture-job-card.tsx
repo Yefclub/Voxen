@@ -39,6 +39,12 @@ const METHOD: Record<string, I18nKey> = {
   SCRAPE: 'capture.method.scrape',
 };
 
+const WARNING: Record<string, I18nKey> = {
+  speech_not_transcribed: 'capture.warning.speech_not_transcribed',
+  frames_unavailable: 'capture.warning.frames_unavailable',
+  images_not_described: 'capture.warning.images_not_described',
+};
+
 interface CaptureJobCardProps {
   job: CaptureJob;
   /** Open an SSE stream while the job is active. */
@@ -119,6 +125,9 @@ export function CaptureJobCard({
     job.costUsd !== null ? t('capture.cost', { cost: formatUsd(job.costUsd, locale) }) : null,
   ].filter(Boolean);
   const errorAction = job.error?.action;
+  const warningKeys = (job.warnings ?? [])
+    .map((code) => WARNING[code])
+    .filter((key): key is I18nKey => key !== undefined);
 
   return (
     <article
@@ -185,6 +194,16 @@ export function CaptureJobCard({
         <p className="mt-2 truncate text-xs text-[var(--color-app-muted)]">
           {doneMeta.join(' · ')}
         </p>
+      )}
+
+      {job.status === 'COMPLETED_WITH_WARNINGS' && warningKeys.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-xs text-[var(--color-app-warning-fg)]">
+          {warningKeys.map((key) => (
+            <li key={key} className="break-words">
+              {t(key)}
+            </li>
+          ))}
+        </ul>
       )}
 
       {job.status === 'FAILED' && (

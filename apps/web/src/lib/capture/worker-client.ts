@@ -6,10 +6,22 @@
 // to extract text, audio, and images, and maps worker errors to capture codes.
 // ============================================================================
 
+import { normalizeComments } from './comments';
 import { CaptureError, isCaptureErrorCode } from './errors';
-import type { CaptureSegment, CaptureTextKind } from './types';
+import type { CaptureComment, CaptureSegment, CaptureTextKind } from './types';
 
-export type WorkerImage = { kind: string; mime: string; dataBase64: string };
+export type WorkerImage = {
+  kind: string;
+  mime: string;
+  dataBase64: string;
+  /** Keyframes only: position in the video, in seconds. */
+  timeSec?: number | null;
+};
+
+export type WorkerComment = CaptureComment;
+
+/** `wav` is for the local STT sidecar; the worker answers MP3 when it cannot honor it. */
+export type AudioFormat = 'mp3' | 'wav';
 
 export type WorkerExtraction = {
   platform: string;
@@ -26,9 +38,13 @@ export type WorkerExtraction = {
   textKind: CaptureTextKind;
   segments: CaptureSegment[];
   hasAudio: boolean;
+  hasVideo: boolean;
   images: WorkerImage[];
+  comments: WorkerComment[];
   extractor: string | null;
 };
+
+export type WorkerFrames = { durationSec: number | null; images: WorkerImage[] };
 
 export type WorkerAudio = {
   durationSec: number;
@@ -39,14 +55,59 @@ export type WorkerFileResult = WorkerExtraction & { audio?: WorkerAudio | null }
 
 export interface CaptureWorkerClient {
   extract(url: string, signal: AbortSignal): Promise<WorkerExtraction>;
-  audio(url: string, signal: AbortSignal): Promise<WorkerAudio>;
+  audio(url: string, signal: AbortSignal, format?: AudioFormat): Promise<WorkerAudio>;
+  /** Up to 4 keyframes of the source video (spec 221). */
+  frames(url: string, signal: AbortSignal): Promise<WorkerFrames>;
   file(
-    input: { body: Blob; filename: string; contentType: string },
+    input: { body: Blob; filename: string; contentType: string; format?: AudioFormat },
     signal: AbortSignal,
   ): Promise<WorkerFileResult>;
 }
 
 const MAX_RESPONSE_BYTES = 400 * 1024 * 1024;
+const MAX_WORKER_IMAGES = 4;
+/** Base64 of the worker's 1.5 MiB image cap, plus padding slack. */
+const MAX_IMAGE_BASE64_CHARS = Math.ceil((1.5 * 1024 * 1024 * 4) / 3) + 16;
+const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+// ---------------------------------------------------------------------------
+// Defensive response normalization: the worker is trusted for transport, but
+// what it relays comes from the open web, so limits are enforced here too.
+// ---------------------------------------------------------------------------
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function normalizeImages(value: unknown): WorkerImage[] {
+  if (!Array.isArray(value)) return [];
+  const images: WorkerImage[] = [];
+  for (const item of value) {
+    if (images.length >= MAX_WORKER_IMAGES) break;
+    const image = item as Partial<WorkerImage> | null;
+    if (!image || typeof image.dataBase64 !== 'string' || typeof image.mime !== 'string') continue;
+    if (!IMAGE_MIMES.has(image.mime)) continue;
+    if (image.dataBase64.length === 0 || image.dataBase64.length > MAX_IMAGE_BASE64_CHARS) continue;
+    const timeSec = finiteOrNull(image.timeSec);
+    images.push({
+      kind: typeof image.kind === 'string' ? image.kind.slice(0, 40) : 'image',
+      mime: image.mime,
+      dataBase64: image.dataBase64,
+      ...(timeSec !== null && timeSec >= 0 ? { timeSec } : {}),
+    });
+  }
+  return images;
+}
+
+function normalizeExtraction<T extends WorkerExtraction>(body: T): T {
+  return {
+    ...body,
+    hasAudio: body.hasAudio === true,
+    hasVideo: body.hasVideo === true,
+    images: normalizeImages(body.images),
+    comments: normalizeComments(body.comments),
+  };
+}
 
 type WorkerConfig = { baseUrl: string; token: string };
 
@@ -97,6 +158,14 @@ function errorFromBody(status: number, body: unknown): CaptureError {
   return new CaptureError('UNKNOWN', `worker status ${status}`);
 }
 
+function json(body: Record<string, unknown>): RequestInit {
+  return {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
 export function createCaptureWorkerClient(
   config: WorkerConfig | null = workerConfigFromEnv(),
   fetchImpl: typeof fetch = fetch,
@@ -128,32 +197,26 @@ export function createCaptureWorkerClient(
   }
 
   return {
-    extract: (url, signal) =>
-      call<WorkerExtraction>(
-        '/v1/extract',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ url }),
-        },
-        signal,
-      ),
-    audio: (url, signal) =>
-      call<WorkerAudio>(
-        '/v1/audio',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ url }),
-        },
-        signal,
-      ),
-    file: (input, signal) => {
+    extract: async (url, signal) =>
+      normalizeExtraction(await call<WorkerExtraction>('/v1/extract', json({ url }), signal)),
+    audio: (url, signal, format = 'mp3') =>
+      call<WorkerAudio>('/v1/audio', json({ url, format }), signal),
+    frames: async (url, signal) => {
+      const body = await call<Partial<WorkerFrames>>('/v1/frames', json({ url }), signal);
+      return {
+        durationSec: finiteOrNull(body.durationSec),
+        images: normalizeImages(body.images).map((image) => ({ ...image, kind: 'frame' })),
+      };
+    },
+    file: async (input, signal) => {
       const form = new FormData();
       form.set('file', input.body, input.filename);
       form.set('filename', input.filename);
       form.set('contentType', input.contentType);
-      return call<WorkerFileResult>('/v1/file', { method: 'POST', body: form }, signal);
+      form.set('format', input.format ?? 'mp3');
+      return normalizeExtraction(
+        await call<WorkerFileResult>('/v1/file', { method: 'POST', body: form }, signal),
+      );
     },
   };
 }

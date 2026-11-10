@@ -63,6 +63,9 @@ describeIfDb('POST /share-target', () => {
       audio: async () => {
         throw new Error('unused');
       },
+      frames: async () => {
+        throw new Error('unused');
+      },
       file: async () => {
         throw new Error('unused');
       },
@@ -70,6 +73,7 @@ describeIfDb('POST /share-target', () => {
     ai: {
       isRoleConfigured: async (_userId, role) => roles.has(role),
       chainLength: async (_userId, role) => (roles.has(role) ? 1 : 0),
+      sttAudioFormat: async () => 'mp3',
       generateStructured: async () => {
         throw new Error('unused');
       },

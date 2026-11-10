@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { generateStructured, resolveRoleChain, transcribeAudio } from '../ai/client';
-import type { AiRole, CaptureAi, CaptureDeps } from './runner';
+import type { AiRole, CaptureAi, CaptureDeps } from './ports';
 import { createCaptureWorkerClient } from './worker-client';
 
 const NOT_CONFIGURED = new Set(['AI_NOT_CONFIGURED', 'STT_NOT_CONFIGURED']);
@@ -21,6 +21,8 @@ async function chainLength(userId: string, role: AiRole): Promise<number> {
 export const cloudCaptureAi: CaptureAi = {
   isRoleConfigured: async (userId, role) => (await chainLength(userId, role)) > 0,
   chainLength,
+  // MP3 until lib/ai reports when the STT chain starts with the local sidecar.
+  sttAudioFormat: async () => 'mp3',
   generateStructured: (input) => generateStructured(input),
   transcribeAudio: (input) => transcribeAudio(input),
 };

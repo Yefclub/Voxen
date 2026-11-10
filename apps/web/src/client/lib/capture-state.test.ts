@@ -19,6 +19,7 @@ function job(overrides: Partial<CaptureJob> = {}): CaptureJob {
     sourceUrl: 'https://www.example.com/post/1/',
     filename: null,
     platform: 'web',
+    warnings: [],
     stage: 'queued',
     percent: 0,
     attempt: 0,

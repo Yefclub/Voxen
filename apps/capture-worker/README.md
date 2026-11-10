@@ -27,8 +27,8 @@ except `/v1/file` (multipart, 500 MB max, streamed to tmpfs).
   audio up to 3 h.
 - `wav`: 16 kHz mono PCM s16le WAV (for the `stt-local` sidecar, which
   decodes WAV only), chunks of at most 8 minutes. Only for audio of **known
-  duration up to 1 h**; longer or unknown-duration audio returns `TOO_LARGE`
-  and the caller requests `mp3` instead.
+  duration up to 1 h**; longer or unknown-duration audio is answered with MP3
+  chunks instead (the chunk `mime` says which format came back).
 
 Any other value returns `UNSUPPORTED`.
 
