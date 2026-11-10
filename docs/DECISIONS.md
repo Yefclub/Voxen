@@ -478,3 +478,22 @@ frames analisados; os 50 comentários mais relevantes são capturados.
 Consequências: o plano grátis do Gemini pode usar o conteúdo enviado para
 melhorar produtos do Google, então a UI avisa; o sidecar local mantém cerca de
 2,5 GB de RAM residentes depois de usado e processa uma transcrição por vez.
+
+
+## ADR-016 — MCP link capture through the existing pipeline
+
+**Date**: 2026-11-10
+**Status**: Accepted (spec 222; amends spec 220)
+
+MCP clients may submit links for analysis and storage through the existing
+capture pipeline. Submission and cancellation require `mcp:write`; status
+and listing require `mcp:read`. HTTP, PWA and MCP share the same user-scoped
+submission limit, deduplication, AI configuration and cancellation behavior.
+Submission returns immediately with a job reference; document retrieval uses
+the existing progressive reading tools after capture completes.
+
+This deliberately allows WRITE clients to incur costs on the owner's AI
+providers. File upload and retry/reprocessing remain outside the MCP
+contract. Internal publishing contract version 2 remains private; prepared
+content import and deterministic knowledge-base reads keep their existing
+behavior without requiring AI keys.

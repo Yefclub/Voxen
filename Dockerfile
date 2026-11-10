@@ -86,6 +86,8 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
       tini \
       wget \
     && npm install -g prisma@6.19.3 --omit=dev \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     && groupadd --system voxen \
     && useradd --system --gid voxen --uid 1001 --home-dir /app voxen \
     && mkdir -p /run/voxen /data/storage \

@@ -92,6 +92,9 @@ RUN apk upgrade --no-cache && \
     npm install -g prisma@6.19.3 --omit=dev && \
     npm install --prefix /usr/local/lib/node_modules/prisma/node_modules/@prisma/config deepmerge-ts@8.0.0 --omit=dev && \
     rm -rf /usr/local/lib/node_modules/prisma/node_modules/deepmerge-ts && \
+    # Package managers are build tools; Prisma and Node are sufficient at runtime.
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack && \
     addgroup -S voxen && adduser -S -G voxen -u 1001 voxen && \
     mkdir -p /data/storage && \
     chown -R voxen:voxen /data/storage && \

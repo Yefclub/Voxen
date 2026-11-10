@@ -39,7 +39,7 @@ nunca o segredo Bearer.
 
 ## Contratos de execução e resultados
 
-O catálogo tem **38 ferramentas: 30 READ e 8 WRITE**, com escopos, anotações de
+O catálogo tem **42 ferramentas: 32 READ e 10 WRITE**, com escopos, anotações de
 efeitos e schemas de saída validados. `voxen_get_job_status` é READ, inclusive
 para jobs enviados por um cliente com escrita. Os metadados informam a versão
 real do Voxen em execução.
@@ -209,12 +209,45 @@ independente por item: `created`, `duplicate` ou `error`). O HTTP
 A captura de links (spec 220) publica seus documentos por um contrato interno
 versão `2`, alvo `DOCUMENT` (documento da biblioteca com Markdown canônico,
 tags e resumo, idempotente por job de captura). A versão 2 não é endpoint
-público HTTP/MCP e nenhuma ferramenta MCP inicia captura. Documentos
+público HTTP/MCP. A spec 222 habilita o início de capturas pelas ferramentas abaixo. Documentos
 capturados são lidos pelas mesmas ferramentas de busca e leitura progressiva.
 
 O administrador pode habilitar OAuth 2.1 em **Administração → Integrações → MCP
 Server**. O acesso OAuth continua vinculado ao usuário Voxen que aprova o
 consentimento; ele nunca herda acesso administrativo.
+
+## Capture links through MCP
+
+`voxen_capture_url` requires `mcp:write` and submits a link for extraction and
+AI analysis using the owner's configured providers. It may incur provider
+charges. Its limit is **30 submissions per minute per user**, shared with the
+web app and PWA. File upload, retry and reprocessing stay in the web app.
+
+```json
+{"name":"voxen_capture_url","arguments":{"url":"https://example.com/article"}}
+```
+
+The result has `existing`, `transcript`, `job`, `deduped` and `nextTool`.
+An existing document returns `existing: true` with `transcript.id` and title.
+Otherwise, poll `voxen_capture_status` with `capture_id: job.id`; a repeated
+active link returns the same job with `deduped: true`.
+
+- `voxen_capture_status` (`mcp:read`): stage, percent, warnings, public error
+  code/message and document reference. Terminal statuses are `DONE`,
+  `COMPLETED_WITH_WARNINGS`, `FAILED` and `CANCELLED`. On success, pass
+  `capture.transcript.id` to `voxen_outline` and the existing reading tools.
+- `voxen_list_captures` (`mcp:read`): recent link/upload captures, ordered by
+  queue time and ID descending. `limit` defaults to 20, maximum 50; continue
+  with `cursor: nextCursor` until `hasMore: false`. Cursors are signed and
+  bound to the owner.
+- `voxen_cancel_capture` (`mcp:write`): accepts `capture_id` and returns the
+  updated `capture`. A terminal capture stays unchanged with
+  `alreadyFinished: true`.
+
+Missing AI configuration returns `AI_NOT_CONFIGURED` and `/conta/ia`.
+Invalid or blocked links return the same stable errors as the app. Provider
+and worker error details are never exposed. Captures remain scoped to the
+credential's owner.
 
 ## Matriz de compatibilidade
 
