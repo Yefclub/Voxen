@@ -203,7 +203,8 @@ X 44%, web 17%, YouTube 12%, TikTok 13%, uploads 13%. 26% of the library
 Local models, embeddings and semantic search, forecasting, cookies and
 logged-in capture, paid scraping APIs, channel/playlist subscriptions,
 automatic recapture schedules, chat, public HTTP/MCP endpoints for
-contract version 2, and MCP tools that start captures.
+contract version 2, MCP tools that start captures, and reprocessing documents
+created from an uploaded file (upload again instead).
 
 ## Delivery (one PR each)
 

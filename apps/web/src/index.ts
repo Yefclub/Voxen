@@ -30,12 +30,27 @@ import { resolveStorageDriver, storageGet } from './lib/storage';
 import { publicAuthenticationRoutes } from './routes/public-authentication';
 import { mcpOAuthDiscoveryRoutes } from './routes/mcp-oauth';
 import { mcpOAuthAccountRoutes } from './routes/mcp-oauth-account';
+import { MAX_MEDIA_UPLOAD_REQUEST_BYTES } from './lib/media-upload';
 import { requestLogging } from './lib/request-logging';
+import { captureRoutes } from './routes/captures';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
 
 app.use('*', requestLogging);
+
+// Bun accepts up to MAX_MEDIA_UPLOAD_REQUEST_BYTES (capture uploads, spec 220);
+// every other route keeps the previous 128 MB ceiling. Checked on the declared
+// length so the request stream is never wrapped (cancellation must propagate).
+const DEFAULT_BODY_LIMIT_BYTES = 128 * 1024 * 1024;
+const LARGE_BODY_PATHS = new Set(['/api/captures/upload', '/share-target']);
+app.use('*', async (c, next) => {
+  const declared = Number(c.req.header('content-length') ?? '0');
+  if (declared > DEFAULT_BODY_LIMIT_BYTES && !LARGE_BODY_PATHS.has(new URL(c.req.url).pathname)) {
+    return c.json({ error: 'Corpo da requisição grande demais.' }, 413);
+  }
+  return next();
+});
 
 app.onError((error, c) => {
   structuredDiagnostic('error', 'unhandled-request-error', 'UNHANDLED_REQUEST_ERROR', error, {
@@ -165,6 +180,7 @@ app.route('/api/account', accountRoutes);
 app.route('/api/notes', notesRoutes);
 // Organização compartilhada da biblioteca
 app.route('/api/library', libraryRoutes);
+app.route('/api/captures', captureRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
@@ -375,13 +391,61 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
+// Link capture (spec 220): durable CAPTURE_* jobs drained in the web process,
+// one at a time, woken by Redis `jobs:new` and a periodic sweep that also
+// reclaims expired leases and backoff-delayed retries. Runs in production and
+// local development (Compose forces NODE_ENV=development); never under tests.
+if (process.env.NODE_ENV !== 'test') {
+  void Promise.all([
+    import('./lib/capture/runner'),
+    import('./lib/capture/deps'),
+    import('./lib/redis'),
+  ])
+    .then(
+      ([
+        { drainCaptureJobs, purgeStaleCaptureArtifacts },
+        { getCaptureDeps },
+        { createSubscriber },
+      ]) => {
+        const drain = (): void => {
+          void drainCaptureJobs(getCaptureDeps()).catch((err) => {
+            structuredDiagnostic('warning', 'capture-drain-failed', 'CAPTURE_DRAIN_FAILED', err);
+          });
+        };
+        drain();
+        setInterval(drain, 15_000).unref();
+        const purge = (): void => {
+          void purgeStaleCaptureArtifacts().catch((err) => {
+            structuredDiagnostic('warning', 'capture-purge-failed', 'CAPTURE_PURGE_FAILED', err);
+          });
+        };
+        setInterval(purge, 60 * 60_000).unref();
+        const wakeups = createSubscriber();
+        wakeups.on('message', () => drain());
+        wakeups.on('error', () => undefined);
+        void wakeups.subscribe('jobs:new').catch(() => undefined);
+      },
+    )
+    .catch((err) => {
+      structuredDiagnostic(
+        'warning',
+        'capture-runner-unavailable',
+        'CAPTURE_RUNNER_UNAVAILABLE',
+        err,
+      );
+    });
+}
+
 import type { Server } from 'bun';
 
 function isLongLivedStreamRequest(req: Request): boolean {
   if (req.method === 'GET') {
     const path = new URL(req.url).pathname;
     // Graph SSE: idle do Bun ainda pode matar a conexão.
-    return path.endsWith('/api/graph/events');
+    return (
+      path.endsWith('/api/graph/events') ||
+      (path.startsWith('/api/captures/') && path.endsWith('/events'))
+    );
   }
   return false;
 }
@@ -391,6 +455,8 @@ export default {
   // Bun.serve fecha conexões ociosas em 10s por padrão (inclui streams quietos).
   // 255s é o máximo da API; streams longos desabilitam o timeout por request.
   idleTimeout: 255,
+  // Capture uploads accept up to 500 MB (spec 220); Bun's default is 128 MB.
+  maxRequestBodySize: MAX_MEDIA_UPLOAD_REQUEST_BYTES,
   // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
   // `app.fetch(req)` direto (sem server) — por isso é opcional.
   // Tipamos o retorno como `Response | Promise<Response>` pra não poluir os

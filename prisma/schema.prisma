@@ -975,6 +975,8 @@ enum JobType {
   UPLOAD_AND_ANALYZE_DOCUMENT
   ANALYZE_X
   DELETE_KNOWLEDGE
+  CAPTURE_LINK
+  CAPTURE_UPLOAD
 }
 
 enum KnowledgeDeletionTargetType {
@@ -1060,6 +1062,12 @@ model Job {
   queuedAt            DateTime                     @default(now())
   startedAt           DateTime?
   finishedAt          DateTime?
+  // Spec 220 capture jobs: stable error code, estimated cost, non-secret
+  // step metadata, and retry backoff gate.
+  captureErrorCode    String?
+  captureCostUsd      Decimal?                     @db.Decimal(10, 6)
+  captureMeta         Json                         @default("{}")
+  notBefore           DateTime?
   user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript          Transcript?                  @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
   refreshTranscript   Transcript?                  @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
@@ -1075,6 +1083,7 @@ model Job {
   @@index([userId, refreshTranscriptId, status])
   @@index([userId, savedMediaId, status])
   @@index([userId, deletionTargetType, deletionTargetId, status])
+  @@index([type, status, notBefore])
 }
 
 model JobProgressEvent {
