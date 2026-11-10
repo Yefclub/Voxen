@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794306811 — 2026-11-10 · Dev
+
+### ✨ Captures process whole videos, keep descriptions and add comments
+
+Videos and audio without captions are now always transcribed when a speech-to-text model is configured, even when the post has a description; the description stays in the document under its own section next to the transcript. For videos with a vision model, up to four keyframes are described (with their timestamps) together with up to two thumbnails or post images. Up to 50 top comments are added to the document, most relevant first, and the summary gains a key point on how the audience received the content. When speech, keyframes or image descriptions cannot be produced but enough other text exists, the capture still publishes and the capture card says what was skipped.
+
 ## v0.15.1-dev.1794305927 — 2026-11-10 · Dev
 
 ### ✨ Local speech-to-text on your own server
