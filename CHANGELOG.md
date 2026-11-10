@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.15.1-dev.1794305927 — 2026-11-10 · Dev
+
+### ✨ Local speech-to-text on your own server
+
+When the optional `stt-local` sidecar is running, **Account → AI providers**
+offers "Local (Parakeet, on this server)" in the speech-to-text chain. It needs
+no key, costs nothing and keeps audio on your server. It is never added to a
+chain on its own: you choose it. While the sidecar is down, the entry shows as
+unavailable and the next model in the chain transcribes instead.
+
 ## v0.15.1-dev.1794281530 — 2026-11-10 · Dev
 
 ### ✨ Gemini provider, per-role model fallback and reasoning effort
