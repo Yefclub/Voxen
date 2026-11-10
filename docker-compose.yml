@@ -131,12 +131,17 @@ services:
       # Link capture worker (spec 220). Shared bearer token, internal network only.
       CAPTURE_WORKER_URL: ${CAPTURE_WORKER_URL:-http://capture-worker:8080}
       CAPTURE_WORKER_TOKEN: ${CAPTURE_WORKER_TOKEN:-}
+      # Optional local speech-to-text sidecar (spec 221). Empty disables it;
+      # with the `stt-local` profile enabled set http://stt-local:5092.
+      STT_LOCAL_URL: ${STT_LOCAL_URL:-}
     ports:
       - '3000:3000'
     volumes:
       - storage_data:/data/storage
     networks:
       - voxen-net
+      # Internal-only network shared with the optional stt-local sidecar.
+      - stt-net
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
       interval: 10s
@@ -185,6 +190,42 @@ services:
       retries: 3
 
   # ---------------------------------------------------------------------------
+  # stt-local — optional local speech-to-text sidecar (spec 221, profile
+  # `stt-local`). Parakeet TDT 0.6B v3 int8 on CPU behind an OpenAI-compatible
+  # /v1/audio/transcriptions endpoint, WAV only, one transcription at a time.
+  # Holds no secrets and lives only on `stt-net` (internal: no egress), which
+  # `web` joins and `capture-worker` does not. No published ports.
+  # Usage: docker compose --profile stt-local up -d
+  #        and set STT_LOCAL_URL=http://stt-local:5092 in .env.
+  # ---------------------------------------------------------------------------
+  stt-local:
+    profiles: [stt-local]
+    build:
+      context: .
+      dockerfile: apps/stt-local/Dockerfile
+    restart: unless-stopped
+    init: true
+    user: '10002:10002'
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,uid=10002,gid=10002,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Peak ~2.5 GiB while transcribing (ONNX Runtime arena for 60 s windows).
+    mem_limit: 3g
+    cpus: 2
+    pids_limit: 128
+    networks:
+      - stt-net
+    healthcheck:
+      test: ['CMD', '/usr/local/bin/stt-healthcheck']
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
   # nginx — reverse proxy opcional (profile `nginx`)
   # Uso:
   #   docker compose --profile nginx up -d
@@ -216,6 +257,10 @@ services:
 networks:
   voxen-net:
     driver: bridge
+  # No gateway to the outside world: only `web` and `stt-local` attach to it.
+  stt-net:
+    driver: bridge
+    internal: true
 
 volumes:
   pgdata:

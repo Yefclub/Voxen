@@ -117,6 +117,11 @@ post images, but video keyframes are always analyzed; vision `LLM_AUTH` /
   (never with `capture-worker`), with no published ports and no secrets. Any
   5xx, connection error or per-entry timeout is a retryable failure of that
   entry.
+- Where the platform cannot create an internal-only network (Easypanel,
+  Openship), the sidecar shares the project network: other project services
+  (including `capture-worker`) can reach it and it has egress. The isolation
+  rule above is guaranteed only under Docker Compose, and the deploy docs
+  shall state this residual risk.
 - If the sidecar is unreachable, then the `local` entry fails as retryable and
   the chain continues.
 

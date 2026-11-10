@@ -135,6 +135,43 @@ yt-dlp, Deno, ffmpeg/ffprobe, Trafilatura, and the Smokescreen egress proxy.
 - To share links from a phone, install the PWA from the browser menu; it
   registers as a share target and opens `/capturar` with the new capture.
 
+## Optional local speech-to-text (`stt-local`)
+
+Speech-to-text can run on the server's own CPU instead of a cloud provider
+(spec 221). The `stt-local` service, built from `apps/stt-local/Dockerfile`,
+serves NVIDIA Parakeet TDT 0.6B v3 (int8) behind an OpenAI-compatible
+endpoint. It needs no key, holds no secrets, accepts WAV only and runs one
+transcription at a time. Plan for about 2.5 GB of resident RAM: memory stays
+near that peak after the first long request until the container restarts (on
+tight hosts set `PARAKEET_CHUNK_SECONDS=40`: about 1.9 GB, roughly 40%
+slower). An out-of-memory kill shows up as a retryable `local` failure, so the
+STT chain moves on while the container restarts.
+Details, pins and licenses (model weights CC-BY-4.0) are in
+[`apps/stt-local/README.md`](../../apps/stt-local/README.md).
+
+- Docker Compose: `docker compose --profile stt-local up -d --build stt-local`,
+  set `STT_LOCAL_URL=http://stt-local:5092` in `.env` and recreate `web`
+  (`docker compose up -d web`). The service publishes no ports and attaches
+  only to `stt-net`, an `internal: true` network (no internet egress) that
+  `web` joins and `capture-worker` does not.
+- Easypanel and Openship: add another service named `stt-local` from the
+  GitHub source with Dockerfile path `apps/stt-local/Dockerfile` and build path
+  `/`, with no domain, no public port and no environment variables. Set a 3 GB memory limit
+  and 2 CPUs, then add `STT_LOCAL_URL=http://<project>_stt-local:5092` (the
+  internal hostname the platform shows for that service) to the Voxen App and
+  redeploy it. Residual risk on these platforms: they cannot create an
+  internal-only network, so the sidecar shares the project network. Every
+  service in the project, including `capture-worker` (which handles untrusted
+  downloads), can reach its unauthenticated endpoint, and the sidecar itself
+  has internet egress. The isolation described above is guaranteed only under
+  Docker Compose. Keep it unexposed; it still runs as an unprivileged user from
+  an image with no setuid/setgid binaries and no secrets.
+- Leave `STT_LOCAL_URL` empty when the service is not running. Voxen starts
+  using the sidecar once the keyless `local` provider ships in the web app
+  (the next capture release); each user then adds the `local` entry to their
+  STT chain in **Account → AI providers**, and if the sidecar is down that entry
+  fails as retryable and the chain moves on.
+
 ## Home-Lab
 
 ```bash

@@ -476,5 +476,5 @@ embeddings continuam fora. Vídeos passam a ser sempre transcritos e ter
 frames analisados; os 50 comentários mais relevantes são capturados.
 
 Consequências: o plano grátis do Gemini pode usar o conteúdo enviado para
-melhorar produtos do Google, então a UI avisa; o sidecar local custa cerca de
-2 GB de RAM e processa uma transcrição por vez.
+melhorar produtos do Google, então a UI avisa; o sidecar local mantém cerca de
+2,5 GB de RAM residentes depois de usado e processa uma transcrição por vez.
