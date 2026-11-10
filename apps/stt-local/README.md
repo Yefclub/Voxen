@@ -67,7 +67,8 @@ providers** (`/conta/ia`): in the **Transcription (STT)** list, pick "Local
 option appears only while `STT_LOCAL_URL` is set and `GET /health` answers
 (checked with a 2 s timeout, cached 30 s); a stored entry shows "unavailable"
 and is skipped while the sidecar is down. It only takes WAV: when it is the
-first available entry the capture pipeline requests WAV audio from the worker;
+first available entry and the duration is known and at most 1 h, the capture
+pipeline requests WAV audio from the worker;
 with MP3 audio `local` entries are skipped. Cloud entries after it act as
 fallbacks.
 
