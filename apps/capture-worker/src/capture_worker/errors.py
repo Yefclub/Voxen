@@ -98,6 +98,9 @@ _MESSAGE_RULES: tuple[tuple[re.Pattern[str], str, bool], ...] = tuple(
     for pattern, code, retryable in (
         (r"egress proxying is denied|request rejected by proxy|\b407\b", BLOCKED_ADDRESS, False),
         (r"not a bot|confirm you.?re not a robot", IP_BLOCKED, False),
+        # yt-dlp words TikTok status 10204 as an IP block, but TikTok answers it
+        # for deleted or unavailable posts ("status_deleted"), not for the IP.
+        (r"ip address is blocked from accessing this post", REMOVED, False),
         (r"\b429\b|too many requests|rate.?limit", RATE_LIMITED, True),
         (
             r"larger than max-filesize|file is larger than|too large|no space left on device",

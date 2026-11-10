@@ -33,8 +33,15 @@ from capture_worker.errors import classify_exception, classify_http_status, clas
             "IP_BLOCKED",
             False,
         ),
+        # TikTok status 10204: yt-dlp calls it an IP block, TikTok means a
+        # deleted or unavailable post ("status_deleted").
         (
             "ERROR: [TikTok] 1: Your IP address is blocked from accessing this post",
+            "REMOVED",
+            False,
+        ),
+        (
+            "ERROR: [generic] x: Your IP address is blocked by the site",
             "IP_BLOCKED",
             False,
         ),
