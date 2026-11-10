@@ -245,9 +245,9 @@ async def _wav_chunks(source: str, tmp_dir: str) -> dict[str, object]:
         ],
         tmp_dir,
     )
+    # The probe already capped the duration; chunk padding may add a fraction
+    # of a second, so no second size check here (spec 221: no TOO_LARGE).
     chunks, duration = await _collect_chunks(tmp_dir, "audio/wav", config.WAV_CHUNK_SEC)
-    if duration > config.MAX_WAV_SEC:
-        raise error(TOO_LARGE)
     return {"durationSec": round(duration, 3), "chunks": chunks}
 
 

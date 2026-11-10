@@ -149,7 +149,8 @@ def test_video_download_args(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert path.endswith("video.mp4")
     args = seen[0]
     assert args[args.index("--format") + 1] == (
-        "bv*[height>=240][height<=?480]/bv*[width>=240][width<=?480]"
+        "bv*[height>=240][width>=240][height<=?480]"
+        "/bv*[width>=240][height>=240][width<=?480]"
         "/bv*[height<=?480]/b[height<=?480]/bv*/b"
     )
     assert args[args.index("--format-sort") + 1] == "+size,+br"
@@ -256,11 +257,12 @@ def test_audio_rejects_unknown_formats(client: TestClient, fmt: object) -> None:
     assert response.json()["error"]["code"] == "UNSUPPORTED"
 
 
-def test_upload_rejects_unknown_audio_format(client: TestClient) -> None:
+@pytest.mark.parametrize("fmt", ["ogg", ""])
+def test_upload_rejects_unknown_audio_format(client: TestClient, fmt: str) -> None:
     response = client.post(
         "/v1/file",
         files={"file": ("a.mp3", b"ID3fake", "audio/mpeg")},
-        data={"filename": "a.mp3", "contentType": "audio/mpeg", "format": "ogg"},
+        data={"filename": "a.mp3", "contentType": "audio/mpeg", "format": fmt},
         headers=AUTH,
     )
     assert response.status_code == 422
@@ -298,8 +300,8 @@ def test_wav_request_for_long_or_unknown_audio_returns_mp3(monkeypatch: pytest.M
 
 def test_frame_selector_never_falls_back_to_the_largest_stream(tmp_path) -> None:
     fmt = ytdlp.video_args(str(tmp_path))[1]
-    assert "w" not in fmt.split("/")[-1] and fmt.endswith("/bv*/b")
-    assert "[width<=?480]" in fmt
+    assert fmt.endswith("/bv*/b")
+    assert "[width>=240]" in fmt and "[width<=?480]" in fmt
 
 
 def test_extract_awaits_the_cancelled_comments_task(
@@ -332,3 +334,94 @@ def test_extract_awaits_the_cancelled_comments_task(
     with pytest.raises(RuntimeError):
         asyncio.run(ytdlp.extract("youtube", "https://youtu.be/x", str(tmp_path)))
     assert state == {"cancelled": True, "finished": True}
+
+
+def _video_format(fid: str, width: int, height: int, size: int) -> dict[str, Any]:
+    return {
+        "format_id": fid,
+        "url": f"https://media.example/{fid}",
+        "ext": "mp4",
+        "protocol": "https",
+        "vcodec": "avc1",
+        "acodec": "none",
+        "width": width,
+        "height": height,
+        "filesize": size,
+        "tbr": size / 1000,
+    }
+
+
+@pytest.mark.parametrize(
+    ("formats", "expected"),
+    [
+        # YouTube Short: a 144x256 stream must not win over 240x426.
+        (
+            [
+                _video_format("144v", 144, 256, 1_000_000),
+                _video_format("240v", 240, 426, 2_000_000),
+                _video_format("1080v", 1080, 1920, 30_000_000),
+            ],
+            "240v",
+        ),
+        # Landscape: smallest stream whose short side is 240-480 px.
+        (
+            [
+                _video_format("144p", 256, 144, 500_000),
+                _video_format("360p", 640, 360, 3_000_000),
+                _video_format("720p", 1280, 720, 9_000_000),
+            ],
+            "360p",
+        ),
+        # Vertical only, nothing in range: smallest available, never the largest.
+        (
+            [
+                _video_format("576x1024", 576, 1024, 3_000_000),
+                _video_format("1080x1920", 1080, 1920, 20_000_000),
+            ],
+            "576x1024",
+        ),
+    ],
+)
+def test_frame_selector_picks_the_expected_stream(
+    tmp_path, formats: list[dict[str, Any]], expected: str
+) -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+
+    info = {
+        "id": "fixture",
+        "title": "fixture",
+        "extractor": "generic",
+        "extractor_key": "Generic",
+        "webpage_url": "https://media.example/watch",
+        "formats": formats,
+    }
+    path = tmp_path / "info.json"
+    path.write_text(json.dumps(info))
+    args = ytdlp.video_args(str(tmp_path))
+    fmt = args[args.index("--format") + 1]
+    sort = args[args.index("--format-sort") + 1]
+    exe = shutil.which("yt-dlp") or sys.executable
+    prefix = [exe] if exe != sys.executable else [sys.executable, "-m", "yt_dlp"]
+    result = subprocess.run(  # noqa: S603 - fixed local invocation in a test
+        [
+            *prefix,
+            "--ignore-config",
+            "--load-info-json",
+            str(path),
+            "--simulate",
+            "--print",
+            "format_id",
+            "-f",
+            fmt,
+            "-S",
+            sort,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert result.stdout.strip() == expected

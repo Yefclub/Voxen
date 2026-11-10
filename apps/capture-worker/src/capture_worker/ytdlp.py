@@ -332,7 +332,8 @@ def video_args(out_dir: str) -> list[str]:
         # `+size` sorting "best" means smallest, so the last resort is `bv*/b`
         # (smallest available), never `w` (which would be the largest).
         "--format",
-        "bv*[height>=240][height<=?480]/bv*[width>=240][width<=?480]"
+        "bv*[height>=240][width>=240][height<=?480]"
+        "/bv*[width>=240][height>=240][width<=?480]"
         "/bv*[height<=?480]/b[height<=?480]/bv*/b",
         "--format-sort",
         "+size,+br",
