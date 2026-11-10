@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794316387 — 2026-11-10 · Dev
+
+### 🔒 Capture worker and local STT images without known HIGH vulnerabilities
+
+The Go builder of `capture-worker` (Smokescreen egress proxy) and `stt-local`
+moves from Go 1.25.14 to 1.27.3, and Smokescreen's `golang.org/x/net`,
+`golang.org/x/text` and `logrus` are raised to fixed versions. Trivy reports no
+CRITICAL or HIGH findings with a fix available in either image.
+
 ## v0.15.1-dev.1794314292 — 2026-11-10 · Dev
 
 ### 🐛 Deleted TikTok posts report "removed" instead of an IP block
