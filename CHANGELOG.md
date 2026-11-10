@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1-dev.1794281530 — 2026-11-10 · Dev
+
+### ✨ Gemini provider, per-role model fallback and reasoning effort
+
+Google Gemini joins the AI providers for text, vision and speech-to-text (Gemini 3.5 Flash-Lite, 3.8 Flash and 3.5 Transcribe), with a notice that free-tier keys may let Google use submitted content. Each role now keeps an ordered list of up to four models: when one fails (auth, quota, rate limit, timeout, retired model), the next one answers, and the cost of every attempt is counted. Reasoning is now on for every provider: each text role has an effort setting (off, low, medium or high, default medium), and reasoning tokens get their own output allowance and are counted in the cost. Existing single-model settings keep working unchanged.
+
 ## v0.15.1-dev.1794275140 — 2026-11-09 · Dev
 
 ### ✨ Optional local speech-to-text sidecar
