@@ -46,13 +46,22 @@ export const REASONING_OUTPUT_ALLOWANCE: Readonly<Record<ReasoningEffort, number
   high: 16_000,
 };
 
-/** Requested output plus the reasoning allowance, capped by the model's maximum. */
+/**
+ * Providers whose `off` still reasons at a minimum level: Gemini 3.x cannot
+ * turn thinking off, and Anthropic swaps `disabled` for the model's minimum
+ * where thinking cannot be disabled. Their `off` gets the `low` allowance.
+ */
+const OFF_STILL_REASONS = new Set<AiProvider>(['google', 'anthropic']);
+
+/** Requested output plus the allowance for the level actually sent, capped by the model's maximum. */
 export function effectiveMaxOutputTokens(
   model: Pick<CatalogModel, 'reasoning' | 'maxOutputTokens'>,
   requested: number,
   effort: ReasoningEffort,
+  provider?: AiProvider,
 ): number {
-  const wanted = requested + (model.reasoning ? REASONING_OUTPUT_ALLOWANCE[effort] : 0);
+  const sent = effort === 'off' && provider && OFF_STILL_REASONS.has(provider) ? 'low' : effort;
+  const wanted = requested + (model.reasoning ? REASONING_OUTPUT_ALLOWANCE[sent] : 0);
   return model.maxOutputTokens === null ? wanted : Math.min(wanted, model.maxOutputTokens);
 }
 

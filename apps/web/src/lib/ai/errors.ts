@@ -17,6 +17,8 @@ export class AiError extends Error {
   readonly provider: AiProvider | null;
   readonly status: number | null;
   readonly retryable: boolean;
+  /** Billed cost of every chain attempt behind this failure (spec 221). */
+  costUsd: number | null = null;
 
   constructor(
     code: AiErrorCode,

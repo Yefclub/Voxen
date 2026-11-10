@@ -228,7 +228,10 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
       lastError = outcome.error;
       if (signal?.aborted) break;
     }
-    throw lastError ?? new AiError('LLM_FAILED', 'The model call failed.');
+    const failure = lastError ?? new AiError('LLM_FAILED', 'The model call failed.');
+    // Failed attempts are billed too; the caller adds them to the job cost.
+    failure.costUsd = costUsd;
+    throw failure;
   }
 
   function providerLanguageModel(resolved: ResolvedRole): LanguageModel {
@@ -296,6 +299,7 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
             resolved.catalog,
             input.maxOutputTokens,
             effort,
+            resolved.provider,
           ),
           maxRetries: 1,
           abortSignal: signal,

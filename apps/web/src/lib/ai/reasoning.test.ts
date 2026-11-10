@@ -121,6 +121,15 @@ describe('output allowance and cost', () => {
     );
   });
 
+  test('off still gets the low allowance where the provider keeps reasoning', () => {
+    const flash = findCatalogModel('google', 'gemini-3.8-flash')!;
+    expect(effectiveMaxOutputTokens(flash, 2_000, 'off', 'google')).toBe(4_000);
+    const lite = findCatalogModel('google', 'gemini-3.5-flash-lite')!;
+    expect(effectiveMaxOutputTokens(lite, 2_000, 'off', 'google')).toBe(4_000);
+    const luna = findCatalogModel('openai', 'gpt-6-luna')!;
+    expect(effectiveMaxOutputTokens(luna, 2_000, 'off', 'openai')).toBe(2_000);
+  });
+
   test('every text model declares reasoning and a max output; STT models declare neither', () => {
     for (const catalog of Object.values(AI_CATALOG)) {
       for (const model of catalog.models) {

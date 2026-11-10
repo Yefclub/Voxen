@@ -60,7 +60,7 @@ const Entry = z
 
 // A chain, or the spec 220 single entry (read as a one-entry chain).
 const Chain = z
-  .union([z.array(Entry).max(MAX_CHAIN_LENGTH), Entry])
+  .union([z.array(Entry).max(16), Entry])
   .nullish()
   .transform((value): RoleEntry[] => (value == null ? [] : Array.isArray(value) ? value : [value]));
 
