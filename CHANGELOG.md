@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794311274 — 2026-11-10 · Dev
+
+### 🐛 TikTok speech is transcribed from the video's own audio
+
+The capture worker no longer downloads TikTok's background music track, which
+yt-dlp lists as the audio-only format. That track is often longer than the
+video and has no speech, so transcripts came back empty. Audio now comes from
+the video's own stream.
+
 ## v0.15.1-dev.1794306811 — 2026-11-10 · Dev
 
 ### ✨ Captures process whole videos, keep descriptions and add comments
