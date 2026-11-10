@@ -9,6 +9,7 @@ downloaders.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -194,7 +195,12 @@ async def extract(platform: str, url: str, tmp_dir: str) -> dict[str, Any]:
         result = await _extract_result(platform, url, info, tmp_dir)
         result["comments"] = await comments_task
     finally:
-        comments_task.cancel()
+        if not comments_task.done():
+            comments_task.cancel()
+            # Wait for the cancelled yt-dlp child to be killed before the work
+            # dir is removed and the extract slot is released.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await comments_task
     return result
 
 
@@ -321,10 +327,13 @@ async def download_video(url: str, tmp_dir: str) -> str:
 
 def video_args(out_dir: str) -> list[str]:
     return [
-        # Smallest stream between 240p and 480p, so frames stay legible without
-        # filling the tmpfs; video-only streams need no merge.
+        # Smallest stream whose short side is 240-480 px (landscape or
+        # vertical), so frames stay legible without filling the tmpfs. With
+        # `+size` sorting "best" means smallest, so the last resort is `bv*/b`
+        # (smallest available), never `w` (which would be the largest).
         "--format",
-        "bv*[height>=240][height<=?480]/bv*[height<=?480]/b[height<=?480]/wv*/w",
+        "bv*[height>=240][height<=?480]/bv*[width>=240][width<=?480]"
+        "/bv*[height<=?480]/b[height<=?480]/bv*/b",
         "--format-sort",
         "+size,+br",
         "--max-filesize",

@@ -129,9 +129,14 @@ AUDIO_FORMATS = ("mp3", "wav")
 
 
 async def audio_chunks(source: str, tmp_dir: str, fmt: str = "mp3") -> dict[str, object]:
-    """Speech-ready audio chunks: MP3 (default) or WAV."""
+    """Speech-ready audio chunks: MP3 (default) or WAV. A WAV request for audio
+    of unknown duration or longer than MAX_WAV_SEC returns MP3 instead; the
+    chunk `mime` tells the caller which one it got (no second download)."""
     if fmt == "wav":
-        return await _wav_chunks(source, tmp_dir)
+        info = await probe(source, tmp_dir)
+        if info.duration is not None and info.duration <= config.MAX_WAV_SEC:
+            return await _wav_chunks(source, tmp_dir)
+        return await _mp3_chunks(source, tmp_dir)
     if fmt != "mp3":
         raise error(UNSUPPORTED)
     return await _mp3_chunks(source, tmp_dir)
@@ -320,10 +325,13 @@ async def video_frame_times(
     times = await packet_times(source, tmp_dir)
     if not times:
         return [0.0], None
-    span = times[-1] - times[0]
+    # Input `-ss` is relative to the stream start, so packet timestamps are
+    # shifted to start at zero (sources such as MPEG-TS do not start at 0).
+    start = times[0]
+    span = times[-1] - start
     if span < config.MAX_IMAGES:
-        return [times[0] + t for t in evenly_spaced(span)], span
-    picked = [times[int(p * (len(times) - 1))] for p in _FALLBACK_POSITIONS]
+        return evenly_spaced(span), span
+    picked = [times[int(p * (len(times) - 1))] - start for p in _FALLBACK_POSITIONS]
     return picked, span
 
 

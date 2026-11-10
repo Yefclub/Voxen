@@ -149,7 +149,8 @@ def test_video_download_args(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert path.endswith("video.mp4")
     args = seen[0]
     assert args[args.index("--format") + 1] == (
-        "bv*[height>=240][height<=?480]/bv*[height<=?480]/b[height<=?480]/wv*/w"
+        "bv*[height>=240][height<=?480]/bv*[width>=240][width<=?480]"
+        "/bv*[height<=?480]/b[height<=?480]/bv*/b"
     )
     assert args[args.index("--format-sort") + 1] == "+size,+br"
     assert args[args.index("--max-filesize") + 1] == str(300 * 1024 * 1024)
@@ -189,7 +190,7 @@ def test_frame_times_fall_back_to_file_positions(monkeypatch: pytest.MonkeyPatch
 
     packets[:] = [5.0, 5.5, 6.0, 6.5, 7.0]
     times, span = asyncio.run(media.video_frame_times("v.mp4", None, "work"))
-    assert span == 2.0 and times == pytest.approx([5 + 2 / 3, 5 + 4 / 3])
+    assert span == 2.0 and times == pytest.approx([2 / 3, 4 / 3])
 
     packets[:] = []
     assert asyncio.run(media.video_frame_times("v.mp4", None, "work")) == ([0.0], None)
@@ -266,20 +267,68 @@ def test_upload_rejects_unknown_audio_format(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "UNSUPPORTED"
 
 
-def test_wav_needs_a_known_duration_up_to_one_hour(monkeypatch: pytest.MonkeyPatch) -> None:
-    from capture_worker.errors import CaptureError
+def test_wav_request_for_long_or_unknown_audio_returns_mp3(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
 
-    async def must_not_run(args: list[str], tmp_dir: str) -> None:
-        raise AssertionError("ffmpeg must not run")
-
-    monkeypatch.setattr(media, "_ffmpeg", must_not_run)
     assert config.MAX_WAV_SEC == 3600 and config.WAV_CHUNK_SEC == 480
+    calls: list[str] = []
+
+    async def mp3(source: str, tmp_dir: str) -> dict[str, object]:
+        calls.append("mp3")
+        return {
+            "durationSec": 1.0,
+            "chunks": [{"startSec": 0, "mime": "audio/mpeg", "dataBase64": ""}],
+        }
+
+    async def wav(source: str, tmp_dir: str) -> dict[str, object]:
+        raise AssertionError("WAV must not be produced")
+
+    monkeypatch.setattr(media, "_mp3_chunks", mp3)
+    monkeypatch.setattr(media, "_wav_chunks", wav)
     for duration in (None, 3600.5):
 
         async def probe(path: str, tmp_dir: str, d: float | None = duration) -> media.Probe:
             return media.Probe(d, True, False, None, None)
 
         monkeypatch.setattr(media, "probe", probe)
-        with pytest.raises(CaptureError) as caught:
-            asyncio.run(media.audio_chunks("a.m4a", "work", "wav"))
-        assert caught.value.code == "TOO_LARGE"
+        result = asyncio.run(media.audio_chunks("a.m4a", "work", "wav"))
+        assert result["chunks"][0]["mime"] == "audio/mpeg"
+    assert calls == ["mp3", "mp3"]
+
+
+def test_frame_selector_never_falls_back_to_the_largest_stream(tmp_path) -> None:
+    fmt = ytdlp.video_args(str(tmp_path))[1]
+    assert "w" not in fmt.split("/")[-1] and fmt.endswith("/bv*/b")
+    assert "[width<=?480]" in fmt
+
+
+def test_extract_awaits_the_cancelled_comments_task(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import asyncio
+
+    state = {"cancelled": False, "finished": False}
+
+    async def slow_comments(*args: Any) -> list[dict[str, Any]]:
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            state["cancelled"] = True
+            await asyncio.sleep(0)
+            state["finished"] = True
+            raise
+        return []
+
+    async def fake_metadata(url: str, tmp_dir: str) -> dict[str, Any]:
+        return {"webpage_url": url}
+
+    async def failing_result(*args: Any) -> dict[str, Any]:
+        await asyncio.sleep(0.05)  # let the comments task start first
+        raise RuntimeError("extract failed")
+
+    monkeypatch.setattr(ytdlp, "metadata", fake_metadata)
+    monkeypatch.setattr(ytdlp, "fetch_comments", slow_comments)
+    monkeypatch.setattr(ytdlp, "_extract_result", failing_result)
+    with pytest.raises(RuntimeError):
+        asyncio.run(ytdlp.extract("youtube", "https://youtu.be/x", str(tmp_path)))
+    assert state == {"cancelled": True, "finished": True}

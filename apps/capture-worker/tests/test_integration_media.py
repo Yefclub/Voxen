@@ -72,7 +72,7 @@ def test_upload_video_returns_audio_and_keyframes(client: TestClient, tmp_path) 
     assert len(body["images"]) == 4
     assert all(img["mime"] == "image/jpeg" and img["width"] == 320 for img in body["images"])
     assert body["hasVideo"] is True
-    assert [img["kind"] for img in body["images"]] == ["post_media"] * 4
+    assert [img["kind"] for img in body["images"]] == ["frame"] * 4
     assert [img["timeSec"] for img in body["images"]] == pytest.approx(
         [1.2, 2.4, 3.6, 4.8], abs=0.1
     )
@@ -252,20 +252,15 @@ def test_wav_is_split_into_eight_minute_chunks(tmp_path) -> None:
     assert os.listdir(work) == []
 
 
-def test_wav_longer_than_one_hour_is_too_large(tmp_path) -> None:
+def test_wav_longer_than_one_hour_falls_back_to_mp3(tmp_path) -> None:
     import asyncio
-
-    from capture_worker.errors import CaptureError
 
     source = str(tmp_path / "very-long.m4a")
     _make_silence(source, 60 * 60 + 60)
     work = tmp_path / "work"
     work.mkdir()
-    with pytest.raises(CaptureError) as caught:
-        asyncio.run(media.audio_chunks(source, str(work), "wav"))
-    assert caught.value.code == "TOO_LARGE"
-    # MP3 still accepts it (up to 3 h).
-    result = asyncio.run(media.audio_chunks(source, str(work), "mp3"))
+    result = asyncio.run(media.audio_chunks(source, str(work), "wav"))
+    assert {chunk["mime"] for chunk in result["chunks"]} == {"audio/mpeg"}
     assert len(result["chunks"]) == 4
 
 
