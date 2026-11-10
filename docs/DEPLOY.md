@@ -110,6 +110,36 @@ ffmpeg/ffprobe, Trafilatura e o proxy de saída Smokescreen.
 - Para compartilhar links do celular, instale o PWA pelo menu do navegador;
   ele vira destino de compartilhamento e abre `/capturar` com a captura nova.
 
+### Transcrição de fala local opcional (`stt-local`)
+
+A transcrição de fala pode rodar na própria CPU do servidor em vez de um
+provedor na nuvem (spec 221). O serviço `stt-local`, construído a partir de
+`apps/stt-local/Dockerfile`, serve o NVIDIA Parakeet TDT 0.6B v3 (int8) atrás
+de um endpoint compatível com a OpenAI. Ele não precisa de chave, não guarda
+segredos, aceita só WAV e processa uma transcrição por vez; reserve cerca de
+2,5 GB de RAM durante a transcrição. Detalhes, pins e licenças (pesos do
+modelo CC-BY-4.0) estão em
+[`apps/stt-local/README.md`](../apps/stt-local/README.md).
+
+- Docker Compose: `docker compose --profile stt-local up -d --build stt-local`,
+  defina `STT_LOCAL_URL=http://stt-local:5092` no `.env` e recrie o `web`
+  (`docker compose up -d web`). O serviço não publica portas e fica só na
+  `stt-net`, uma rede `internal: true` (sem saída para a internet) da qual o
+  `web` participa e o `capture-worker` não.
+- Easypanel e Openship: adicione outro serviço com **Source → GitHub**,
+  Dockerfile `apps/stt-local/Dockerfile` e build path `/`, sem domínio, sem
+  porta pública e sem variáveis de ambiente. Defina limite de 3 GB de memória
+  e 2 CPUs e adicione `STT_LOCAL_URL=http://<projeto>_stt-local:5092` (o
+  hostname interno que a plataforma mostra para o serviço) ao App Voxen, com
+  redeploy. Essas plataformas não criam rede só interna, então o serviço fica
+  na rede do projeto e consegue acessar a internet; mantenha-o sem exposição.
+  Ele continua rodando como usuário sem privilégios, numa imagem sem binários
+  setuid/setgid e sem segredos.
+- Deixe `STT_LOCAL_URL` vazio quando o serviço não estiver rodando. Cada
+  usuário adiciona a entrada `local` à sua cadeia de STT em **Conta →
+  Provedores de IA**; se o sidecar cair, essa entrada falha como retentável e
+  a cadeia segue.
+
 ### Drivers de storage e atualização segura
 
 Instalações novas em um único host usam o volume compartilhado

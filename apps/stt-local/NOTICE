@@ -1,0 +1,14 @@
+Parakeet TDT 0.6B v3
+
+This image contains the "parakeet-tdt-0.6b-v3" model by NVIDIA Corporation
+(https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), licensed under the
+Creative Commons Attribution 4.0 International License (CC-BY-4.0,
+https://creativecommons.org/licenses/by/4.0/).
+
+Changes: the official NVIDIA checkpoint was exported to ONNX and quantized to
+int8 (local-attention encoder and decoder/joint network) by the
+achetronic/parakeet project (https://github.com/achetronic/parakeet), model
+image ghcr.io/achetronic/parakeet-models-asr-int8:v0.11.0. Voxen redistributes
+those files unmodified.
+
+The model is provided "as is", without warranties of any kind.

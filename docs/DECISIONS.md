@@ -477,4 +477,4 @@ frames analisados; os 50 comentários mais relevantes são capturados.
 
 Consequências: o plano grátis do Gemini pode usar o conteúdo enviado para
 melhorar produtos do Google, então a UI avisa; o sidecar local custa cerca de
-2 GB de RAM e processa uma transcrição por vez.
+2,5 GB de RAM e processa uma transcrição por vez.
