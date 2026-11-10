@@ -108,6 +108,7 @@ export function CapturarPage(): React.ReactElement {
 
   const onJob = useCallback(
     (job: CaptureJob) => {
+      setSharedPending(false);
       upsert(job);
       const next = new URLSearchParams();
       next.set('job', job.id);
