@@ -14,6 +14,21 @@ export function isActiveCapture(job: Pick<CaptureJob, 'status'>): boolean {
   return ACTIVE.has(job.status);
 }
 
+/** A history update must never steal navigation from the foreground capture. */
+export function foregroundCaptureDocumentPath(
+  job: Pick<CaptureJob, 'id' | 'status' | 'transcript'> | null | undefined,
+  focusedId: string | null,
+): string | null {
+  if (
+    !focusedId ||
+    job?.id !== focusedId ||
+    !job.transcript?.id ||
+    (job.status !== 'DONE' && job.status !== 'COMPLETED_WITH_WARNINGS')
+  )
+    return null;
+  return `/transcricoes/${encodeURIComponent(job.transcript.id)}`;
+}
+
 export function isTerminalStage(stage: string): boolean {
   return (
     stage === 'done' ||

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download } from '@/components/ui/icons';
 import { Button } from '../components/ui/button';
 import { FetchError } from '../components/ui/fetch-error';
@@ -16,6 +16,7 @@ import { useI18n } from '../lib/i18n';
 import { fetchCapture, fetchCaptures, type CaptureJob } from '../lib/capture-api';
 import {
   actionForCode,
+  foregroundCaptureDocumentPath,
   isActiveCapture,
   mergeCaptures,
   readCapturePageIntent,
@@ -27,6 +28,7 @@ const POLL_MS = 10_000;
 
 export function CapturarPage(): React.ReactElement {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const intent = useMemo(() => readCapturePageIntent(params), [params]);
   const composer = useRef<CaptureComposerHandle>(null);
@@ -37,6 +39,35 @@ export function CapturarPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [sharedPending, setSharedPending] = useState(false);
   const [tick, setTick] = useState(0);
+  const navigatedCapture = useRef<string | null>(null);
+  const focusedJob = jobs.find((job) => job.id === intent.focusJobId);
+
+  useEffect(() => {
+    if (intent.error || intent.sharedUrl || sharedPending) return;
+    const target = foregroundCaptureDocumentPath(focusedJob, intent.focusJobId);
+    const key = target
+      ? `job:${intent.focusJobId}`
+      : intent.existingTranscriptId
+        ? `existing:${intent.existingTranscriptId}`
+        : null;
+    if (!key || navigatedCapture.current === key) return;
+    const path = target ?? `/transcricoes/${encodeURIComponent(intent.existingTranscriptId!)}`;
+    navigatedCapture.current = key;
+    navigate(path, {
+      replace: true,
+      state: focusedJob
+        ? { capture: { id: focusedJob.id, warnings: focusedJob.warnings } }
+        : undefined,
+    });
+  }, [
+    focusedJob,
+    intent.error,
+    intent.existingTranscriptId,
+    intent.focusJobId,
+    intent.sharedUrl,
+    navigate,
+    sharedPending,
+  ]);
 
   const upsert = useCallback((job: CaptureJob) => {
     setJobs((current) => mergeCaptures(current, [job]));
