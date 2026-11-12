@@ -149,6 +149,52 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
     // Worker-owned fetches bypass Playwright routing, so these fixtures block registration.
     // Offline behavior is verified separately with an active production service worker.
     test.use({ serviceWorkers: 'block' });
+    for (const destination of [
+      { name: 'Biblioteca', path: /\/transcricoes$/ },
+      { name: 'Capturar', path: /\/capturar$/ },
+    ]) {
+      test(`ignores a delayed existing result after navigating to ${destination.name}`, async ({
+        page,
+      }) => {
+        let release!: () => void;
+        let received!: () => void;
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const pending = new Promise<void>((resolve) => {
+          received = resolve;
+        });
+        await page.route('**/api/captures', async (route) => {
+          if (route.request().method() !== 'POST') return route.continue();
+          const response = await route.fetch();
+          expect((await response.json()).existing).toBe(true);
+          received();
+          await held;
+          await route.fulfill({ response });
+        });
+        await page.goto('/capturar');
+        await page
+          .getByRole('textbox', { name: 'Link para capturar' })
+          .fill('https://example.test/matrix');
+        await page.getByRole('button', { name: 'Capturar', exact: true }).click();
+        await pending;
+        // Use client-side navigation: a full reload would cancel the request itself.
+        await page.getByRole('link', { name: destination.name, exact: true }).click();
+        await expect(page).toHaveURL(destination.path);
+        const response = page.waitForResponse(
+          (result) =>
+            result.request().method() === 'POST' &&
+            new URL(result.url()).pathname === '/api/captures',
+        );
+        release();
+        await (await response).finished();
+        await page.waitForLoadState('networkidle');
+        await expect(page).toHaveURL(destination.path);
+        if (destination.name === 'Capturar') {
+          await expect(page.getByRole('button', { name: 'Capturar', exact: true })).toBeEnabled();
+        }
+      });
+    }
     test('recovers account pages from network failures without inventing settings', async ({
       page,
     }) => {

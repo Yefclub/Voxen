@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
@@ -28,6 +28,7 @@ const POLL_MS = 10_000;
 export function CapturarPage(): React.ReactElement {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const intent = useMemo(() => readCapturePageIntent(params), [params]);
   const composer = useRef<CaptureComposerHandle>(null);
@@ -254,6 +255,7 @@ export function CapturarPage(): React.ReactElement {
       >
         <CaptureComposer
           ref={composer}
+          journeyKey={location.key}
           onJob={onJob}
           onExisting={(id) => {
             setSharedPending(false);

@@ -1,4 +1,12 @@
-import { forwardRef, useCallback, useId, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { ArrowRight, Link2, Upload } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../ui/button';
@@ -21,6 +29,8 @@ export interface CaptureComposerHandle {
 }
 
 interface CaptureComposerProps {
+  /** The BrowserRouter location key that owns submission callbacks. */
+  journeyKey: string;
   onExisting: (transcriptId: string) => void;
   onJob: (job: CaptureJob, deduped: boolean) => void;
 }
@@ -31,11 +41,11 @@ function hasFiles(event: React.DragEvent): boolean {
 
 /**
  * Link + file capture input. Enter submits the link; a picked or dropped file
- * goes to the upload endpoint. Synchronous outcomes other than a new job
- * Existing content opens directly; invalid links and configuration errors stay inline.
+ * goes to the upload endpoint. Existing content opens directly; invalid links
+ * and configuration errors stay inline.
  */
 export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposerProps>(
-  function CaptureComposer({ onJob, onExisting }, ref) {
+  function CaptureComposer({ journeyKey, onJob, onExisting }, ref) {
     const { t } = useI18n();
     const [url, setUrl] = useState('');
     const [busy, setBusy] = useState<'link' | 'upload' | null>(null);
@@ -47,6 +57,25 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
     const urlInput = useRef<HTMLInputElement>(null);
     const noticeId = useId();
     const inputId = useId();
+    const request = useRef<symbol | null>(null);
+
+    useLayoutEffect(() => {
+      setBusy(null);
+      setUpload(null);
+      return () => {
+        // An abandoned journey must not publish a pending submission's result.
+        request.current = null;
+      };
+    }, [journeyKey]);
+
+    const ownsRequest = useCallback(
+      (owner: symbol): boolean => {
+        // Lazy route transitions can leave this component mounted after history moves.
+        const currentJourney = window.history.state as { key?: string } | null;
+        return request.current === owner && (currentJourney?.key ?? 'default') === journeyKey;
+      },
+      [journeyKey],
+    );
 
     const handleResult = useCallback(
       (result: CaptureSubmitResult): void => {
@@ -78,39 +107,52 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
     const submitUrl = useCallback(
       async (value: string): Promise<void> => {
         const trimmed = value.trim();
-        if (!trimmed || busy) return;
+        if (!trimmed || request.current) return;
+        const owner = Symbol();
+        request.current = owner;
         setBusy('link');
         try {
-          handleResult(await submitCaptureLink(trimmed));
+          const result = await submitCaptureLink(trimmed);
+          if (ownsRequest(owner)) handleResult(result);
         } catch {
-          handleResult({ kind: 'error', status: 0, error: null, message: null });
+          if (ownsRequest(owner))
+            handleResult({ kind: 'error', status: 0, error: null, message: null });
         } finally {
-          setBusy(null);
+          if (request.current === owner) {
+            request.current = null;
+            setBusy(null);
+          }
         }
       },
-      [busy, handleResult],
+      [handleResult, ownsRequest],
     );
 
     const sendFile = useCallback(
       async (file: File): Promise<void> => {
-        if (busy) return;
+        if (request.current) return;
+        const owner = Symbol();
+        request.current = owner;
         setBusy('upload');
         setNotice(null);
         setUpload({ name: file.name, percent: 0 });
         try {
-          handleResult(
-            await uploadCaptureFile(file, (fraction) =>
-              setUpload({ name: file.name, percent: Math.round(fraction * 100) }),
-            ),
-          );
+          const result = await uploadCaptureFile(file, (fraction) => {
+            if (ownsRequest(owner))
+              setUpload({ name: file.name, percent: Math.round(fraction * 100) });
+          });
+          if (ownsRequest(owner)) handleResult(result);
         } catch {
-          handleResult({ kind: 'error', status: 0, error: null, message: null });
+          if (ownsRequest(owner))
+            handleResult({ kind: 'error', status: 0, error: null, message: null });
         } finally {
-          setBusy(null);
-          setUpload(null);
+          if (request.current === owner) {
+            request.current = null;
+            setBusy(null);
+            setUpload(null);
+          }
         }
       },
-      [busy, handleResult],
+      [handleResult, ownsRequest],
     );
 
     useImperativeHandle(
