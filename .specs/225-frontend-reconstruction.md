@@ -104,21 +104,21 @@ install prompt, offline/update states and touch/keyboard interaction.
 
 ## Acceptance criteria
 
-- [ ] Baseline desktop/mobile inspection records every supported route family.
-- [ ] A documented visual direction and component/token system replace the
+- [x] Baseline desktop/mobile inspection records every supported route family.
+- [x] A documented visual direction and component/token system replace the
       inconsistent frontend, with Astryx used in the delivered UI.
-- [ ] Capture and share journeys prioritize content and redirect only their
+- [x] Capture and share journeys prioritize content and redirect only their
       foreground result, with regressions for terminal states and stale events.
-- [ ] Every listed screen family is reconstructed and visually checked at its
+- [x] Every listed screen family is reconstructed and visually checked at its
       shipping sizes; shared interactive controls and page-specific workflows
       are exercised with safe isolated fixtures for data-changing operations.
-- [ ] Mobile safe areas, touch targets, keyboard/scroll behavior, PWA metadata,
+- [x] Mobile safe areas, touch targets, keyboard/scroll behavior, PWA metadata,
       share target, offline states and installation/update behavior are checked.
-- [ ] Mobile sheets expose their actions, dismissal and scrollable content with
+- [x] Mobile sheets expose their actions, dismissal and scrollable content with
       the virtual keyboard open; equivalent desktop controls remain usable.
-- [ ] Both appearance modes and locales retain their complete UI contracts;
+- [x] Both appearance modes and locales retain their complete UI contracts;
       keyboard focus, error announcements and reduced motion are verified.
-- [ ] Existing security, workspace, ingestion, MCP, graph and data-preservation
+- [x] Existing security, workspace, ingestion, MCP, graph and data-preservation
       contracts pass without weakening tests or quality/security gates.
 - [ ] Required checks, real builds, independent code/visual review and remote CI
       pass; the change merges to dev and the updated deployment is verified.
@@ -138,6 +138,30 @@ Destructive and credential-changing actions shall be tested with isolated data.
 
 > 2026-11-12: Scope follows the owner's complete reconstruction request.
 > The owner confirmed one Voxen identity with Light/Dark appearance instead
-> of the four existing packs. Baseline inventory and visual direction are in progress.
+> of the four existing packs. Baseline inspection and the documented direction are complete.
 > The owner additionally requested mobile-appropriate sheets instead of desktop
 > modal presentation for contextual tasks.
+
+## Local validation status
+
+The implementation uses Astryx controls and the semantic system recorded in
+[DESIGN.md](../DESIGN.md). The complete route/appearance/locale matrix contains
+354 captures, including 320px, 390px, tablet, desktop and landscape layouts.
+The final graph headroom correction has sixteen additional affected captures.
+The matrix's 176 accessibility scans and the eight graph follow-up scans report
+no violations. Browser evidence uses isolated demonstration data and sandboxed
+Chromium/WebKit; OS-level share choosers, installation and physical software
+keyboards remain unverified.
+
+At source revision `15531ca0be10a281d6dc65fa41ca881b9ef328ce`, the full application
+suite passes 1,487 tests. All 125 automation contracts were exercised, including
+the two PostgreSQL migration-preservation regressions run separately against
+isolated databases. The compiled Chromium suite passes 24 browser workflows;
+WebKit also covers the affected appearance, installation and history geometry.
+Lint, typecheck, formatting, the production dependency gate, the fresh quality
+gate and the actual Dockerfile build pass. No quality/security baseline was relaxed.
+
+Independent visual review scored all six material findings resolved and then
+confirmed the separate graph-label clipping correction with no introduced visual
+regression. The design system is documented. Exact-final independent technical
+review, remote CI, merge to dev and live deployment verification remain pending.
