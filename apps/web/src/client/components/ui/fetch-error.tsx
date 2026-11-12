@@ -28,7 +28,7 @@ export function FetchError({
     >
       <div className="max-w-md space-y-3 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)]">
-          <AlertTriangle className="h-5 w-5 text-rose-400" />
+          <AlertTriangle className="h-5 w-5 text-[var(--color-app-danger)]" />
         </div>
         <div className="space-y-1.5">
           <p className="font-display text-lg font-semibold text-[var(--color-app-fg)]">

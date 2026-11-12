@@ -36,7 +36,7 @@
   --color-app-surface: #202824;
   --color-app-surface-hover: #29342e;
   --color-app-border: #344139;
-  --color-app-border-strong: #53635a;
+  --color-app-border-strong: #6e8074;
   --color-app-fg: #edf2ed;
   --color-app-muted: #a2afa6;
   --color-app-subtle: #bdc9c0;
@@ -78,7 +78,7 @@
   --color-app-surface: #f0f3ed;
   --color-app-surface-hover: #e7ece3;
   --color-app-border: #dce3d7;
-  --color-app-border-strong: #aab8a6;
+  --color-app-border-strong: #76866f;
   --color-app-fg: #19251d;
   --color-app-muted: #5d6e60;
   --color-app-subtle: #465949;
@@ -168,7 +168,7 @@
   }
 
   @media (pointer: coarse) {
-    :where(button, select, input:not([type='checkbox'], [type='radio'])) {
+    :where(button:not([role='switch']), select, input:not([type='checkbox'], [type='radio'])) {
       min-height: 44px;
       min-width: 44px;
     }

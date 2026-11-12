@@ -178,4 +178,22 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
       await expect(page.locator('main')).not.toHaveCSS('overflow-x', 'scroll');
     }
   });
+  test('keeps a compact switch with a full touch target', async ({ page }) => {
+    await page.route('**/api/mcp/tokens', (route) =>
+      route.fulfill({ json: { tokens: [], allowCreate: true } }),
+    );
+    await page.goto('/conta/mcp');
+    const control = page.locator('#mcp-write-access');
+    await expect(control).toHaveAttribute('aria-checked', 'false');
+    await control.scrollIntoViewIfNeeded();
+    const box = (await control.boundingBox())!;
+    expect(box.width).toBe(44);
+    expect(box.height).toBe(24);
+    // The hit region extends 10px above/below the visual track.
+    await page.mouse.click(box.x + box.width / 2, box.y - 6);
+    await expect(control).toHaveAttribute('aria-checked', 'true');
+    await control.focus();
+    await page.keyboard.press('Space');
+    await expect(control).toHaveAttribute('aria-checked', 'false');
+  });
 });
