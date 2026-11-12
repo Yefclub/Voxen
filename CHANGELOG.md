@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.1-dev.1794504478 — 2026-11-12 · Dev
+
+### 🐛 Clearer graph exploration and reliable 3D framing
+
+The graph opens with a complete 3D overview instead of automatically zooming
+into one community. Camera initialization waits for positioned nodes, and
+distant nodes remain visible when zooming out.
+
+The 2D overview separates thematic groups and keeps connections subtle, with
+readable representative labels. Both modes share viewport controls and explicit
+2D/3D buttons. Desktop details sit beside the map, related content opens directly,
+and longer connection lists can be expanded. Search remains available across the
+whole library, including nodes outside the displayed overview.
+
 ## v0.15.1-dev.1794498234 — 2026-11-12 · Dev
 
 ### 🐛 Keep local speech-to-text available as a fallback
