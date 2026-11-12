@@ -456,12 +456,12 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
   }
 
   /**
-   * True when the first available entry of the user's STT chain is `local`,
-   * so the capture pipeline asks the worker for WAV audio (spec 221).
+   * Request WAV when any available STT entry is local, so cloud-first
+   * chains retain their local fallback (spec 223).
    */
   async function sttPrefersWav(userId: string): Promise<boolean> {
     try {
-      return (await resolveRoleChain(userId, 'stt'))[0]?.provider === 'local';
+      return (await resolveRoleChain(userId, 'stt')).some((entry) => entry.provider === 'local');
     } catch (error) {
       if (error instanceof AiNotConfiguredError) return false;
       throw error;

@@ -5,7 +5,10 @@
 
 import type { z } from 'zod';
 
-import { ensureLease, withTimeout, type ClaimedCaptureJob } from './lease';
+import { CHAIN_PROVIDERS } from '../ai/catalog';
+import { AiError } from '../ai/errors';
+import { structuredLog } from '../structured-log';
+import { ensureLease, mapUnknownError, withTimeout, type ClaimedCaptureJob } from './lease';
 import { failedAttemptCost } from './steps';
 import type { CaptureWarning } from './types';
 import type { AudioFormat, CaptureWorkerClient } from './worker-client';
@@ -20,8 +23,8 @@ export interface CaptureAi {
   /** Usable entries in the role's fallback chain; 0 when not configured. */
   chainLength(userId: string, role: AiRole): Promise<number>;
   /**
-   * Audio format the STT chain wants (spec 221): `wav` when its first usable
-   * entry is the local sidecar. Asked before any audio is fetched.
+   * Audio format the STT chain wants (spec 223): `wav` when any usable entry
+   * is the local sidecar. Asked before any audio is fetched.
    */
   sttAudioFormat(userId: string): Promise<AudioFormat>;
   generateStructured<T>(input: {
@@ -75,6 +78,37 @@ export function billFailure(ctx: StepContext, error: unknown): void {
   const usd = failedAttemptCost(error);
   ctx.cost.usd += usd;
   ctx.cost.failedUsd += usd;
+}
+
+/** Preserve the cause of partial publication without upstream text or credentials. */
+export function recordCaptureWarning(
+  ctx: StepContext,
+  warning: CaptureWarning,
+  error: unknown,
+): void {
+  ctx.warnings.add(warning);
+  const mapped = mapUnknownError(error, ctx.signal);
+  const typed = error instanceof AiError ? error : null;
+  const provider = CHAIN_PROVIDERS.find((candidate) => candidate === typed?.provider);
+  const status = typed?.status;
+  const step = {
+    speech_not_transcribed: 'speech',
+    frames_unavailable: 'frames',
+    images_not_described: 'vision',
+  }[warning];
+  structuredLog('warning', 'capture-step-warning', {
+    job_id: ctx.job.id,
+    actor_id: ctx.job.userId,
+    step,
+    warning,
+    error_code: mapped.code,
+    retryable: mapped.retryable,
+    provider,
+    http_status:
+      typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599
+        ? status
+        : undefined,
+  });
 }
 
 /**

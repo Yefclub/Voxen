@@ -21,7 +21,7 @@ async function chainLength(userId: string, role: AiRole): Promise<number> {
 export const cloudCaptureAi: CaptureAi = {
   isRoleConfigured: async (userId, role) => (await chainLength(userId, role)) > 0,
   chainLength,
-  // WAV only when the first available STT entry is the local sidecar (spec 221).
+  // WAV preserves any available local STT fallback, including cloud-first chains.
   sttAudioFormat: async (userId) => ((await sttPrefersWav(userId)) ? 'wav' : 'mp3'),
   generateStructured: (input) => generateStructured(input),
   transcribeAudio: (input) => transcribeAudio(input),

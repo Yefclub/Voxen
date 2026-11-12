@@ -6,7 +6,13 @@
 import { saveArtifact } from './artifact';
 import { CaptureError } from './errors';
 import { CAPTURE_MAX_ATTEMPTS, ensureLease, mapUnknownError, progress, withTimeout } from './lease';
-import { aiSignal, billFailure, stopIfLeaseLost, type StepContext } from './ports';
+import {
+  aiSignal,
+  billFailure,
+  recordCaptureWarning,
+  stopIfLeaseLost,
+  type StepContext,
+} from './ports';
 import {
   MIN_USABLE_TEXT,
   contextTextLength,
@@ -115,7 +121,7 @@ export async function speechStep(
     const mapped = mapUnknownError(error, ctx.signal);
     if (!canDegrade) throw mapped;
     if (mapped.retryable && job.attempt < CAPTURE_MAX_ATTEMPTS) throw mapped;
-    ctx.warnings.add('speech_not_transcribed');
+    recordCaptureWarning(ctx, 'speech_not_transcribed', error);
     return artifact;
   }
   await saveArtifact(job.userId, job.id, next);
