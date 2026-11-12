@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.15.1-dev.1794526347 — 2026-11-12 · Dev
+
+### 🎨 A rebuilt Voxen workspace for capture, reading and mobile use
+
+Voxen now has one visual identity in Light and Dark, from sign-in through the
+library, notes, graph, account and administration. Existing appearance settings
+remain compatible: Light stays Light; the previous dark packs use Dark.
+
+- Captures follow the same page alignment as the library. Shared links and
+  uploads stay in focus, and a completed foreground capture opens its document,
+  including results saved with observations and content already in the library.
+- On phones, filters, content options and confirmations use reachable sheets.
+  Navigation, fields and close actions adapt to touch, safe areas and keyboard
+  changes. Note controls wrap to the space available in the editor.
+- Reading puts the summary and source content before technical details. The
+  personal Guide starts with sources to revisit and keeps ranking evidence
+  available on demand.
+- Unavailable account and administrative settings show an error with retry
+  instead of appearing empty or disabled. Fields have accessible names and
+  both appearances use readable text and control contrast.
+- Installation offers wait until browsing and respect dismissal. Automatic
+  updates wait while capturing, reading or editing, preserving active work.
+
 ## v0.15.1-dev.1794504478 — 2026-11-12 · Dev
 
 ### 🐛 Clearer graph exploration and reliable 3D framing
