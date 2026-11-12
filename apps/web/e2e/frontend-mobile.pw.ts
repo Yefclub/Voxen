@@ -286,15 +286,15 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
       ),
     ).toBe(original);
     await page.getByRole('link', { name: 'Biblioteca', exact: true }).click();
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () =>
-              (window as unknown as { frontendDocumentInstance: string }).frontendDocumentInstance,
-          ),
-        { timeout: 10000 },
-      )
-      .not.toBe(original);
+    const renewed = await page.waitForFunction(
+      (previous) => {
+        const current = (window as unknown as { frontendDocumentInstance?: string })
+          .frontendDocumentInstance;
+        return typeof current === 'string' && current !== previous ? current : false;
+      },
+      original,
+      { timeout: 10000 },
+    );
+    expect(await renewed.jsonValue()).not.toBe(original);
   });
 });
