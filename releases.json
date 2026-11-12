@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794498234",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Keep local speech-to-text available as a fallback",
+    "body": "Captures now request compatible audio whenever an available local speech\nmodel appears in your provider chain, including after a cloud provider.\nThis lets eligible audio fall back to the configured local model without\nchanging your provider preference or existing media limits. Partial speech\nand image failures now record their processing step and safe error code to\nhelp diagnose incomplete captures.",
+    "pr": 1071,
+    "author": "Kalyel",
+    "date": "2026-11-12T12:43:39-03:00",
+    "translations": {
+      "en": {
+        "title": "Keep local speech-to-text available as a fallback",
+        "body": "Captures now request compatible audio whenever an available local speech\nmodel appears in your provider chain, including after a cloud provider.\nThis lets eligible audio fall back to the configured local model without\nchanging your provider preference or existing media limits. Partial speech\nand image failures now record their processing step and safe error code to\nhelp diagnose incomplete captures."
+      },
+      "pt-BR": {
+        "title": "Preserve a transcrição local como alternativa",
+        "body": "As capturas agora solicitam áudio compatível quando um modelo local de fala\ndisponível aparece na sua cadeia de provedores, inclusive depois de um\nprovedor em nuvem. Assim, áudios compatíveis podem usar o modelo local como\nalternativa, preservando sua ordem de preferência e os limites de mídia.\nFalhas parciais de fala e imagem agora registram a etapa e um código seguro\npara facilitar o diagnóstico de capturas incompletas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1071"
+  },
+  {
     "version": "0.15.1-dev.1794330578",
     "channel": "dev",
     "type": "feat",
