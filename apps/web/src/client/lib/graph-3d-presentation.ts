@@ -29,15 +29,24 @@ export function createGraph3DNodeRenderer(
   const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
   const extentX = Math.max(...xs) - Math.min(...xs);
   const points = [...model.positions3d.values()];
-  const centerY = points.length
-    ? (Math.min(...points.map((p) => p.y)) + Math.max(...points.map((p) => p.y))) / 2
-    : 0;
+  const minY = points.length ? Math.min(...points.map((point) => point.y)) : 0;
+  const maxY = points.length ? Math.max(...points.map((point) => point.y)) : 0;
+  const centerY = (minY + maxY) / 2;
+  const nearTop = (y: number): boolean => maxY > minY && y > centerY + (maxY - minY) * 0.25;
+  const offsetY = (y: number, size: number): number =>
+    (nearTop(y) ? -1 : 1) * (size + fontSize * 0.8);
   const centerZ = points.length
     ? (Math.min(...points.map((p) => p.z)) + Math.max(...points.map((p) => p.z))) / 2
     : 0;
   const distance = Math.max(600, extentX * 1.5);
-  const offsetX = (x: number): number =>
-    x < centerX - extentX * 0.25 ? fontSize * 6 : x > centerX + extentX * 0.25 ? -fontSize * 6 : 0;
+  const offsetX = (x: number, y: number): number =>
+    x < centerX - extentX * 0.25
+      ? fontSize * 6
+      : x > centerX + extentX * 0.25
+        ? -fontSize * 6
+        : nearTop(y)
+          ? fontSize * 4
+          : 0;
   const representatives = new Set<string>();
   const occupied: Array<{ x: number; y: number; width: number; height: number }> = [];
   // Reserve text space in the initial frontal overview; selected names stay available.
@@ -47,8 +56,8 @@ export function createGraph3DNodeRenderer(
     const projection = distance / Math.max(distance * 0.4, distance + centerZ - point.z);
     const label = model.nodeById.get(id)?.label ?? '';
     const box = {
-      x: (point.x + offsetX(point.x) - centerX) * projection,
-      y: (point.y + fontSize * 1.6 - centerY) * projection,
+      x: (point.x + offsetX(point.x, point.y) - centerX) * projection,
+      y: (point.y + offsetY(point.y, coarsePointer ? 52 : 36) - centerY) * projection,
       width: Math.min(label.length, 20) * fontSize * 0.65 * projection,
       height: fontSize * 2 * projection,
     };
@@ -73,7 +82,11 @@ export function createGraph3DNodeRenderer(
         ? createElement(
             'group',
             {
-              position: [offsetX(props.node.position.x), props.size + fontSize * 0.8, 0],
+              position: [
+                offsetX(props.node.position.x, props.node.position.y),
+                offsetY(props.node.position.y, props.size),
+                0,
+              ],
               scale: fontSize / 7,
             },
             createElement(Label, {

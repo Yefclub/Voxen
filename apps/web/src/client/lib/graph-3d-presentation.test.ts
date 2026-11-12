@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createElement, Fragment } from 'react';
+import { Children, createElement, Fragment, isValidElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createGraph3DNodeRenderer } from './graph-3d-presentation';
 import { buildSigmaGraphModel, resolveGraphPalette, type GraphNode } from './graph-model';
@@ -48,5 +48,55 @@ describe('3D overview labels', () => {
       renderToStaticMarkup(createElement(Fragment, null, render({ ...props, selected })));
     expect(markup(false)).not.toContain(source.label);
     expect(markup(true)).toContain(source.label);
+  });
+  test('places an upper-boundary label below its marker without changing marker geometry', () => {
+    const nodes: GraphNode[] = ['upper', 'lower'].map((id) => ({
+      id,
+      key: `content:${id}`,
+      type: 'content',
+      label: id,
+      description: null,
+      sourceType: 'MANUAL',
+      sourceId: null,
+      weight: 1,
+      updatedAt: '2026-11-12',
+    }));
+    const model = buildSigmaGraphModel({ nodes, edges: [], totalNodes: 2, totalEdges: 0 });
+    model.positions3d = new Map([
+      ['upper', { x: 0, y: 600, z: 0 }],
+      ['lower', { x: 0, y: -600, z: 0 }],
+    ]);
+    const modules = { Sphere: () => null, Label: () => null };
+    const render = createGraph3DNodeRenderer(modules, model, resolveGraphPalette('light'), false);
+    const position = {
+      id: 'upper',
+      data: {},
+      links: [],
+      index: 0,
+      vx: 0,
+      vy: 0,
+      x: 0,
+      y: 600,
+      z: 0,
+    };
+    const result = render({
+      id: 'upper',
+      color: '#777',
+      size: 36,
+      active: false,
+      selected: true,
+      opacity: 1,
+      animated: false,
+      node: { id: 'upper', label: 'Upper source', position },
+    });
+    if (!isValidElement<{ children: React.ReactNode }>(result))
+      throw new Error('Missing node scene');
+    const children = Children.toArray(result.props.children).filter(isValidElement);
+    const labelGroup = children.find((child) => child.type === 'group');
+    const marker = children.find((child) => child.type === modules.Sphere);
+    expect(labelGroup).toBeDefined();
+    expect((labelGroup!.props as { position: number[] }).position[1]).toBeLessThan(0);
+    expect((marker!.props as { size: number }).size).toBe(36);
+    expect((marker!.props as { node: { position: unknown } }).node.position).toBe(position);
   });
 });
