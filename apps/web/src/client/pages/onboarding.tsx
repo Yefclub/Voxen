@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import { Spinner } from '../components/ui/spinner';
-import { Logo } from '../components/ui/logo';
+import { AuthFrame } from '../components/layout/auth-frame';
 import { cn } from '../lib/utils';
 import { ApiError, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
@@ -135,15 +135,14 @@ function OnboardingContent({
     return (
       <FullScreenShell>
         <motion.div
-          initial={{ scale: 0.5, opacity: 0 }}
+          initial={false}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 250, damping: 18 }}
           className="text-center"
         >
           <div className="relative inline-block">
-            <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
-            <div className="relative flex h-16 w-16 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-950" />
+            <div className="relative flex h-16 w-16 mx-auto items-center justify-center rounded-2xl bg-[var(--color-accent-primary)] border border-emerald-400/50">
+              <CheckCircle2 className="h-7 w-7 text-[var(--color-app-bg)]" />
             </div>
           </div>
           <h2 className="font-display text-3xl font-semibold tracking-[-0.03em] mt-8">
@@ -160,10 +159,6 @@ function OnboardingContent({
   return (
     <FullScreenShell>
       <div className="w-full max-w-2xl">
-        <div className="mb-8">
-          <Logo size={28} withWordmark />
-        </div>
-
         {/* Stepper */}
         <div className="mb-10 flex items-center gap-2.5">
           {stepOrder.map((s, i) => (
@@ -176,7 +171,7 @@ function OnboardingContent({
                     initial={false}
                     animate={{ scaleX: i < currentIdx ? 1 : 0 }}
                     transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                    className="absolute inset-0 origin-left bg-gradient-to-r from-emerald-400 to-violet-400"
+                    className="absolute inset-0 origin-left bg-[var(--color-accent-primary)]"
                   />
                 </div>
               )}
@@ -193,11 +188,7 @@ function OnboardingContent({
         <AnimatePresence mode="wait">
           {step === 'idioma' && (
             <Slide key="idioma">
-              <Heading
-                eyebrow={t('onboarding.language.eyebrow')}
-                title={t('onboarding.language.title')}
-                sub={t('onboarding.language.sub')}
-              />
+              <Heading title={t('onboarding.language.title')} sub={t('onboarding.language.sub')} />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <ModeCard
                   Icon={Languages}
@@ -219,11 +210,7 @@ function OnboardingContent({
 
           {step === 'fuso' && (
             <Slide key="fuso">
-              <Heading
-                eyebrow={t('onboarding.timezone.eyebrow')}
-                title={t('onboarding.timezone.title')}
-                sub={t('onboarding.timezone.sub')}
-              />
+              <Heading title={t('onboarding.timezone.title')} sub={t('onboarding.timezone.sub')} />
               <div className="space-y-5">
                 <TimezoneSelect
                   id="onboarding-timezone"
@@ -248,11 +235,7 @@ function OnboardingContent({
 
           {step === 'modo' && (
             <Slide key="modo">
-              <Heading
-                eyebrow={t('onboarding.mode.eyebrow')}
-                title={t('onboarding.mode.title')}
-                sub={t('onboarding.mode.sub')}
-              />
+              <Heading title={t('onboarding.mode.title')} sub={t('onboarding.mode.sub')} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <ModeCard
                   Icon={Users}
@@ -280,13 +263,9 @@ function OnboardingContent({
 
           {step === 'perfil' && (
             <Slide key="perfil">
-              <Heading
-                eyebrow={t('onboarding.profile.eyebrow')}
-                title={t('onboarding.profile.title')}
-                sub={t('onboarding.profile.sub')}
-              />
+              <Heading title={t('onboarding.profile.title')} sub={t('onboarding.profile.sub')} />
               <div className="flex items-center gap-6 mb-6">
-                <Avatar className="h-20 w-20 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+                <Avatar className="h-20 w-20 bg-[var(--color-app-surface)] border border-[var(--color-app-border-strong)]">
                   {avatarPreview && (
                     <AvatarPrimitive.Image
                       src={avatarPreview}
@@ -344,50 +323,30 @@ function OnboardingContent({
 function FullScreenShell({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <div className="h-dvh overflow-y-auto overscroll-contain">
-      <div className="min-h-full flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12 relative">
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse 70% 50% at 50% 0%, oklch(72% 0.18 290 / 0.08), transparent 70%)',
-          }}
-        />
-        <div className="relative w-full flex justify-center">{children}</div>
-      </div>
+      <AuthFrame story={false}>{children}</AuthFrame>
     </div>
   );
 }
 
 function Slide({ children }: { children: React.ReactNode }): React.ReactElement {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, x: 16 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -16 }}
-      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-5 sm:p-8"
+      initial={reduceMotion ? false : { x: 12 }}
+      animate={{ x: 0 }}
+      exit={reduceMotion ? undefined : { x: -12 }}
+      transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-6"
     >
       {children}
     </motion.div>
   );
 }
 
-function Heading({
-  eyebrow,
-  title,
-  sub,
-}: {
-  eyebrow: string;
-  title: string;
-  sub: string;
-}): React.ReactElement {
+function Heading({ title, sub }: { title: string; sub: string }): React.ReactElement {
   return (
     <div className="mb-7 space-y-2">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-violet-400 font-medium">
-        {eyebrow}
-      </p>
-      <h2 className="font-display text-3xl font-semibold tracking-[-0.03em]">{title}</h2>
+      <h1 className="font-display text-3xl font-semibold tracking-[-0.025em]">{title}</h1>
       <p className="text-[14px] text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
     </div>
   );
@@ -413,7 +372,7 @@ function ModeCard({
       className={cn(
         'group text-left rounded-xl border p-5 transition-all duration-200',
         selected
-          ? 'border-violet-400/50 bg-violet-500/5'
+          ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary-soft)]'
           : 'border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
       )}
     >
@@ -421,7 +380,7 @@ function ModeCard({
         className={cn(
           'h-9 w-9 rounded-lg flex items-center justify-center mb-3 transition-colors',
           selected
-            ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
+            ? 'bg-[var(--color-accent-primary-soft)] text-[var(--color-accent-primary)]'
             : 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-muted)]',
         )}
       >
@@ -448,13 +407,13 @@ function StepDot({
       className={cn(
         'h-7 w-7 shrink-0 rounded-full border flex items-center justify-center text-[11px] font-bold transition-all duration-300',
         done
-          ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
+          ? 'bg-[var(--color-accent-primary)] border-[var(--color-accent-primary)] text-[var(--color-app-bg)]'
           : active
             ? 'bg-[var(--color-app-inverted)] border-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
             : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
       )}
     >
-      {done ? '✓' : index}
+      {done ? <CheckCircle2 className="h-4 w-4" aria-hidden /> : index}
     </motion.div>
   );
 }
@@ -467,7 +426,7 @@ function PrimaryButton({
     <button
       {...props}
       className={cn(
-        'rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 px-5 h-11 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none',
+        'rounded-lg bg-[var(--color-accent-primary)] px-5 h-12 font-semibold text-[var(--color-app-bg)] hover:brightness-110 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none',
       )}
     >
       {children}

@@ -1,9 +1,9 @@
+import { PageShell } from '../components/ui/page-shell';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { KeyRound, ShieldCheck } from '@/components/ui/icons';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
 import { apiGet, apiPost, ApiError } from '../lib/api';
 import { useI18n } from '../lib/i18n';
@@ -94,20 +94,20 @@ export function OAuthConsentPage(): React.ReactElement {
   };
 
   return (
-    <div className="mx-auto flex min-h-[70dvh] w-full max-w-xl items-center px-4 py-10">
-      <Card elevated className="w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display">
-            <ShieldCheck className="h-5 w-5 text-emerald-400" />
+    <PageShell width="reading" className="max-w-3xl">
+      <section className="w-full space-y-6">
+        <header className="space-y-3">
+          <h1 className="flex items-center gap-3 font-display text-2xl font-semibold">
+            <ShieldCheck className="h-5 w-5 text-[var(--color-accent-primary)]" />
             {locale === 'en' ? 'Authorize MCP access' : 'Autorizar acesso MCP'}
-          </CardTitle>
-          <CardDescription>
+          </h1>
+          <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
             {locale === 'en'
               ? 'Review the client and permissions before sharing access to your Voxen workspace.'
               : 'Revise o cliente e as permissões antes de compartilhar acesso ao seu workspace Voxen.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
+          </p>
+        </header>
+        <div className="space-y-5">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -122,7 +122,7 @@ export function OAuthConsentPage(): React.ReactElement {
               <div className="rounded-xl border border-[var(--color-app-border)] p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
-                    <KeyRound className="h-5 w-5 text-violet-300" />
+                    <KeyRound className="h-5 w-5 text-[var(--color-accent-primary)]" />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate font-medium text-[var(--color-app-fg)]">
@@ -184,8 +184,8 @@ export function OAuthConsentPage(): React.ReactElement {
               </div>
             </>
           ) : null}
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </section>
+    </PageShell>
   );
 }

@@ -10,9 +10,9 @@ const alertVariants = cva(
         default:
           'bg-[var(--color-app-surface)] border-[var(--color-app-border)] text-[var(--color-app-subtle)]',
         info: 'bg-[var(--color-app-surface)] border-[var(--color-app-border-strong)] text-[var(--color-app-subtle)]',
-        success: 'bg-emerald-500/5 border-emerald-500/30 text-emerald-200',
-        warning: 'bg-amber-500/5 border-amber-500/30 text-amber-200',
-        destructive: 'bg-red-500/5 border-red-500/30 text-red-200',
+        success: 'bg-emerald-500/5 border-emerald-500/30 text-[var(--color-app-success-fg)]',
+        warning: 'bg-amber-500/5 border-amber-500/30 text-[var(--color-app-warning-fg)]',
+        destructive: 'bg-red-500/5 border-red-500/30 text-[var(--color-app-danger)]',
       },
     },
     defaultVariants: { variant: 'default' },

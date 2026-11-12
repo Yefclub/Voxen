@@ -1,11 +1,18 @@
 import type { ReactNode } from 'react';
+import { cn } from '../../lib/utils';
 import { Download, Network, House, Sun, Moon } from '@/components/ui/icons';
 import { useTheme } from '../../lib/theme-provider';
 import { useI18n } from '../../lib/i18n';
 import { Logo } from '../ui/logo';
 
 /** Shared public entrance. The story describes capabilities, never private documents. */
-export function AuthFrame({ children }: { children: ReactNode }): React.ReactElement {
+export function AuthFrame({
+  children,
+  story = true,
+}: {
+  children: ReactNode;
+  story?: boolean;
+}): React.ReactElement {
   const { t } = useI18n();
   const { theme, toggleAppearance } = useTheme();
   return (
@@ -21,42 +28,56 @@ export function AuthFrame({ children }: { children: ReactNode }): React.ReactEle
           {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
         </button>
       </header>
-      <main className="mx-auto grid w-full max-w-7xl flex-1 items-center gap-12 py-10 lg:grid-cols-[1.15fr_1fr] lg:gap-20 lg:py-16">
-        <aside className="hidden space-y-12 lg:block">
-          <div className="max-w-xl space-y-6">
-            <h2 className="font-display text-[clamp(2.5rem,4.4vw,4.25rem)] font-semibold leading-[1.05] tracking-[-0.035em] text-balance">
-              {t('design.storyTitle')}
-            </h2>
-            <p className="max-w-md text-lg leading-relaxed text-[var(--color-app-muted)]">
-              {t('design.storyDescription')}
-            </p>
-          </div>
-          <ul className="max-w-md divide-y divide-[var(--color-app-border)]">
-            {(
-              [
-                [Download, 'design.capture', 'design.captureDescription'],
-                [Network, 'design.find', 'design.findDescription'],
-                [House, 'design.own', 'design.ownDescription'],
-              ] as const
-            ).map(([Icon, title, description]) => (
-              <li key={title} className="flex gap-4 py-5">
-                <Icon
-                  className="mt-1 h-5 w-5 shrink-0 text-[var(--color-accent-primary)]"
-                  aria-hidden
-                />
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold">{t(title)}</h3>
-                  <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
-                    {t(description)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </aside>
-        <div className="mx-auto w-full max-w-[26rem] space-y-7 lg:border-l lg:border-[var(--color-app-border)] lg:pl-12 lg:max-w-none">
+      <main
+        className={cn(
+          'mx-auto grid w-full max-w-7xl flex-1 items-center gap-12 py-10 lg:py-16',
+          story && 'lg:grid-cols-[1.15fr_1fr] lg:gap-20',
+        )}
+      >
+        <div
+          className={cn(
+            'order-1 mx-auto w-full space-y-7',
+            story
+              ? 'max-w-[26rem] lg:order-2 lg:max-w-none lg:border-l lg:border-[var(--color-app-border)] lg:pl-12'
+              : 'max-w-2xl',
+          )}
+        >
           {children}
         </div>
+        {story && (
+          <aside className="order-2 hidden space-y-12 lg:order-1 lg:block">
+            <div className="max-w-xl space-y-6">
+              <h2 className="font-display text-[clamp(2.5rem,4.4vw,4.25rem)] font-semibold leading-[1.05] tracking-[-0.035em] text-balance">
+                {t('design.storyTitle')}
+              </h2>
+              <p className="max-w-md text-lg leading-relaxed text-[var(--color-app-muted)]">
+                {t('design.storyDescription')}
+              </p>
+            </div>
+            <ul className="max-w-md divide-y divide-[var(--color-app-border)]">
+              {(
+                [
+                  [Download, 'design.capture', 'design.captureDescription'],
+                  [Network, 'design.find', 'design.findDescription'],
+                  [House, 'design.own', 'design.ownDescription'],
+                ] as const
+              ).map(([Icon, title, description]) => (
+                <li key={title} className="flex gap-4 py-5">
+                  <Icon
+                    className="mt-1 h-5 w-5 shrink-0 text-[var(--color-accent-primary)]"
+                    aria-hidden
+                  />
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold">{t(title)}</h3>
+                    <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
+                      {t(description)}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
       </main>
       <footer className="mx-auto w-full max-w-7xl text-xs text-[var(--color-app-muted)]">
         {t('design.footer')}
