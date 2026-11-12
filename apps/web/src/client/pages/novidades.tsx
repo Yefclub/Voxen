@@ -119,7 +119,7 @@ export function NovidadesPage(): React.ReactElement {
       <PageHeader
         eyebrow={t('novidades.eyebrow')}
         icon={Sparkles}
-        iconClassName="text-[var(--color-accent-violet)]"
+        iconClassName="text-[var(--color-accent-primary)]"
         title={t('novidades.title')}
         description={t('novidades.description')}
         actions={
@@ -132,19 +132,20 @@ export function NovidadesPage(): React.ReactElement {
         }
       />
 
-      <DataSurface data-page-reveal className="overflow-visible p-3 sm:p-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_12rem_auto] lg:items-end">
+      <div data-page-reveal>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem] md:items-end">
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+            <span className="text-sm font-medium text-[var(--color-app-muted)]">
               {t('novidades.search')}
             </span>
             <span className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
               <input
+                type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t('novidades.searchPlaceholder')}
-                className="h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-10 pr-3 text-sm outline-none transition focus:border-[var(--color-accent-violet)]/60 focus:ring-2 focus:ring-[var(--color-accent-violet-soft)]"
+                className="h-11 w-full rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] pl-10 pr-3 text-sm outline-none transition focus:border-[var(--theme-focus)] focus:ring-2 focus:ring-[var(--color-accent-primary-soft)]"
               />
             </span>
           </label>
@@ -157,20 +158,8 @@ export function NovidadesPage(): React.ReactElement {
               ...RELEASE_TYPES.map((releaseType) => [releaseType, typeLabel(releaseType)] as const),
             ]}
           />
-          <div className="flex min-h-11 items-center gap-2 lg:justify-end">
-            {environment && (
-              <Badge
-                variant={environment === 'dev' ? 'warning' : 'success'}
-                className="text-[10px]"
-              >
-                {environment === 'dev'
-                  ? t('novidades.environment.dev')
-                  : t('novidades.environment.prod')}
-              </Badge>
-            )}
-          </div>
         </div>
-      </DataSurface>
+      </div>
 
       {loading && !feed && (
         <div className="space-y-3" data-page-reveal>
@@ -187,7 +176,7 @@ export function NovidadesPage(): React.ReactElement {
           role="alert"
           className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3 text-sm"
         >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" />
+          <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--color-app-warning-fg)]" />
           <p className="min-w-0 flex-1 text-[var(--color-app-muted)]">
             {t('novidades.refreshError')}
           </p>
@@ -201,9 +190,16 @@ export function NovidadesPage(): React.ReactElement {
       {feed && (
         <section data-page-reveal className="space-y-4" aria-busy={loading}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-[var(--color-app-muted)]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-app-muted)]">
               {t('novidades.results', { count: total })}
-            </p>
+              {environment && (
+                <Badge variant={environment === 'dev' ? 'warning' : 'success'}>
+                  {environment === 'dev'
+                    ? t('novidades.environment.dev')
+                    : t('novidades.environment.prod')}
+                </Badge>
+              )}
+            </div>
             <p className="text-xs tabular-nums text-[var(--color-app-muted)]">
               {t('novidades.pagination', { page, pages: totalPages })}
             </p>
@@ -217,7 +213,7 @@ export function NovidadesPage(): React.ReactElement {
               </p>
             </DataSurface>
           ) : (
-            <ol className="relative space-y-3 before:absolute before:bottom-5 before:left-[1.15rem] before:top-5 before:w-px before:bg-[var(--color-app-border)] sm:before:left-[1.4rem]">
+            <ol className="relative space-y-3 sm:before:absolute before:bottom-5 before:left-[1.15rem] before:top-5 before:w-px before:bg-[var(--color-app-border)] sm:before:left-[1.4rem]">
               {releases.map((entry, index) => (
                 <ReleaseItem
                   key={`${entry.version}-${entry.channel}-${entry.pr ?? index}-${entry.title ?? ''}`}
@@ -274,13 +270,11 @@ function ReleaseSelect({
 }): React.ReactElement {
   return (
     <label className="space-y-1.5">
-      <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-        {label}
-      </span>
+      <span className="text-sm font-medium text-[var(--color-app-muted)]">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] px-3 text-sm outline-none transition focus:border-[var(--color-accent-violet)]/60 focus:ring-2 focus:ring-[var(--color-accent-violet-soft)]"
+        className="h-11 w-full rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 text-sm outline-none transition focus:border-[var(--theme-focus)] focus:ring-2 focus:ring-[var(--color-accent-primary-soft)]"
       >
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue} value={optionValue}>
@@ -304,8 +298,8 @@ function ReleaseItem({
   promotedLabel: string;
 }): React.ReactElement {
   return (
-    <li className="relative pl-10 sm:pl-12">
-      <span className="absolute left-[0.82rem] top-6 h-3 w-3 rounded-full border-2 border-[var(--color-app-bg)] bg-[var(--color-accent-violet)] ring-1 ring-[var(--color-app-border-strong)] sm:left-[1.08rem]" />
+    <li className="relative sm:pl-12">
+      <span className="hidden sm:block absolute left-[0.82rem] top-6 h-3 w-3 rounded-full border-2 border-[var(--color-app-bg)] bg-[var(--color-accent-primary)] ring-1 ring-[var(--color-app-border-strong)] sm:left-[1.08rem]" />
       <DataSurface className="p-4 transition-colors hover:border-[var(--color-app-border-strong)] sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-[var(--color-app-subtle)]">v{entry.version}</span>
@@ -328,13 +322,13 @@ function ReleaseItem({
         )}
 
         {(entry.body || (entry.title ? entry.summary : null)) && (
-          <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[var(--color-app-muted)]">
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--color-app-muted)]">
             {(entry.body || entry.summary || '').trim()}
           </p>
         )}
 
         {entry.promoted && entry.promoted.length > 0 && (
-          <details className="mt-4 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/45 px-3 py-2.5">
+          <details className="mt-4 rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)]/45 px-3 py-2.5">
             <summary className="cursor-pointer text-xs font-medium text-[var(--color-app-subtle)]">
               {promotedLabel}
             </summary>
@@ -352,7 +346,7 @@ function ReleaseItem({
                       href={promoted.prUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-1 inline-block text-[var(--color-accent-violet)] hover:underline"
+                      className="mt-1 inline-block text-[var(--color-accent-primary)] hover:underline"
                     >
                       #{promoted.pr}
                     </a>
@@ -368,7 +362,7 @@ function ReleaseItem({
             href={entry.prUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-block text-xs font-medium text-[var(--color-accent-violet)] hover:underline"
+            className="mt-4 inline-block text-xs font-medium text-[var(--color-accent-primary)] hover:underline"
           >
             PR #{entry.pr}
           </a>

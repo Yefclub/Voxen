@@ -1,4 +1,5 @@
 export const ptBrFrontendMessages = {
+  'design.guideMethod': 'Como seu Guia é calculado',
   'design.storyTitle': 'O que você aprende merece um lugar.',
   'design.storyDescription':
     'Guarde conteúdos, conecte ideias e reencontre o conhecimento que importa para você.',
@@ -19,6 +20,7 @@ export const ptBrFrontendMessages = {
     'Esta captura não está disponível. Abra outra captura ou comece uma nova.',
 };
 export const enFrontendMessages: Record<keyof typeof ptBrFrontendMessages, string> = {
+  'design.guideMethod': 'How your Guide is calculated',
   'design.storyTitle': 'What you learn deserves a home.',
   'design.storyDescription':
     'Save content, connect ideas, and rediscover the knowledge that matters to you.',

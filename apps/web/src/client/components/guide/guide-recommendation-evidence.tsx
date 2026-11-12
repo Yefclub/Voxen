@@ -18,13 +18,13 @@ export function GuideRecommendationEvidence({
 }): React.ReactElement {
   const { t } = useI18n();
   return (
-    <details className="group mt-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 open:border-[var(--color-app-border-strong)]">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
-        <Network className="h-3.5 w-3.5 text-violet-300" />
+    <details className="group mt-4 border-t border-[var(--color-app-border)]">
+      <summary className="flex cursor-pointer list-none items-center gap-2 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
+        <Network className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
         <span className="flex-1">{t('guide.rankingDetails')}</span>
         <ArrowRight className="h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform group-open:rotate-90" />
       </summary>
-      <div className="space-y-4 border-t border-[var(--color-app-border)] px-3 py-3">
+      <div className="space-y-4 border-t border-[var(--color-app-border)] py-3">
         <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
           <Metric
             label={t('guide.rankingScore')}
@@ -59,8 +59,8 @@ export function GuideRecommendationEvidence({
 
 function Metric({ label, value }: { label: string; value: string }): React.ReactElement {
   return (
-    <div className="rounded-lg bg-[var(--color-app-surface-hover)] px-2.5 py-2">
-      <p className="truncate text-[var(--color-app-muted)]">{label}</p>
+    <div className="py-1">
+      <p className="text-[var(--color-app-muted)]">{label}</p>
       <p className="mt-0.5 font-semibold tabular-nums text-[var(--color-app-fg)]">{value}</p>
     </div>
   );
@@ -99,7 +99,7 @@ function ReasonEvidence({
     .filter((source): source is PersonalGuideSource => Boolean(source));
 
   return (
-    <div className="rounded-lg border border-[var(--color-app-border)] px-3 py-2.5">
+    <div className="border-t border-[var(--color-app-border)] pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs leading-relaxed text-[var(--color-app-subtle)]">{label}</p>
         <Badge variant="muted">{metric}</Badge>
