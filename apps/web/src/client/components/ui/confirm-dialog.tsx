@@ -69,7 +69,7 @@ export function ConfirmDialog({
           <div className="flex items-start gap-3">
             {isDestructive && (
               <div className="shrink-0 h-9 w-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mt-0.5">
-                <AlertTriangle className="h-4 w-4 text-rose-400" />
+                <AlertTriangle className="h-4 w-4 text-[var(--color-app-danger)]" />
               </div>
             )}
             <div className="min-w-0 flex-1">
@@ -97,7 +97,8 @@ export function ConfirmDialog({
             onClick={() => void handleConfirm()}
             disabled={loading}
             className={cn(
-              isDestructive && 'bg-rose-500 text-rose-950 border-rose-400 hover:bg-rose-400',
+              isDestructive &&
+                'bg-[var(--color-app-danger)] text-[var(--color-app-bg-elevated)] border-transparent hover:brightness-110',
               loading && 'opacity-80',
             )}
           >

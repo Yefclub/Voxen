@@ -13,7 +13,7 @@ const NOTES_CARD_SOURCE = readFileSync(
 describe('open reading sections (spec 219)', () => {
   test('prepared content renders on an open surface without a card wrapper', () => {
     expect(DETAIL_SOURCE).toContain('<div className="min-w-0 max-w-[75ch]">');
-    expect(DETAIL_SOURCE).toContain('<Markdown>{contentMarkdown}</Markdown>');
+    expect(DETAIL_SOURCE).toMatch(/<Markdown\b[^>]*>\s*\{contentMarkdown\}\s*<\/Markdown>/u);
     expect(DETAIL_SOURCE).not.toContain('<CardContent className="px-5 py-5 sm:px-6">');
   });
 

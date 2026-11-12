@@ -16,8 +16,6 @@ import {
   Notebook,
   User as UserIcon,
 } from '@/components/ui/icons';
-import { Avatar, AvatarFallback } from '../ui/avatar';
-import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import { cn } from '../../lib/utils';
 import { useI18n, type I18nKey } from '../../lib/i18n';
 import { useMe } from '../../lib/hooks';
@@ -38,16 +36,6 @@ const ITEMS: MobileNavItem[] = [
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
 ];
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-}
 
 /**
  * Barra de navegação inferior do mobile (< md). Além dos itens de navegação,
@@ -123,21 +111,13 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
             <button
               type="button"
               className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-[var(--color-app-muted)] transition-colors active:text-[var(--color-app-fg)]"
-              aria-label={t('shell.userMenu')}
+              aria-label={t('common.profile')}
             >
-              <span className="flex h-8 w-10 items-center justify-center">
-                <Avatar className="h-7 w-7 bg-[var(--color-app-surface)]">
-                  {user.image && (
-                    <AvatarPrimitive.Image
-                      src={user.image}
-                      alt={user.name}
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-                  <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-[10px]">
-                    {initials(user.name)}
-                  </AvatarFallback>
-                </Avatar>
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-10 items-center justify-center rounded-full"
+              >
+                <UserIcon className="h-4 w-4" />
               </span>
               <span className="max-w-full truncate">{t('common.profile')}</span>
             </button>

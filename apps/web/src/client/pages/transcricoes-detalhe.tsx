@@ -872,7 +872,7 @@ function LibraryFolderControl({
             if (e.key === 'Enter') void submit();
           }}
           placeholder={t('library.newFolderPlaceholder')}
-          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
+          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-[var(--theme-focus)] focus:ring-2 focus:ring-[var(--color-accent-primary-soft)]"
           disabled={organizing}
           maxLength={120}
         />

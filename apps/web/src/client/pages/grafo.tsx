@@ -358,7 +358,7 @@ export function GrafoPage(): React.ReactElement {
                   onClick={() => setMode(value)}
                   title={t(value === '3d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                    'flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                     mode === value
                       ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                       : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
@@ -663,7 +663,7 @@ function GraphExplorer({
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <details className="group/filters">
-          <summary className="cursor-pointer text-sm font-medium text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
             {translate('graph.filters')}
           </summary>
           <div className="mb-2 mt-3 flex items-center justify-end">
@@ -886,7 +886,7 @@ function GraphNodeInspector({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {node.description && (
           <details className="mb-4 text-xs text-[var(--color-app-subtle)]">
-            <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+            <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
               {translate('graph.aboutNode')}
             </summary>
             <p className="mt-2 leading-relaxed">{graphDescriptionText(node.description)}</p>
@@ -909,7 +909,7 @@ function GraphNodeInspector({
                 <button
                   type="button"
                   onClick={() => onSelect(neighbor.id)}
-                  className="flex min-w-0 flex-1 items-start gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                  className="flex min-w-0 flex-1 items-start gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
                 >
                   <span
                     className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
@@ -933,14 +933,14 @@ function GraphNodeInspector({
                     onClick={() => onOpen(neighbor)}
                     aria-label={translate('graph.openRelated', { title: neighbor.label })}
                     title={translate('graph.openSource')}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
               <details className="ml-6 mt-1 text-[11px] text-[var(--color-app-muted)]">
-                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
                   {translate('graph.relationEvidence', {
                     evidence: translate(
                       edge.evidence === 'EXTRACTED'

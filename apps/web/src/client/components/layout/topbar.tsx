@@ -149,11 +149,11 @@ export function Topbar({
                 type="button"
                 className={cn(
                   chromeControlClass,
-                  'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 md:rounded-full',
+                  'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:rounded-full',
                 )}
-                aria-label={t('shell.userMenu')}
+                aria-label={`${t('shell.userMenu')} (${initials(user.name)})`}
               >
-                <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-500/30 to-violet-500/30">
+                <Avatar className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
                   {user.image && (
                     <AvatarPrimitive.Image
                       src={user.image}

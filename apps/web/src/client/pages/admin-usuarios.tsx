@@ -295,6 +295,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                 ) : (
                   <TimezoneSelect
                     id="admin-instance-timezone"
+                    ariaLabel={t('admin.users.timezoneTitle')}
                     value={timezone}
                     onChange={(next) => void saveTimezone(next)}
                     disabled={savingTimezone}

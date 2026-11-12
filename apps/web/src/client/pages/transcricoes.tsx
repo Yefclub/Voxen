@@ -384,7 +384,7 @@ export function TranscricoesPage(): React.ReactElement {
                 size="sm"
                 disabled={clearingFolders}
                 onClick={() => setConfirmClearOpen(true)}
-                className="h-8 text-xs text-[var(--color-app-muted)] hover:text-red-300"
+                className="h-8 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-danger)]"
               >
                 {clearingFolders ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -399,7 +399,7 @@ export function TranscricoesPage(): React.ReactElement {
                 {t('library.filtersTitle')}
               </h2>
               {activeFilterCount > 0 && (
-                <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-violet-300">
+                <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-[var(--color-accent-primary)]">
                   {t('library.activeFilters', { count: activeFilterCount })}
                 </span>
               )}
@@ -407,7 +407,7 @@ export function TranscricoesPage(): React.ReactElement {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                  className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
                 >
                   <X className="h-3 w-3" />
                   {t('library.clearFilters')}
@@ -427,7 +427,7 @@ export function TranscricoesPage(): React.ReactElement {
                     onClick={() => setPeriod(item)}
                     aria-pressed={period === item}
                     className={[
-                      'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                      'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                       period === item
                         ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                         : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
@@ -449,7 +449,7 @@ export function TranscricoesPage(): React.ReactElement {
                 <FolderChip
                   active={inbox}
                   onClick={() => setInbox(!inbox)}
-                  icon={<Inbox className="h-3 w-3 text-violet-400" />}
+                  icon={<Inbox className="h-3 w-3 text-[var(--color-accent-primary)]" />}
                   label={t('library.inbox')}
                 />
                 <FolderChip
@@ -533,7 +533,7 @@ export function TranscricoesPage(): React.ReactElement {
                       key={tag.id}
                       active={tagFilter === tag.id}
                       onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
-                      icon={<Tags className="h-3 w-3 text-violet-400" />}
+                      icon={<Tags className="h-3 w-3 text-[var(--color-accent-primary)]" />}
                       label={tag.name}
                       count={tag.count}
                     />
@@ -557,7 +557,7 @@ export function TranscricoesPage(): React.ReactElement {
                   type="button"
                   onClick={() => setStatus(item)}
                   className={[
-                    'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                    'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                     status === item
                       ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                       : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
@@ -678,9 +678,9 @@ export function TranscricoesPage(): React.ReactElement {
                 aria-current={item === currentPage ? 'page' : undefined}
                 aria-label={t('library.goToPage', { page: item })}
                 className={[
-                  'inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                  'inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                   item === currentPage
-                    ? 'border-violet-500/35 bg-violet-500/10 text-violet-200'
+                    ? 'border-violet-500/35 bg-violet-500/10 text-[var(--color-accent-primary)]'
                     : 'border-transparent text-[var(--color-app-muted)] hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
                 ].join(' ')}
               >
@@ -733,7 +733,7 @@ function FolderChip({
       title={label}
       aria-pressed={active}
       className={[
-        'inline-flex min-h-11 max-w-[180px] items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+        'inline-flex min-h-11 max-w-[180px] items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
         active
           ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
           : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -791,7 +791,7 @@ function FolderOverflowMenu({
           aria-label={translate('library.filterFolders')}
           aria-pressed={active}
           className={[
-            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
             active
               ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
               : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -832,7 +832,7 @@ function FolderOverflowMenu({
               type="button"
               onClick={() => handleSelect(folder.id)}
               className={[
-                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                 activeFolderId === folder.id
                   ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                   : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
@@ -870,7 +870,7 @@ function TranscriptRow({
   return (
     <Link
       to={`/transcricoes/${t.id}`}
-      className="group flex items-start gap-4 border-b border-[var(--color-app-border)] py-5 transition-colors hover:bg-[var(--color-app-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+      className="group flex items-start gap-4 border-b border-[var(--color-app-border)] py-5 transition-colors hover:bg-[var(--color-app-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[var(--color-app-bg-elevated)] sm:h-24 sm:w-36">
         <img
@@ -900,7 +900,7 @@ function TranscriptRow({
             {displaySource(t.source, translate)}
           </span>
           {sourceHostname(t.url) && (
-            <span className="truncate max-w-[160px] font-mono text-[10px] opacity-80">
+            <span className="truncate max-w-[160px] font-mono text-xs">
               {sourceHostname(t.url)}
             </span>
           )}
@@ -939,7 +939,7 @@ function TranscriptRow({
                 key={tag.id}
                 className="inline-flex max-w-[130px] items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-app-subtle)]"
               >
-                <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+                <Tags className="h-2.5 w-2.5 shrink-0 text-[var(--color-accent-primary)]/80" />
                 <span className="truncate">{tag.name}</span>
               </span>
             ))}
@@ -1035,7 +1035,10 @@ function highlightInText(text: string, query: string): React.ReactNode {
   const parts = text.split(re);
   return parts.map((p, i) =>
     new RegExp(`^(${tokens.map(escapeRegex).join('|')})$`, 'i').test(p) ? (
-      <mark key={i} className="bg-violet-500/20 text-violet-200 rounded-sm px-0.5 -mx-0.5">
+      <mark
+        key={i}
+        className="bg-[var(--color-accent-primary-soft)] text-[var(--color-app-fg)] rounded-sm px-0.5 -mx-0.5"
+      >
         {p}
       </mark>
     ) : (
@@ -1049,7 +1052,10 @@ function renderSnippet(snippet: string): React.ReactNode {
   return parts.map((p, i) => {
     if (p.startsWith('«') && p.endsWith('»')) {
       return (
-        <mark key={i} className="bg-violet-500/20 text-violet-200 rounded-sm px-0.5">
+        <mark
+          key={i}
+          className="bg-[var(--color-accent-primary-soft)] text-[var(--color-app-fg)] rounded-sm px-0.5"
+        >
           {p.slice(1, -1)}
         </mark>
       );

@@ -184,7 +184,7 @@ export function CadastroPage(): React.ReactElement {
                 )}
               />
               {confirm.length > 0 && confirm === password && (
-                <span className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-emerald-400">
+                <span className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--color-app-success-fg)]">
                   <Check className="h-4 w-4" />
                 </span>
               )}

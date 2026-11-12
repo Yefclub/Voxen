@@ -183,7 +183,7 @@ function NotesLibrary({
           ) : notesCount === 0 ? (
             <div className="flex min-h-64 max-w-md flex-col items-center justify-center gap-3 text-center mx-auto">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--color-app-border-strong)] bg-violet-500/10">
-                <FileText className="h-5 w-5 text-violet-400" />
+                <FileText className="h-5 w-5 text-[var(--color-accent-primary)]" />
               </div>
               <p className="text-sm text-[var(--color-app-muted)]">{t('notes.useButtonAbove')}</p>
             </div>

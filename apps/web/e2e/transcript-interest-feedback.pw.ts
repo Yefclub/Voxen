@@ -96,6 +96,7 @@ test('records a personal transcript preference with accessible reversible feedba
     ).toEqual(['PREFERENCE_MORE', 'PREFERENCE_CLEARED', 'PREFERENCE_LESS']);
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Opções do conteúdo', exact: true }).click();
     await feedback.scrollIntoViewIfNeeded();
     await expect(less).toBeVisible();
     await page.screenshot({
@@ -115,6 +116,7 @@ test('records a personal transcript preference with accessible reversible feedba
       await route.continue();
     });
     await page.reload();
+    await page.getByRole('button', { name: 'Opções do conteúdo', exact: true }).click();
     await expect(feedback.getByText('Não foi possível carregar sua preferência.')).toBeVisible();
     await expect(feedback.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
   } finally {

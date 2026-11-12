@@ -1,5 +1,12 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Clock, ExternalLink, Network, RefreshCw, Sparkles } from '@/components/ui/icons';
+import {
+  ArrowRight,
+  Clock,
+  ExternalLink,
+  Network,
+  RefreshCw,
+  Sparkles,
+} from '@/components/ui/icons';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';

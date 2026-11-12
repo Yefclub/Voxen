@@ -24,6 +24,7 @@ export function TimezoneSelect({
   id,
   className,
   label,
+  ariaLabel,
   hint,
 }: {
   value: string;
@@ -32,6 +33,7 @@ export function TimezoneSelect({
   id?: string;
   className?: string;
   label?: string;
+  ariaLabel?: string;
   hint?: string;
 }): React.ReactElement {
   const options = timezoneSelectOptions(value);
@@ -44,10 +46,11 @@ export function TimezoneSelect({
       )}
       <select
         id={id}
+        aria-label={ariaLabel}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2.5 text-sm text-[var(--color-app-fg)] focus:border-emerald-500/50 focus:outline-none disabled:opacity-50"
+        className="w-full rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 py-2.5 text-sm text-[var(--color-app-fg)] focus:border-[var(--theme-focus)] focus:outline-none disabled:opacity-50"
       >
         {options.map((tz) => (
           <option key={tz} value={tz}>

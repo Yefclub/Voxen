@@ -1781,12 +1781,10 @@ const enMessages: Record<I18nKey, string> = {
   'notes.manualBase': 'Manual base',
   'notes.title': 'Notes',
   'notes.allNotes': 'All notes',
-  'notes.description':
-    'Your space to write, organize ideas, and add to the library.',
+  'notes.description': 'Your space to write, organize ideas, and add to the library.',
   'notes.emptyTitle': 'Start your manual base',
   'notes.selectTitle': 'Select a note',
-  'notes.emptyDescription':
-    'Create a note or folder to start organizing your ideas.',
+  'notes.emptyDescription': 'Create a note or folder to start organizing your ideas.',
   'notes.selectDescription': 'Click a note in the sidebar tree to open the editor.',
   'notes.libraryTitle': 'Notes library',
   'notes.libraryDescription': 'Choose a note or organize your knowledge in folders.',

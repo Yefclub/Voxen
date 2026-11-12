@@ -55,7 +55,7 @@ export const DialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <DialogPrimitive.Close className="sticky top-0 z-10 -mb-16 ml-auto -mr-2 flex h-11 w-11 shrink-0 bg-[var(--color-app-bg-elevated)] items-center justify-center rounded-lg text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)] transition-colors">
+        <DialogPrimitive.Close className="sticky top-0 z-10 -mb-16 [.gap-0>&]:-mb-11 ml-auto flex h-11 w-11 shrink-0 bg-[var(--color-app-bg-elevated)] items-center justify-center rounded-lg text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)] transition-colors">
           <X className="h-4 w-4" />
           <span className="sr-only">{t('common.close')}</span>
         </DialogPrimitive.Close>

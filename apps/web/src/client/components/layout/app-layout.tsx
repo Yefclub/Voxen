@@ -51,13 +51,12 @@ export function AppLayout(): React.ReactElement {
   });
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);
-  const sectionKey = getSectionKey(location.pathname);
 
-  // O scroll vive no <main>. Trocas dentro da mesma seção preservam a posição
-  // (notas/detalhes); seções novas voltam ao topo antes da pintura, sem salto.
+  // New pages start at their title. Query and hash updates keep the current
+  // position; editor and graph state remain mounted through AnimatedOutlet.
   useLayoutEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
-  }, [sectionKey]);
+  }, [location.pathname]);
 
   useLayoutEffect(() => {
     if (
@@ -182,7 +181,7 @@ export function AppLayout(): React.ReactElement {
 /**
  * Agrupa rotas por seção pra animar a troca ENTRE seções sem remontar ao
  * navegar dentro da mesma seção (ex.: /notas/x→/notas/y, /jobs/1→/jobs/2
- * preservam estado e scroll).
+ * preservam estado).
  */
 function getSectionKey(pathname: string): string {
   if (isChatRoute(pathname)) return 'chat';
@@ -198,7 +197,7 @@ function getSectionKey(pathname: string): string {
  * entrada via <AnimatedPage> sem NUNCA segurar a montagem do próximo conteúdo —
  * o que antes deixava a tela em branco ao navegar no build de produção.
  * Navegar dentro da mesma seção não remonta (mesma key), preservando estado e
- * scroll das notas e das páginas de detalhe.
+ * estado das notas e das páginas de detalhe.
  */
 function AnimatedOutlet(): React.ReactElement {
   const location = useLocation();

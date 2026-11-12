@@ -9,7 +9,7 @@ const buttonVariants = cva(
     'relative inline-flex items-center justify-center gap-2 whitespace-nowrap',
     'rounded-lg text-sm font-medium tracking-tight',
     'transition-[transform,background-color,border-color,color] duration-200 ease-out',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg)]',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg)]',
     'disabled:pointer-events-none disabled:opacity-50',
     'active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none',
   ].join(' '),
@@ -32,12 +32,12 @@ const buttonVariants = cva(
           'rounded-none bg-transparent text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] active:scale-100 focus-visible:ring-inset focus-visible:ring-offset-0',
         destructive:
           'bg-rose-500/10 text-[var(--color-app-danger)] border border-rose-500/30 hover:bg-rose-500/20',
-        link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-emerald-400',
+        link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-[var(--color-accent-primary)]',
       },
       size: {
         default: 'min-h-10 px-4 py-2 [@media(pointer:coarse)]:min-h-11',
         sm: 'min-h-9 px-3 py-1.5 text-sm rounded-lg [@media(pointer:coarse)]:min-h-11',
-        lg: 'h-10 px-5',
+        lg: 'min-h-10 px-5 py-2',
         xl: 'h-12 px-7 text-base rounded-xl',
         icon: 'h-10 w-10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
       },

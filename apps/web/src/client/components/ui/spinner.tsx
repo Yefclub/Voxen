@@ -1,10 +1,5 @@
-import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 
-/**
- * Spinner orbital: dois arcos girando em sentidos opostos.
- * Mais discreto que Loader2 padrão e dá personalidade ao loading state.
- */
 export function Spinner({
   className,
   size = 16,
@@ -15,16 +10,19 @@ export function Spinner({
   return (
     <span
       role="status"
-      aria-label="Carregando"
+      aria-label={
+        typeof document !== 'undefined' && document.documentElement?.lang?.startsWith('en')
+          ? 'Loading'
+          : 'Carregando'
+      }
       className={cn('inline-flex items-center justify-center', className)}
       style={{ width: size, height: size }}
     >
-      <motion.svg
+      <svg
         viewBox="0 0 24 24"
         width={size}
         height={size}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 1.1, ease: 'linear', repeat: Infinity }}
+        className="animate-spin motion-reduce:animate-none"
       >
         <circle
           cx="12"
@@ -37,7 +35,7 @@ export function Spinner({
           strokeDasharray="14 60"
           opacity="0.9"
         />
-      </motion.svg>
+      </svg>
     </span>
   );
 }
