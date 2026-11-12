@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
+import { FetchError } from '../components/ui/fetch-error';
 import { ApiError, api, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
@@ -23,7 +24,6 @@ interface AccountData {
   image: string | null;
   role: 'ADMIN' | 'USER';
   status: string;
-  monthlyBudgetUsd: string | null;
   createdAt: string;
 }
 
@@ -31,6 +31,8 @@ export function ContaPage(): React.ReactElement {
   const { refresh } = useMe();
   const { locale, t } = useI18n();
   const [account, setAccount] = useState<AccountData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const [name, setName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -46,17 +48,20 @@ export function ContaPage(): React.ReactElement {
     // Guarda contra setState após unmount: o helper `apiGet` não suporta
     // AbortController, então usamos a flag clássica de cleanup.
     let cancelled = false;
+    setLoadError(null);
     apiGet<{ user: AccountData }>('/api/account')
       .then((d) => {
         if (cancelled) return;
         setAccount(d.user);
         setName(d.user.name);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : t('common.error'));
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reload]);
 
   async function saveName(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -133,8 +138,16 @@ export function ContaPage(): React.ReactElement {
 
   if (!account) {
     return (
-      <PageShell width="wide" className="flex min-h-64 items-center justify-center">
-        <Spinner size={20} className="text-[var(--color-app-muted)]" />
+      <PageShell width="wide">
+        <PageHeader title={t('account.title')} description={t('account.description')} />
+        <AccountPageNav />
+        {loadError ? (
+          <FetchError message={loadError} onRetry={() => setReload((n) => n + 1)} />
+        ) : (
+          <div className="flex min-h-64 items-center justify-center">
+            <Spinner size={20} />
+          </div>
+        )}
       </PageShell>
     );
   }
@@ -152,6 +165,49 @@ export function ContaPage(): React.ReactElement {
       <AccountPageNav />
 
       <div className="grid items-start gap-6 xl:grid-cols-2">
+        {/* Identidade */}
+        <Card elevated>
+          <CardHeader>
+            <CardTitle className="font-display text-lg">{t('account.identityTitle')}</CardTitle>
+            <CardDescription>{t('account.emailFixed')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={saveName} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">{t('auth.email')}</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={account.email}
+                  readOnly
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="name">{t('auth.name')}</Label>
+                <Input
+                  id="name"
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  minLength={2}
+                  required
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="default"
+                  disabled={savingName || name === account.name || name.length < 2}
+                >
+                  {savingName && <Spinner />} {t('common.save')}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
         {/* Avatar */}
         <Card elevated>
           <CardHeader>
@@ -159,7 +215,7 @@ export function ContaPage(): React.ReactElement {
             <CardDescription>{t('account.avatarDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6">
-            <Avatar className="h-20 w-20 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+            <Avatar className="h-20 w-20 bg-[var(--color-accent-primary-soft)] border border-[var(--color-app-border-strong)]">
               {account.image && (
                 <AvatarPrimitive.Image
                   src={account.image}
@@ -178,13 +234,14 @@ export function ContaPage(): React.ReactElement {
               </AvatarFallback>
             </Avatar>
             <div>
-              <label className="inline-flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] hover:bg-[var(--color-app-surface-hover)] px-3.5 py-2 text-sm font-medium transition-colors">
+              <label className="inline-flex min-h-11 items-center gap-2 cursor-pointer rounded-lg focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--theme-focus)] border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] hover:bg-[var(--color-app-surface-hover)] px-3.5 py-2 text-sm font-medium transition-colors">
                 {uploadingAvatar ? <Spinner /> : <Upload className="h-3.5 w-3.5" />}
                 {t('account.changeImage')}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
+                  className="sr-only"
+                  disabled={uploadingAvatar}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) void uploadAvatar(f);
@@ -195,47 +252,11 @@ export function ContaPage(): React.ReactElement {
           </CardContent>
         </Card>
 
-        {/* Identidade */}
-        <Card elevated>
-          <CardHeader>
-            <CardTitle className="font-display text-lg">{t('account.identityTitle')}</CardTitle>
-            <CardDescription>{t('account.emailFixed')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={saveName} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">{t('auth.email')}</Label>
-                <Input id="email" value={account.email} disabled className="font-mono" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="name">{t('auth.name')}</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  minLength={2}
-                  required
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="default"
-                  disabled={savingName || name === account.name || name.length < 2}
-                >
-                  {savingName ? <Spinner /> : t('common.save')}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
         {/* Senha */}
         <Card elevated>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display text-lg">
-              <KeyRound className="h-4 w-4 text-emerald-400" />
+              <KeyRound className="h-4 w-4 text-[var(--color-accent-primary)]" />
               {t('account.changePasswordTitle')}
             </CardTitle>
             <CardDescription>{t('account.passwordDescription')}</CardDescription>
@@ -247,16 +268,17 @@ export function ContaPage(): React.ReactElement {
                 <div className="relative">
                   <Input
                     id="cur"
+                    autoComplete="current-password"
                     type={showPwd ? 'text' : 'password'}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     required
-                    className="font-mono pr-10"
+                    className="pr-12"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPwd((v) => !v)}
-                    className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
                     aria-label={
                       showPwd ? t('admin.integrations.hide') : t('admin.integrations.show')
                     }
@@ -269,24 +291,24 @@ export function ContaPage(): React.ReactElement {
                 <Label htmlFor="new">{t('account.newPassword')}</Label>
                 <Input
                   id="new"
+                  autoComplete="new-password"
                   type={showPwd ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   minLength={12}
                   required
-                  className="font-mono"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirm">{t('account.confirmNewPassword')}</Label>
                 <Input
                   id="confirm"
+                  autoComplete="new-password"
                   type={showPwd ? 'text' : 'password'}
                   value={confirmNew}
                   onChange={(e) => setConfirmNew(e.target.value)}
                   minLength={12}
                   required
-                  className="font-mono"
                 />
               </div>
               <div className="flex justify-end">
@@ -301,7 +323,7 @@ export function ContaPage(): React.ReactElement {
                     newPassword !== confirmNew
                   }
                 >
-                  {changingPwd ? <Spinner /> : t('account.changePassword')}
+                  {changingPwd && <Spinner />} {t('account.changePassword')}
                 </Button>
               </div>
             </form>
