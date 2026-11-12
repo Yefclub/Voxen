@@ -145,83 +145,88 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
       page.getByText('Esta captura não está disponível. Abra outra captura ou comece uma nova.'),
     ).toBeVisible();
   });
-  test('recovers account pages from network failures without inventing settings', async ({
-    page,
-  }) => {
-    for (const { path, endpoint, ready } of [
-      { path: '/conta', endpoint: '/api/account', ready: '#name' },
-      { path: '/conta/mcp', endpoint: '/api/mcp/tokens', ready: '#mcp-token-label' },
-      { path: '/conta/ia', endpoint: '/api/account/ai', ready: '#ai-key-openai' },
-    ]) {
-      let unavailable = true;
-      await page.route(`**${endpoint}`, async (route) => {
-        if (unavailable && route.request().method() === 'GET') {
-          await route.fulfill({ status: 503, json: { error: 'Temporary connection failure' } });
-        } else await route.continue();
-      });
-      await page.goto(path);
-      const error = page
-        .getByRole('alert')
-        .filter({ has: page.getByRole('button', { name: 'Tentar novamente' }) });
-      await expect(error).toBeVisible();
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-      await expect(
-        page.getByText('O OAuth MCP está desativado pelo administrador da instância.'),
-      ).toHaveCount(0);
-      unavailable = false;
-      await error.getByRole('button', { name: 'Tentar novamente' }).click();
-      await expect(error).toBeHidden();
-      // Account controls return after the real response, without a full reload.
-      if (path === '/conta/mcp')
-        await expect(page.getByRole('heading', { name: 'Seus tokens' })).toBeVisible();
-      else await expect(page.locator(ready)).toBeVisible();
-      await expect(page.locator('main')).not.toHaveCSS('overflow-x', 'scroll');
-    }
-  });
-  test('keeps a compact switch with a full touch target', async ({ page }) => {
-    await page.route('**/api/mcp/tokens', (route) =>
-      route.fulfill({ json: { tokens: [], allowCreate: true } }),
-    );
-    await page.goto('/conta/mcp');
-    const control = page.locator('#mcp-write-access');
-    await expect(control).toHaveAttribute('aria-checked', 'false');
-    await control.scrollIntoViewIfNeeded();
-    const box = (await control.boundingBox())!;
-    expect(box.width).toBe(44);
-    expect(box.height).toBe(24);
-    // The hit region extends 10px above/below the visual track.
-    await page.mouse.click(box.x + box.width / 2, box.y - 6);
-    await expect(control).toHaveAttribute('aria-checked', 'true');
-    await control.focus();
-    await page.keyboard.press('Space');
-    await expect(control).toHaveAttribute('aria-checked', 'false');
-  });
-  test('recovers administrative configuration failures without inventing empty policies', async ({
-    page,
-  }) => {
-    await db.user.update({ where: { id: workspace!.userId }, data: { role: 'ADMIN' } });
-    for (const { path, endpoint } of [
-      { path: '/admin/usuarios', endpoint: '/api/admin/instance' },
-      { path: '/admin/integracoes', endpoint: '/api/admin/config-revisions' },
-      { path: '/admin/integracoes', endpoint: '/api/admin/mcp' },
-      { path: '/admin/autenticacao', endpoint: '/api/admin/authentication/providers' },
-    ]) {
-      let unavailable = true;
-      await page.route(`**${endpoint}`, async (route) => {
-        if (unavailable && route.request().method() === 'GET')
-          await route.fulfill({ status: 503, json: { error: 'Temporary connection failure' } });
-        else await route.continue();
-      });
-      await page.goto(path);
-      const error = page
-        .getByRole('alert')
-        .filter({ has: page.getByRole('button', { name: 'Tentar novamente' }) });
-      await expect(error).toBeVisible();
-      unavailable = false;
-      await error.getByRole('button', { name: 'Tentar novamente' }).click();
-      await expect(error).toBeHidden();
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    }
+  test.describe('network response fixtures', () => {
+    // Worker-owned fetches bypass Playwright routing, so these fixtures block registration.
+    // Offline behavior is verified separately with an active production service worker.
+    test.use({ serviceWorkers: 'block' });
+    test('recovers account pages from network failures without inventing settings', async ({
+      page,
+    }) => {
+      for (const { path, endpoint, ready } of [
+        { path: '/conta', endpoint: '/api/account', ready: '#name' },
+        { path: '/conta/mcp', endpoint: '/api/mcp/tokens', ready: '#mcp-token-label' },
+        { path: '/conta/ia', endpoint: '/api/account/ai', ready: '#ai-key-openai' },
+      ]) {
+        let unavailable = true;
+        await page.route(`**${endpoint}`, async (route) => {
+          if (unavailable && route.request().method() === 'GET') {
+            await route.fulfill({ status: 503, json: { error: 'Temporary connection failure' } });
+          } else await route.continue();
+        });
+        await page.goto(path);
+        const error = page
+          .getByRole('alert')
+          .filter({ has: page.getByRole('button', { name: 'Tentar novamente' }) });
+        await expect(error).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        await expect(
+          page.getByText('O OAuth MCP está desativado pelo administrador da instância.'),
+        ).toHaveCount(0);
+        unavailable = false;
+        await error.getByRole('button', { name: 'Tentar novamente' }).click();
+        await expect(error).toBeHidden();
+        // Account controls return after the real response, without a full reload.
+        if (path === '/conta/mcp')
+          await expect(page.getByRole('heading', { name: 'Seus tokens' })).toBeVisible();
+        else await expect(page.locator(ready)).toBeVisible();
+        await expect(page.locator('main')).not.toHaveCSS('overflow-x', 'scroll');
+      }
+    });
+    test('keeps a compact switch with a full touch target', async ({ page }) => {
+      await page.route('**/api/mcp/tokens', (route) =>
+        route.fulfill({ json: { tokens: [], allowCreate: true } }),
+      );
+      await page.goto('/conta/mcp');
+      const control = page.locator('#mcp-write-access');
+      await expect(control).toHaveAttribute('aria-checked', 'false');
+      await control.scrollIntoViewIfNeeded();
+      const box = (await control.boundingBox())!;
+      expect(box.width).toBe(44);
+      expect(box.height).toBe(24);
+      // The hit region extends 10px above/below the visual track.
+      await page.mouse.click(box.x + box.width / 2, box.y - 6);
+      await expect(control).toHaveAttribute('aria-checked', 'true');
+      await control.focus();
+      await page.keyboard.press('Space');
+      await expect(control).toHaveAttribute('aria-checked', 'false');
+    });
+    test('recovers administrative configuration failures without inventing empty policies', async ({
+      page,
+    }) => {
+      await db.user.update({ where: { id: workspace!.userId }, data: { role: 'ADMIN' } });
+      for (const { path, endpoint } of [
+        { path: '/admin/usuarios', endpoint: '/api/admin/instance' },
+        { path: '/admin/integracoes', endpoint: '/api/admin/config-revisions' },
+        { path: '/admin/integracoes', endpoint: '/api/admin/mcp' },
+        { path: '/admin/autenticacao', endpoint: '/api/admin/authentication/providers' },
+      ]) {
+        let unavailable = true;
+        await page.route(`**${endpoint}`, async (route) => {
+          if (unavailable && route.request().method() === 'GET')
+            await route.fulfill({ status: 503, json: { error: 'Temporary connection failure' } });
+          else await route.continue();
+        });
+        await page.goto(path);
+        const error = page
+          .getByRole('alert')
+          .filter({ has: page.getByRole('button', { name: 'Tentar novamente' }) });
+        await expect(error).toBeVisible();
+        unavailable = false;
+        await error.getByRole('button', { name: 'Tentar novamente' }).click();
+        await expect(error).toBeHidden();
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      }
+    });
   });
   test('defers installation during a capture and respects dismissal across navigation', async ({
     page,
