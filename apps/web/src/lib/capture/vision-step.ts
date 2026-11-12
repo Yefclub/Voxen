@@ -47,6 +47,7 @@ export async function framesStep(
     );
     const frames = await storeImages(job, result.images, 'frame', MAX_FRAMES);
     if (frames.length === 0) {
+      await stopIfLeaseLost(ctx);
       recordCaptureWarning(ctx, 'frames_unavailable', new CaptureError('NO_TEXT'));
       return artifact;
     }

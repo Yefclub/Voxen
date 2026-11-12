@@ -599,6 +599,40 @@ describeIfDb('capture runner: full video, description and comments', () => {
     }
   });
 
+  it.each(['cancelled', 'lease-reclaimed'] as const)(
+    'does not diagnose empty frames after the job is %s',
+    async (mode) => {
+      const calls = freshCalls();
+      const job = await queue();
+      const documentsBefore = await db.transcript.count({ where: { userId } });
+      const deps = makeDeps({
+        calls,
+        extract: async () => tiktok({ hasVideo: true }),
+        frames: async () => {
+          await db.job.update({
+            where: { id: job.id, userId },
+            data:
+              mode === 'cancelled' ? { status: 'CANCELLED' } : { workerId: 'replacement-owner' },
+          });
+          return { durationSec: 10, images: [] };
+        },
+      });
+      const log = spyOn(process.stderr, 'write');
+      try {
+        const after = await claimAndRun(job.id, deps);
+        expect(after.status).toBe(mode === 'cancelled' ? 'CANCELLED' : 'RUNNING');
+        if (mode === 'lease-reclaimed') expect(after.workerId).toBe('replacement-owner');
+        expect(after.transcriptId).toBeNull();
+        expect(warningsOf(after)).toBeUndefined();
+        expect(warningEvents(log.mock.calls)).toEqual([]);
+        expect(calls.generate).toEqual([]);
+        expect(await db.transcript.count({ where: { userId } })).toBe(documentsBefore);
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
   it('bills reused STT and failed attempts of earlier runs in the final cost', async () => {
     const calls = freshCalls();
     const job = await queue();
