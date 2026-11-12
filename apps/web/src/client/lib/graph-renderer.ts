@@ -111,58 +111,63 @@ export function createSigmaNodeLabelRenderer(palette: GraphPalette): LabelDrawin
           context.restore();
           continue;
         }
-        for (const side of ['right', 'left', 'above', 'below'] as const) {
-          const available =
-            side === 'right'
-              ? viewport.width - data.x - data.size - 14
-              : side === 'left'
-                ? data.x - data.size - 14
-                : viewport.width - 16;
-          if (available < 48) continue;
-          const label = fitGraphLabel(
-            String(data.label),
-            Math.min(144, available),
-            (value) => context.measureText(value).width,
-          );
-          const metrics = context.measureText(label);
-          const ascent = metrics.actualBoundingBoxAscent ?? settings.labelSize;
-          const descent = metrics.actualBoundingBoxDescent ?? settings.labelSize / 3;
-          const x =
-            side === 'right'
-              ? data.x + data.size + 6
-              : side === 'left'
-                ? data.x - data.size - 6 - metrics.width
-                : Math.max(
-                    8,
-                    Math.min(data.x - metrics.width / 2, viewport.width - metrics.width - 8),
-                  );
-          const y =
-            side === 'above'
-              ? data.y - data.size - 8 - descent
-              : side === 'below'
-                ? data.y + data.size + 8 + ascent
-                : data.y + (ascent - descent) / 2;
-          const box = {
-            left: x - Math.max(0, metrics.actualBoundingBoxLeft ?? 0) - 3,
-            right: x + Math.max(metrics.width, metrics.actualBoundingBoxRight ?? 0) + 3,
-            top: y - ascent - 3,
-            bottom: y + descent + 3,
-          };
-          if (
-            box.left < 5 ||
-            box.top < 5 ||
-            box.right > viewport.width - 5 ||
-            box.bottom > viewport.height - 5 ||
-            occupied.some((other) => intersects(box, other))
-          )
-            continue;
-          occupied.push(box);
-          context.lineWidth = 3;
-          context.strokeStyle = palette.labelStroke;
-          context.strokeText(label, x, y);
-          context.fillStyle = palette.label;
-          context.fillText(label, x, y);
-          break;
+        let placed = false;
+        for (const gap of data.forceLabel ? [0, 16, 32, 48, 64] : [0]) {
+          if (placed) break;
+          for (const side of ['right', 'left', 'above', 'below'] as const) {
+            const available =
+              side === 'right'
+                ? viewport.width - data.x - data.size - gap - 14
+                : side === 'left'
+                  ? data.x - data.size - gap - 14
+                  : viewport.width - 16;
+            if (available < 48) continue;
+            const label = fitGraphLabel(
+              String(data.label),
+              Math.min(144, available),
+              (value) => context.measureText(value).width,
+            );
+            const metrics = context.measureText(label);
+            const ascent = metrics.actualBoundingBoxAscent ?? settings.labelSize;
+            const descent = metrics.actualBoundingBoxDescent ?? settings.labelSize / 3;
+            const x =
+              side === 'right'
+                ? data.x + data.size + gap + 6
+                : side === 'left'
+                  ? data.x - data.size - gap - 6 - metrics.width
+                  : Math.max(
+                      8,
+                      Math.min(data.x - metrics.width / 2, viewport.width - metrics.width - 8),
+                    );
+            const y =
+              side === 'above'
+                ? data.y - data.size - gap - 8 - descent
+                : side === 'below'
+                  ? data.y + data.size + gap + 8 + ascent
+                  : data.y + (ascent - descent) / 2;
+            const box = {
+              left: x - Math.max(0, metrics.actualBoundingBoxLeft ?? 0) - 3,
+              right: x + Math.max(metrics.width, metrics.actualBoundingBoxRight ?? 0) + 3,
+              top: y - ascent - 3,
+              bottom: y + descent + 3,
+            };
+            if (
+              box.left < 5 ||
+              box.top < 5 ||
+              box.right > viewport.width - 5 ||
+              box.bottom > viewport.height - 5 ||
+              occupied.some((other) => intersects(box, other))
+            )
+              continue;
+            occupied.push(box);
+            context.lineWidth = 3;
+            context.strokeStyle = palette.labelStroke;
+            context.strokeText(label, x, y);
+            context.fillStyle = palette.label;
+            context.fillText(label, x, y);
+            placed = true;
+            break;
+          }
         }
         context.restore();
       }
@@ -281,7 +286,7 @@ export function sigmaRendererSettings(
     labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
     labelFont: 'Inter, system-ui, sans-serif',
     labelWeight: '500',
-    labelRenderedSizeThreshold: model.graph.order > 250 ? 9 : 3,
+    labelRenderedSizeThreshold: 3,
     labelSize: 13,
     maxCameraRatio: 3.4,
     minCameraRatio: 0.08,

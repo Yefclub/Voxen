@@ -179,7 +179,7 @@ describe('graph rendering helpers', () => {
     expect(model.reagraphEdges).toHaveLength(1);
     expect(model.reagraphEdges[0]?.source).toBe('note-1');
     expect(model.reagraphEdges[0]?.target).toBe('topic-1');
-    expect(model.reagraphEdges[0]?.fill).toBe('#38bdf8');
+    expect(model.reagraphEdges[0]?.fill).toBe(resolveGraphPalette('linear').dimEdge);
     expect(model.nodeById.get('note-1')?.label).toBe('Nota conectada');
   });
 

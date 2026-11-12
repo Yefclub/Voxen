@@ -28,7 +28,7 @@ export function GraphServerSearch({
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-52">
       <Combobox.Root<GraphNode>
         items={results}
         filter={null}

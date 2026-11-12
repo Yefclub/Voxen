@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle } from 'react';
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { parseColor } from 'sigma/utils';
 import {
   buildSigmaGraphModel,
   resolveGraphPalette,
@@ -11,10 +12,38 @@ let graphCanvasMounts = 0;
 let graphCanvasUnmounts = 0;
 let graphCanvasRenders = 0;
 let exposeGraphCanvasRef = true;
+let geometryReady = true;
 const centerGraphMock = mock(() => undefined);
-const fitNodesInViewMock = mock(() => undefined);
-const zoomInMock = mock(() => undefined);
-const zoomOutMock = mock(() => undefined);
+const fitNodesInViewMock = mock((_ids?: string[], _options?: { animated: boolean }) => undefined);
+let cameraZoom = 1;
+let requestedZoom = 1;
+const cameraDistanceMock = mock(
+  (_width: number, _height: number, _depth: number) => 4_000 * cameraZoom,
+);
+const cameraZoomMock = mock((zoom: number, _animated: boolean) => {
+  requestedZoom = zoom;
+  return Promise.resolve();
+});
+const cameraUpdateMock = mock((_delta: number) => {
+  cameraZoom = requestedZoom;
+});
+const cameraLookAtMock = mock(
+  (
+    _x: number,
+    _y: number,
+    _z: number,
+    _targetX: number,
+    _targetY: number,
+    _targetZ: number,
+    _animated: boolean,
+  ) => Promise.resolve(),
+);
+const zoomInMock = mock(() => {
+  requestedZoom = cameraZoom *= 1.5;
+});
+const zoomOutMock = mock(() => {
+  requestedZoom = cameraZoom *= 0.5;
+});
 
 const GraphCanvasMock = forwardRef(function GraphCanvasMock(props: Record<string, unknown>, ref) {
   graphCanvasRenders += 1;
@@ -25,8 +54,30 @@ const GraphCanvasMock = forwardRef(function GraphCanvasMock(props: Record<string
           fitNodesInView: fitNodesInViewMock,
           zoomIn: zoomInMock,
           zoomOut: zoomOutMock,
-          getGraph: mock(() => null),
-          getControls: mock(() => null),
+          getGraph: () => {
+            const nodes = props.nodes as Array<{ id: string }>;
+            if (geometryReady) {
+              for (const node of nodes) {
+                (
+                  props.layoutOverrides as {
+                    getNodePosition: (id: string, args: object) => unknown;
+                  }
+                ).getNodePosition(node.id, {});
+              }
+            }
+            return {
+              order: nodes.length,
+              hasNode: (id: string) => nodes.some((node) => node.id === id),
+            };
+          },
+          getControls: () => ({
+            minDistance: 180,
+            maxDistance: 50_000,
+            getDistanceToFitBox: cameraDistanceMock,
+            zoomTo: cameraZoomMock,
+            setLookAt: cameraLookAtMock,
+            update: cameraUpdateMock,
+          }),
           exportCanvas: mock(() => ''),
         }
       : null,
@@ -72,6 +123,7 @@ mock.module('@/components/ui/icons', () => ({
   Focus: StaticIconMock,
   Layers3: StaticIconMock,
   Loader2: StaticIconMock,
+  Maximize2: StaticIconMock,
   Network: StaticIconMock,
   PanelLeft: StaticIconMock,
   RefreshCw: StaticIconMock,
@@ -155,8 +207,14 @@ beforeEach(() => {
   graphCanvasUnmounts = 0;
   graphCanvasRenders = 0;
   exposeGraphCanvasRef = true;
+  geometryReady = true;
   centerGraphMock.mockClear();
   fitNodesInViewMock.mockClear();
+  cameraDistanceMock.mockClear();
+  cameraZoomMock.mockClear();
+  cameraLookAtMock.mockClear();
+  cameraUpdateMock.mockClear();
+  cameraZoom = requestedZoom = 1;
   zoomInMock.mockClear();
   zoomOutMock.mockClear();
   listeners.clear();
@@ -215,6 +273,123 @@ function renderGraph(model = buildSigmaGraphModel(DATA), palette = resolveGraphP
 }
 
 describe('BrainGraph3DCanvas lifecycle', () => {
+  test('keeps active labels distinct from the canvas in the light theme', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(renderGraph(buildSigmaGraphModel(DATA), resolveGraphPalette('light')), {
+        createNodeMock: () => containerMock,
+      });
+      await Promise.resolve();
+    });
+    const theme = renderer.root.findByType(GraphCanvasMock).props.theme;
+    const brightness = (value: string) => {
+      const { r, g, b } = parseColor(value);
+      return r * 0.2126 + g * 0.7152 + b * 0.0722;
+    };
+    for (const label of [theme.node.label, theme.edge.label])
+      expect(
+        Math.abs(brightness(label.activeColor) - brightness(theme.canvas.background)),
+      ).toBeGreaterThan(150);
+    await act(async () => renderer.unmount());
+  });
+
+  test('highlights incident edges with the selected neighborhood without moving the camera', async () => {
+    let renderer!: ReactTestRenderer;
+    const initial = renderGraph();
+    await act(async () => {
+      renderer = create(initial, { createNodeMock: () => containerMock });
+      await Promise.resolve();
+    });
+    const fits = cameraLookAtMock.mock.calls.length;
+    await act(async () => {
+      renderer.update(
+        React.createElement(BrainGraph3DCanvas, {
+          ...initial.props,
+          selectedId: 'topic-1',
+        }),
+      );
+    });
+    const graph = renderer.root.findByType(GraphCanvasMock);
+    expect(graph.props.actives).toContain('edge-1');
+    expect(graph.props.actives).toContain('entity-1');
+    expect(cameraLookAtMock).toHaveBeenCalledTimes(fits);
+    await act(async () => renderer.unmount());
+  });
+
+  test('restores the same complete frame after zooming out before fitting', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(renderGraph(), { createNodeMock: () => containerMock });
+      await Promise.resolve();
+    });
+    const initial = cameraLookAtMock.mock.calls.at(-1)!;
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'graph.zoomOut' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'graph.fitView' }).props.onClick();
+    });
+    const restored = cameraLookAtMock.mock.calls.at(-1)!;
+    expect(restored.slice(0, 6)).toEqual(initial.slice(0, 6));
+    await act(async () => renderer.unmount());
+  });
+  test('initially fits every node and never replaces the overview with a primary-only fit', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        renderGraph(
+          buildSigmaGraphModel({
+            ...DATA,
+            totalNodes: 3,
+            nodes: [...DATA.nodes, { ...DATA.nodes[0]!, id: 'satellite', key: 'satellite' }],
+          }),
+        ),
+        { createNodeMock: () => containerMock },
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Bun.sleep(260);
+    });
+
+    expect(cameraLookAtMock).toHaveBeenCalledTimes(1);
+    expect(fitNodesInViewMock).not.toHaveBeenCalled();
+    const [width, height, depth] = cameraDistanceMock.mock.calls[0]!;
+    const [, , , x, y, z, animated] = cameraLookAtMock.mock.calls[0]!;
+    const model = renderer.root.findByType(BrainGraph3DCanvas).props.model;
+    for (const point of model.positions3d.values()) {
+      expect(Math.abs(point.x - x) * 2).toBeLessThan(width);
+      expect(Math.abs(point.y - y) * 2).toBeLessThan(height);
+      expect(Math.abs(point.z - z) * 2).toBeLessThan(depth);
+    }
+    expect(animated).toBe(false);
+    expect(renderer.root.findByType(GraphCanvasMock).props.theme.canvas.fog).toBeNull();
+    await act(async () => renderer.unmount());
+  });
+
+  test('waits for geometry and controls before fitting a delayed 3D scene', async () => {
+    geometryReady = false;
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(renderGraph(), { createNodeMock: () => containerMock });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Bun.sleep(240);
+    });
+    expect(cameraLookAtMock).not.toHaveBeenCalled();
+
+    geometryReady = true;
+    await act(async () => {
+      await Bun.sleep(40);
+    });
+    expect(cameraLookAtMock).toHaveBeenCalledTimes(1);
+    expect(
+      cameraLookAtMock.mock.calls[0]!.every(
+        (value) => typeof value === 'boolean' || Number.isFinite(value),
+      ),
+    ).toBe(true);
+    await act(async () => renderer.unmount());
+  });
+
   test('updates model and theme without remounting GraphCanvas', async () => {
     let renderer: ReactTestRenderer;
     await act(async () => {
@@ -329,15 +504,14 @@ describe('BrainGraph3DCanvas lifecycle', () => {
       renderer.root.findByProps({ 'aria-label': 'graph.zoomIn' }).props.onClick();
       renderer.root.findByProps({ 'aria-label': 'graph.zoomOut' }).props.onClick();
       renderer.root.findByProps({ 'aria-label': 'graph.focusCore' }).props.onClick();
-      renderer.root.findByProps({ 'aria-label': 'graph.fitAll' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'graph.fitView' }).props.onClick();
     });
 
     expect(zoomInMock).toHaveBeenCalledTimes(1);
     expect(zoomOutMock).toHaveBeenCalledTimes(1);
-    expect(fitNodesInViewMock).toHaveBeenCalledWith(['topic-1', 'entity-1'], {
-      animated: true,
-    });
-    expect(fitNodesInViewMock).toHaveBeenCalledWith(undefined, { animated: true });
+    expect(cameraLookAtMock).toHaveBeenCalledTimes(3);
+    expect(cameraLookAtMock.mock.calls.slice(1).every((call) => call[6] === true)).toBe(true);
+    expect(fitNodesInViewMock).not.toHaveBeenCalled();
 
     await act(async () => renderer.unmount());
   });
@@ -359,14 +533,16 @@ describe('BrainGraph3DCanvas lifecycle', () => {
       renderer.update(renderGraph(buildSigmaGraphModel(filtered)));
       await Promise.resolve();
     });
-    fitNodesInViewMock.mockClear();
+    cameraLookAtMock.mockClear();
 
     await act(async () => {
       renderer.root.findByProps({ 'aria-label': 'graph.focusCore' }).props.onClick();
     });
 
-    expect(fitNodesInViewMock).toHaveBeenCalledTimes(1);
-    expect(fitNodesInViewMock).toHaveBeenCalledWith(['topic-1'], { animated: true });
+    expect(cameraLookAtMock).toHaveBeenCalledTimes(1);
+    const model = buildSigmaGraphModel(filtered);
+    const point = model.positions3d.get('topic-1')!;
+    expect(cameraLookAtMock.mock.calls[0]!.slice(3, 6)).toEqual([point.x, point.y, point.z]);
     await act(async () => renderer.unmount());
   });
 });
