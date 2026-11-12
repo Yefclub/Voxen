@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.15.1-dev.1794498234 — 2026-11-12 · Dev
+
+### 🐛 Keep local speech-to-text available as a fallback
+
+Captures now request compatible audio whenever an available local speech
+model appears in your provider chain, including after a cloud provider.
+This lets eligible audio fall back to the configured local model without
+changing your provider preference or existing media limits. Partial speech
+and image failures now record their processing step and safe error code to
+help diagnose incomplete captures.
+
 ## v0.15.1-dev.1794330578 — 2026-11-10 · Dev
 
 ### ✨ Add links to your knowledge base through MCP
