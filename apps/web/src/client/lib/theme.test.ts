@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   APP_THEMES,
   DEFAULT_THEME,
@@ -40,7 +40,17 @@ describe('Voxen appearance migration', () => {
 
 describe('pre-paint appearance bootstrap', () => {
   const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)![1]!;
+  let script = '';
+  beforeAll(async () => {
+    await new HTMLRewriter()
+      .on('head > script:not([src])', {
+        text(chunk) {
+          script += chunk.text;
+        },
+      })
+      .transform(new Response(html))
+      .text();
+  });
   function boot(stored: string | null, light: boolean): { theme?: string; chrome?: string } {
     const result: { theme?: string; chrome?: string } = {};
     const dataset = {
