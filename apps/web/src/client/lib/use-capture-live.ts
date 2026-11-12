@@ -32,6 +32,7 @@ export function useCaptureLive(
     let timer: ReturnType<typeof setTimeout> | null = null;
     let failures = 0;
     let stopped = false;
+    let settling = false;
 
     const close = (): void => {
       source?.close();
@@ -39,12 +40,19 @@ export function useCaptureLive(
     };
 
     const settle = async (): Promise<void> => {
+      if (stopped || settling) return;
+      settling = true;
       close();
       const fresh = await fetchCapture(jobRef.current.id).catch(() => null);
+      settling = false;
       if (stopped) return;
-      if (fresh) onChangeRef.current(fresh);
+      if (fresh) {
+        jobRef.current = fresh;
+        onChangeRef.current(fresh);
+      }
       // A replayed terminal event from an earlier attempt: keep following.
       if (fresh && isActiveCapture(fresh)) connect();
+      else if (!fresh) scheduleReconnect();
     };
 
     const scheduleReconnect = (): void => {
@@ -79,14 +87,22 @@ export function useCaptureLive(
         }
         if (event.lastEventId) lastEventId.current = event.lastEventId;
         if ('snapshot' in data) {
-          close();
+          if (data.snapshot.id !== jobRef.current.id) return;
+          if (!isActiveCapture(data.snapshot)) close();
+          jobRef.current = data.snapshot;
           onChangeRef.current(data.snapshot);
+          return;
+        }
+        if (data.jobId !== jobRef.current.id) return;
+        // Terminal progress carries no document and would stop this effect
+        // before its final request finishes. Publish the authoritative snapshot.
+        if (isTerminalStage(data.stage)) {
+          void settle();
           return;
         }
         const next = applyCaptureEvent(jobRef.current, data);
         jobRef.current = next;
         onChangeRef.current(next);
-        if (isTerminalStage(data.stage)) void settle();
       });
       es.addEventListener('error', () => {
         if (es.readyState === EventSource.CLOSED) scheduleReconnect();

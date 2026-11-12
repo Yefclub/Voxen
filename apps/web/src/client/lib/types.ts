@@ -15,7 +15,7 @@ export interface MeUser {
   image: string | null;
   status: UserStatus;
   role: UserRole;
-  theme: AppTheme;
+  theme: AppTheme | 'linear' | 'zinc' | 'emerald';
   interfaceMode: AppInterfaceMode;
 }
 

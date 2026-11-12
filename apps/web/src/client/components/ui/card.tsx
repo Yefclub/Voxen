@@ -6,8 +6,6 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   elevated?: boolean;
   /** hoverable = leve translate no hover + border destacada */
   hoverable?: boolean;
-  /** glow mantido por compat, ignorado (sem sombras coloridas) */
-  glow?: 'emerald' | 'violet' | null;
 }
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(

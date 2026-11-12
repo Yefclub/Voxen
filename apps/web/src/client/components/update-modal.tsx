@@ -15,6 +15,7 @@ import {
   resolveUpdateModalEffect,
   shouldPresentUpdateModal,
   shouldSilentApplyVersion,
+  isVersionReloadSafeRoute,
   type ReleaseLoadState,
   type UpdateModalIntent,
 } from '../lib/update-modal-core';
@@ -70,13 +71,18 @@ export function UpdateModal({
     return `/api/releases?${params.toString()}`;
   }, [locale, update?.toVersion]);
 
-  // Silent apply: when an update is known and chat is not streaming, apply
-  // without the modal. Streaming keeps the update pending until it ends.
+  // Keep shared links, uploads and drafts in place. Apply silently after
+  // returning to a query-backed index, outside an actively edited field.
   useEffect(() => {
     if (
       !shouldSilentApplyVersion({
         hasUpdate: update !== null,
         streaming,
+        busy:
+          !isVersionReloadSafeRoute(location.pathname) ||
+          Boolean(
+            document.activeElement?.matches('input, textarea, select, [contenteditable="true"]'),
+          ),
       })
     ) {
       return;
@@ -86,7 +92,7 @@ export function UpdateModal({
     silentAppliedBuildRef.current = buildKey;
     setApplying(true);
     apply();
-  }, [update, streaming, apply]);
+  }, [update, streaming, apply, location.pathname]);
 
   useEffect(() => {
     if (!update) {

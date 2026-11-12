@@ -5,6 +5,8 @@ import type {
   GraphCanvas as GraphCanvasType,
   GraphCanvasRef,
   NodePositionArgs,
+  Sphere as GraphSphere,
+  Label as GraphLabel,
   Theme,
 } from 'reagraph';
 import {
@@ -33,8 +35,8 @@ import {
   graphDescriptionText,
   filterGraphData,
   resolveGraphPalette,
-  resolveNodeRadiusBounds,
   toOpaqueGraphColor,
+  resolveNodeRadiusBounds,
   type GraphEdge,
   type GraphNode,
   type GraphNodeType,
@@ -73,14 +75,23 @@ export {
   filterGraphData,
   nodePath,
   resolveGraphPalette,
+  toOpaqueGraphColor,
   resolveGraphViewBox,
   resolveNodeRadiusBounds,
 } from '../lib/graph-model';
 export type { GraphResp } from '../lib/graph-model';
+import {
+  buildVoxenTheme,
+  createGraph3DNodeRenderer,
+  graph3DScale,
+} from '../lib/graph-3d-presentation';
+
 type GraphCanvasComponent = typeof GraphCanvasType;
 interface ReagraphModule {
   GraphCanvas: GraphCanvasComponent;
   darkTheme: Theme;
+  Sphere: typeof GraphSphere;
+  Label: typeof GraphLabel;
 }
 const EMPTY_REAGRAPH_NODES: SigmaGraphModel['reagraphNodes'] = [];
 const EMPTY_REAGRAPH_EDGES: SigmaGraphModel['reagraphEdges'] = [];
@@ -114,53 +125,6 @@ class GraphRendererBoundary extends Component<
   override render(): React.ReactNode {
     return this.state.failed ? null : this.props.children;
   }
-}
-
-function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
-  return {
-    ...baseTheme,
-    canvas: { background: palette.canvas, fog: null },
-    node: {
-      ...baseTheme.node,
-      fill: palette.nodes.content,
-      activeFill: palette.activeNode,
-      opacity: 1,
-      selectedOpacity: 1,
-      inactiveOpacity: 0.18,
-      label: {
-        color: palette.label,
-        stroke: palette.labelStroke,
-        activeColor: palette.label,
-        // Halo semi-opaco no tom do canvas — título legível sobre nós coloridos.
-        backgroundColor: palette.canvas,
-        backgroundOpacity: 0.88,
-        padding: 6,
-        radius: 6,
-      },
-    },
-    ring: {
-      fill: toOpaqueGraphColor(palette.neutralEdge),
-      activeFill: palette.nodes.transcript,
-    },
-    edge: {
-      ...baseTheme.edge,
-      fill: toOpaqueGraphColor(palette.neutralEdge),
-      activeFill: toOpaqueGraphColor(palette.label),
-      opacity: 1,
-      selectedOpacity: 1,
-      inactiveOpacity: 0.05,
-      label: {
-        color: palette.label,
-        activeColor: palette.label,
-        stroke: palette.labelStroke,
-      },
-    },
-    arrow: {
-      fill: toOpaqueGraphColor(palette.neutralEdge),
-      activeFill: toOpaqueGraphColor(palette.label),
-    },
-    lasso: baseTheme.lasso,
-  };
 }
 
 function latestGraphIndexStatus(
@@ -358,7 +322,7 @@ export function GrafoPage(): React.ReactElement {
                   onClick={() => setMode(value)}
                   title={t(value === '3d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                    'flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                     mode === value
                       ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                       : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
@@ -663,7 +627,7 @@ function GraphExplorer({
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <details className="group/filters">
-          <summary className="cursor-pointer text-sm font-medium text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
             {translate('graph.filters')}
           </summary>
           <div className="mb-2 mt-3 flex items-center justify-end">
@@ -886,7 +850,7 @@ function GraphNodeInspector({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {node.description && (
           <details className="mb-4 text-xs text-[var(--color-app-subtle)]">
-            <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+            <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
               {translate('graph.aboutNode')}
             </summary>
             <p className="mt-2 leading-relaxed">{graphDescriptionText(node.description)}</p>
@@ -909,7 +873,7 @@ function GraphNodeInspector({
                 <button
                   type="button"
                   onClick={() => onSelect(neighbor.id)}
-                  className="flex min-w-0 flex-1 items-start gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                  className="flex min-w-0 flex-1 items-start gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
                 >
                   <span
                     className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
@@ -933,14 +897,14 @@ function GraphNodeInspector({
                     onClick={() => onOpen(neighbor)}
                     aria-label={translate('graph.openRelated', { title: neighbor.label })}
                     title={translate('graph.openSource')}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
               <details className="ml-6 mt-1 text-[11px] text-[var(--color-app-muted)]">
-                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]">
                   {translate('graph.relationEvidence', {
                     evidence: translate(
                       edge.evidence === 'EXTRACTED'
@@ -1103,6 +1067,23 @@ export function BrainGraph3DCanvas({
     () => (reagraph ? buildVoxenTheme(reagraph.darkTheme, palette) : null),
     [palette, reagraph],
   );
+  const presentationScale = useMemo(() => graph3DScale(model), [model?.positions3d]);
+  const renderNode = useMemo(
+    () =>
+      reagraph && model
+        ? createGraph3DNodeRenderer(reagraph, model, palette, coarsePointer)
+        : undefined,
+    [reagraph, model, palette, coarsePointer],
+  );
+  const visibleEdges = useMemo(
+    () =>
+      model?.reagraphEdges.map((edge) => ({
+        ...edge,
+        fill: toOpaqueGraphColor(palette.neutralEdge),
+        size: Math.max(edge.size ?? 1, coarsePointer ? 6 : 3) * presentationScale,
+      })),
+    [model?.reagraphEdges, palette.neutralEdge, coarsePointer, presentationScale],
+  );
   const positionedNodes = useMemo(
     () => new Map<string, { x: number; y: number; z: number }>(),
     [model?.positions3d],
@@ -1221,9 +1202,9 @@ export function BrainGraph3DCanvas({
         const zoomReset = controls.zoomTo(1, false);
         controls.update(0);
         const distance = controls.getDistanceToFitBox(
-          max.x - min.x + 150,
-          max.y - min.y + 150,
-          max.z - min.z + 150,
+          max.x - min.x + 300 * presentationScale,
+          max.y - min.y + 300 * presentationScale,
+          max.z - min.z + 300 * presentationScale,
         );
         if (!Number.isFinite(distance)) return false;
         void Promise.all([
@@ -1245,7 +1226,7 @@ export function BrainGraph3DCanvas({
         return false;
       }
     },
-    [model?.neighborhoods, onFallback, positionedNodes, selectedId],
+    [model?.neighborhoods, onFallback, positionedNodes, presentationScale, selectedId],
   );
   const fitGraphViewRef = useRef(fitGraphView);
   fitGraphViewRef.current = fitGraphView;
@@ -1298,11 +1279,14 @@ export function BrainGraph3DCanvas({
           <GraphCanvas
             ref={handleGraphRef}
             nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
-            edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
+            edges={visibleEdges ?? EMPTY_REAGRAPH_EDGES}
             theme={graphTheme}
             layoutType="custom"
             layoutOverrides={layoutOverrides}
-            labelType={activeId ? 'auto' : profile.labelType}
+            labelType="none"
+            renderNode={renderNode}
+            minNodeSize={(coarsePointer ? 32 : 20) * presentationScale}
+            maxNodeSize={(coarsePointer ? 52 : 36) * presentationScale}
             edgeInterpolation={profile.edgeInterpolation}
             edgeArrowPosition="none"
             cameraMode="rotate"

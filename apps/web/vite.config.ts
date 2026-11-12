@@ -68,8 +68,8 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        background_color: '#111113',
-        theme_color: '#111113',
+        background_color: '#141a18',
+        theme_color: '#141a18',
         categories: ['productivity', 'education', 'utilities'],
         icons: [
           {

@@ -18,7 +18,7 @@ export const SelectTrigger = React.forwardRef<
       'placeholder:text-[var(--color-app-muted)]',
       'transition-colors duration-150',
       'hover:border-[var(--color-app-border-strong)]',
-      'focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15',
+      'focus:outline-none focus:border-[var(--theme-focus)] focus:ring-2 focus:ring-[var(--theme-focus)]',
       'data-[placeholder]:text-[var(--color-app-muted)]',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className,

@@ -1,3 +1,4 @@
+import { ptBrFrontendMessages, enFrontendMessages } from './frontend-i18n';
 import {
   createContext,
   useCallback,
@@ -39,6 +40,7 @@ export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> 
 const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
+  ...ptBrFrontendMessages,
   ...ptBrReleaseUpdateMessages,
   ...ptBrJobStageMessages,
   ...ptBrCaptureMessages,
@@ -53,6 +55,7 @@ const ptBRMessages = {
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
+  'common.filters': 'Filtros',
   'common.confirm': 'Confirmar',
   'common.continue': 'Continuar',
   'common.copy': 'Copiar',
@@ -410,9 +413,9 @@ const ptBRMessages = {
   'jobDetail.uploadedFile': 'Arquivo enviado',
 
   'library.eyebrow': 'Biblioteca',
-  'library.title': 'Transcrições',
+  'library.title': 'Biblioteca',
   'library.description': 'Encontre conteúdos por texto, organização e relações da sua base.',
-  'library.searchPlaceholder': 'Buscar nas transcrições…',
+  'library.searchPlaceholder': 'Buscar conteúdos…',
   'library.searchTitle': 'Explore sua base de conhecimento',
   'library.searchDescription': 'Encontre trechos, tags e conceitos conectados no seu grafo.',
   'library.graphMatch': 'Conceito do grafo',
@@ -623,12 +626,11 @@ const ptBRMessages = {
 
   'notes.manualBase': 'Base manual',
   'notes.title': 'Notas',
-  'notes.description':
-    'Sua base de conhecimento escrita à mão. Use a árvore na lateral pra navegar entre notas e pastas. A Vox também pode criar/editar via chat com confirmação.',
+  'notes.allNotes': 'Todas as notas',
+  'notes.description': 'Seu espaço para escrever, organizar ideias e complementar a biblioteca.',
   'notes.emptyTitle': 'Comece sua base manual',
   'notes.selectTitle': 'Selecione uma nota',
-  'notes.emptyDescription':
-    'Crie sua primeira nota ou pasta na sidebar. Você também pode pedir pra Vox criar via chat (com confirmação antes).',
+  'notes.emptyDescription': 'Crie uma nota ou pasta para começar a organizar suas ideias.',
   'notes.selectDescription': 'Clique numa nota da árvore na sidebar pra abrir o editor.',
   'notes.libraryTitle': 'Biblioteca de notas',
   'notes.libraryDescription': 'Escolha uma nota ou organize seu conhecimento em pastas.',
@@ -1108,7 +1110,7 @@ const ptBRMessages = {
   'auth.emailPlaceholder': 'voce@exemplo.com',
   'auth.signIn': 'Entrar',
   'auth.signInTitle': 'Bem-vindo de volta',
-  'auth.signInSubtitle': 'Acesse sua biblioteca de vídeos transcritos.',
+  'auth.signInSubtitle': 'Entre na sua base de conhecimento.',
   'auth.signInError': 'E-mail ou senha incorretos.',
   'auth.unexpectedError': 'Erro inesperado. Tente novamente.',
   'auth.noAccount': 'Ainda não tem conta?',
@@ -1198,6 +1200,7 @@ export type I18nKey = keyof typeof ptBRMessages;
 export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>) => string;
 
 const enMessages: Record<I18nKey, string> = {
+  ...enFrontendMessages,
   ...enKnowledgeSearchMessages,
   ...enMermaidCanvasMessages,
   ...enNoteVersioningMessages,
@@ -1212,6 +1215,7 @@ const enMessages: Record<I18nKey, string> = {
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
+  'common.filters': 'Filters',
   'common.confirm': 'Confirm',
   'common.continue': 'Continue',
   'common.copy': 'Copy',
@@ -1563,9 +1567,9 @@ const enMessages: Record<I18nKey, string> = {
   'jobDetail.uploadedFile': 'Uploaded file',
 
   'library.eyebrow': 'Library',
-  'library.title': 'Transcripts',
+  'library.title': 'Library',
   'library.description': 'Find content through text, organization, and knowledge-base relations.',
-  'library.searchPlaceholder': 'Search transcripts…',
+  'library.searchPlaceholder': 'Search content…',
   'library.searchTitle': 'Explore your knowledge base',
   'library.searchDescription': 'Find passages, tags, and concepts connected in your graph.',
   'library.graphMatch': 'Graph concept',
@@ -1776,12 +1780,11 @@ const enMessages: Record<I18nKey, string> = {
 
   'notes.manualBase': 'Manual base',
   'notes.title': 'Notes',
-  'notes.description':
-    'Your hand-written knowledge base. Use the sidebar tree to navigate notes and folders. Vox can also create or edit through chat with confirmation.',
+  'notes.allNotes': 'All notes',
+  'notes.description': 'Your space to write, organize ideas, and add to the library.',
   'notes.emptyTitle': 'Start your manual base',
   'notes.selectTitle': 'Select a note',
-  'notes.emptyDescription':
-    'Create your first note or folder in the sidebar. You can also ask Vox to create one through chat with confirmation.',
+  'notes.emptyDescription': 'Create a note or folder to start organizing your ideas.',
   'notes.selectDescription': 'Click a note in the sidebar tree to open the editor.',
   'notes.libraryTitle': 'Notes library',
   'notes.libraryDescription': 'Choose a note or organize your knowledge in folders.',
@@ -2257,7 +2260,7 @@ const enMessages: Record<I18nKey, string> = {
   'auth.emailPlaceholder': 'you@example.com',
   'auth.signIn': 'Sign in',
   'auth.signInTitle': 'Welcome back',
-  'auth.signInSubtitle': 'Access your transcribed video library.',
+  'auth.signInSubtitle': 'Sign in to your knowledge base.',
   'auth.signInError': 'Incorrect email or password.',
   'auth.unexpectedError': 'Unexpected error. Try again.',
   'auth.noAccount': 'Do not have an account yet?',

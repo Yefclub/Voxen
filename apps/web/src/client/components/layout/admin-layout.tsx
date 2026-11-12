@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { KeyRound, Plug, Settings, ShieldCheck, Users } from '@/components/ui/icons';
+import { KeyRound, Plug, Settings, Users } from '@/components/ui/icons';
 import { useI18n, type I18nKey } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 
@@ -16,44 +16,29 @@ export function AdminLayout(): React.ReactElement {
 
   return (
     <div className="min-h-full">
-      <header className="mx-auto mb-7 w-full max-w-[1600px] px-4 sm:px-7 md:pt-5 xl:px-10">
-        <div className="rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-accent-violet-soft)] p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-app-bg-elevated)] text-[var(--color-accent-violet)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <h1 className="font-display text-base font-semibold text-[var(--color-app-fg)]">
-                {t('admin.shell.title')}
-              </h1>
-              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-[var(--color-app-muted)]">
-                {t('admin.shell.description')}
-              </p>
-            </div>
-          </div>
-          <nav
-            className="mt-4 flex gap-1 overflow-x-auto border-t border-[var(--color-app-border)] pt-3"
-            aria-label={t('admin.shell.title')}
-          >
-            {ADMIN_NAV.map(({ to, labelKey, Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors',
-                    isActive
-                      ? 'bg-[var(--color-app-bg-elevated)] text-[var(--color-accent-violet)]'
-                      : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
-                  )
-                }
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {t(labelKey)}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
+      <header className="mx-auto w-full max-w-[1600px] px-5 pt-6 sm:px-8 sm:pt-8 xl:px-10">
+        <nav
+          className="grid grid-cols-2 gap-1 border-b border-[var(--color-app-border)] pb-3 sm:flex sm:flex-wrap"
+          aria-label={t('admin.shell.title')}
+        >
+          {ADMIN_NAV.map(({ to, labelKey, Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-[var(--color-accent-primary-soft)] text-[var(--color-accent-primary)]'
+                    : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+                )
+              }
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {t(labelKey)}
+            </NavLink>
+          ))}
+        </nav>
       </header>
       <Outlet />
     </div>

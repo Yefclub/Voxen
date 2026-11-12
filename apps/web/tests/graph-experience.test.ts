@@ -231,7 +231,9 @@ describe('graph palettes', () => {
     expect(dark.labelStroke).toContain('0.94');
     expect(dark.nodes.transcript).not.toBe(light.nodes.transcript);
     expect(emerald.canvas).not.toBe(light.canvas);
-    expect(light.canvas).toBe('#f7f7f8');
+    expect(light.canvas).toBe('#f8f9f6');
+    expect(resolveGraphPalette('dark')).toEqual(dark);
+    expect(emerald).toEqual(dark);
   });
 });
 

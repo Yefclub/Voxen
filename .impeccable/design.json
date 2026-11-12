@@ -1,0 +1,591 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T22:52:45Z",
+  "title": "Design System: Voxen",
+  "extensions": {
+    "colorMeta": {
+      "app-bg": {
+        "role": "neutral",
+        "displayName": "Ink ground (Dark)"
+      },
+      "app-bg-light": {
+        "role": "neutral",
+        "displayName": "Warm-white ground (Light)"
+      },
+      "app-bg-elevated": {
+        "role": "neutral",
+        "displayName": "Raised ink ground (Dark)"
+      },
+      "app-bg-elevated-light": {
+        "role": "neutral",
+        "displayName": "Raised white ground (Light)"
+      },
+      "app-surface": {
+        "role": "neutral",
+        "displayName": "Document surface (Dark)"
+      },
+      "app-surface-light": {
+        "role": "neutral",
+        "displayName": "Document surface (Light)"
+      },
+      "app-surface-hover": {
+        "role": "neutral",
+        "displayName": "Surface hover (Dark)"
+      },
+      "app-surface-hover-light": {
+        "role": "neutral",
+        "displayName": "Surface hover (Light)"
+      },
+      "app-border": {
+        "role": "neutral",
+        "displayName": "Thin rule (Dark)"
+      },
+      "app-border-light": {
+        "role": "neutral",
+        "displayName": "Thin rule (Light)"
+      },
+      "app-border-strong": {
+        "role": "neutral",
+        "displayName": "Strong rule (Dark)"
+      },
+      "app-border-strong-light": {
+        "role": "neutral",
+        "displayName": "Strong rule (Light)"
+      },
+      "app-fg": {
+        "role": "neutral",
+        "displayName": "Reading ink (Dark)"
+      },
+      "app-fg-light": {
+        "role": "neutral",
+        "displayName": "Reading ink (Light)"
+      },
+      "app-muted": {
+        "role": "neutral",
+        "displayName": "Metadata ink (Dark)"
+      },
+      "app-muted-light": {
+        "role": "neutral",
+        "displayName": "Metadata ink (Light)"
+      },
+      "app-subtle": {
+        "role": "neutral",
+        "displayName": "Supporting ink (Dark)"
+      },
+      "app-subtle-light": {
+        "role": "neutral",
+        "displayName": "Supporting ink (Light)"
+      },
+      "accent-primary": {
+        "role": "primary",
+        "displayName": "Emerald interaction (Dark)"
+      },
+      "accent-primary-light": {
+        "role": "primary",
+        "displayName": "Emerald interaction (Light)"
+      },
+      "accent-primary-soft": {
+        "role": "primary",
+        "displayName": "Emerald wash (Dark)"
+      },
+      "accent-primary-soft-light": {
+        "role": "primary",
+        "displayName": "Emerald wash (Light)"
+      },
+      "accent-violet": {
+        "role": "secondary",
+        "displayName": "Knowledge violet (Dark)"
+      },
+      "accent-violet-light": {
+        "role": "secondary",
+        "displayName": "Knowledge violet (Light)"
+      },
+      "accent-violet-soft": {
+        "role": "secondary",
+        "displayName": "Knowledge violet wash (Dark)"
+      },
+      "accent-violet-soft-light": {
+        "role": "secondary",
+        "displayName": "Knowledge violet wash (Light)"
+      },
+      "app-success-fg": {
+        "role": "secondary",
+        "displayName": "Success ink (Dark)"
+      },
+      "app-success-fg-light": {
+        "role": "secondary",
+        "displayName": "Success ink (Light)"
+      },
+      "app-warning-fg": {
+        "role": "secondary",
+        "displayName": "Warning ink (Dark)"
+      },
+      "app-warning-fg-light": {
+        "role": "secondary",
+        "displayName": "Warning ink (Light)"
+      },
+      "app-danger": {
+        "role": "secondary",
+        "displayName": "Danger ink (Dark)"
+      },
+      "app-danger-light": {
+        "role": "secondary",
+        "displayName": "Danger ink (Light)"
+      },
+      "app-inverted": {
+        "role": "neutral",
+        "displayName": "Inverted control (Dark)"
+      },
+      "app-inverted-light": {
+        "role": "neutral",
+        "displayName": "Inverted control (Light)"
+      },
+      "app-inverted-fg": {
+        "role": "neutral",
+        "displayName": "Inverted control ink (Dark)"
+      },
+      "app-inverted-fg-light": {
+        "role": "neutral",
+        "displayName": "Inverted control ink (Light)"
+      },
+      "app-inverted-hover": {
+        "role": "neutral",
+        "displayName": "Inverted control hover (Dark)"
+      },
+      "app-inverted-hover-light": {
+        "role": "neutral",
+        "displayName": "Inverted control hover (Light)"
+      },
+      "app-scrim": {
+        "role": "neutral",
+        "displayName": "Overlay scrim"
+      },
+      "destructive-tint": {
+        "role": "secondary",
+        "displayName": "Destructive category wash"
+      },
+      "destructive-tint-hover": {
+        "role": "secondary",
+        "displayName": "Destructive category hover"
+      },
+      "graph-node-transcript": {
+        "role": "tertiary",
+        "displayName": "Graph transcript (Dark)"
+      },
+      "graph-node-transcript-light": {
+        "role": "tertiary",
+        "displayName": "Graph transcript (Light)"
+      },
+      "graph-node-note": {
+        "role": "tertiary",
+        "displayName": "Graph note (Dark)"
+      },
+      "graph-node-note-light": {
+        "role": "tertiary",
+        "displayName": "Graph note (Light)"
+      },
+      "graph-node-folder": {
+        "role": "tertiary",
+        "displayName": "Graph folder (Dark)"
+      },
+      "graph-node-folder-light": {
+        "role": "tertiary",
+        "displayName": "Graph folder (Light)"
+      },
+      "graph-node-entity": {
+        "role": "tertiary",
+        "displayName": "Graph entity (Dark)"
+      },
+      "graph-node-entity-light": {
+        "role": "tertiary",
+        "displayName": "Graph entity (Light)"
+      },
+      "graph-node-topic": {
+        "role": "tertiary",
+        "displayName": "Graph topic (Dark)"
+      },
+      "graph-node-topic-light": {
+        "role": "tertiary",
+        "displayName": "Graph topic (Light)"
+      },
+      "graph-node-claim": {
+        "role": "tertiary",
+        "displayName": "Graph claim (Dark)"
+      },
+      "graph-node-claim-light": {
+        "role": "tertiary",
+        "displayName": "Graph claim (Light)"
+      },
+      "graph-node-event": {
+        "role": "tertiary",
+        "displayName": "Graph event (Dark)"
+      },
+      "graph-node-event-light": {
+        "role": "tertiary",
+        "displayName": "Graph event (Light)"
+      },
+      "graph-node-cluster": {
+        "role": "tertiary",
+        "displayName": "Graph cluster (Dark)"
+      },
+      "graph-node-cluster-light": {
+        "role": "tertiary",
+        "displayName": "Graph cluster (Light)"
+      },
+      "graph-node-content": {
+        "role": "tertiary",
+        "displayName": "Graph content (Dark)"
+      },
+      "graph-node-content-light": {
+        "role": "tertiary",
+        "displayName": "Graph content (Light)"
+      },
+      "graph-label": {
+        "role": "tertiary",
+        "displayName": "Graph label ink (Dark)"
+      },
+      "graph-label-light": {
+        "role": "tertiary",
+        "displayName": "Graph label ink (Light)"
+      },
+      "graph-active-node": {
+        "role": "tertiary",
+        "displayName": "Graph active violet (Dark)"
+      },
+      "graph-active-node-light": {
+        "role": "tertiary",
+        "displayName": "Graph active violet (Light)"
+      },
+      "transparent": {
+        "role": "neutral",
+        "displayName": "Transparent ground"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Fluid public authentication story at large widths."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Shared page title below the small viewport breakpoint."
+      },
+      "headline-sm": {
+        "displayName": "Headline Sm",
+        "purpose": "Shared page title from the small viewport breakpoint."
+      },
+      "document-title": {
+        "displayName": "Document Title",
+        "purpose": "Wrapping reader title below the small viewport breakpoint."
+      },
+      "document-title-sm": {
+        "displayName": "Document Title Sm",
+        "purpose": "Reader title from the small viewport breakpoint."
+      },
+      "document-title-lg": {
+        "displayName": "Document Title Lg",
+        "purpose": "Reader title from the large viewport breakpoint."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card and dialog headings through the Astryx heading-family bridge."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Document prose and summaries within the reading measure."
+      },
+      "interface": {
+        "displayName": "Interface",
+        "purpose": "Small interface text and standard text-field value."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Default button label."
+      },
+      "label-strong": {
+        "displayName": "Label Strong",
+        "purpose": "Primary button label, including the violet compatibility alias."
+      },
+      "label-small": {
+        "displayName": "Label Small",
+        "purpose": "Compact static badge annotation."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Fenced code and source data."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "0 18px 60px rgb(0 0 0 / 22%)",
+        "purpose": "Shared dialog and sheet elevation above the scrim."
+      },
+      {
+        "name": "overlay-md",
+        "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        "purpose": "Floating graph-feedback depth from the imported utility scale."
+      },
+      {
+        "name": "overlay-lg",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        "purpose": "Select and appearance-popover depth from the imported utility scale."
+      },
+      {
+        "name": "overlay-xl",
+        "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
+        "purpose": "Default popover and dropdown-menu depth from the imported utility scale."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Authored CSS ease-out for control and entrance motion."
+      },
+      {
+        "name": "control-color",
+        "value": "150ms",
+        "purpose": "Field, switch-track, and navigation color changes."
+      },
+      {
+        "name": "control-state",
+        "value": "200ms",
+        "purpose": "Button state transitions, card color changes, and switch-thumb travel."
+      },
+      {
+        "name": "chat-collapse",
+        "value": "280ms",
+        "purpose": "Collapsible chat grid rows; removed under reduced motion."
+      },
+      {
+        "name": "page-reveal",
+        "value": "220ms",
+        "purpose": "Opt-in visible PageShell reveal; skipped under reduced motion."
+      },
+      {
+        "name": "page-reveal-ease",
+        "value": "power3.out",
+        "purpose": "Existing GSAP PageShell reveal easing."
+      },
+      {
+        "name": "shell-surface",
+        "value": "220ms",
+        "purpose": "Desktop sidebar/content-surface transition; zero duration on mobile or under reduced motion."
+      },
+      {
+        "name": "shell-surface-ease",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Existing content-surface navigation easing."
+      },
+      {
+        "name": "view-out",
+        "value": "150ms",
+        "purpose": "Outgoing root view transition."
+      },
+      {
+        "name": "view-in",
+        "value": "220ms",
+        "purpose": "Incoming root view transition and CSS entrance utility."
+      },
+      {
+        "name": "reduced-view",
+        "value": "1ms",
+        "purpose": "Reduced-motion view-transition duration."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "40rem"
+      },
+      {
+        "name": "md",
+        "value": "48rem"
+      },
+      {
+        "name": "lg",
+        "value": "64rem"
+      },
+      {
+        "name": "xl",
+        "value": "80rem"
+      },
+      {
+        "name": "container-localgraph",
+        "value": "680px"
+      },
+      {
+        "name": "container-globalgraph",
+        "value": "720px"
+      },
+      {
+        "name": "container-note-toolbar",
+        "value": "42rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "High-contrast inverted control.",
+      "html": "<button type=\"button\" class=\"ds-button-default\"><span class=\"ds-button-content\">Continue</span></button>",
+      "css": ".ds-button-default{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:var(--color-app-inverted, #edf2ed);color:var(--color-app-inverted-fg, #141a18);}.ds-button-default .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-default:hover:not(:disabled){background:var(--color-app-inverted-hover, #ffffff);}.ds-button-default:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-default:active:not(:disabled){transform:scale(0.98);}.ds-button-default:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-default{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-default{transition:none;}.ds-button-default:active{transform:none;}}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Emerald primary action.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\"><span class=\"ds-button-content\">Save</span></button>",
+      "css": ".ds-button-primary{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:var(--color-accent-primary, #80ddb0);color:var(--color-app-bg, #141a18);font-weight:600;}.ds-button-primary .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-primary:hover:not(:disabled){filter:brightness(1.1);}.ds-button-primary:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-primary:active:not(:disabled){transform:scale(0.98);}.ds-button-primary:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-primary{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none;}.ds-button-primary:active{transform:none;}}"
+    },
+    {
+      "name": "Violet Compatibility Button",
+      "kind": "button",
+      "refersTo": "button-violet",
+      "description": "Existing violet API variant renders exactly as the emerald primary action.",
+      "html": "<button type=\"button\" class=\"ds-button-violet\"><span class=\"ds-button-content\">Save</span></button>",
+      "css": ".ds-button-violet{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:var(--color-accent-primary, #80ddb0);color:var(--color-app-bg, #141a18);font-weight:600;}.ds-button-violet .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-violet:hover:not(:disabled){filter:brightness(1.1);}.ds-button-violet:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-violet:active:not(:disabled){transform:scale(0.98);}.ds-button-violet:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-violet{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-violet{transition:none;}.ds-button-violet:active{transform:none;}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Surface-filled secondary action with a strong rule.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\"><span class=\"ds-button-content\">Cancel</span></button>",
+      "css": ".ds-button-secondary{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:var(--color-app-surface, #202824);color:var(--color-app-fg, #edf2ed);border:1px solid var(--color-app-border-strong, #6e8074);}.ds-button-secondary .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-secondary:hover:not(:disabled){background:var(--color-app-surface-hover, #29342e);}.ds-button-secondary:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-secondary:active:not(:disabled){transform:scale(0.98);}.ds-button-secondary:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-secondary{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none;}.ds-button-secondary:active{transform:none;}}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Transparent secondary action with a strong rule.",
+      "html": "<button type=\"button\" class=\"ds-button-outline\"><span class=\"ds-button-content\">Open</span></button>",
+      "css": ".ds-button-outline{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:transparent;color:var(--color-app-fg, #edf2ed);border:1px solid var(--color-app-border-strong, #6e8074);}.ds-button-outline .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-outline:hover:not(:disabled){background:var(--color-app-surface, #202824);}.ds-button-outline:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-outline:active:not(:disabled){transform:scale(0.98);}.ds-button-outline:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-outline{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-outline{transition:none;}.ds-button-outline:active{transform:none;}}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quiet action that gains a surface on hover.",
+      "html": "<button type=\"button\" class=\"ds-button-ghost\"><span class=\"ds-button-content\">More</span></button>",
+      "css": ".ds-button-ghost{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:transparent;color:var(--color-app-subtle, #bdc9c0);}.ds-button-ghost .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-ghost:hover:not(:disabled){background:var(--color-app-surface, #202824);color:var(--color-app-fg, #edf2ed);}.ds-button-ghost:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-ghost:active:not(:disabled){transform:scale(0.98);}.ds-button-ghost:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-ghost{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-ghost{transition:none;}.ds-button-ghost:active{transform:none;}}"
+    },
+    {
+      "name": "Disclosure Button",
+      "kind": "button",
+      "refersTo": "button-disclosure",
+      "description": "Square disclosure row with inset focus and no press scaling.",
+      "html": "<button type=\"button\" class=\"ds-button-disclosure\"><span class=\"ds-button-content\">Details</span></button>",
+      "css": ".ds-button-disclosure{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:transparent;color:var(--color-app-subtle, #bdc9c0);border-radius:0;}.ds-button-disclosure .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-disclosure:hover:not(:disabled){background:var(--color-app-surface, #202824);color:var(--color-app-fg, #edf2ed);}.ds-button-disclosure:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-disclosure:active:not(:disabled){transform:scale(1);}.ds-button-disclosure:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-disclosure{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-disclosure{transition:none;}.ds-button-disclosure:active{transform:none;}}"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Danger foreground on the authored rose category wash.",
+      "html": "<button type=\"button\" class=\"ds-button-destructive\"><span class=\"ds-button-content\">Delete</span></button>",
+      "css": ".ds-button-destructive{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:color-mix(in oklab, oklch(64.5% 0.246 16.439) 10%, transparent);color:var(--color-app-danger, #ff9f9f);border:1px solid color-mix(in oklab, oklch(64.5% 0.246 16.439) 30%, transparent);}.ds-button-destructive .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-destructive:hover:not(:disabled){background:color-mix(in oklab, oklch(64.5% 0.246 16.439) 20%, transparent);}.ds-button-destructive:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-destructive:active:not(:disabled){transform:scale(0.98);}.ds-button-destructive:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-destructive{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-destructive{transition:none;}.ds-button-destructive:active{transform:none;}}"
+    },
+    {
+      "name": "Link Button",
+      "kind": "button",
+      "refersTo": "button-link",
+      "description": "Text action with an interaction-colored underline on hover.",
+      "html": "<button type=\"button\" class=\"ds-button-link\"><span class=\"ds-button-content\">View</span></button>",
+      "css": ".ds-button-link{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;min-height:2.5rem;padding:0.5rem 1rem;border:0 solid transparent;border-radius:var(--radius-lg, 12px);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;font-weight:500;letter-spacing:-0.025em;white-space:nowrap;cursor:pointer;transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));background:transparent;color:var(--color-app-fg, #edf2ed);padding-inline:0;text-underline-offset:4px;}.ds-button-link .ds-button-content{display:inline-flex;min-width:0;align-items:center;justify-content:center;gap:0.5rem;white-space:normal;}.ds-button-link:hover:not(:disabled){text-decoration:underline;color:var(--color-accent-primary, #80ddb0);}.ds-button-link:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-app-bg, #141a18),0 0 0 4px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-button-link:active:not(:disabled){transform:scale(0.98);}.ds-button-link:disabled{pointer-events:none;opacity:0.5;}@media(pointer:coarse){.ds-button-link{min-height:2.75rem;min-width:2.75rem;touch-action:manipulation;}}@media(prefers-reduced-motion:reduce){.ds-button-link{transition:none;}.ds-button-link:active{transform:none;}}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Raised, strongly ruled text field with semantic placeholder and focus treatment.",
+      "html": "<input class=\"ds-input\" type=\"text\" aria-label=\"Search\" placeholder=\"Search\">",
+      "css": ".ds-input{display:flex;height:2.5rem;width:100%;border:1px solid var(--color-app-border-strong, #6e8074);border-radius:var(--radius-md, 8px);background:var(--color-app-bg-elevated, #1b221f);padding:0.5rem 0.75rem;color:var(--color-app-fg, #edf2ed);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.875rem;line-height:1.25rem;transition:color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));caret-color:var(--color-accent-primary, #80ddb0);}.ds-input::placeholder{color:var(--color-app-muted, #a2afa6);opacity:1;}.ds-input:hover{border-color:var(--color-app-border-strong, #6e8074);}.ds-input:focus,.ds-input:focus-visible{outline:none;border-color:var(--theme-focus, var(--color-accent-primary, #80ddb0));box-shadow:0 0 0 2px var(--color-accent-primary-soft, #80ddb01a);}.ds-input:disabled{opacity:0.5;cursor:not-allowed;}@media(pointer:coarse){.ds-input{min-height:2.75rem;min-width:2.75rem;font-size:16px;}}"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Current-page wash and quiet inactive destination; icon slots are omitted from this text sample.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a class=\"ds-nav-item\" href=\"/transcricoes\" aria-current=\"page\"><span class=\"ds-nav-label\">Library</span></a><a class=\"ds-nav-item\" href=\"/capturar\"><span class=\"ds-nav-label\">Captures</span></a></nav>",
+      "css": ".ds-nav{padding:0.75rem;font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);}.ds-nav-item{position:relative;display:flex;align-items:center;gap:0.75rem;border-radius:var(--radius-lg, 12px);padding:0.625rem 0.75rem;color:var(--color-app-muted, #a2afa6);font-size:0.875rem;line-height:1.25rem;font-weight:500;text-decoration:none;transition:color 150ms;}.ds-nav-item+.ds-nav-item{margin-top:0.125rem;}.ds-nav-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-nav-item[aria-current=page]{background:var(--color-accent-primary-soft, #80ddb01a);color:var(--color-app-fg, #edf2ed);}.ds-nav-item:hover{color:var(--color-app-fg, #edf2ed);}.ds-nav-item:focus-visible{outline:2px solid var(--theme-focus, var(--color-accent-primary, #80ddb0));outline-offset:2px;}"
+    },
+    {
+      "name": "Neutral Badge",
+      "kind": "chip",
+      "refersTo": "badge-default",
+      "description": "Static document annotation; this badge is not an interactive filter.",
+      "html": "<span class=\"ds-badge\">Document</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:0.375rem;border:1px solid var(--color-app-border, #344139);border-radius:calc(infinity * 1px);padding:0.125rem 0.625rem;background:var(--color-app-surface, #202824);color:var(--color-app-subtle, #bdc9c0);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);font-size:0.75rem;line-height:1rem;font-weight:500;letter-spacing:-0.025em;transition:color 150ms,background-color 150ms,border-color 150ms;}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat, ruled container using the shared header and content spacing; hoverable is opt-in.",
+      "html": "<div class=\"ds-card ds-card-hoverable\"><div class=\"ds-card-header\"><h3 class=\"ds-card-title\">Document</h3><p class=\"ds-card-description\">Summary</p></div><div class=\"ds-card-content\">Content</div></div>",
+      "css": ".ds-card{border:1px solid var(--color-app-border, #344139);border-radius:var(--radius-2xl, 1rem);background:var(--color-app-surface, #202824);color:var(--color-app-fg, #edf2ed);font-family:var(--font-sans, 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);transition:color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),background-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),border-color 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));}.ds-card-hoverable:hover{border-color:var(--color-app-border-strong, #6e8074);}.ds-card-header{display:flex;flex-direction:column;gap:0.375rem;padding:1.5rem;}.ds-card-title{margin:0;font-family:var(--font-display, 'Bricolage Grotesque', 'Inter', sans-serif);font-size:1.125rem;line-height:1.75rem;font-weight:600;letter-spacing:-0.025em;}.ds-card-description{margin:0;color:var(--color-app-muted, #a2afa6);font-size:0.875rem;line-height:1.625;}.ds-card-content{padding:0 1.5rem 1.5rem;}"
+    },
+    {
+      "name": "Switch",
+      "kind": "custom",
+      "refersTo": "switch",
+      "description": "Unchecked and checked appearances: 24 by 44 px painted track, 44 px square hit region; the samples show state without a framework.",
+      "html": "<button type=\"button\" class=\"ds-switch\" role=\"switch\" aria-checked=\"false\" aria-label=\"Off\"><span class=\"ds-switch-thumb\"></span></button> <button type=\"button\" class=\"ds-switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"On\"><span class=\"ds-switch-thumb\"></span></button>",
+      "css": ".ds-switch{position:relative;display:inline-flex;flex-shrink:0;align-items:center;height:1.5rem;width:2.75rem;padding:0;border:1px solid var(--color-app-border-strong, #6e8074);border-radius:calc(infinity * 1px);background:var(--color-app-border-strong, #6e8074);cursor:pointer;transition:background-color 150ms,border-color 150ms;}.ds-switch::after{content:\"\";position:absolute;inset:-0.625rem 0;}.ds-switch[aria-checked=true]{border-color:var(--color-accent-primary, #80ddb0);background:var(--color-accent-primary, #80ddb0);}.ds-switch:focus-visible{outline:none;box-shadow:0 0 0 2px var(--theme-focus, var(--color-accent-primary, #80ddb0));}.ds-switch:disabled{opacity:0.5;cursor:not-allowed;}.ds-switch-thumb{display:block;pointer-events:none;height:1.25rem;width:1.25rem;border-radius:calc(infinity * 1px);background:var(--color-app-bg-elevated, #1b221f);transform:translateX(0.125rem);transition:transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));}.ds-switch[aria-checked=true] .ds-switch-thumb{transform:translateX(1.25rem);}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Documentary contact sheet",
+    "overview": "Voxen is a continuous knowledge workspace: ink and warm white, restrained emerald interactions, real content, and crisp thin rules. Documentary contact-sheet discipline gives records a clear title, quiet metadata, and room to be read. The existing Voxen name and recognizable logo anchor the identity; Light and Dark express the same system.\n\nThe interface is precise and restrained. Flat surfaces and tonal layers organize work; softly shadowed overlays carry temporary context. Bricolage Grotesque supplies the display voice, Inter handles the interface and reading, and JetBrains Mono marks code and data. Mobile keeps the same hierarchy while moving contextual work into sheets.",
+    "keyCharacteristics": [
+      "One Voxen identity in Light and Dark.",
+      "Documentary rows, aligned headings, and thin separators.",
+      "Restrained emerald interaction with distinct status and knowledge colors.",
+      "Self-hosted display, interface, and code typography.",
+      "Flat content surfaces, soft overlay depth, and mobile sheets."
+    ],
+    "rules": [
+      {
+        "name": "The One Identity Rule",
+        "body": "Change appearance through the semantic property overrides; keep the logo, type, hierarchy, and component vocabulary consistent across Light and Dark.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Color Rule",
+        "body": "Emerald identifies interaction; status, source, syntax, and graph colors retain their own meanings. Do not turn the knowledge palette into decorative interface accents.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reading Measure Rule",
+        "body": "Preserve the document's prose measure and heading hierarchy when adding tools, metadata, or wider tables; extra workspace width must not stretch the reading column.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Content Rule",
+        "body": "Use rules and tonal layering for persistent content; reserve soft shadow depth for floating or temporary context.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use the existing semantic properties for both appearances and preserve the recognizable Voxen logo.",
+      "**Do** align page titles, actions, and content through the shared shell and spacing scale.",
+      "**Do** keep document prose constrained, headings semantic, and metadata quieter than content.",
+      "**Do** preserve mobile sheets, safe areas, keyboard offsets, visible focus, selection color, and touch hit regions together.",
+      "**Do** keep graph, status, source, and syntax colors tied to their existing meanings.",
+      "**Do** honor reduced motion and leave content visible when optional animation cannot run."
+    ],
+    "donts": [
+      "**Don't** introduce another appearance pack, decorative accent palette, or replacement branding.",
+      "**Don't** turn every content row into a card, add nested decorative containers, or shadow persistent content.",
+      "**Don't** shrink desktop dialogs onto mobile or rely on gestures as the only way to navigate or dismiss context.",
+      "**Don't** enlarge the Switch's painted track to satisfy its separate touch hit region.",
+      "**Don't** use monospace as decoration, add invented illustrations, or add kickers above headings.",
+      "**Don't** promote local hard-coded focus colors, appearance-specific text overrides, or ungated decorative motion into shared rules."
+    ]
+  }
+}

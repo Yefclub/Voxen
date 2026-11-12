@@ -1,192 +1,120 @@
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
 @import 'tailwindcss';
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+@import '@astryxdesign/theme-neutral/theme.css';
 
-/* ============================================================================
-   Voxen — Design system com temas (specs 073, 115 e 129)
-   ----------------------------------------------------------------------------
-   Temas: linear (padrão) | zinc | emerald | light
-   Tokens semânticos --color-app-* / --color-accent-* são a fonte da verdade.
-   Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
-   ============================================================================ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url('/fonts/bricolage.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono.woff2') format('woff2');
+}
 
+/* Voxen: one identity in two appearances. Astryx controls use these tokens. */
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-
-  /* Defaults = linear (overridden by [data-theme] below) */
-  --color-app-bg: #111113;
-  --color-app-bg-elevated: #151517;
-  --color-app-surface: #1b1b1e;
-  --color-app-surface-hover: #222226;
-  --color-app-border: #29292d;
-  --color-app-border-strong: #38383e;
-
-  --color-app-fg: #f2f2f3;
-  --color-app-muted: #8a8a92;
-  --color-app-subtle: #b4b4bb;
-  --color-app-success-fg: #6ee7b7;
-  --color-app-warning-fg: #fcd34d;
-
-  --color-accent-emerald: oklch(73% 0.16 159);
-  --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
-  --color-accent-violet: oklch(72% 0.18 290);
-  --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
-  --color-accent-amber: oklch(80% 0.16 78);
-  --color-accent-rose: oklch(70% 0.2 18);
-  /*
-   * Cor de ação destrutiva em repouso sobre a superfície do tema — usada no
-   * hover do "Sair". Precisa de um valor por tema: um vermelho que passa em
-   * AA no fundo escuro não passa no claro e vice-versa, e o app não tem
-   * variante `dark:` para escolher em tempo de classe.
-   */
-  --color-app-danger: oklch(70% 0.18 18);
-  --color-accent-primary: #8b7cf6;
-  --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
-
-  /* Superfície sólida de alto contraste (botão default / chip forte) — inverte por tema */
-  --color-app-inverted: #ececec;
-  --color-app-inverted-fg: #18181b;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --color-app-bg: #141a18;
+  --color-app-bg-elevated: #1b221f;
+  --color-app-surface: #202824;
+  --color-app-surface-hover: #29342e;
+  --color-app-border: #344139;
+  --color-app-border-strong: #6e8074;
+  --color-app-fg: #edf2ed;
+  --color-app-muted: #a2afa6;
+  --color-app-subtle: #bdc9c0;
+  --color-app-success-fg: #80ddb0;
+  --color-app-warning-fg: #ebca83;
+  --color-app-danger: #ff9f9f;
+  --color-accent-primary: #80ddb0;
+  --color-accent-primary-soft: #80ddb01a;
+  --color-accent-emerald: #80ddb0;
+  --color-accent-emerald-soft: #80ddb01a;
+  --color-accent-violet: #b6abed;
+  --color-accent-violet-soft: #b6abed1a;
+  --color-accent-amber: #ebca83;
+  --color-accent-rose: #ff9f9f;
+  --color-app-inverted: #edf2ed;
+  --color-app-inverted-fg: #141a18;
   --color-app-inverted-hover: #ffffff;
-
-  /* Realce sutil no topo de cards "elevated" — claro no dark, discreto no light */
-  --color-app-elevate: rgba(255, 255, 255, 0.04);
-
+  --color-app-elevate: transparent;
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
-
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-back: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Theme packs — applied via documentElement[data-theme] */
-:root,
-[data-theme='linear'] {
-  color-scheme: dark;
-  --color-app-bg: #111113;
-  --color-app-bg-elevated: #151517;
-  --color-app-surface: #1b1b1e;
-  --color-app-surface-hover: #222226;
-  --color-app-border: #29292d;
-  --color-app-border-strong: #38383e;
-  --color-app-fg: #f2f2f3;
-  --color-app-muted: #8a8a92;
-  --color-app-subtle: #b4b4bb;
-  --color-app-success-fg: #6ee7b7;
-  --color-app-warning-fg: #fcd34d;
-  --color-accent-primary: #8b7cf6;
-  --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
-  --color-app-inverted: #f2f2f3;
-  --color-app-inverted-fg: #151517;
-  --color-app-inverted-hover: #ffffff;
-  --color-app-elevate: rgba(255, 255, 255, 0.035);
-  --color-accent-emerald: oklch(73% 0.14 159);
-  --color-accent-emerald-soft: oklch(73% 0.14 159 / 0.15);
-  --color-accent-violet: oklch(69% 0.17 290);
-  --color-accent-violet-soft: oklch(69% 0.17 290 / 0.18);
-  --theme-html-bg: #111113;
-  --theme-mesh-a: oklch(62% 0.15 288 / 0.055);
-  --theme-mesh-b: transparent;
-  --theme-mesh-c: transparent;
-  --theme-selection: oklch(69% 0.17 290 / 0.28);
-  --theme-focus: oklch(69% 0.17 290 / 0.55);
-}
-
-[data-theme='zinc'] {
-  color-scheme: dark;
-  --color-app-bg: #212121;
-  --color-app-bg-elevated: #2a2a2a;
-  --color-app-surface: #2f2f2f;
-  --color-app-surface-hover: #3a3a3a;
-  --color-app-border: #3a3a3a;
-  --color-app-border-strong: #4a4a4a;
-  --color-app-fg: #ececec;
-  --color-app-muted: #8e8e8e;
-  --color-app-subtle: #b4b4b4;
-  --color-app-success-fg: #6ee7b7;
-  --color-app-warning-fg: #fcd34d;
-  --color-accent-primary: #19c37d;
-  --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
-  --color-app-inverted: #ececec;
-  --color-app-inverted-fg: #18181b;
-  --color-app-inverted-hover: #ffffff;
-  --color-app-elevate: rgba(255, 255, 255, 0.04);
-  --color-accent-emerald: oklch(73% 0.16 159);
-  --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
-  --color-accent-violet: oklch(72% 0.18 290);
-  --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
-  --theme-html-bg: #212121;
-  --theme-mesh-a: transparent;
-  --theme-mesh-b: transparent;
-  --theme-mesh-c: oklch(28% 0.005 250 / 0.35);
-  --theme-selection: oklch(72% 0.18 290 / 0.28);
-  --theme-focus: oklch(72% 0.18 290 / 0.55);
-}
-
-[data-theme='emerald'] {
-  color-scheme: dark;
-  --color-app-bg: oklch(22% 0.01 165);
-  --color-app-bg-elevated: oklch(25% 0.01 165);
-  --color-app-surface: oklch(27.5% 0.011 165);
-  --color-app-surface-hover: oklch(31% 0.012 165);
-  --color-app-border: oklch(34% 0.011 165);
-  --color-app-border-strong: oklch(42% 0.013 165);
-  --color-app-fg: oklch(98.5% 0 0);
-  --color-app-muted: oklch(68% 0.008 250);
-  --color-app-subtle: oklch(78% 0.005 250);
-  --color-app-success-fg: #6ee7b7;
-  --color-app-warning-fg: #fcd34d;
-  --color-accent-primary: oklch(73% 0.16 159);
-  --color-accent-primary-soft: oklch(73% 0.16 159 / 0.18);
-  --color-app-inverted: oklch(98.5% 0 0);
-  --color-app-inverted-fg: oklch(22% 0.01 165);
-  --color-app-inverted-hover: #ffffff;
-  --color-app-elevate: rgba(255, 255, 255, 0.04);
-  --theme-html-bg: #19211f;
-  --theme-mesh-a: oklch(72% 0.18 290 / 0.08);
-  --theme-mesh-b: oklch(73% 0.16 159 / 0.06);
-  --theme-mesh-c: oklch(28% 0.005 250 / 0.3);
-  --theme-selection: oklch(72% 0.18 290 / 0.3);
-  --theme-focus: oklch(72% 0.18 290 / 0.6);
+:root {
+  --theme-html-bg: var(--color-app-bg);
+  --theme-selection: var(--color-accent-primary-soft);
+  --theme-focus: var(--color-accent-primary);
+  --color-app-scrim: rgb(8 18 13 / 56%);
+  --app-shadow-overlay: 0 18px 60px rgb(0 0 0 / 22%);
 }
 
 [data-theme='light'] {
   color-scheme: light;
-  --color-app-bg: #f7f7f8;
+  --color-app-bg: #f8f9f6;
   --color-app-bg-elevated: #ffffff;
-  --color-app-surface: #ffffff;
-  --color-app-surface-hover: #f0f0f2;
-  --color-app-border: #e5e5e8;
-  --color-app-border-strong: #d4d4d8;
-  --color-app-fg: #18181b;
-  --color-app-muted: #71717a;
-  --color-app-subtle: #52525b;
-  --color-app-success-fg: #047857;
-  --color-app-warning-fg: #92400e;
-  --color-accent-primary: #0f9f6e;
-  --color-accent-primary-soft: rgba(15, 159, 110, 0.12);
-  --color-app-inverted: #18181b;
-  --color-app-inverted-fg: #fafafa;
-  --color-app-inverted-hover: #27272a;
-  --color-app-elevate: rgba(0, 0, 0, 0.02);
-  --color-accent-emerald: oklch(55% 0.14 159);
-  --color-accent-emerald-soft: oklch(55% 0.14 159 / 0.14);
-  --color-accent-violet: oklch(52% 0.18 290);
-  --color-accent-violet-soft: oklch(52% 0.18 290 / 0.14);
-  --color-app-danger: oklch(50% 0.2 18);
-  --theme-html-bg: #f7f7f8;
-  --theme-mesh-a: oklch(72% 0.18 290 / 0.04);
-  --theme-mesh-b: oklch(73% 0.16 159 / 0.04);
-  --theme-mesh-c: transparent;
-  --theme-selection: oklch(72% 0.18 290 / 0.22);
-  --theme-focus: oklch(52% 0.18 290 / 0.5);
+  --color-app-surface: #f0f3ed;
+  --color-app-surface-hover: #e7ece3;
+  --color-app-border: #dce3d7;
+  --color-app-border-strong: #76866f;
+  --color-app-fg: #19251d;
+  --color-app-muted: #5d6e60;
+  --color-app-subtle: #465949;
+  --color-app-success-fg: #076b50;
+  --color-app-warning-fg: #7b550c;
+  --color-app-danger: #b52c37;
+  --color-accent-primary: #076b50;
+  --color-accent-primary-soft: #076b5010;
+  --color-accent-emerald: #076b50;
+  --color-accent-emerald-soft: #076b5010;
+  --color-accent-violet: #66539e;
+  --color-accent-violet-soft: #66539e12;
+  --color-accent-amber: #7b550c;
+  --color-accent-rose: #b52c37;
+  --color-app-inverted: #19251d;
+  --color-app-inverted-fg: #ffffff;
+  --color-app-inverted-hover: #2f4435;
+}
+
+@layer components {
+  [data-astryx-theme] {
+    --color-accent: var(--color-accent-primary);
+    --color-text: var(--color-app-fg);
+    --color-text-subtle: var(--color-app-muted);
+    --color-background: var(--color-app-bg);
+    --font-family-body: var(--font-sans);
+    --font-family-heading: var(--font-display);
+    --font-family-code: var(--font-mono);
+    --color-text-primary: var(--color-app-fg);
+    --color-text-secondary: var(--color-app-muted);
+  }
 }
 
 .graph-canvas-grid {
   background-color: var(--color-app-bg);
   background-image:
-    radial-gradient(circle at 50% 38%, var(--color-accent-violet-soft), transparent 46%),
     linear-gradient(
       color-mix(in srgb, var(--color-app-border) 58%, transparent) 1px,
       transparent 1px
@@ -208,7 +136,7 @@
     width: 100%;
     max-width: 100%;
     color-scheme: dark;
-    background: var(--theme-html-bg, #111113);
+    background: var(--theme-html-bg);
     color: var(--color-app-fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -228,6 +156,8 @@
     max-width: 100%;
     background: var(--color-app-bg);
     color: var(--color-app-fg);
+    caret-color: var(--color-accent-primary);
+    accent-color: var(--color-accent-primary);
     font-feature-settings: 'cv11', 'ss01', 'ss03';
     letter-spacing: 0;
     position: relative;
@@ -237,6 +167,11 @@
   }
 
   @media (pointer: coarse) {
+    :where(button:not([role='switch']), select, input:not([type='checkbox'], [type='radio'])) {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
     * {
       scrollbar-width: none;
     }
@@ -265,35 +200,6 @@
     #root {
       overscroll-behavior: none;
     }
-  }
-
-  /* Mesh gradient ambiente — depende do tema */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background:
-      radial-gradient(ellipse 60% 40% at 15% 0%, var(--theme-mesh-a, transparent), transparent 60%),
-      radial-gradient(
-        ellipse 60% 40% at 85% 100%,
-        var(--theme-mesh-b, transparent),
-        transparent 60%
-      ),
-      radial-gradient(ellipse 70% 50% at 50% 50%, var(--theme-mesh-c, transparent), transparent 70%);
-  }
-
-  /* Noise grain — dá calor à imagem */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.025;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
 
   #root {
@@ -397,44 +303,9 @@
     position: relative;
   }
   .surface-elevated {
-    background: linear-gradient(180deg, var(--color-app-elevate) 0%, var(--color-app-surface) 100%);
+    background: var(--color-app-bg-elevated);
     border: 1px solid var(--color-app-border);
     border-radius: var(--radius-lg);
-  }
-
-  /* Borda gradiente animável (truque conic) */
-  .gradient-border {
-    position: relative;
-    background: var(--color-app-surface);
-    border-radius: var(--radius-lg);
-  }
-  .gradient-border::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    background: conic-gradient(
-      from 0deg,
-      oklch(72% 0.18 290 / 0.4),
-      oklch(73% 0.16 159 / 0.3),
-      oklch(34% 0.008 250),
-      oklch(34% 0.008 250),
-      oklch(72% 0.18 290 / 0.4)
-    );
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 300ms var(--ease-out);
-  }
-  .gradient-border:hover::before {
-    opacity: 1;
-  }
-
-  /* Texto com gradiente sutil (uso esparso, só em h1 hero) */
-  .text-gradient {
-    background: linear-gradient(180deg, var(--color-app-fg) 0%, var(--color-app-subtle) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
   }
 
   /* Highlight emerald no texto (uso em palavras-chave) */
@@ -591,4 +462,17 @@
 .prose-voxen a {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+@media (max-width: 767px) {
+  .voxen-dialog,
+  .voxen-sheet {
+    bottom: var(--visual-viewport-bottom, 0px);
+  }
+  html[data-keyboard='open'] [data-mobile-bottom-nav] {
+    display: none;
+  }
+  html[data-keyboard='open'] [data-app-main] {
+    padding-bottom: 1rem;
+  }
 }

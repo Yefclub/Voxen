@@ -1,12 +1,5 @@
-// ============================================================================
-// /notas — KB manual (editor; tree fica na sidebar global contextual)
-// ============================================================================
-// Tree foi movida pra Sidebar (modo `notas`) — mesmo padrão de /chat.
-// Esta página renderiza apenas o editor da nota selecionada ou empty state.
-// ============================================================================
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   Clock,
@@ -14,7 +7,6 @@ import {
   EyeOff,
   FileText,
   FolderPlus,
-  Library,
   Loader2,
   Plus,
   RefreshCw,
@@ -101,15 +93,27 @@ export function NotasPage(): React.ReactElement {
   return (
     <PageShell width="workspace">
       <PageHeader
-        eyebrow={t('notes.manualBase')}
-        icon={Library}
-        iconClassName="text-violet-400"
         title={t('notes.title')}
-        description={t('notes.description')}
+        description={id ? undefined : t('notes.description')}
+        actions={
+          id && (
+            <Button asChild variant="secondary">
+              <Link to="/notas">{t('notes.allNotes')}</Link>
+            </Button>
+          )
+        }
       />
 
       {id ? (
-        <NoteEditor key={id} noteId={id} onSaved={() => void refresh()} />
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+          <aside
+            className="hidden border-r border-[var(--color-app-border)] pr-4 xl:block"
+            aria-label={t('notes.allNotes')}
+          >
+            <NotesTree activeId={id} variant="sidebar" />
+          </aside>
+          <NoteEditor key={id} noteId={id} onSaved={() => void refresh()} />
+        </div>
       ) : (
         <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
       )}
@@ -177,7 +181,7 @@ function NotesLibrary({
           ) : notesCount === 0 ? (
             <div className="flex min-h-64 max-w-md flex-col items-center justify-center gap-3 text-center mx-auto">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--color-app-border-strong)] bg-violet-500/10">
-                <FileText className="h-5 w-5 text-violet-400" />
+                <FileText className="h-5 w-5 text-[var(--color-accent-primary)]" />
               </div>
               <p className="text-sm text-[var(--color-app-muted)]">{t('notes.useButtonAbove')}</p>
             </div>
@@ -206,7 +210,6 @@ function NoteEditor({
   const [revision, setRevision] = useState(1);
   const [conflict, setConflict] = useState<RevisionConflict | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // O componente recebe key=noteId: toda nota recém-aberta começa em Preview.
   const [previewMode, setPreviewMode] = useState(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
@@ -343,15 +346,19 @@ function NoteEditor({
 
   return (
     <motion.div
+      className="min-w-0"
       key={noteId}
-      initial={{ opacity: 0, y: 6 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
-      <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
+      <Card
+        elevated
+        className="@container min-w-0 overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col"
+      >
         <div
           data-note-editor-toolbar
-          className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 sm:flex-row sm:items-center sm:px-6 sm:py-4"
+          className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 @2xl:flex-row @2xl:items-center @2xl:px-6 @2xl:py-4"
         >
           {previewMode ? (
             <h2 className="min-w-0 flex-1 truncate font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)]">
@@ -367,21 +374,22 @@ function NoteEditor({
               }}
               onBlur={() => void save()}
               placeholder={t('notes.untitled')}
+              aria-label={t('design.noteTitle')}
               className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
             />
           )}
-          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
-            <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl:w-auto @2xl:shrink-0">
+            <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums @2xl:mr-1">
               {conflict ? (
-                <span className="text-rose-300">{t('notes.conflict')}</span>
+                <span className="text-[var(--color-app-danger)]">{t('notes.conflict')}</span>
               ) : saving ? (
                 <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
                   <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
                 </span>
               ) : dirty ? (
-                <span className="text-amber-300">{t('notes.pending')}</span>
+                <span className="text-[var(--color-app-warning-fg)]">{t('notes.pending')}</span>
               ) : (
-                <span className="text-emerald-300">{t('common.saved')}</span>
+                <span className="text-[var(--color-app-success-fg)]">{t('common.saved')}</span>
               )}
             </span>
             <span className="shrink-0 rounded-md border border-[var(--color-app-border)] px-2 py-1 text-[10px] font-medium tabular-nums text-[var(--color-app-muted)]">
@@ -433,8 +441,8 @@ function NoteEditor({
             role="alert"
             data-note-revision-conflict
           >
-            <div>
-              <p className="text-sm font-medium text-rose-100">{t('notes.conflictTitle')}</p>
+            <div className="text-[var(--color-app-danger)]">
+              <p className="text-sm font-medium">{t('notes.conflictTitle')}</p>
               <p className="mt-0.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
                 {t('notes.conflictDescription', { revision: conflict.currentRevision })}
               </p>

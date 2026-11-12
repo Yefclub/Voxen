@@ -1,13 +1,18 @@
-import { forwardRef, useCallback, useId, useImperativeHandle, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  forwardRef,
+  useCallback,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { ArrowRight, Link2, Upload } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
-import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
 import {
-  reprocessDocument,
   submitCaptureLink,
   uploadCaptureFile,
   type CaptureJob,
@@ -18,15 +23,15 @@ import { CaptureNotice, captureErrorText, type CaptureNoticeState } from './capt
 
 export interface CaptureComposerHandle {
   openFilePicker: () => void;
-  submitUrl: (url: string) => Promise<void>;
   /** Fills the link field and focuses it without submitting. */
   prefillUrl: (url: string) => void;
   showNotice: (notice: CaptureNoticeState | null) => void;
 }
 
 interface CaptureComposerProps {
-  /** `compact` is the library header entry; `page` is the /capturar form. */
-  variant?: 'page' | 'compact';
+  /** The BrowserRouter location key that owns submission callbacks. */
+  journeyKey: string;
+  onExisting: (transcriptId: string) => void;
   onJob: (job: CaptureJob, deduped: boolean) => void;
 }
 
@@ -36,14 +41,14 @@ function hasFiles(event: React.DragEvent): boolean {
 
 /**
  * Link + file capture input. Enter submits the link; a picked or dropped file
- * goes to the upload endpoint. Synchronous outcomes other than a new job
- * (existing document, invalid link, AI not configured) render inline.
+ * goes to the upload endpoint. Existing content opens directly; invalid links
+ * and configuration errors stay inline.
  */
 export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposerProps>(
-  function CaptureComposer({ variant = 'page', onJob }, ref) {
+  function CaptureComposer({ journeyKey, onJob, onExisting }, ref) {
     const { t } = useI18n();
     const [url, setUrl] = useState('');
-    const [busy, setBusy] = useState<'link' | 'upload' | 'reprocess' | null>(null);
+    const [busy, setBusy] = useState<'link' | 'upload' | null>(null);
     const [upload, setUpload] = useState<{ name: string; percent: number } | null>(null);
     const [notice, setNotice] = useState<CaptureNoticeState | null>(null);
     const [dragging, setDragging] = useState(false);
@@ -52,6 +57,25 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
     const urlInput = useRef<HTMLInputElement>(null);
     const noticeId = useId();
     const inputId = useId();
+    const request = useRef<symbol | null>(null);
+
+    useLayoutEffect(() => {
+      setBusy(null);
+      setUpload(null);
+      return () => {
+        // An abandoned journey must not publish a pending submission's result.
+        request.current = null;
+      };
+    }, [journeyKey]);
+
+    const ownsRequest = useCallback(
+      (owner: symbol): boolean => {
+        // Lazy route transitions can leave this component mounted after history moves.
+        const currentJourney = window.history.state as { key?: string } | null;
+        return request.current === owner && (currentJourney?.key ?? 'default') === journeyKey;
+      },
+      [journeyKey],
+    );
 
     const handleResult = useCallback(
       (result: CaptureSubmitResult): void => {
@@ -63,11 +87,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           return;
         }
         if (result.kind === 'existing') {
-          setNotice({
-            type: 'existing',
-            transcriptId: result.transcript.id,
-            title: result.transcript.title,
-          });
+          onExisting(result.transcript.id);
           return;
         }
         const code =
@@ -81,88 +101,80 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
         });
         if (code === 'INVALID_URL' || code === 'BLOCKED_ADDRESS') urlInput.current?.focus();
       },
-      [onJob, t],
+      [onJob, onExisting, t],
     );
 
     const submitUrl = useCallback(
       async (value: string): Promise<void> => {
         const trimmed = value.trim();
-        if (!trimmed || busy) return;
+        if (!trimmed || request.current) return;
+        const owner = Symbol();
+        request.current = owner;
         setBusy('link');
         try {
-          handleResult(await submitCaptureLink(trimmed));
+          const result = await submitCaptureLink(trimmed);
+          if (ownsRequest(owner)) handleResult(result);
         } catch {
-          handleResult({ kind: 'error', status: 0, error: null, message: null });
+          if (ownsRequest(owner))
+            handleResult({ kind: 'error', status: 0, error: null, message: null });
         } finally {
-          setBusy(null);
+          if (request.current === owner) {
+            request.current = null;
+            setBusy(null);
+          }
         }
       },
-      [busy, handleResult],
+      [handleResult, ownsRequest],
     );
 
     const sendFile = useCallback(
       async (file: File): Promise<void> => {
-        if (busy) return;
+        if (request.current) return;
+        const owner = Symbol();
+        request.current = owner;
         setBusy('upload');
         setNotice(null);
         setUpload({ name: file.name, percent: 0 });
         try {
-          handleResult(
-            await uploadCaptureFile(file, (fraction) =>
-              setUpload({ name: file.name, percent: Math.round(fraction * 100) }),
-            ),
-          );
-        } finally {
-          setBusy(null);
-          setUpload(null);
-        }
-      },
-      [busy, handleResult],
-    );
-
-    const reprocess = useCallback(
-      async (transcriptId: string): Promise<void> => {
-        setBusy('reprocess');
-        try {
-          handleResult(await reprocessDocument(transcriptId));
+          const result = await uploadCaptureFile(file, (fraction) => {
+            if (ownsRequest(owner))
+              setUpload({ name: file.name, percent: Math.round(fraction * 100) });
+          });
+          if (ownsRequest(owner)) handleResult(result);
         } catch {
-          handleResult({ kind: 'error', status: 0, error: null, message: null });
+          if (ownsRequest(owner))
+            handleResult({ kind: 'error', status: 0, error: null, message: null });
         } finally {
-          setBusy(null);
+          if (request.current === owner) {
+            request.current = null;
+            setBusy(null);
+            setUpload(null);
+          }
         }
       },
-      [handleResult],
+      [handleResult, ownsRequest],
     );
 
     useImperativeHandle(
       ref,
       () => ({
         openFilePicker: () => fileInput.current?.click(),
-        submitUrl: (value: string) => {
-          setUrl(value);
-          return submitUrl(value);
-        },
         prefillUrl: (value: string) => {
           setUrl(value);
           urlInput.current?.focus();
         },
         showNotice: setNotice,
       }),
-      [submitUrl],
+      [],
     );
 
     const invalidUrl =
       notice?.type === 'error' &&
       (notice.code === 'INVALID_URL' || notice.code === 'BLOCKED_ADDRESS');
-    const compact = variant === 'compact';
 
     return (
       <div
-        className={cn(
-          'relative space-y-2.5',
-          compact &&
-            'rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-3 sm:p-4',
-        )}
+        className="relative space-y-3"
         onDragEnter={(event) => {
           if (!hasFiles(event)) return;
           event.preventDefault();
@@ -185,22 +197,8 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           if (file) void sendFile(file);
         }}
       >
-        {compact && (
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor={inputId} className="text-sm font-semibold text-[var(--color-app-fg)]">
-              {t('capture.title')}
-            </label>
-            <Link
-              to="/capturar"
-              className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-            >
-              {t('capture.openPage')}
-              <ArrowRight className="h-3 w-3" aria-hidden />
-            </Link>
-          </div>
-        )}
         <form
-          className="flex gap-2"
+          className="flex flex-col gap-3 sm:flex-row"
           onSubmit={(event) => {
             event.preventDefault();
             void submitUrl(url);
@@ -223,16 +221,16 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               placeholder={t('capture.inputPlaceholder')}
-              aria-label={compact ? undefined : t('capture.inputLabel')}
+              aria-label={t('capture.inputLabel')}
               aria-invalid={invalidUrl || undefined}
               aria-describedby={notice ? noticeId : undefined}
               maxLength={4096}
-              className="h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-violet-500/60 focus:outline-none focus:ring-2 focus:ring-violet-500/40 aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
+              className="h-12 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus)] aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
             />
           </div>
           <Button
             type="submit"
-            variant="violet"
+            variant="primary"
             className="h-11 shrink-0 px-4"
             disabled={!url.trim() || busy !== null}
           >
@@ -241,11 +239,14 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
             ) : (
               <ArrowRight className="h-4 w-4" aria-hidden />
             )}
-            <span className={cn(compact && 'sr-only sm:not-sr-only')}>{t('capture.submit')}</span>
+            <span>{t('capture.submit')}</span>
           </Button>
         </form>
-        <div className="flex min-h-8 items-center justify-between gap-3">
-          <p className="min-w-0 truncate text-xs text-[var(--color-app-muted)]" aria-live="polite">
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p
+            className="min-w-0 text-xs leading-relaxed text-[var(--color-app-muted)]"
+            aria-live="polite"
+          >
             {upload
               ? t('capture.uploading', { name: upload.name, percent: upload.percent })
               : t('capture.fileHint')}
@@ -283,9 +284,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           <CaptureNotice
             id={noticeId}
             notice={notice}
-            reprocessing={busy === 'reprocess'}
             onDismiss={() => setNotice(null)}
-            onReprocess={(id) => void reprocess(id)}
             onUpload={() => fileInput.current?.click()}
           />
         )}

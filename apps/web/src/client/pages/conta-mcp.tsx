@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'motion/react';
 import { Check, Copy, KeyRound, ShieldCheck, Trash2 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Badge } from '../components/ui/badge';
@@ -10,6 +9,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { Spinner } from '../components/ui/spinner';
+import { FetchError } from '../components/ui/fetch-error';
 import { Switch } from '../components/ui/switch';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
@@ -51,6 +51,8 @@ interface OAuthGrantStatus {
 
 export function ContaMcpPage(): React.ReactElement {
   const { t, locale } = useI18n();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState<PersonalMcpStatus | null>(null);
   const [oauthStatus, setOAuthStatus] = useState<OAuthGrantStatus | null>(null);
   const [label, setLabel] = useState('');
@@ -65,6 +67,8 @@ export function ContaMcpPage(): React.ReactElement {
   const minExpiry = useMemo(() => nextLocalDateTimeInputMin(new Date()), []);
 
   async function refresh(): Promise<void> {
+    setLoadError(null);
+    setRefreshing(true);
     try {
       const [personal, oauth] = await Promise.all([
         apiGet<PersonalMcpStatus>('/api/mcp/tokens'),
@@ -73,9 +77,9 @@ export function ContaMcpPage(): React.ReactElement {
       setStatus(personal);
       setOAuthStatus(oauth);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : t('common.error'));
-      setStatus({ tokens: [], allowCreate: false });
-      setOAuthStatus({ enabled: false, grants: [] });
+      setLoadError(error instanceof ApiError ? error.message : t('common.error'));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -146,17 +150,30 @@ export function ContaMcpPage(): React.ReactElement {
     return new Date(value).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
   }
 
+  if (!status || !oauthStatus) {
+    return (
+      <PageShell width="wide">
+        <PageHeader title={t('account.mcp.title')} description={t('account.mcp.description')} />
+        <AccountPageNav />
+        {loadError ? (
+          <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />
+        ) : (
+          <div className="flex justify-center py-10">
+            <Spinner />
+          </div>
+        )}
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell width="wide">
-      <PageHeader
-        eyebrow={t('account.eyebrow')}
-        icon={KeyRound}
-        iconClassName="text-emerald-400"
-        title={t('account.mcp.title')}
-        description={t('account.mcp.description')}
-      />
+      <PageHeader title={t('account.mcp.title')} description={t('account.mcp.description')} />
 
       <AccountPageNav />
+      {loadError && (
+        <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />
+      )}
 
       <McpClientSetup
         locale={locale}
@@ -169,7 +186,7 @@ export function ContaMcpPage(): React.ReactElement {
         <Card elevated className="border-emerald-500/30 bg-emerald-500/[0.045]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display">
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+              <ShieldCheck className="h-4 w-4 text-[var(--color-accent-primary)]" />
               {t('account.mcp.secretTitle')}
             </CardTitle>
             <CardDescription>{t('account.mcp.secretDescription')}</CardDescription>
@@ -198,7 +215,7 @@ export function ContaMcpPage(): React.ReactElement {
       )}
 
       {status?.allowCreate ? (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+        <div>
           <Card>
             <CardHeader>
               <CardTitle className="font-display">{t('account.mcp.createTitle')}</CardTitle>
@@ -253,9 +270,9 @@ export function ContaMcpPage(): React.ReactElement {
               </Button>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       ) : status ? (
-        <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-[var(--color-app-warning-fg)]">
           {t('account.mcp.policyDisabled')}
         </div>
       ) : null}

@@ -7,9 +7,11 @@ Regras globais do repositório continuam no `CLAUDE.md` da raiz.
 
 Tailwind v4 + shadcn/ui, com design system próprio — **não** o tema padrão do shadcn.
 
-**Quatro packs de tema**, escolhidos por `documentElement[data-theme]`: `linear` (default), `zinc`, `emerald` e `light`. `zinc` é um pack entre quatro, não "a paleta" — e a escala crua `zinc-50…zinc-950` do Tailwind não é fonte de verdade de nada.
-
-Histórico, porque a atribuição erra fácil: a spec 073 criou o sistema de temas com `zinc` como padrão; foi a **115** que introduziu o `linear` e o tornou default, e a **129** trocou só o rótulo exibido para "Voxen", mantendo o identificador. Citar a 073 pelo estado atual manda o leitor a um documento que diz `zinc (padrão)`.
+**One Voxen identity, two appearances** (spec 225): `documentElement[data-theme]`
+is `dark` or `light`. Components use the semantic tokens below in both modes.
+The account API retains its established wire identifiers: `linear` persists the
+Dark appearance and `light` persists Light; legacy `zinc` and `emerald` settings
+normalize to Dark. Do not reintroduce a pack picker or a second theme system.
 
 **Tokens semânticos são a fonte de verdade.** Superfície, texto e borda saem de `--color-app-*`; destaque sai de `--color-accent-*`. Há também escalas próprias de `--radius-*`, `--ease-*` e o trio de fontes. Os valores vivem em `src/client/index.css` — ler de lá, não daqui, porque valor copiado envelhece.
 
@@ -26,7 +28,7 @@ Formas que reprovam, todas pelo mesmo motivo: escala crua do Tailwind (`zinc-800
 
 **Exceção — teste, não rótulo.** A cor pode ser fixa se **carrega significado próprio** (ação, estado, categoria) **e** não deveria mudar entre packs. É o caso de `button.tsx` (`emerald`, `violet`, `rose`), do mapa de origem dos badges de ingestão e das séries de gráfico — inclusive nas bordas desses componentes, que carregam a mesma cor de categoria.
 
-O que reprova é cor de **afordância**: borda de foco e anel de foco não significam nada, só indicam onde está o cursor. O idioma de foco do repo já é `ring-violet-500/40`; `ring-zinc-500/40` e `focus:border-zinc-500/60` são drift.
+O que reprova é cor de **afordância**: borda de foco e anel de foco não significam nada, só indicam onde está o cursor. Focus uses `--theme-focus`, derived from `--color-accent-primary`; hard-coded color scales for focus are drift.
 
 **Acento novo fora dos `--color-accent-*` existentes: confirmar com o owner antes.**
 
@@ -53,7 +55,7 @@ Antes de commitar QUALQUER fix visual ou mudança de UI:
 **`--dry-run` antes de todo `add`, sem exceção.** Não rodar `init` não protege o `index.css` — o `add` escreve nele também. Dois danos, e **a proteção do CLI cobre só um deles**:
 
 - **Sobrescreve componente já restilizado** — tem rede. `add sidebar` reporta `~6 overwrite` em `button`, `separator`, `sheet`, `tooltip`, `input` e `skeleton`, todos já convertidos à mão para `--color-app-*`. Mas o CLI pergunta arquivo a arquivo antes de gravar, mesmo com `--yes` (que só pula o prompt inicial, não é `--overwrite`), e aborta sem escrever se não houver quem responda. Vale para o AI Elements também: `@ai-elements/context` sobrescreve `button.tsx`.
-- **Injeta variável CSS no `index.css`** — **não tem rede nenhuma.** Sem prompt, sem confirmação. `add sidebar` grava 35 linhas: 8 `--sidebar-*` em `:root`, 8 em `.dark`, 8 `--color-sidebar-*` no `@theme` e um `@custom-variant dark (&:is(.dark *))` no topo do arquivo. Note o `.dark`: este app seleciona tema por `[data-theme=...]`, então entra um bloco morto **mais** uma convenção de dark mode concorrente dentro do arquivo dos quatro packs.
+- **Injeta variável CSS no `index.css`** — **não tem rede nenhuma.** Sem prompt, sem confirmação. `add sidebar` grava 35 linhas: 8 `--sidebar-*` em `:root`, 8 em `.dark`, 8 `--color-sidebar-*` no `@theme` e um `@custom-variant dark (&:is(.dark *))` no topo do arquivo. Note o `.dark`: este app seleciona tema por `[data-theme=...]`, então entra um bloco morto **mais** uma convenção de dark mode concorrente dentro do theme stylesheet.
 
 Só item com `cssVars` faz isso, e é raro — num levantamento de 31 itens do registry padrão, `sidebar` foi o único. `chart`, por exemplo, não escreve CSS nenhum. Raro não é seguro: é justamente por ser raro que ninguém confere.
 
@@ -72,7 +74,7 @@ Três coisas que o arquivo não consegue explicar sozinho:
 - `tailwind.baseColor: "zinc"` é exigido pelo schema mas é inerte aqui — ele só alimenta o bloco de variáveis que o `init` geraria, e não rodamos `init`. Não leia como afirmação sobre o tema, nem como garantia de que variável do shadcn não entra: a que o `add` injeta vem com valor fixo do próprio item, sem passar por `baseColor`.
 - `iconLibrary` está ausente de propósito: este app não usa `lucide-react` nem `@radix-ui/react-icons`. Ícone vem de `@/components/ui/icons`. Componente de registry que importa `lucide-react` traz uma segunda biblioteca de ícones junto — pesar antes de aceitar.
 
-`cssVariables: true` **não pode mudar depois** da inicialização, segundo a doc do shadcn. Está `true` porque assim o componente chega com nome semântico de token, mecanicamente substituível pelos nossos; `false` embutiria cor fixa (`bg-white dark:bg-neutral-950`), que é pior num app com quatro packs.
+`cssVariables: true` **não pode mudar depois** da inicialização, segundo a doc do shadcn. Está `true` porque assim o componente chega com nome semântico de token, mecanicamente substituível pelos nossos; `false` embutiria cor fixa (`bg-white dark:bg-neutral-950`), que é pior num app with two appearances.
 
 **Onde o arquivo cai, e o caso em que o alias não manda.** Item do registry padrão do shadcn respeita o alias: `add collapsible` grava em `src/client/components/ui/`, junto dos que já existem. Item que declara `target` próprio ignora tanto o alias quanto o `-p` — os do AI Elements declaram `components/ai-elements/<nome>.tsx` e caem em `src/components/ai-elements/`, fora da árvore do client. Compila (o `include` do tsconfig é `src/**/*`) e os imports `@/…` de dentro resolvem, mas cria diretório novo em `src/` fora do padrão.
 

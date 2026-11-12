@@ -1,6 +1,6 @@
 import Graph from 'graphology';
 import type { GraphEdge as ReagraphEdge, GraphNode as ReagraphNode } from 'reagraph';
-import type { AppTheme } from './theme';
+import { normalizeAppTheme } from './theme';
 import type { TranslateFn } from './i18n';
 import type { GraphIndexStatus } from '../../shared/graph-index';
 import type { GraphCommunity, GraphCommunityDetection } from '../../shared/graph-community';
@@ -278,10 +278,11 @@ const LIGHT_EDGE_COLORS: Record<GraphEdgeKind, string> = {
   next_to: 'rgba(77, 124, 15, 0.6)',
 };
 
-export function resolveGraphPalette(theme: AppTheme): GraphPalette {
+export function resolveGraphPalette(storedTheme: string): GraphPalette {
+  const theme = normalizeAppTheme(storedTheme);
   if (theme === 'light') {
     return {
-      canvas: '#f7f7f8',
+      canvas: '#f8f9f6',
       // Alto contraste: texto quase preto + halo branco (evita título ilegível).
       label: '#09090b',
       selected: '#09090b',
@@ -289,13 +290,13 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
       activeLabel: '#ffffff',
       labelStroke: 'rgba(255, 255, 255, 0.92)',
       dimNode: 'rgba(161, 161, 170, 0.4)',
-      dimEdge: overviewEdgeColor('#f7f7f8', '#09090b'),
+      dimEdge: overviewEdgeColor('#f8f9f6', '#09090b'),
       neutralEdge: 'rgba(113, 113, 122, 0.28)',
       nodes: LIGHT_NODE_COLORS,
       edges: LIGHT_EDGE_COLORS,
     };
   }
-  const canvas = theme === 'linear' ? '#111113' : theme === 'emerald' ? '#19211f' : '#212121';
+  const canvas = '#141a18';
   return {
     canvas,
     // Texto claro + contorno escuro opaco — títulos legíveis sobre nós coloridos.
@@ -303,7 +304,7 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
     selected: '#ffffff',
     activeNode: '#8b5cf6',
     activeLabel: '#ffffff',
-    labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.94)',
+    labelStroke: 'rgba(9, 9, 11, 0.94)',
     dimNode: 'rgba(82, 82, 91, 0.42)',
     dimEdge: overviewEdgeColor(canvas, '#fafafa'),
     neutralEdge: 'rgba(148, 163, 184, 0.34)',
@@ -377,7 +378,7 @@ export function buildSigmaGraphModel(
   data: GraphResp,
   translate?: TranslateFn,
   layoutOptions: GraphLayoutOptions = {},
-  palette: GraphPalette = resolveGraphPalette('linear'),
+  palette: GraphPalette = resolveGraphPalette('dark'),
 ): SigmaGraphModel {
   const communities = buildGraphCommunities(data);
   const representativeIds = new Set(communities.map((community) => community.representativeNodeId));

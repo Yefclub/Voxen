@@ -5,6 +5,7 @@ import {
   applyCaptureEvent,
   canRetry,
   captureLabel,
+  foregroundCaptureDocumentPath,
   mergeCaptures,
   platformLabel,
   readCapturePageIntent,
@@ -34,6 +35,29 @@ function job(overrides: Partial<CaptureJob> = {}): CaptureJob {
     ...overrides,
   };
 }
+
+describe('foreground capture result navigation', () => {
+  const document = { id: 'document-1', title: 'Source', method: 'SCRAPE', model: null };
+  it('opens a finished foreground document, including a partial success', () => {
+    for (const status of ['DONE', 'COMPLETED_WITH_WARNINGS'] as const)
+      expect(foregroundCaptureDocumentPath(job({ status, transcript: document }), 'job1')).toBe(
+        '/transcricoes/document-1',
+      );
+  });
+  it('does not navigate for history, a different job, unfinished or unsuccessful captures', () => {
+    expect(
+      foregroundCaptureDocumentPath(job({ status: 'DONE', transcript: document }), null),
+    ).toBeNull();
+    expect(
+      foregroundCaptureDocumentPath(job({ status: 'DONE', transcript: document }), 'another-job'),
+    ).toBeNull();
+    for (const status of ['QUEUED', 'RUNNING', 'FAILED', 'CANCELLED'] as const)
+      expect(
+        foregroundCaptureDocumentPath(job({ status, transcript: document }), 'job1'),
+      ).toBeNull();
+    expect(foregroundCaptureDocumentPath(job({ status: 'DONE' }), 'job1')).toBeNull();
+  });
+});
 
 describe('parseCaptureSubmit', () => {
   it('distinguishes new and deduped jobs, existing documents and typed errors', () => {

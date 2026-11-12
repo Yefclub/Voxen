@@ -24,7 +24,9 @@ test.describe('workspace visual matrix (spec 219)', () => {
     }
   });
 
-  test('cycles the four themes without losing the reading surface', async ({ page }, testInfo) => {
+  test('normalizes legacy preferences and keeps both appearances readable', async ({
+    page,
+  }, testInfo) => {
     const seed = await seedWorkspace(page, 'themes');
     try {
       await page.goto(`/transcricoes/${seed.transcriptId}`);
@@ -36,7 +38,7 @@ test.describe('workspace visual matrix (spec 219)', () => {
         await page.reload();
         await expect
           .poll(async () => page.evaluate(() => document.documentElement.dataset.theme))
-          .toBe(theme);
+          .toBe(theme === 'light' ? 'light' : 'dark');
         await expect(graphSection.getByText('Grafo deste conteúdo')).toBeVisible();
         await expect(page.getByText('Matrix source').first()).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath(`matrix-theme-${theme}.png`) });

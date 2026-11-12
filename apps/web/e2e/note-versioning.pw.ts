@@ -56,12 +56,29 @@ test('preserves a stale draft and restores an immutable note revision', async ({
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: /Rev\. 1/ }).click();
   await expect(page.getByText('Original body')).toBeVisible();
+  const historyPanel = (await page.getByRole('dialog').boundingBox())!;
+  const restoreButton = (await page
+    .getByRole('button', { name: 'Restaurar revisão' })
+    .boundingBox())!;
+  expect(restoreButton.y + restoreButton.height).toBeLessThanOrEqual(
+    historyPanel.y + historyPanel.height,
+  );
+  expect(restoreButton.y + restoreButton.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.screenshot({ path: testInfo.outputPath('note-revision-history.png'), fullPage: true });
   await page.getByRole('button', { name: 'Restaurar revisão' }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(page.getByText('Rev. 3', { exact: true })).toBeVisible();
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const overflow = await page
+      .locator('[data-app-main]')
+      .evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await expect(page.getByRole('button', { name: 'Histórico' })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeInViewport();
+  }
+
   await page.getByRole('button', { name: 'Histórico' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();

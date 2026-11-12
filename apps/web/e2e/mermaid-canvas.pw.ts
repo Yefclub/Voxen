@@ -113,5 +113,12 @@ test('zooms, pans, expands, and resets a Mermaid diagram safely', async ({ page 
   await expect(dialog).toBeVisible();
   const overflow = await dialog.evaluate((element) => element.scrollWidth - element.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+  const dialogBounds = (await dialog.boundingBox())!;
+  const toolbarBounds = (await dialog.getByRole('toolbar').boundingBox())!;
+  expect(toolbarBounds.y).toBeGreaterThanOrEqual(dialogBounds.y);
+  expect(toolbarBounds.y + toolbarBounds.height).toBeLessThanOrEqual(
+    dialogBounds.y + dialogBounds.height,
+  );
+
   await page.screenshot({ path: testInfo.outputPath('mermaid-canvas-mobile.png') });
 });

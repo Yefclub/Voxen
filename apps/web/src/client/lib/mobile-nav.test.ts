@@ -106,12 +106,12 @@ describe('isChatRoute', () => {
 });
 
 describe('hidesBottomNav', () => {
-  test('rota de chat (/) no mobile esconde a bottom-nav', () => {
-    expect(hidesBottomNav('/', false)).toBe(true);
+  test('the legacy root keeps library navigation visible', () => {
+    expect(hidesBottomNav('/', false)).toBe(false);
   });
 
-  test('rota de chat (/chat) no mobile esconde a bottom-nav', () => {
-    expect(hidesBottomNav('/chat', false)).toBe(true);
+  test('the legacy chat alias keeps library navigation visible', () => {
+    expect(hidesBottomNav('/chat', false)).toBe(false);
   });
 
   test('rota de chat no DESKTOP não esconde (a bottom-nav nem monta lá, mas a decisão não depende disso)', () => {

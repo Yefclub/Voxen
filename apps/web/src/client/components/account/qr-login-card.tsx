@@ -73,8 +73,8 @@ export function QrLoginCard(): React.ReactElement {
             </div>
 
             <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-              <p className="text-[13px] leading-relaxed text-amber-200/90">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-app-warning-fg)]" />
+              <p className="text-[13px] leading-relaxed text-[var(--color-app-warning-fg)]">
                 {t('account.qrLogin.warning')}
               </p>
             </div>
@@ -92,8 +92,8 @@ export function QrLoginCard(): React.ReactElement {
         ) : (
           <div className="space-y-3">
             <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-              <p className="text-[13px] leading-relaxed text-amber-200/90">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-app-warning-fg)]" />
+              <p className="text-[13px] leading-relaxed text-[var(--color-app-warning-fg)]">
                 {t('account.qrLogin.warning')}
               </p>
             </div>

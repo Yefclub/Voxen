@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BrainCircuit, RefreshCw, Save, Trash2 } from '@/components/ui/icons';
+import { AlertTriangle, RefreshCw, Save, Trash2 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { AccountPageNav } from '../components/account/account-page-nav';
 import {
@@ -20,6 +20,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { Spinner } from '../components/ui/spinner';
+import { FetchError } from '../components/ui/fetch-error';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '../lib/api';
 import { useI18n, type I18nKey, type TranslateFn } from '../lib/i18n';
 
@@ -57,6 +58,8 @@ function errorMessage(error: unknown, t: TranslateFn): string {
 
 export function ContaIaPage(): React.ReactElement {
   const { t, locale } = useI18n();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [draftChains, setDraftChains] = useState<Chains>({});
   const [draftReasoning, setDraftReasoning] = useState<Reasoning>({
@@ -69,13 +72,17 @@ export function ContaIaPage(): React.ReactElement {
   const [removeTarget, setRemoveTarget] = useState<ProviderCatalog | null>(null);
 
   async function refresh(): Promise<void> {
+    setLoadError(null);
+    setRefreshing(true);
     try {
       const next = await apiGet<AiSettings>('/api/account/ai');
       setSettings(next);
       setDraftChains(next.chains);
       setDraftReasoning(next.reasoning);
     } catch (error) {
-      toast.error(errorMessage(error, t));
+      setLoadError(errorMessage(error, t));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -158,20 +165,20 @@ export function ContaIaPage(): React.ReactElement {
 
   return (
     <PageShell width="wide">
-      <PageHeader
-        eyebrow={t('account.eyebrow')}
-        icon={BrainCircuit}
-        iconClassName="text-violet-400"
-        title={t('account.ai.title')}
-        description={t('account.ai.description')}
-      />
+      <PageHeader title={t('account.ai.title')} description={t('account.ai.description')} />
 
       <AccountPageNav />
 
+      {loadError && (
+        <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />
+      )}
+
       {settings === null ? (
-        <div className="flex justify-center py-10">
-          <Spinner />
-        </div>
+        !loadError && (
+          <div className="flex justify-center py-10">
+            <Spinner />
+          </div>
+        )
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2">
@@ -218,7 +225,7 @@ export function ContaIaPage(): React.ReactElement {
                   <CardContent className="space-y-3">
                     {isConfigured && status?.status !== 'valid' && (
                       <p className="flex gap-2 text-xs text-[var(--color-app-muted)]">
-                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-app-warning-fg)]" />
                         {status?.status === 'invalid'
                           ? t('account.ai.invalidWarning')
                           : t('account.ai.unknownWarning')}

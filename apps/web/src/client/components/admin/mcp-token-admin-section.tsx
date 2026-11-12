@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
 import { Bot, Check, Copy, KeyRound, RotateCw, Trash2 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Spinner } from '../ui/spinner';
+import { FetchError } from '../ui/fetch-error';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { defaultMcpTokenExpiryInput, nextLocalDateTimeInputMin } from '../../lib/local-datetime';
@@ -50,6 +50,8 @@ interface McpPromptResponse {
 
 export function McpTokenAdminSection(): React.ReactElement {
   const { t, locale } = useI18n();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState<McpAdminStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [newTokenId, setNewTokenId] = useState<string | null>(null);
@@ -68,20 +70,15 @@ export function McpTokenAdminSection(): React.ReactElement {
   }, []);
 
   async function refresh(): Promise<void> {
+    setLoadError(null);
+    setRefreshing(true);
     try {
       const s = await apiGet<McpAdminStatus>('/api/admin/mcp');
       setStatus(s);
-    } catch {
-      setStatus({
-        enabled: false,
-        userId: null,
-        tokenPreview: null,
-        allowUserTokens: false,
-        oauthEnabled: false,
-        legacyTokenConfigured: false,
-        tokens: [],
-        oauthClients: [],
-      });
+    } catch (error) {
+      setLoadError(error instanceof ApiError ? error.message : t('common.error'));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -175,6 +172,8 @@ export function McpTokenAdminSection(): React.ReactElement {
     }
   }
 
+  if (!status && loadError)
+    return <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />;
   if (!status) {
     return (
       <Card>
@@ -186,15 +185,14 @@ export function McpTokenAdminSection(): React.ReactElement {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 }}
-    >
+    <div>
+      {loadError && (
+        <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />
+      )}
       <Card elevated>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-display">
-            <Bot className="h-4 w-4 text-emerald-400" />
+            <Bot className="h-4 w-4 text-[var(--color-accent-primary)]" />
             {t('admin.integrations.mcp.title')}
           </CardTitle>
           <CardDescription>{t('admin.integrations.mcp.description')}</CardDescription>
@@ -202,7 +200,7 @@ export function McpTokenAdminSection(): React.ReactElement {
         <CardContent className="space-y-4">
           {status.enabled && (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
-              <Check className="h-4 w-4 text-emerald-400" />
+              <Check className="h-4 w-4 text-[var(--color-accent-primary)]" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-[var(--color-app-fg)]">
                   {t('admin.integrations.mcp.enabled')}
@@ -395,6 +393,6 @@ export function McpTokenAdminSection(): React.ReactElement {
         variant="destructive"
         onConfirm={() => (tokenToRevoke ? revoke(tokenToRevoke) : Promise.resolve())}
       />
-    </motion.div>
+    </div>
   );
 }

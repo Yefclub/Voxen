@@ -45,8 +45,8 @@ export function TranscriptSummaryBlock({
       <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
         <CardContent className="space-y-4 px-5 py-7 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
-              <Wand2 className="h-4 w-4 text-violet-300" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-accent-primary-soft)]">
+              <Wand2 className="h-4 w-4 text-[var(--color-accent-primary)]" />
             </div>
             <div className="flex-1 space-y-1">
               <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
@@ -86,8 +86,8 @@ export function TranscriptSummaryBlock({
     <section className="group/summary space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
-            <Wand2 className="h-3.5 w-3.5 text-violet-300" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-accent-primary-soft)]">
+            <Wand2 className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
           </div>
           <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-fg)] sm:text-lg">
             {t('library.summary')}
@@ -141,7 +141,9 @@ export function TranscriptSummaryBlock({
         )}
       >
         <CardContent className="px-5 py-5 sm:px-6">
-          <Markdown>{summary}</Markdown>
+          <Markdown headingOffset={2} className="text-base leading-7 [&_p]:leading-7">
+            {summary}
+          </Markdown>
         </CardContent>
       </Card>
     </section>

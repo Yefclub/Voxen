@@ -1,14 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Check,
-  Globe2,
-  Lock,
-  ShieldCheck,
-  ShieldX,
-  Trash2,
-  Users as UsersIcon,
-  X,
-} from '@/components/ui/icons';
+import { Check, ShieldCheck, ShieldX, Trash2, X } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -16,14 +7,13 @@ import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
 import { Spinner } from '../components/ui/spinner';
-import { Switch } from '../components/ui/switch';
-import { ApiError, apiGet, apiPost, api } from '../lib/api';
+import { ApiError, apiPost, api } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n, type TranslateFn } from '../lib/i18n';
-import { TimezoneSelect } from '../components/timezone-select';
+import { InstanceAccessSettings } from '../components/admin/instance-access-settings';
 import { DataSurface } from '../components/ui/data-surface';
 import {
   Dialog,
@@ -43,6 +33,12 @@ interface InstanceResponse {
 export function AdminUsuariosPage(): React.ReactElement {
   const { data, loading, error, refresh } = useFetch<{ users: AdminUser[] }>('/api/admin/usuarios');
   const { locale, t } = useI18n();
+  const {
+    data: instance,
+    error: instanceError,
+    loading: instanceLoading,
+    refresh: refreshInstance,
+  } = useFetch<InstanceResponse>('/api/admin/instance');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState<boolean | null>(null);
   const [timezone, setTimezone] = useState<string | null>(null);
@@ -52,19 +48,10 @@ export function AdminUsuariosPage(): React.ReactElement {
   const [deleteEmail, setDeleteEmail] = useState('');
 
   useEffect(() => {
-    // Guarda contra setState após unmount (apiGet não aceita AbortController).
-    let cancelled = false;
-    apiGet<InstanceResponse>('/api/admin/instance')
-      .then((s) => {
-        if (cancelled) return;
-        setAllowSignups(s.allowSignups);
-        setTimezone(s.timezone);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!instance) return;
+    setAllowSignups(instance.allowSignups);
+    setTimezone(instance.timezone);
+  }, [instance]);
 
   async function approve(id: string): Promise<void> {
     setPendingId(id);
@@ -96,10 +83,24 @@ export function AdminUsuariosPage(): React.ReactElement {
     setPendingId(id);
     try {
       await apiPost(`/api/admin/usuarios/${id}/${action}`, {});
-      toast.success(action === 'disable' ? 'Usuário bloqueado.' : 'Usuário reativado.');
+      toast.success(
+        action === 'disable'
+          ? locale === 'en'
+            ? 'User blocked.'
+            : 'Usuário bloqueado.'
+          : locale === 'en'
+            ? 'User reactivated.'
+            : 'Usuário reativado.',
+      );
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o usuário.');
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : locale === 'en'
+            ? 'Could not update the user.'
+            : 'Não foi possível atualizar o usuário.',
+      );
     } finally {
       setPendingId(null);
     }
@@ -114,11 +115,23 @@ export function AdminUsuariosPage(): React.ReactElement {
         body: JSON.stringify({ role }),
       });
       toast.success(
-        role === 'ADMIN' ? 'Administrador definido.' : 'Acesso administrativo removido.',
+        role === 'ADMIN'
+          ? locale === 'en'
+            ? 'Administrator assigned.'
+            : 'Administrador definido.'
+          : locale === 'en'
+            ? 'Administrator access removed.'
+            : 'Acesso administrativo removido.',
       );
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o papel.');
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : locale === 'en'
+            ? 'Could not update the role.'
+            : 'Não foi possível atualizar o papel.',
+      );
     } finally {
       setPendingId(null);
     }
@@ -132,12 +145,20 @@ export function AdminUsuariosPage(): React.ReactElement {
         method: 'DELETE',
         body: JSON.stringify({ confirmEmail: deleteEmail }),
       });
-      toast.success('Conta e workspace excluídos.');
+      toast.success(
+        locale === 'en' ? 'Account and workspace deleted.' : 'Conta e workspace excluídos.',
+      );
       setDeleteCandidate(null);
       setDeleteEmail('');
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Não foi possível excluir o usuário.');
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : locale === 'en'
+            ? 'Could not delete the user.'
+            : 'Não foi possível excluir o usuário.',
+      );
     } finally {
       setPendingId(null);
     }
@@ -194,80 +215,24 @@ export function AdminUsuariosPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <div data-page-content className="space-y-6 sm:space-y-10">
-        <PageHeader
-          eyebrow={t('admin.eyebrow')}
-          icon={ShieldCheck}
-          iconClassName="text-emerald-400"
-          title={t('admin.users.title')}
-          description={t('admin.users.description')}
-        />
+        <PageHeader title={t('admin.users.title')} description={t('admin.users.description')} />
 
-        {/* Toggle de cadastros */}
-        <Card elevated>
-          <CardContent className="pt-5 pb-5 flex items-center gap-4">
-            <div
-              className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border ${
-                allowSignups
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : 'bg-[var(--color-app-surface-hover)] border-[var(--color-app-border)] text-[var(--color-app-muted)]'
-              }`}
-            >
-              {allowSignups ? <UsersIcon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--color-app-fg)]">
-                {t('admin.users.newSignups')}
-              </p>
-              <p className="text-xs text-[var(--color-app-muted)] mt-0.5 leading-relaxed">
-                {allowSignups === null
-                  ? t('admin.users.loading')
-                  : allowSignups
-                    ? t('admin.users.signupOpenCopy')
-                    : t('admin.users.signupClosedCopy')}
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {togglingSignups && <Spinner className="text-[var(--color-app-muted)]" />}
-              <Switch
-                checked={allowSignups ?? false}
-                onCheckedChange={toggleSignups}
-                disabled={allowSignups === null || togglingSignups}
-                aria-label={t('admin.users.allowSignups')}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Fuso da instância (spec 095) */}
-        <Card elevated>
-          <CardContent className="pt-5 pb-5 space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border bg-violet-500/10 border-violet-500/30 text-violet-300">
-                <Globe2 className="h-4 w-4" />
-              </div>
-              <div className="flex-1 min-w-0 space-y-1">
-                <p className="text-sm font-medium text-[var(--color-app-fg)]">
-                  {t('admin.users.timezoneTitle')}
-                </p>
-                <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
-                  {t('admin.users.timezoneDescription')}
-                </p>
-              </div>
-              {savingTimezone && <Spinner className="text-[var(--color-app-muted)] shrink-0" />}
-            </div>
-            {timezone === null ? (
-              <p className="text-xs text-[var(--color-app-muted)]">{t('admin.users.loading')}</p>
-            ) : (
-              <TimezoneSelect
-                id="admin-instance-timezone"
-                value={timezone}
-                onChange={(next) => void saveTimezone(next)}
-                disabled={savingTimezone}
-                hint={t('admin.users.timezoneHint')}
-              />
-            )}
-          </CardContent>
-        </Card>
+        {instanceError ? (
+          <FetchError
+            message={instanceError}
+            onRetry={refreshInstance}
+            retrying={instanceLoading}
+          />
+        ) : (
+          <InstanceAccessSettings
+            allowSignups={allowSignups}
+            timezone={timezone}
+            togglingSignups={togglingSignups}
+            savingTimezone={savingTimezone}
+            onSignupsChange={toggleSignups}
+            onTimezoneChange={saveTimezone}
+          />
+        )}
 
         <section className="space-y-4">
           <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
@@ -297,7 +262,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                 {pending.map((u) => (
                   <li
                     key={u.id}
-                    className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50"
+                    className="flex flex-col items-stretch gap-4 px-5 py-4 transition-colors sm:flex-row sm:items-center hover:bg-[var(--color-app-surface-hover)]/50"
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
@@ -314,7 +279,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                         })}
                       </p>
                     </div>
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex flex-wrap gap-2 shrink-0">
                       <Button
                         variant="destructive"
                         size="sm"
@@ -360,7 +325,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                 {others.map((u) => (
                   <li
                     key={u.id}
-                    className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50"
+                    className="flex flex-col items-stretch gap-4 px-5 py-4 transition-colors sm:flex-row sm:items-center hover:bg-[var(--color-app-surface-hover)]/50"
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center gap-x-3 gap-y-1 flex-wrap min-w-0">
@@ -386,7 +351,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                             : t('admin.users.disabled')}
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:max-w-[55%] shrink-0">
                       <StatusBadge status={u.status} t={t} />
                       {u.status === 'DISABLED' ? (
                         <Button
@@ -395,7 +360,8 @@ export function AdminUsuariosPage(): React.ReactElement {
                           disabled={pendingId === u.id}
                           onClick={() => void changeUser(u.id, 'enable')}
                         >
-                          <Check className="h-3.5 w-3.5" /> Reativar
+                          <Check className="h-3.5 w-3.5" />{' '}
+                          {locale === 'en' ? 'Reactivate' : 'Reativar'}
                         </Button>
                       ) : (
                         <Button
@@ -404,7 +370,8 @@ export function AdminUsuariosPage(): React.ReactElement {
                           disabled={pendingId === u.id}
                           onClick={() => void changeUser(u.id, 'disable')}
                         >
-                          <ShieldX className="h-3.5 w-3.5" /> Bloquear
+                          <ShieldX className="h-3.5 w-3.5" />{' '}
+                          {locale === 'en' ? 'Block' : 'Bloquear'}
                         </Button>
                       )}
                       <Button
@@ -414,7 +381,13 @@ export function AdminUsuariosPage(): React.ReactElement {
                         onClick={() => void toggleAdmin(u)}
                       >
                         <ShieldCheck className="h-3.5 w-3.5" />
-                        {u.role === 'ADMIN' ? 'Remover admin' : 'Tornar admin'}
+                        {u.role === 'ADMIN'
+                          ? locale === 'en'
+                            ? 'Remove admin'
+                            : 'Remover admin'
+                          : locale === 'en'
+                            ? 'Make admin'
+                            : 'Tornar admin'}
                       </Button>
                       <Button
                         size="sm"
@@ -425,7 +398,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                           setDeleteEmail('');
                         }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                        <Trash2 className="h-3.5 w-3.5" /> {t('common.delete')}
                       </Button>
                     </div>
                   </li>
@@ -446,10 +419,15 @@ export function AdminUsuariosPage(): React.ReactElement {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Excluir conta definitivamente?</DialogTitle>
+              <DialogTitle>
+                {locale === 'en' ? 'Permanently delete account?' : 'Excluir conta definitivamente?'}
+              </DialogTitle>
               <DialogDescription>
-                Isso remove a conta, sessões, credenciais pessoais e todo o workspace. Digite
-                exatamente <strong>{deleteCandidate?.email}</strong> para confirmar.
+                {locale === 'en'
+                  ? 'This removes the account, sessions, personal credentials and the entire workspace. Type exactly '
+                  : 'Isso remove a conta, sessões, credenciais pessoais e todo o workspace. Digite exatamente '}
+                <strong>{deleteCandidate?.email}</strong>
+                {locale === 'en' ? ' to confirm.' : ' para confirmar.'}
               </DialogDescription>
             </DialogHeader>
             <Input
@@ -457,7 +435,11 @@ export function AdminUsuariosPage(): React.ReactElement {
               onChange={(event) => setDeleteEmail(event.target.value)}
               placeholder={deleteCandidate?.email ?? 'email@exemplo.com'}
               autoComplete="off"
-              aria-label="E-mail de confirmação da exclusão"
+              aria-label={
+                locale === 'en'
+                  ? 'Deletion confirmation email'
+                  : 'E-mail de confirmação da exclusão'
+              }
             />
             <DialogFooter>
               <Button
@@ -468,7 +450,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                 }}
                 disabled={pendingId === deleteCandidate?.id}
               >
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -480,7 +462,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                 }
               >
                 {pendingId === deleteCandidate?.id && <Spinner />}
-                Excluir definitivamente
+                {locale === 'en' ? 'Delete permanently' : 'Excluir definitivamente'}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -5,6 +5,7 @@ import {
   resolveUpdateModalEffect,
   shouldPresentUpdateModal,
   shouldSilentApplyVersion,
+  isVersionReloadSafeRoute,
 } from './update-modal-core';
 
 describe('intenções do modal de atualização', () => {
@@ -32,6 +33,28 @@ describe('intenções do modal de atualização', () => {
 });
 
 describe('aplicação silenciosa e apresentação do modal', () => {
+  test('only query-backed indexes permit an automatic reload', () => {
+    for (const path of ['/', '/transcricoes', '/guia', '/novidades'])
+      expect(isVersionReloadSafeRoute(path)).toBe(true);
+    for (const path of [
+      '/capturar',
+      '/notas',
+      '/notas/id',
+      '/transcricoes/id',
+      '/conta',
+      '/conta/mcp',
+      '/conta/ia',
+      '/admin/usuarios',
+      '/onboarding',
+      '/oauth/consent',
+      '/grafo',
+    ])
+      expect(isVersionReloadSafeRoute(path), path).toBe(false);
+  });
+  test('keeps an update pending while a capture or form is active', () => {
+    expect(shouldSilentApplyVersion({ hasUpdate: true, streaming: false, busy: true })).toBe(false);
+    expect(shouldSilentApplyVersion({ hasUpdate: true, streaming: false, busy: false })).toBe(true);
+  });
   test('aplica sozinho quando há update e o chat não está streaming', () => {
     expect(shouldSilentApplyVersion({ hasUpdate: true, streaming: false })).toBe(true);
     expect(shouldSilentApplyVersion({ hasUpdate: true, streaming: true })).toBe(false);

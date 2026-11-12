@@ -58,7 +58,9 @@ describe('consistência dos shells de página', () => {
     ] as const;
     for (const file of pagesWithoutLocalEntryMotion) {
       const source = readFileSync(join(PAGES_ROOT, file), 'utf8');
-      expect(source, file).not.toContain("from 'motion/react'");
+      expect(source, file).not.toMatch(
+        /import \{[^}]*\b(?:motion|AnimatePresence)\b[^}]*\} from 'motion\/react'/u,
+      );
       expect(source, file).not.toContain('<motion.');
       expect(source, file).not.toContain('<AnimatePresence');
     }
@@ -75,8 +77,8 @@ describe('consistência dos shells de página', () => {
     for (const file of CANONICAL_HEADER_PAGES) {
       const source = readFileSync(join(PAGES_ROOT, file), 'utf8');
       expect(source, file).toContain('<PageHeader');
-      expect(source, file).toMatch(/<PageHeader[\s\S]*?\beyebrow=/u);
-      expect(source, file).toMatch(/<PageHeader[\s\S]*?\bicon=/u);
+      expect(source, file).toMatch(/<PageHeader[\s\S]*?\btitle=/u);
+      expect(source, file).not.toMatch(/<PageHeader[\s\S]*?\beyebrow=/u);
       expect(source, file).toMatch(
         /import \{[^}]*PageHeader[^}]*\} from '\.\.\/components\/ui\/page-shell'/u,
       );

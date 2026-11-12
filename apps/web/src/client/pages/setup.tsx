@@ -97,13 +97,8 @@ export function SetupPage(): React.ReactElement {
         width="workspace"
         className="flex min-h-[60dvh] flex-col items-center justify-center text-center"
       >
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-400/50 bg-gradient-to-br from-emerald-400 to-emerald-600">
-            <CheckCircle2 className="h-7 w-7 text-emerald-950" />
-          </div>
-        </div>
-        <h2 className="mt-8 font-display text-3xl font-semibold">{t('setup.doneTitle')}</h2>
+        <CheckCircle2 className="h-10 w-10 text-[var(--color-accent-primary)]" />
+        <h1 className="mt-8 font-display text-3xl font-semibold">{t('setup.doneTitle')}</h1>
         <p className="mt-3 text-[15px] text-[var(--color-app-muted)]">{t('setup.doneSubtitle')}</p>
       </PageShell>
     );
@@ -114,9 +109,6 @@ export function SetupPage(): React.ReactElement {
   return (
     <PageShell width="workspace">
       <PageHeader
-        eyebrow={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
-        icon={Languages}
-        iconClassName="text-emerald-400"
         title={editingConfigured ? t('setup.title.edit') : t('setup.title.initial')}
         description={editingConfigured ? t('setup.subtitle.edit') : t('setup.subtitle.initial')}
       />
@@ -143,7 +135,7 @@ export function SetupPage(): React.ReactElement {
         <Card elevated>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display">
-              <Languages className="h-4 w-4 text-emerald-400" />
+              <Languages className="h-4 w-4 text-[var(--color-accent-primary)]" />
               {t('setup.language.title')}
             </CardTitle>
             <CardDescription>{t('setup.language.description')}</CardDescription>
@@ -162,7 +154,7 @@ export function SetupPage(): React.ReactElement {
                   className={[
                     'rounded-xl border px-4 py-3 text-left transition-colors',
                     appLanguage === language
-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                      ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary-soft)] text-[var(--color-accent-primary)]'
                       : 'border-[var(--color-app-border)] bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
                   ].join(' ')}
                 >

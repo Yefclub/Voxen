@@ -16,18 +16,18 @@ function read(relativePath: string): string {
   return readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 }
 
-describe('fundação visual Linear', () => {
+describe('Voxen visual foundation', () => {
   test('faz bootstrap no tema principal sem flash do tema legado', () => {
     const html = read('index.html');
     const theme = read('src/client/lib/theme.ts');
     const vite = read('vite.config.ts');
 
-    expect(html).toContain('data-theme="linear"');
-    expect(html).toContain("t === 'linear'");
-    expect(html).toContain('content="#111113"');
-    expect(theme).toContain("export const DEFAULT_THEME = 'linear'");
-    expect(vite).toContain("theme_color: '#111113'");
-    expect(vite).toContain("background_color: '#111113'");
+    expect(html).toContain('data-theme="dark"');
+    expect(html).toContain('document.documentElement.dataset.theme = t');
+    expect(html).toContain('content="#141a18"');
+    expect(theme).toContain("export const DEFAULT_THEME = 'dark'");
+    expect(vite).toContain("theme_color: '#141a18'");
+    expect(vite).toContain("background_color: '#141a18'");
   });
 
   test('centraliza ícones animados, dimensões e movimento reduzido sem Lucide direto', async () => {
@@ -85,7 +85,7 @@ describe('fundação visual Linear', () => {
     const appLayout = read('src/client/components/layout/app-layout.tsx');
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
-    expect(sidebar).toContain('const SIDEBAR_WIDTH = 288');
+    expect(sidebar).toContain('const SIDEBAR_WIDTH = 244');
     expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
     expect(sidebar).toContain('id="desktop-sidebar"');
     expect(sidebar).toContain('aria-hidden');
@@ -96,7 +96,7 @@ describe('fundação visual Linear', () => {
     expect(drawer).toContain('fica preparada fora da tela');
     expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
     expect(drawer).toContain('inert={present ? undefined : true}');
-    expect(drawer).toContain('<SidebarModeBody user={user} hideHome');
+    expect(drawer).toContain('<SidebarModeBody user={user}');
   });
 
   test('adota os primitives de página e dados nas telas administrativas', () => {

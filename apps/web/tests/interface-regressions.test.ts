@@ -53,11 +53,12 @@ describe('regressões de interface confirmadas em produção', () => {
     expect(layout).toContain("if (isChatRoute(pathname)) return 'chat'");
   });
 
-  test('reset de scroll ocorre antes da pintura e apenas ao trocar de seção', () => {
+  test('starts a new page at its title while query changes preserve the current view', () => {
     const layout = read('components/layout/app-layout.tsx');
     expect(layout).toContain('useLayoutEffect');
-    expect(layout).toContain('[sectionKey]');
-    expect(layout).not.toContain('[location.pathname]');
+    expect(layout).toContain('[location.pathname]');
+    expect(layout).not.toContain('[location.search]');
+    expect(layout).toContain('key={getSectionKey(location.pathname)}');
   });
 
   test('fallback lazy preserva uma superfície local em vez de spinner central', () => {

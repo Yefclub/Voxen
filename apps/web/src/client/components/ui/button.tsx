@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Button as AstryxButton } from '@astryxdesign/core/Button';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
@@ -8,7 +9,7 @@ const buttonVariants = cva(
     'relative inline-flex items-center justify-center gap-2 whitespace-nowrap',
     'rounded-lg text-sm font-medium tracking-tight',
     'transition-[transform,background-color,border-color,color] duration-200 ease-out',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg)]',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg)]',
     'disabled:pointer-events-none disabled:opacity-50',
     'active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none',
   ].join(' '),
@@ -17,8 +18,10 @@ const buttonVariants = cva(
       variant: {
         default:
           'bg-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)] hover:bg-[var(--color-app-inverted-hover)]',
-        primary: 'bg-emerald-500 text-emerald-950 font-semibold hover:bg-emerald-400',
-        violet: 'bg-violet-500 text-violet-950 font-semibold hover:bg-violet-400',
+        primary:
+          'bg-[var(--color-accent-primary)] text-[var(--color-app-bg)] font-semibold hover:brightness-110',
+        violet:
+          'bg-[var(--color-accent-primary)] text-[var(--color-app-bg)] font-semibold hover:brightness-110',
         secondary:
           'bg-[var(--color-app-surface)] text-[var(--color-app-fg)] border border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
         outline:
@@ -29,14 +32,14 @@ const buttonVariants = cva(
           'rounded-none bg-transparent text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] active:scale-100 focus-visible:ring-inset focus-visible:ring-offset-0',
         destructive:
           'bg-rose-500/10 text-[var(--color-app-danger)] border border-rose-500/30 hover:bg-rose-500/20',
-        link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-emerald-400',
+        link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-[var(--color-accent-primary)]',
       },
       size: {
-        default: 'h-9 px-4',
-        sm: 'h-8 px-3 text-xs rounded-lg',
-        lg: 'h-10 px-5',
+        default: 'min-h-10 px-4 py-2 [@media(pointer:coarse)]:min-h-11',
+        sm: 'min-h-9 px-3 py-1.5 text-sm rounded-lg [@media(pointer:coarse)]:min-h-11',
+        lg: 'min-h-10 px-5 py-2',
         xl: 'h-12 px-7 text-base rounded-xl',
-        icon: 'h-9 w-9',
+        icon: 'h-10 w-10 p-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
       },
     },
     defaultVariants: {
@@ -51,11 +54,50 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
+function buttonText(children: React.ReactNode): string {
+  return React.Children.toArray(children)
+    .map((child) => {
+      if (typeof child === 'string' || typeof child === 'number') return String(child);
+      if (React.isValidElement<{ children?: React.ReactNode }>(child))
+        return buttonText(child.props.children);
+      return '';
+    })
+    .join(' ')
+    .trim();
+}
+
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : 'button';
+  ({ className, variant, size, asChild = false, children, ...props }, ref) => {
+    const classes = cn(buttonVariants({ variant, size, className }));
+    if (asChild)
+      return (
+        <Slot className={classes} ref={ref} {...props}>
+          {children}
+        </Slot>
+      );
+    const label = props['aria-label'] ?? props.title ?? buttonText(children);
+    const astryxVariant =
+      variant === 'destructive'
+        ? 'destructive'
+        : variant === 'primary' || variant === 'violet' || !variant || variant === 'default'
+          ? 'primary'
+          : variant === 'ghost' || variant === 'link' || variant === 'disclosure'
+            ? 'ghost'
+            : 'secondary';
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <AstryxButton
+        {...props}
+        ref={ref}
+        label={label}
+        variant={astryxVariant}
+        size={size === 'sm' ? 'sm' : 'md'}
+        isDisabled={props.disabled}
+        className={classes}
+      >
+        <span className="inline-flex min-w-0 items-center justify-center gap-2 whitespace-normal">
+          {children}
+        </span>
+      </AstryxButton>
     );
   },
 );

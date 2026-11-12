@@ -1,3 +1,4 @@
+import { useViewportMetrics } from './lib/use-viewport-metrics';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Toaster } from './components/ui/sonner';
@@ -81,6 +82,7 @@ const NovidadesPage = lazy(() =>
 );
 
 export function App(): React.ReactElement {
+  useViewportMetrics();
   return (
     <I18nProvider>
       <ThemeProvider>

@@ -1,3 +1,5 @@
+import { Theme } from '@astryxdesign/core/theme';
+import { neutralTheme } from '@astryxdesign/theme-neutral/built';
 import {
   createContext,
   useCallback,
@@ -14,6 +16,7 @@ import {
   DEFAULT_THEME,
   normalizeAppTheme,
   persistThemeLocally,
+  persistedTheme,
   readStoredTheme,
   toggleLightDark,
   type AppTheme,
@@ -29,7 +32,13 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }): React.ReactElement {
   const { data, refresh } = useMe();
-  const [theme, setThemeState] = useState<AppTheme>(() => readStoredTheme() ?? DEFAULT_THEME);
+  const [theme, setThemeState] = useState<AppTheme>(
+    () =>
+      readStoredTheme() ??
+      (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches
+        ? 'light'
+        : DEFAULT_THEME),
+  );
 
   useEffect(() => {
     applyThemeToDocument(theme);
@@ -47,14 +56,15 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.Reac
       setThemeState(normalized);
       applyThemeToDocument(normalized);
       persistThemeLocally(normalized);
+      if (!data?.user) return;
       try {
-        await apiPatch('/api/account', { theme: normalized });
+        await apiPatch('/api/account', { theme: persistedTheme(normalized) });
         await refresh();
       } catch {
         /* keep local theme; next /api/me refresh will reconcile */
       }
     },
-    [refresh],
+    [refresh, data?.user],
   );
 
   const toggleAppearance = useCallback(async () => {
@@ -66,7 +76,13 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.Reac
     [theme, setTheme, toggleAppearance],
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>
+      <Theme theme={neutralTheme} mode={theme}>
+        {children}
+      </Theme>
+    </ThemeContext.Provider>
+  );
 }
 
 export function useTheme(): ThemeContextValue {

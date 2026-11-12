@@ -65,7 +65,7 @@ export function McpClientSetup({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 font-display">
-              <Plug className="h-4 w-4 text-violet-400" />
+              <Plug className="h-4 w-4 text-[var(--color-accent-primary)]" />
               {locale === 'en' ? 'Connect a client' : 'Conectar um cliente'}
             </CardTitle>
             <CardDescription>
@@ -84,11 +84,14 @@ export function McpClientSetup({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
-            Endpoint
-          </p>
+          <p className="text-sm font-medium text-[var(--color-app-muted)]">Endpoint</p>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Input readOnly value={endpoint} className="min-w-0 font-mono text-xs" />
+            <Input
+              aria-label="MCP endpoint"
+              readOnly
+              value={endpoint}
+              className="min-w-0 font-mono text-xs"
+            />
             <Button
               type="button"
               variant="outline"
@@ -123,7 +126,7 @@ export function McpClientSetup({
 
         <div
           data-testid="mcp-client-configuration"
-          className="space-y-3 rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] p-4"
+          className="space-y-3 border-t border-[var(--color-app-border)] pt-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium text-[var(--color-app-fg)]">{setup.label}</p>
@@ -147,7 +150,13 @@ export function McpClientSetup({
             </Badge>
           </div>
           <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">{setup.summary}</p>
-          <Textarea readOnly value={setup.config} rows={6} className="font-mono text-xs" />
+          <Textarea
+            aria-label={locale === 'en' ? 'Client configuration' : 'Configuração do cliente'}
+            readOnly
+            value={setup.config}
+            rows={6}
+            className="font-mono text-xs"
+          />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--color-app-muted)]">
               {setup.id === 'grok' || setup.id === 'cursor'

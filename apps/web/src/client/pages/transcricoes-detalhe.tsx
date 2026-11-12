@@ -1,5 +1,9 @@
+import { useReducedMotion } from 'motion/react';
+import { useMediaQuery } from '../lib/use-media-query';
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { CaptureWarnings } from '../components/capture/capture-warnings';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Archive,
@@ -7,10 +11,10 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  MoreHorizontal,
   Folder,
   Globe,
   Languages,
-  MessageSquare,
   RotateCcw,
   RotateCw,
   Sparkles,
@@ -19,7 +23,6 @@ import {
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
@@ -133,6 +136,10 @@ interface FoldersResponse {
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const wideTools = useMediaQuery('(min-width: 1280px)');
+  const reducedMotion = useReducedMotion();
+  const [toolsOpen, setToolsOpen] = useState(false);
   const { locale, t: translate } = useI18n();
   const { data, loading, error, refresh } = useFetch<ResponseBody>(
     id ? `/api/transcripts/${id}?includeTrash=1` : null,
@@ -399,6 +406,195 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         : translate('library.content');
   const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
+  const completionWarnings: unknown[] = Array.isArray(location.state?.capture?.warnings)
+    ? location.state.capture.warnings
+    : [];
+  const documentTools = (
+    <div className="flex min-w-0 flex-col gap-6">
+      {(wideTools || t.originalObjectKey) && (
+        <section className="border-b border-[var(--color-app-border)] pb-5">
+          {t.originalObjectKey && t.originalMimeType ? (
+            <UploadMediaViewer
+              transcriptId={t.id}
+              mimeType={t.originalMimeType}
+              previewSrc={previewSrc}
+              title={t.title}
+            />
+          ) : (
+            <img
+              src={previewSrc}
+              alt=""
+              className="w-full aspect-video object-cover"
+              loading="lazy"
+            />
+          )}
+        </section>
+      )}
+
+      <section className="border-b border-[var(--color-app-border)] pb-5">
+        <div className="space-y-4">
+          <LibraryFolderControl
+            folders={foldersData?.folders ?? []}
+            folderId={t.folderId}
+            organizing={organizing}
+            onMove={moveToFolder}
+            onCreate={createFolder}
+            t={translate}
+          />
+          <TagsControl tags={t.tags} translate={translate} />
+          <details open={wideTools} className="space-y-4">
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm text-[var(--color-app-muted)]">
+              {translate('design.metadata')}
+            </summary>
+            {/* Duração só faz sentido pra vídeos */}
+            {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
+              <MetaRow
+                Icon={Clock}
+                label={translate('library.duration')}
+                value={formatDuration(t.durationSec)}
+              />
+            )}
+            {t.channel && t.source === 'WEB' && (
+              <MetaRow Icon={Globe} label={translate('library.site')} value={t.channel} />
+            )}
+            <MetaRow
+              Icon={Languages}
+              label={translate('library.language')}
+              value={t.language.toUpperCase()}
+            />
+            <MetaRow
+              Icon={Calendar}
+              label={translate('library.added')}
+              value={formatDateTime(created, locale)}
+            />
+            {published && (
+              <MetaRow
+                Icon={Calendar}
+                label={translate('library.published')}
+                value={formatDateTime(published, locale)}
+              />
+            )}
+            {t.model && (
+              <MetaRow Icon={FileText} label={translate('library.model')} value={t.model} mono />
+            )}
+            {/* Mostra apenas se houve custo de fato (>0). totalCostUsd reflete o custo armazenado. */}
+            {parseFloat(t.totalCostUsd ?? '0') > 0 && (
+              <MetaRow
+                Icon={FileText}
+                label={translate('library.cost')}
+                value={formatUsd(t.totalCostUsd)}
+                mono
+              />
+            )}
+          </details>
+        </div>
+      </section>
+
+      {canUseContextualActions && (
+        <div className="order-5 lg:order-none">
+          <LinkedNotesCard
+            notes={linkedNotesData?.notes ?? []}
+            loading={linkedNotesLoading}
+            title={linkedNoteTitle}
+            content={linkedNoteContent}
+            anchor={linkedNoteAnchor}
+            creating={creatingLinkedNote}
+            composerOpen={linkedNotesOpen}
+            locale={locale}
+            onTitleChange={setLinkedNoteTitle}
+            onContentChange={setLinkedNoteContent}
+            onAnchorChange={setLinkedNoteAnchor}
+            onComposerOpenChange={setLinkedNotesOpen}
+            onCreate={() => void createLinkedNote(t)}
+            t={translate}
+          />
+        </div>
+      )}
+
+      <section className="border-b border-[var(--color-app-border)] pb-5">
+        <div className="space-y-3">
+          {canReprocess && (
+            <Button
+              variant="outline"
+              size="default"
+              className="w-full"
+              disabled={reprocessing || reprocessActive}
+              onClick={() => setConfirmReprocess(true)}
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              {reprocessActive ? translate('capture.reprocessing') : translate('capture.reprocess')}
+            </Button>
+          )}
+          {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
+            <Button
+              variant="outline"
+              size="default"
+              className="w-full"
+              disabled={lifecycleLoading}
+              onClick={() => void updateLifecycle('ACTIVE')}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {translate('library.restore')}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="default"
+              className="w-full"
+              disabled={lifecycleLoading}
+              onClick={() => void updateLifecycle('ARCHIVED')}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              {translate('library.archive')}
+            </Button>
+          )}
+          {t.status === 'TRASH' ? (
+            <Button
+              variant="destructive"
+              size="default"
+              className="w-full"
+              disabled={deleting}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {translate('library.deletePermanently')}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="default"
+              className="w-full border-red-500/25 text-[var(--color-app-danger)] hover:bg-red-500/10 hover:text-red-100"
+              disabled={lifecycleLoading}
+              onClick={() => void updateLifecycle('TRASH')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {translate('library.moveToTrash')}
+            </Button>
+          )}
+        </div>
+      </section>
+
+      {canUseContextualActions && <TranscriptInterestFeedback key={t.id} transcriptId={t.id} />}
+
+      {t.source !== 'UPLOAD' && isExternalSourceUrl(t.url) && (
+        <Button variant="outline" size="default" className="order-5 w-full lg:order-none" asChild>
+          <a href={t.url} target="_blank" rel="noreferrer">
+            {t.source === 'WEB' ? translate('library.openPage') : translate('library.openVideo')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
+      )}
+      {t.originalObjectKey && (
+        <Button variant="outline" size="default" className="order-5 w-full lg:order-none" asChild>
+          <a href={`/api/transcripts/${t.id}/original`} target="_blank" rel="noreferrer">
+            {translate('library.openOriginalUpload')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <>
       <PageShell width="wide" className="relative overflow-x-clip pb-28 sm:pb-32">
@@ -410,6 +606,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         </Button>
 
         <header className="mb-6 space-y-4 sm:mb-8">
+          <h1 className="max-w-full break-words font-display text-[28px] font-semibold leading-[1.16] tracking-[-0.03em] text-balance [overflow-wrap:anywhere] sm:text-[36px] lg:text-[40px]">
+            {t.title}
+          </h1>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
             <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
@@ -461,9 +660,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Badge>
             )}
           </div>
-          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.1] tracking-[-0.03em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-[2.75rem]">
-            {t.title}
-          </h1>
           {t.channel && (
             <p className="text-[15px] text-[var(--color-app-muted)] break-words [overflow-wrap:anywhere]">
               {t.channel}
@@ -489,269 +685,107 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               <span className="min-w-0 truncate font-mono text-[13px]">{t.originalFilename}</span>
             </p>
           )}
-          {canUseContextualActions && (
-            <p className="flex items-center gap-1.5 text-xs text-[var(--color-app-muted)]">
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent-primary)]/80" />
-              {translate('library.chatBarHint')}
-            </p>
-          )}
         </header>
+        {completionWarnings.length > 0 && (
+          <section className="max-w-3xl space-y-2 rounded-xl border border-[var(--color-app-border)] px-4 py-3">
+            <h2 className="text-sm font-semibold">{translate('design.captureWarnings')}</h2>
+            <CaptureWarnings codes={completionWarnings} announce />
+          </section>
+        )}
+        {reprocessJob && <CaptureJobCard job={reprocessJob} live onChange={setReprocessJob} />}
+        <nav
+          aria-label={translate('design.documentTools')}
+          className="flex flex-wrap items-center gap-2 border-b border-[var(--color-app-border)] pb-4"
+        >
+          <Button asChild variant="secondary">
+            <a href="#document-content">{translate('design.readContent')}</a>
+          </Button>
+          {canUseContextualActions && (
+            <Button asChild variant="ghost">
+              <a href="#document-connections">{translate('design.relationships')}</a>
+            </Button>
+          )}
+          {!wideTools && (
+            <Dialog open={toolsOpen} onOpenChange={setToolsOpen}>
+              <DialogTrigger asChild>
+                <Button variant="secondary" aria-label={translate('design.documentTools')}>
+                  <MoreHorizontal className="h-4 w-4" aria-hidden />
+                  {translate('design.options')}
+                </Button>
+              </DialogTrigger>
+              <DialogContent aria-describedby={undefined}>
+                <DialogTitle className="pr-10">{translate('design.documentTools')}</DialogTitle>
+                {documentTools}
+              </DialogContent>
+            </Dialog>
+          )}
+        </nav>
 
-        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
+        <div className="grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1fr)_280px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
           <article className="min-w-0 space-y-7 sm:space-y-8">
             <TranscriptSummaryBlock summary={t.summaryMd} generating={false} t={translate} />
-            <TranscriptFlowBlock
-              flowchart={t.flowchartMd}
-              generating={false}
-              readOnly={!canUseContextualActions}
-              t={translate}
-            />
-            {canUseContextualActions && <TranscriptKnowledgeGraph key={t.id} transcriptId={t.id} />}
-            <TranscriptCorrectionsCard
-              transcriptId={t.id}
-              revision={t.correctionRevision}
-              state={t.correctionState}
-              staleReason={t.correctionStaleReason}
-              readOnly={!canUseContextualActions}
-              locale={locale}
-              canonicalMarkdown={data.canonicalMarkdown}
-              onUpdated={refresh}
-            />
-            {renderMode === 'markdown' ? (
-              <section className="space-y-3">
-                <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
-                  {contentHeading}
-                </h2>
-                <div className="min-w-0 max-w-[75ch]">
-                  <Markdown>{contentMarkdown}</Markdown>
-                </div>
-              </section>
-            ) : (
-              <TranscriptViewer
-                markdown={data.markdown}
-                anchors={(linkedNotesData?.notes ?? []).flatMap((note) =>
-                  note.transcriptSources.flatMap((source) => source.anchors),
-                )}
-                onCreateAnnotation={(selection) => {
-                  setLinkedNoteAnchor(selection);
-                  setLinkedNotesOpen(true);
-                  window.setTimeout(
-                    () =>
-                      document
-                        .getElementById('linked-notes-card')
-                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-                    0,
-                  );
-                }}
+            <section id="document-content" tabIndex={-1} className="scroll-mt-6 space-y-4">
+              {renderMode === 'markdown' ? (
+                <section className="space-y-3">
+                  <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
+                    {contentHeading}
+                  </h2>
+                  <div className="min-w-0 max-w-[75ch]">
+                    <Markdown headingOffset={2} className="text-base leading-7 [&_p]:leading-7">
+                      {contentMarkdown}
+                    </Markdown>
+                  </div>
+                </section>
+              ) : (
+                <TranscriptViewer
+                  markdown={data.markdown}
+                  anchors={(linkedNotesData?.notes ?? []).flatMap((note) =>
+                    note.transcriptSources.flatMap((source) => source.anchors),
+                  )}
+                  onCreateAnnotation={(selection) => {
+                    setLinkedNoteAnchor(selection);
+                    if (!wideTools) setToolsOpen(true);
+                    setLinkedNotesOpen(true);
+                    window.setTimeout(
+                      () =>
+                        document.getElementById('linked-notes-card')?.scrollIntoView({
+                          behavior: reducedMotion ? 'auto' : 'smooth',
+                          block: 'center',
+                        }),
+                      0,
+                    );
+                  }}
+                />
+              )}{' '}
+            </section>
+            <section id="document-connections" tabIndex={-1} className="scroll-mt-6 space-y-8">
+              <TranscriptFlowBlock
+                flowchart={t.flowchartMd}
+                generating={false}
+                readOnly={!canUseContextualActions}
+                t={translate}
               />
-            )}
+              {canUseContextualActions && (
+                <TranscriptKnowledgeGraph key={t.id} transcriptId={t.id} />
+              )}
+              <TranscriptCorrectionsCard
+                transcriptId={t.id}
+                revision={t.correctionRevision}
+                state={t.correctionState}
+                staleReason={t.correctionStaleReason}
+                readOnly={!canUseContextualActions}
+                locale={locale}
+                canonicalMarkdown={data.canonicalMarkdown}
+                onUpdated={refresh}
+              />
+            </section>
           </article>
 
           {/* Sidebar: metadata + thumbnail */}
-          <aside className="flex flex-col gap-4 self-start lg:sticky lg:top-24">
-            <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
-              {t.originalObjectKey && t.originalMimeType ? (
-                <UploadMediaViewer
-                  transcriptId={t.id}
-                  mimeType={t.originalMimeType}
-                  previewSrc={previewSrc}
-                  title={t.title}
-                />
-              ) : (
-                <img
-                  src={previewSrc}
-                  alt=""
-                  className="w-full aspect-video object-cover"
-                  loading="lazy"
-                />
-              )}
-            </Card>
-
-            {canUseContextualActions && (
-              <TranscriptInterestFeedback key={t.id} transcriptId={t.id} />
-            )}
-
-            <Card elevated className="order-4 lg:order-none">
-              <CardContent className="pt-5 pb-5 space-y-4">
-                <LibraryFolderControl
-                  folders={foldersData?.folders ?? []}
-                  folderId={t.folderId}
-                  organizing={organizing}
-                  onMove={moveToFolder}
-                  onCreate={createFolder}
-                  t={translate}
-                />
-                <TagsControl tags={t.tags} translate={translate} />
-                {/* Duração só faz sentido pra vídeos */}
-                {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
-                  <MetaRow
-                    Icon={Clock}
-                    label={translate('library.duration')}
-                    value={formatDuration(t.durationSec)}
-                  />
-                )}
-                {t.channel && t.source === 'WEB' && (
-                  <MetaRow Icon={Globe} label={translate('library.site')} value={t.channel} />
-                )}
-                <MetaRow
-                  Icon={Languages}
-                  label={translate('library.language')}
-                  value={t.language.toUpperCase()}
-                />
-                <MetaRow
-                  Icon={Calendar}
-                  label={translate('library.added')}
-                  value={formatDateTime(created, locale)}
-                />
-                {published && (
-                  <MetaRow
-                    Icon={Calendar}
-                    label={translate('library.published')}
-                    value={formatDateTime(published, locale)}
-                  />
-                )}
-                {t.model && (
-                  <MetaRow
-                    Icon={FileText}
-                    label={translate('library.model')}
-                    value={t.model}
-                    mono
-                  />
-                )}
-                {/* Mostra apenas se houve custo de fato (>0). totalCostUsd reflete o custo armazenado. */}
-                {parseFloat(t.totalCostUsd ?? '0') > 0 && (
-                  <MetaRow
-                    Icon={FileText}
-                    label={translate('library.cost')}
-                    value={formatUsd(t.totalCostUsd)}
-                    mono
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            {canUseContextualActions && (
-              <div className="order-5 lg:order-none">
-                <LinkedNotesCard
-                  notes={linkedNotesData?.notes ?? []}
-                  loading={linkedNotesLoading}
-                  title={linkedNoteTitle}
-                  content={linkedNoteContent}
-                  anchor={linkedNoteAnchor}
-                  creating={creatingLinkedNote}
-                  composerOpen={linkedNotesOpen}
-                  locale={locale}
-                  onTitleChange={setLinkedNoteTitle}
-                  onContentChange={setLinkedNoteContent}
-                  onAnchorChange={setLinkedNoteAnchor}
-                  onComposerOpenChange={setLinkedNotesOpen}
-                  onCreate={() => void createLinkedNote(t)}
-                  t={translate}
-                />
-              </div>
-            )}
-
-            {reprocessJob && (
-              <div className="order-1 lg:order-none">
-                <CaptureJobCard job={reprocessJob} live onChange={setReprocessJob} />
-              </div>
-            )}
-
-            <Card elevated className="order-1 lg:order-none">
-              <CardContent className="space-y-3 pb-5 pt-5">
-                {canReprocess && (
-                  <Button
-                    variant="outline"
-                    size="default"
-                    className="w-full"
-                    disabled={reprocessing || reprocessActive}
-                    onClick={() => setConfirmReprocess(true)}
-                  >
-                    <RotateCw className="h-3.5 w-3.5" />
-                    {reprocessActive
-                      ? translate('capture.reprocessing')
-                      : translate('capture.reprocess')}
-                  </Button>
-                )}
-                {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
-                  <Button
-                    variant="outline"
-                    size="default"
-                    className="w-full"
-                    disabled={lifecycleLoading}
-                    onClick={() => void updateLifecycle('ACTIVE')}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    {translate('library.restore')}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="default"
-                    className="w-full"
-                    disabled={lifecycleLoading}
-                    onClick={() => void updateLifecycle('ARCHIVED')}
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                    {translate('library.archive')}
-                  </Button>
-                )}
-                {t.status === 'TRASH' ? (
-                  <Button
-                    variant="destructive"
-                    size="default"
-                    className="w-full"
-                    disabled={deleting}
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    {translate('library.deletePermanently')}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="default"
-                    className="w-full border-red-500/25 text-red-200 hover:bg-red-500/10 hover:text-red-100"
-                    disabled={lifecycleLoading}
-                    onClick={() => void updateLifecycle('TRASH')}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    {translate('library.moveToTrash')}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            {t.source !== 'UPLOAD' && (
-              <Button
-                variant="outline"
-                size="default"
-                className="order-5 w-full lg:order-none"
-                asChild
-              >
-                <a href={t.url} target="_blank" rel="noreferrer">
-                  {t.source === 'WEB'
-                    ? translate('library.openPage')
-                    : translate('library.openVideo')}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
-            )}
-            {t.originalObjectKey && (
-              <Button
-                variant="outline"
-                size="default"
-                className="order-5 w-full lg:order-none"
-                asChild
-              >
-                <a href={`/api/transcripts/${t.id}/original`} target="_blank" rel="noreferrer">
-                  {translate('library.openOriginalUpload')}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
-            )}
-          </aside>
+          {wideTools && (
+            <aside className="flex min-w-0 flex-col gap-6 self-start">{documentTools}</aside>
+          )}
         </div>
       </PageShell>
 
@@ -809,7 +843,7 @@ function LibraryFolderControl({
   return (
     <div className="space-y-2.5">
       <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-        <Folder className="h-3.5 w-3.5 text-amber-400" />
+        <Folder className="h-3.5 w-3.5 text-[var(--color-app-warning-fg)]" />
         {t('library.folder')}
       </div>
       <Select
@@ -817,7 +851,7 @@ function LibraryFolderControl({
         disabled={organizing}
         onValueChange={(value) => void onMove(value === 'none' ? null : value)}
       >
-        <SelectTrigger className="h-10">
+        <SelectTrigger aria-label={t('library.folder')} className="h-10">
           <SelectValue placeholder={t('library.noFolder')} />
         </SelectTrigger>
         <SelectContent>
@@ -838,7 +872,7 @@ function LibraryFolderControl({
             if (e.key === 'Enter') void submit();
           }}
           placeholder={t('library.newFolderPlaceholder')}
-          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
+          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-[var(--theme-focus)] focus:ring-2 focus:ring-[var(--color-accent-primary-soft)]"
           disabled={organizing}
           maxLength={120}
         />
@@ -867,7 +901,7 @@ function TagsControl({
     <div className="space-y-2.5 border-t border-[var(--color-app-border)] pt-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-          <Tags className="h-3.5 w-3.5 text-violet-400" />
+          <Tags className="h-3.5 w-3.5 text-[var(--color-accent-violet)]" />
           {translate('library.tagsLabel')}
         </div>
       </div>
@@ -878,7 +912,7 @@ function TagsControl({
               key={tag.id}
               className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-0.5 text-[11px] text-[var(--color-app-subtle)]"
             >
-              <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+              <Tags className="h-2.5 w-2.5 shrink-0 text-[var(--color-accent-violet)]/80" />
               <span className="truncate">{tag.name}</span>
             </span>
           ))}

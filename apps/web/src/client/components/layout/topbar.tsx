@@ -26,7 +26,7 @@ import type { MeUser } from '../../lib/types';
 import { Badge } from '../ui/badge';
 import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
-import { APP_THEMES, readLastDarkTheme, type AppTheme } from '../../lib/theme';
+import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
 import { hidesBottomNav } from '../../lib/mobile-nav';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
@@ -47,18 +47,13 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-const THEME_LABEL_KEY: Record<
-  AppTheme,
-  'theme.linear' | 'theme.zinc' | 'theme.emerald' | 'theme.light'
-> = {
-  linear: 'theme.linear',
-  zinc: 'theme.zinc',
-  emerald: 'theme.emerald',
-  light: 'theme.light',
+const THEME_LABEL_KEY: Record<AppTheme, 'theme.switchToDark' | 'theme.switchToLight'> = {
+  dark: 'theme.switchToDark',
+  light: 'theme.switchToLight',
 };
 
 const chromeControlClass =
-  'inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 md:h-8 md:w-8';
+  'inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:h-8 md:w-8';
 
 interface TopbarProps {
   user: MeUser;
@@ -154,11 +149,11 @@ export function Topbar({
                 type="button"
                 className={cn(
                   chromeControlClass,
-                  'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 md:rounded-full',
+                  'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:rounded-full',
                 )}
-                aria-label={t('shell.userMenu')}
+                aria-label={`${t('shell.userMenu')}: ${initials(user.name)}`}
               >
-                <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-500/30 to-violet-500/30">
+                <Avatar className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
                   {user.image && (
                     <AvatarPrimitive.Image
                       src={user.image}
@@ -222,7 +217,7 @@ function AppearanceMenu(): React.ReactElement {
         onValueChange={(next) => {
           const mode = next[0];
           if (mode === 'light' && !light) void setTheme('light');
-          if (mode === 'dark' && light) void setTheme(readLastDarkTheme());
+          if (mode === 'dark' && light) void setTheme('dark');
         }}
         className="hidden md:flex"
       >
@@ -262,7 +257,7 @@ function AppearanceMenu(): React.ReactElement {
               {APP_THEMES.map((id) => (
                 <label
                   key={id}
-                  className="relative flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] text-[var(--color-app-subtle)] transition-colors hover:bg-[var(--color-app-surface)] has-[:checked]:bg-[var(--color-app-surface)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-violet-500/40"
+                  className="relative flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] text-[var(--color-app-subtle)] transition-colors hover:bg-[var(--color-app-surface)] has-[:checked]:bg-[var(--color-app-surface)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--theme-focus)]"
                 >
                   <input
                     type="radio"

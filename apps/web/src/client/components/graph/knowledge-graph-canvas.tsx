@@ -233,7 +233,12 @@ export function KnowledgeGraphCanvas({
   }
   return (
     <div className="absolute inset-0 overflow-hidden">
-      <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
+      <div
+        ref={containerRef}
+        role="img"
+        aria-label={translate('graph.title')}
+        className="h-full w-full"
+      />
       {model.graph.order > 0 && (
         <GraphViewportControls
           zoom={zoom}

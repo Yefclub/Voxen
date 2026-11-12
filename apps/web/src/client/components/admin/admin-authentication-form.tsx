@@ -1,6 +1,5 @@
 import { useI18n } from '../../lib/i18n';
 import { Input } from '../ui/input';
-import { Label } from '../ui/label';
 
 export interface ProviderForm {
   providerId: string;
@@ -118,8 +117,10 @@ function Field({
 }): React.ReactElement {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
-      {children}
+      <label className="block space-y-1.5">
+        <span className="block text-sm font-medium text-[var(--color-app-subtle)]">{label}</span>
+        {children}
+      </label>
       {hint && <p className="text-xs text-[var(--color-app-muted)]">{hint}</p>}
     </div>
   );

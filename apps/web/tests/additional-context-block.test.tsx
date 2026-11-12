@@ -17,13 +17,25 @@ const originalWindow = globalThis.window;
 const originalDocument = globalThis.document;
 
 beforeAll(() => {
+  const events = new EventTarget();
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
       localStorage: { getItem: () => null, setItem: () => undefined },
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
+      dispatchEvent: events.dispatchEvent.bind(events),
       clearTimeout: globalThis.clearTimeout,
       setTimeout: globalThis.setTimeout,
-      matchMedia: () => ({ matches: false }),
+      matchMedia: (query: string) => {
+        const changes = new EventTarget();
+        return {
+          matches: query.includes('min-width'),
+          media: query,
+          addEventListener: changes.addEventListener.bind(changes),
+          removeEventListener: changes.removeEventListener.bind(changes),
+        };
+      },
     },
   });
   Object.defineProperty(globalThis, 'document', {
@@ -164,7 +176,7 @@ describe('AdditionalContextBlock', () => {
       </I18nProvider>
     );
     const button = (text: string) =>
-      renderer.root.findAllByType('button').find((node) => node.children.includes(text))!;
+      renderer.root.findAllByType('button').find((node) => node.props['aria-label'] === text)!;
     await act(async () => {
       renderer = create(view(enrichment));
     });

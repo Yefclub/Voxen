@@ -1,7 +1,6 @@
 import {
   BrainCircuit,
   Download,
-  House,
   KeyRound,
   LineChart,
   ListVideo,
@@ -15,13 +14,12 @@ import type { I18nKey } from '../../lib/i18n';
 export interface NavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof House;
+  Icon: typeof ListVideo;
   adminOnly?: boolean;
   scope: 'workspace' | 'personal' | 'admin';
 }
 
 export const NAV: NavItem[] = [
-  { to: '/', labelKey: 'shell.nav.home', Icon: House, scope: 'workspace' },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo, scope: 'workspace' },
   { to: '/capturar', labelKey: 'shell.nav.capture', Icon: Download, scope: 'workspace' },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },

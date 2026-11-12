@@ -25,6 +25,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { Spinner } from '../components/ui/spinner';
+import { FetchError } from '../components/ui/fetch-error';
 
 interface OidcProvider {
   id: string;
@@ -49,6 +50,8 @@ interface DnsRecord {
 
 export function AdminAutenticacaoPage(): React.ReactElement {
   const { t } = useI18n();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [providers, setProviders] = useState<OidcProvider[] | null>(null);
   const [form, setForm] = useState<ProviderForm>(EMPTY_PROVIDER_FORM);
   const [saving, setSaving] = useState(false);
@@ -58,14 +61,17 @@ export function AdminAutenticacaoPage(): React.ReactElement {
   const [dnsRecords, setDnsRecords] = useState<Record<string, DnsRecord[]>>({});
 
   async function refresh(): Promise<void> {
+    setLoadError(null);
+    setRefreshing(true);
     try {
       const response = await apiGet<{ providers: OidcProvider[] }>(
         '/api/admin/authentication/providers',
       );
       setProviders(response.providers);
     } catch (error) {
-      setProviders([]);
-      toast.error(error instanceof ApiError ? error.message : t('admin.auth.loadError'));
+      setLoadError(error instanceof ApiError ? error.message : t('admin.auth.loadError'));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -192,13 +198,7 @@ export function AdminAutenticacaoPage(): React.ReactElement {
   return (
     <PageShell width="workspace">
       <div data-page-content className="space-y-8 sm:space-y-10">
-        <PageHeader
-          eyebrow={t('admin.eyebrow')}
-          icon={KeyRound}
-          iconClassName="text-violet-400"
-          title={t('admin.auth.title')}
-          description={t('admin.auth.description')}
-        />
+        <PageHeader title={t('admin.auth.title')} description={t('admin.auth.description')} />
 
         <Card elevated>
           <CardHeader>
@@ -223,12 +223,17 @@ export function AdminAutenticacaoPage(): React.ReactElement {
               {t('admin.auth.providersDescription')}
             </p>
           </div>
+          {loadError && (
+            <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />
+          )}
           {providers === null ? (
-            <Card>
-              <CardContent className="py-6">
-                <Spinner />
-              </CardContent>
-            </Card>
+            !loadError && (
+              <Card>
+                <CardContent className="py-6">
+                  <Spinner />
+                </CardContent>
+              </Card>
+            )
           ) : providers.length === 0 ? (
             <Card>
               <CardContent className="py-6 text-sm text-[var(--color-app-muted)]">
@@ -245,7 +250,7 @@ export function AdminAutenticacaoPage(): React.ReactElement {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <CardTitle className="flex items-center gap-2">
-                          <ShieldCheck className="h-4 w-4 text-violet-400" />
+                          <ShieldCheck className="h-4 w-4 text-[var(--color-accent-primary)]" />
                           {provider.providerId}
                           <Badge
                             variant={
@@ -278,7 +283,7 @@ export function AdminAutenticacaoPage(): React.ReactElement {
                   </CardHeader>
                   <CardContent className="space-y-4 text-sm">
                     {provider.configurationError && (
-                      <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4 text-sm text-red-300">
+                      <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4 text-sm text-[var(--color-app-danger)]">
                         {t('admin.auth.configurationError')}
                       </div>
                     )}

@@ -191,7 +191,7 @@ function DiagramViewport({
           else reset();
         }}
         className={cn(
-          'flex h-full w-full touch-none select-none items-center justify-center overflow-hidden p-12 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400',
+          'flex h-full w-full touch-none select-none items-center justify-center overflow-hidden p-12 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--theme-focus)]',
           dragging ? 'cursor-grabbing' : 'cursor-grab',
           '[&_svg]:mx-auto [&_svg]:h-auto [&_svg]:min-w-[520px] [&_svg]:max-w-none',
         )}

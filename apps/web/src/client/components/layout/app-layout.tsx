@@ -51,13 +51,12 @@ export function AppLayout(): React.ReactElement {
   });
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);
-  const sectionKey = getSectionKey(location.pathname);
 
-  // O scroll vive no <main>. Trocas dentro da mesma seção preservam a posição
-  // (notas/detalhes); seções novas voltam ao topo antes da pintura, sem salto.
+  // New pages start at their title. Query and hash updates keep the current
+  // position; editor and graph state remain mounted through AnimatedOutlet.
   useLayoutEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
-  }, [sectionKey]);
+  }, [location.pathname]);
 
   useLayoutEffect(() => {
     if (
@@ -121,50 +120,19 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/" replace />;
   }
 
-  // App shell de altura fixa: o cabeçalho (Topbar) é um pill flutuante (não
-  // ocupa espaço em fluxo) e o conteúdo rola dentro do <main>. /grafo ocupa a
-  // tela toda e gerencia a própria altura, então não recebe overflow-y-auto
-  // nem padding. /chat (e `/`, que agora É o chat em toda viewport) também
-  // gerencia o próprio scroll (composer sticky).
-  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
-  const isChat = isChatRoute(location.pathname);
-  const isFullBleed = isGraph;
-  // Botão de voltar flutuante (mobile): só em sub-páginas (não abas de topo) e
-  // nunca em rotas que já têm chrome próprio de nav (ex.: /grafo).
-  const showBack = showsMobileBack(location.pathname) && !hasOwnMobileChrome(location.pathname);
-  // A bottom-nav mobile some na rota de chat (o rodapé é o promptbox, sem
-  // espaço pra barra de navegação) além das rotas full-bleed (grafo).
+  const isFullBleed = hasOwnMobileChrome(location.pathname);
+  const showBack = showsMobileBack(location.pathname) && !isFullBleed;
   const hideBottomNav = hidesBottomNav(location.pathname, isDesktop);
-  // Sem bottom-nav no chat mobile, o acesso à navegação vira um botão
-  // flutuante que abre o drawer — nunca junto com o botão de voltar (a rota
-  // de chat nunca é sub-página, então showBack já é false ali; o `!showBack`
-  // é defensivo caso essa invariante mude no futuro).
-  const showMobileNavButton = isChat && !isDesktop && !showBack;
-  // The Topbar floats above the shell. Mobile chat reserves only the safe area
-  // because its scroller owns the initial offset; other mobile routes keep a
-  // 4rem clearance. Desktop page content owns a compact 20 px clearance via
-  // PageShell instead of reserving a full row for floating chrome.
-  const headerPad = isFullBleed
-    ? ''
-    : isChat
-      ? ' pt-[env(safe-area-inset-top)] md:pt-0'
-      : ' pt-[calc(env(safe-area-inset-top)+4rem)] md:pt-0';
-  // O chat reserva o safe-area-inset-bottom pro composer não colar no
-  // home-indicator; no desktop nunca teve bottom-nav mesmo, então zera.
-  const chatBottomPad = isDesktop ? ' pb-0' : ' pb-[env(safe-area-inset-bottom)]';
   const mainClass = isFullBleed
     ? 'flex-1 min-h-0'
-    : isChat
-      ? 'flex-1 min-h-0 overflow-hidden' + chatBottomPad + headerPad
-      : 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6' +
-        headerPad;
+    : 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-4';
 
   return (
     <TooltipProvider delayDuration={350}>
       <UpdateModal monitor={versionMonitor} />
       <div
         data-interface-mode="focus"
-        className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]"
+        className="flex h-[var(--visual-viewport-height,100dvh)] overflow-hidden bg-[var(--color-app-bg)]"
       >
         <Sidebar user={data.user} />
         <MobileNavDrawer
@@ -188,19 +156,19 @@ export function AppLayout(): React.ReactElement {
             borderBottomLeftRadius: isDesktop ? SURFACE_CORNER_RADIUS : 0,
           }}
           transition={{
-            duration: reduceMotion || !isDesktop ? 0 : 0.48,
+            duration: reduceMotion || !isDesktop ? 0 : 0.22,
             ease: [0.4, 0, 0.2, 1],
           }}
-          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden md:bg-[var(--color-app-bg-elevated)]"
+          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden md:bg-[var(--color-app-bg)]"
           inert={mobileNavPresent ? true : undefined}
         >
           <Topbar
             user={data.user}
             showBack={showBack}
-            showMobileMenu={showMobileNavButton}
+            showMobileMenu={!showBack && !isDesktop && isFullBleed}
             onOpenMobileNav={() => setMobileNavOpen(true)}
           />
-          <main ref={mainRef} className={mainClass}>
+          <main data-app-main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
           {!hideBottomNav && <MobileBottomNav user={data.user} />}
@@ -213,7 +181,7 @@ export function AppLayout(): React.ReactElement {
 /**
  * Agrupa rotas por seção pra animar a troca ENTRE seções sem remontar ao
  * navegar dentro da mesma seção (ex.: /notas/x→/notas/y, /jobs/1→/jobs/2
- * preservam estado e scroll).
+ * preservam estado).
  */
 function getSectionKey(pathname: string): string {
   if (isChatRoute(pathname)) return 'chat';
@@ -229,7 +197,7 @@ function getSectionKey(pathname: string): string {
  * entrada via <AnimatedPage> sem NUNCA segurar a montagem do próximo conteúdo —
  * o que antes deixava a tela em branco ao navegar no build de produção.
  * Navegar dentro da mesma seção não remonta (mesma key), preservando estado e
- * scroll das notas e das páginas de detalhe.
+ * estado das notas e das páginas de detalhe.
  */
 function AnimatedOutlet(): React.ReactElement {
   const location = useLocation();

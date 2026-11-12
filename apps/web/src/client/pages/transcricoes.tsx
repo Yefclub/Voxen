@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Folder,
   FolderOpen,
   FolderPlus,
   Globe,
   Inbox,
-  Library,
   Loader2,
   ChevronLeft,
   ChevronRight,
   Network,
   Search,
-  SlidersHorizontal,
+  Download,
   Tags,
   Trash2,
   X,
@@ -40,7 +39,7 @@ import {
 } from '../lib/library-organization';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { LibrarySearch } from '../components/library/library-search';
-import { CaptureComposer } from '../components/capture/capture-composer';
+import { LibraryFilterPanel } from '../components/library/library-filter-panel';
 import { TagFilterMenu } from '../components/library/tag-filter-menu';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
@@ -133,7 +132,6 @@ function useDebounced<T>(value: T, ms = 250): T {
 
 export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = normalizeStatusFilter(searchParams.get('status'));
   const inbox = searchParams.get('view') === 'inbox';
@@ -345,30 +343,15 @@ export function TranscricoesPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={t('library.eyebrow')}
-        icon={Library}
-        iconClassName="text-violet-400"
         title={t('library.title')}
-        description={t('library.description')}
         actions={
           <>
-            {folders.length > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={clearingFolders}
-                onClick={() => setConfirmClearOpen(true)}
-                className="h-8 text-xs text-[var(--color-app-muted)] hover:text-red-300"
-              >
-                {clearingFolders ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
-                )}
-                {t('library.clearFolders')}
-              </Button>
-            )}
+            <Button asChild variant="primary">
+              <Link to="/capturar">
+                <Download className="h-4 w-4" aria-hidden />
+                {t('capture.new')}
+              </Link>
+            </Button>
           </>
         }
       />
@@ -384,211 +367,223 @@ export function TranscricoesPage(): React.ReactElement {
         onConfirm={clearAllFolders}
       />
 
-      <CaptureComposer
-        variant="compact"
-        onJob={(job) => navigate(`/capturar?job=${encodeURIComponent(job.id)}`)}
-      />
+      <div className="flex items-start gap-3 [&>section]:min-w-0 [&>section]:flex-1">
+        <LibrarySearch
+          value={q}
+          changing={queryChanging}
+          onChange={setQuery}
+          onClear={() => setQuery('')}
+        />
 
-      <LibrarySearch
-        value={q}
-        changing={queryChanging}
-        onChange={setQuery}
-        onClear={() => setQuery('')}
-      />
-
-      <section
-        className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-3 sm:p-4"
-        aria-labelledby="library-filters-title"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-violet-400" aria-hidden />
-          <h2 id="library-filters-title" className="text-sm font-semibold">
-            {t('library.filtersTitle')}
-          </h2>
-          {activeFilterCount > 0 && (
-            <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-violet-300">
-              {t('library.activeFilters', { count: activeFilterCount })}
-            </span>
-          )}
-          {activeFilterCount > 0 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-            >
-              <X className="h-3 w-3" />
-              {t('library.clearFilters')}
-            </button>
-          )}
-        </div>
-
-        <section className="space-y-2">
-          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-            {t('library.added')}
-          </p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(['all', 'this-week', 'previous-week'] as const).map((item) => (
-              <button
-                key={item}
+        <LibraryFilterPanel count={activeFilterCount}>
+          <section className="space-y-5" aria-labelledby="library-filters-title">
+            {folders.length > 0 && (
+              <Button
                 type="button"
-                onClick={() => setPeriod(item)}
-                aria-pressed={period === item}
-                className={[
-                  'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-                  period === item
-                    ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
-                ].join(' ')}
+                variant="ghost"
+                size="sm"
+                disabled={clearingFolders}
+                onClick={() => setConfirmClearOpen(true)}
+                className="h-8 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-danger)]"
               >
-                {item === 'all'
-                  ? t('library.allPeriods')
-                  : item === 'this-week'
-                    ? t('library.thisWeek')
-                    : t('library.previousWeek')}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Organização — Inbox e pastas em uma superfície única. */}
-        <section className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <FolderChip
-              active={inbox}
-              onClick={() => setInbox(!inbox)}
-              icon={<Inbox className="h-3 w-3 text-violet-400" />}
-              label={t('library.inbox')}
-            />
-            <FolderChip
-              active={!inbox && folderFilter === null}
-              onClick={() => setFolder(null)}
-              icon={<FolderOpen className="h-3 w-3" />}
-              label={t('library.allFolders')}
-            />
-            {visibleFolders.map((folder) => (
-              <FolderChip
-                key={folder.id}
-                active={!inbox && folderFilter === folder.id}
-                onClick={() => setFolder(folder.id)}
-                icon={<Folder className="h-3 w-3 text-amber-500/80" />}
-                label={folder.name}
-                count={folder._count.transcripts}
-              />
-            ))}
-            {sortedFolders.length > 0 && (
-              <FolderOverflowMenu
-                folders={sortedFolders}
-                active={activeFolderHidden}
-                activeFolderId={folderFilter}
-                selectedFolder={selectedFolder}
-                onSelect={setFolder}
-                translate={t}
-              />
+                {clearingFolders ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {t('library.clearFolders')}
+              </Button>
             )}
-          </div>
-          <div className="flex min-w-0 gap-2">
-            <input
-              type="text"
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void createFolder();
-              }}
-              placeholder={t('library.newFolderPlaceholder')}
-              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
-              disabled={creatingFolder}
-              maxLength={120}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={creatingFolder || newFolderName.trim().length === 0}
-              onClick={() => void createFolder()}
-              className="h-8 px-2.5 text-xs"
-            >
-              {creatingFolder ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <FolderPlus className="h-3 w-3" />
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="library-filters-title" className="text-sm font-semibold">
+                {t('library.filtersTitle')}
+              </h2>
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-[var(--color-accent-primary)]">
+                  {t('library.activeFilters', { count: activeFilterCount })}
+                </span>
               )}
-              <span className="hidden sm:inline">{t('library.createFolder')}</span>
-            </Button>
-          </div>
-        </section>
-
-        {(tagTotal > 0 || tagFilter) && (
-          <section className="space-y-2">
-            <div className="flex items-center gap-2">
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-                {t('library.tagsLabel')}
-              </p>
-              {tagFilter && (
+              {activeFilterCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => setTag(null)}
-                  className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                  onClick={clearFilters}
+                  className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
                 >
-                  <X className="h-2.5 w-2.5" />
-                  {t('library.clearTagFilter')}
+                  <X className="h-3 w-3" />
+                  {t('library.clearFilters')}
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {tags.map((tag) => (
+
+            <section className="space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+                {t('library.added')}
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(['all', 'this-week', 'previous-week'] as const).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setPeriod(item)}
+                    aria-pressed={period === item}
+                    className={[
+                      'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
+                      period === item
+                        ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                        : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
+                    ].join(' ')}
+                  >
+                    {item === 'all'
+                      ? t('library.allPeriods')
+                      : item === 'this-week'
+                        ? t('library.thisWeek')
+                        : t('library.previousWeek')}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Organização — Inbox e pastas em uma superfície única. */}
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <FolderChip
-                  key={tag.id}
-                  active={tagFilter === tag.id}
-                  onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
-                  icon={<Tags className="h-3 w-3 text-violet-400" />}
-                  label={tag.name}
-                  count={tag.count}
+                  active={inbox}
+                  onClick={() => setInbox(!inbox)}
+                  icon={<Inbox className="h-3 w-3 text-[var(--color-accent-primary)]" />}
+                  label={t('library.inbox')}
                 />
+                <FolderChip
+                  active={!inbox && folderFilter === null}
+                  onClick={() => setFolder(null)}
+                  icon={<FolderOpen className="h-3 w-3" />}
+                  label={t('library.allFolders')}
+                />
+                {visibleFolders.map((folder) => (
+                  <FolderChip
+                    key={folder.id}
+                    active={!inbox && folderFilter === folder.id}
+                    onClick={() => setFolder(folder.id)}
+                    icon={<Folder className="h-3 w-3 text-amber-500/80" />}
+                    label={folder.name}
+                    count={folder._count.transcripts}
+                  />
+                ))}
+                {sortedFolders.length > 0 && (
+                  <FolderOverflowMenu
+                    folders={sortedFolders}
+                    active={activeFolderHidden}
+                    activeFolderId={folderFilter}
+                    selectedFolder={selectedFolder}
+                    onSelect={setFolder}
+                    translate={t}
+                  />
+                )}
+              </div>
+              <div className="flex min-w-0 gap-2">
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void createFolder();
+                  }}
+                  placeholder={t('library.newFolderPlaceholder')}
+                  className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
+                  disabled={creatingFolder}
+                  maxLength={120}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={creatingFolder || newFolderName.trim().length === 0}
+                  onClick={() => void createFolder()}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  {creatingFolder ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <FolderPlus className="h-3 w-3" />
+                  )}
+                  <span className="hidden sm:inline">{t('library.createFolder')}</span>
+                </Button>
+              </div>
+            </section>
+
+            {(tagTotal > 0 || tagFilter) && (
+              <section className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+                    {t('library.tagsLabel')}
+                  </p>
+                  {tagFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setTag(null)}
+                      className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                      {t('library.clearTagFilter')}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {tags.map((tag) => (
+                    <FolderChip
+                      key={tag.id}
+                      active={tagFilter === tag.id}
+                      onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
+                      icon={<Tags className="h-3 w-3 text-[var(--color-accent-primary)]" />}
+                      label={tag.name}
+                      count={tag.count}
+                    />
+                  ))}
+                  <TagFilterMenu
+                    active={activeTagHidden}
+                    activeTagId={tagFilter}
+                    selectedTag={selectedTag}
+                    status={status}
+                    onSelect={setTag}
+                    translate={t}
+                  />
+                </div>
+              </section>
+            )}
+
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-app-border)] pt-3">
+              {(['active', 'archived', 'trash'] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setStatus(item)}
+                  className={[
+                    'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
+                    status === item
+                      ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                      : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
+                  ].join(' ')}
+                >
+                  {statusFilterLabel(item, t)}
+                </button>
               ))}
-              <TagFilterMenu
-                active={activeTagHidden}
-                activeTagId={tagFilter}
-                selectedTag={selectedTag}
-                status={status}
-                onSelect={setTag}
-                translate={t}
-              />
+              {!pageLoading && total > 0 && (
+                <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
+                  {t('library.resultsRange', {
+                    from: offset + 1,
+                    to: offset + items.length,
+                    total,
+                  })}
+                </span>
+              )}
             </div>
           </section>
-        )}
-
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-app-border)] pt-3">
-          {(['active', 'archived', 'trash'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setStatus(item)}
-              className={[
-                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-                status === item
-                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                  : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
-              ].join(' ')}
-            >
-              {statusFilterLabel(item, t)}
-            </button>
-          ))}
-          {!pageLoading && total > 0 && (
-            <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
-              {t('library.resultsRange', {
-                from: offset + 1,
-                to: offset + items.length,
-                total,
-              })}
-            </span>
-          )}
-        </div>
-      </section>
+        </LibraryFilterPanel>
+      </div>
 
       <div id="library-results" className="scroll-mt-6" />
 
       {isSearching && !pageLoading && (
-        <p className="text-[11px] text-[var(--color-app-muted)] -mt-2">
+        <p className="text-xs text-[var(--color-app-muted)] -mt-2">
           <span className="tabular-nums">{total}</span>{' '}
           {t('library.searchResults', {
             count: total,
@@ -683,9 +678,9 @@ export function TranscricoesPage(): React.ReactElement {
                 aria-current={item === currentPage ? 'page' : undefined}
                 aria-label={t('library.goToPage', { page: item })}
                 className={[
-                  'inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                  'inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                   item === currentPage
-                    ? 'border-violet-500/35 bg-violet-500/10 text-violet-200'
+                    ? 'border-violet-500/35 bg-violet-500/10 text-[var(--color-accent-primary)]'
                     : 'border-transparent text-[var(--color-app-muted)] hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
                 ].join(' ')}
               >
@@ -738,7 +733,7 @@ function FolderChip({
       title={label}
       aria-pressed={active}
       className={[
-        'inline-flex min-h-11 max-w-[180px] items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+        'inline-flex min-h-11 max-w-[180px] items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
         active
           ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
           : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -796,7 +791,7 @@ function FolderOverflowMenu({
           aria-label={translate('library.filterFolders')}
           aria-pressed={active}
           className={[
-            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
             active
               ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
               : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -827,7 +822,7 @@ function FolderOverflowMenu({
         </div>
         <div className="max-h-64 overflow-y-auto p-1">
           {filtered.length === 0 && (
-            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
+            <p className="px-2 py-3 text-center text-xs text-[var(--color-app-muted)]">
               {translate('library.folderSearchEmpty')}
             </p>
           )}
@@ -837,7 +832,7 @@ function FolderOverflowMenu({
               type="button"
               onClick={() => handleSelect(folder.id)}
               className={[
-                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                 activeFolderId === folder.id
                   ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                   : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
@@ -875,9 +870,9 @@ function TranscriptRow({
   return (
     <Link
       to={`/transcricoes/${t.id}`}
-      className="group flex items-center gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
+      className="group flex items-start gap-4 border-b border-[var(--color-app-border)] py-5 transition-colors hover:bg-[var(--color-app-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
     >
-      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--color-app-bg-elevated)] sm:h-14 sm:w-[88px]">
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[var(--color-app-bg-elevated)] sm:h-24 sm:w-36">
         <img
           src={previewSrc}
           alt=""
@@ -896,16 +891,16 @@ function TranscriptRow({
       </div>
 
       <div className="min-w-0 flex-1 space-y-0.5">
-        <h3 className="truncate text-[13px] font-medium leading-snug text-[var(--color-app-fg)] group-hover:text-[var(--color-app-fg)]">
+        <h3 className="line-clamp-3 text-[15px] font-semibold leading-snug sm:line-clamp-2 sm:text-base text-[var(--color-app-fg)] group-hover:text-[var(--color-app-fg)]">
           {highlightInText(t.title, highlightQuery)}
         </h3>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-app-muted)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--color-app-muted)]">
           <span className="inline-flex items-center gap-1 shrink-0">
             {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
             {displaySource(t.source, translate)}
           </span>
           {sourceHostname(t.url) && (
-            <span className="truncate max-w-[160px] font-mono text-[10px] opacity-80">
+            <span className="truncate max-w-[160px] font-mono text-xs">
               {sourceHostname(t.url)}
             </span>
           )}
@@ -939,18 +934,18 @@ function TranscriptRow({
         </div>
         {t.tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 pt-0.5">
-            {t.tags.slice(0, 4).map((tag) => (
+            {t.tags.slice(0, 2).map((tag) => (
               <span
                 key={tag.id}
                 className="inline-flex max-w-[130px] items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-app-subtle)]"
               >
-                <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+                <Tags className="h-2.5 w-2.5 shrink-0 text-[var(--color-accent-primary)]/80" />
                 <span className="truncate">{tag.name}</span>
               </span>
             ))}
-            {t.tags.length > 4 && (
+            {t.tags.length > 2 && (
               <span className="text-[10px] text-[var(--color-app-muted)]">
-                +{t.tags.length - 4}
+                +{t.tags.length - 2}
               </span>
             )}
           </div>
@@ -1040,7 +1035,10 @@ function highlightInText(text: string, query: string): React.ReactNode {
   const parts = text.split(re);
   return parts.map((p, i) =>
     new RegExp(`^(${tokens.map(escapeRegex).join('|')})$`, 'i').test(p) ? (
-      <mark key={i} className="bg-violet-500/20 text-violet-200 rounded-sm px-0.5 -mx-0.5">
+      <mark
+        key={i}
+        className="bg-[var(--color-accent-primary-soft)] text-[var(--color-app-fg)] rounded-sm px-0.5 -mx-0.5"
+      >
         {p}
       </mark>
     ) : (
@@ -1054,7 +1052,10 @@ function renderSnippet(snippet: string): React.ReactNode {
   return parts.map((p, i) => {
     if (p.startsWith('«') && p.endsWith('»')) {
       return (
-        <mark key={i} className="bg-violet-500/20 text-violet-200 rounded-sm px-0.5">
+        <mark
+          key={i}
+          className="bg-[var(--color-accent-primary-soft)] text-[var(--color-app-fg)] rounded-sm px-0.5"
+        >
           {p.slice(1, -1)}
         </mark>
       );
