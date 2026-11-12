@@ -9,7 +9,14 @@ import { MAX_FRAMES, MAX_IMAGES, readImage, saveArtifact, storeImages } from './
 import { VisionSchema } from './interpret';
 import { ensureLease, progress, withTimeout } from './lease';
 import { formatTimestamp } from './markdown';
-import { aiSignal, billFailure, stopIfLeaseLost, type StepContext } from './ports';
+import {
+  aiSignal,
+  billFailure,
+  recordCaptureWarning,
+  stopIfLeaseLost,
+  type StepContext,
+} from './ports';
+import { CaptureError } from './errors';
 import { usableText } from './steps';
 import type { CaptureArtifact, CaptureImageRef } from './types';
 
@@ -40,15 +47,15 @@ export async function framesStep(
     );
     const frames = await storeImages(job, result.images, 'frame', MAX_FRAMES);
     if (frames.length === 0) {
-      ctx.warnings.add('frames_unavailable');
+      recordCaptureWarning(ctx, 'frames_unavailable', new CaptureError('NO_TEXT'));
       return artifact;
     }
     const next: CaptureArtifact = { ...artifact, frames, framesFetched: true };
     await saveArtifact(job.userId, job.id, next);
     return next;
-  } catch {
+  } catch (error) {
     await stopIfLeaseLost(ctx);
-    ctx.warnings.add('frames_unavailable');
+    recordCaptureWarning(ctx, 'frames_unavailable', error);
     return artifact;
   }
 }
@@ -136,7 +143,7 @@ export async function visionStep(
     billFailure(ctx, error);
     await stopIfLeaseLost(ctx);
     // Every provider error (LLM_AUTH and LLM_QUOTA included) is a warning.
-    ctx.warnings.add('images_not_described');
+    recordCaptureWarning(ctx, 'images_not_described', error);
     return artifact;
   }
   await saveArtifact(job.userId, job.id, next);

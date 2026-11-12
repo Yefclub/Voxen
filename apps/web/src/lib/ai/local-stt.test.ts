@@ -3,7 +3,7 @@ import { MockTranscriptionModelV4 } from 'ai/test';
 import { estimateSttCostUsd, findCatalogModel } from './catalog';
 import { createAiClient, type AudioChunk } from './client';
 import { parseModelRoles, type ModelRoles } from './credentials';
-import type { AiError } from './errors';
+import { AiError } from './errors';
 import { transcribeWithLocal } from './local-stt';
 import {
   createLocalSttAvailability,
@@ -357,7 +357,9 @@ describe('sttPrefersWav', () => {
   test.each([
     ['local first and available', { stt: [{ ...LOCAL }, { ...OPENAI }] }, BASE, true],
     ['local first but unavailable', { stt: [{ ...LOCAL }, { ...OPENAI }] }, null, false],
-    ['cloud first', { stt: [{ ...OPENAI }, { ...LOCAL }] }, BASE, false],
+    ['cloud first with local fallback', { stt: [{ ...OPENAI }, { ...LOCAL }] }, BASE, true],
+    ['cloud first with unavailable local', { stt: [{ ...OPENAI }, { ...LOCAL }] }, null, false],
+    ['cloud only', { stt: [{ ...OPENAI }] }, BASE, false],
     ['only unavailable local', { stt: [{ ...LOCAL }] }, null, false],
     ['no STT chain', {}, BASE, false],
   ] as const)('%s → %p', async (_label, roles, endpoint, expected) => {
@@ -368,6 +370,26 @@ describe('sttPrefersWav', () => {
   test('is exported from the AI client module', async () => {
     const module = await import('./client');
     expect(typeof module.sttPrefersWav).toBe('function');
+  });
+
+  test('cloud-first capture audio remains eligible for the configured local fallback', async () => {
+    const { calls, fetchImpl } = sidecar(() => jsonResponse(verbose('recovered')));
+    const cloud = cloudModel();
+    cloud.doGenerate = async () => {
+      cloud.counter.calls += 1;
+      throw new AiError('LLM_QUOTA', 'Provider quota exhausted.', {
+        provider: 'openai',
+        status: 429,
+      });
+    };
+    const ai = client({ stt: [OPENAI, LOCAL] }, { fetch: fetchImpl, cloud });
+    const chunk = (await ai.sttPrefersWav(USER)) ? wav : mp3;
+    const result = await ai.transcribeAudio({ userId: USER, chunks: [chunk(0), chunk(480)] });
+    expect(cloud.counter.calls).toBe(1);
+    expect(calls).toHaveLength(2);
+    expect(result.model).toBe('local:parakeet-tdt-0.6b-v3');
+    expect(result.text).toContain('recovered um.');
+    expect(result.segments.at(-1)?.startSec).toBeGreaterThan(480);
   });
 });
 

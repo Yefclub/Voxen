@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CaptureDeps } from '../src/lib/capture/runner';
 import type { WorkerComment, WorkerFileResult } from '../src/lib/capture/worker-client';
 import { PNG_1PX, extraction, freshCalls, makeDeps } from './fixtures/capture-fakes';
+import { AiError } from '../src/lib/ai/errors';
 
 // Spec 221 (delivery 5): full video (speech + keyframes), description kept,
 // comments, warnings instead of failures.
@@ -45,6 +46,13 @@ function sttFailure(over: Record<string, unknown> = {}) {
     costUsd: 0.002,
     ...over,
   });
+}
+
+function warningEvents(calls: readonly (readonly unknown[])[]) {
+  return calls
+    .map(([line]) => String(line))
+    .filter((line) => line.includes('"event":"capture-step-warning"'))
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 describeIfDb('capture runner: full video, description and comments', () => {
@@ -95,6 +103,56 @@ describeIfDb('capture runner: full video, description and comments', () => {
   function warningsOf(job: { captureMeta: unknown }): unknown {
     return (job.captureMeta as { warnings?: unknown }).warnings;
   }
+
+  it.each([
+    ['speech', 'speech_not_transcribed', 'LLM_AUTH', 'google', 403],
+    ['frames', 'frames_unavailable', 'IP_BLOCKED', null, null],
+    ['vision', 'images_not_described', 'LLM_QUOTA', 'anthropic', 429],
+    ['frames', 'frames_unavailable', 'UNKNOWN', null, null],
+  ] as const)(
+    'logs a safe diagnostic for %s failure %s/%s',
+    async (step, warning, code, provider, status) => {
+      const job = await queue();
+      const privateDetail = 'PRIVATE_PAYLOAD PRIVATE_URL PRIVATE_CREDENTIAL';
+      const error = provider
+        ? new AiError(code as 'LLM_AUTH' | 'LLM_QUOTA', privateDetail, { provider, status })
+        : code === 'UNKNOWN'
+          ? Object.assign(new Error(privateDetail), { provider: privateDetail, status: 9999 })
+          : new CaptureError('IP_BLOCKED', privateDetail);
+      const fail = async () => {
+        throw error;
+      };
+      const log = spyOn(process.stderr, 'write');
+      try {
+        const done = await claimAndRun(
+          job.id,
+          makeDeps({
+            calls: freshCalls(),
+            extract: async () => tiktok({ hasVideo: true }),
+            ...(step === 'speech' ? { transcribe: fail } : {}),
+            ...(step === 'frames' ? { frames: fail } : {}),
+            ...(step === 'vision' ? { vision: fail } : {}),
+          }),
+        );
+        expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
+        expect(warningsOf(done)).toEqual([warning]);
+        const events = warningEvents(log.mock.calls);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          job_id: job.id,
+          actor_id: userId,
+          step,
+          warning,
+          error_code: code,
+        });
+        expect(events[0]?.provider).toBe(provider ?? undefined);
+        expect(events[0]?.http_status).toBe(status ?? undefined);
+        expect(JSON.stringify(events)).not.toContain('PRIVATE');
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
 
   it('transcribes a TikTok that has a description and keeps both in the document', async () => {
     const calls = freshCalls();
@@ -500,10 +558,20 @@ describeIfDb('capture runner: full video, description and comments', () => {
         images: [{ kind: 'frame', mime: 'image/bmp', dataBase64: PNG_1PX, timeSec: 1 }],
       }),
     });
-    const done = await claimAndRun(job.id, deps);
-    expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
-    expect(warningsOf(done)).toEqual(['frames_unavailable']);
-    expect(calls.generate).toEqual(['standard']);
+    const log = spyOn(process.stderr, 'write');
+    try {
+      const done = await claimAndRun(job.id, deps);
+      expect(done.status).toBe('COMPLETED_WITH_WARNINGS');
+      expect(warningsOf(done)).toEqual(['frames_unavailable']);
+      expect(calls.generate).toEqual(['standard']);
+      expect(warningEvents(log.mock.calls)[0]).toMatchObject({
+        job_id: job.id,
+        warning: 'frames_unavailable',
+        error_code: 'NO_TEXT',
+      });
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('stops without a warning or a document when the job is cancelled during /v1/frames', async () => {
@@ -518,11 +586,17 @@ describeIfDb('capture runner: full video, description and comments', () => {
         throw new CaptureError('TIMEOUT');
       },
     });
-    const after = await claimAndRun(job.id, deps);
-    expect(after.status).toBe('CANCELLED');
-    expect(after.transcriptId).toBeNull();
-    expect(warningsOf(after)).toBeUndefined();
-    expect(calls.generate).toEqual([]);
+    const log = spyOn(process.stderr, 'write');
+    try {
+      const after = await claimAndRun(job.id, deps);
+      expect(after.status).toBe('CANCELLED');
+      expect(after.transcriptId).toBeNull();
+      expect(warningsOf(after)).toBeUndefined();
+      expect(calls.generate).toEqual([]);
+      expect(warningEvents(log.mock.calls)).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('bills reused STT and failed attempts of earlier runs in the final cost', async () => {
