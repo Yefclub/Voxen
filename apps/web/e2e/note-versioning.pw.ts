@@ -68,7 +68,7 @@ test('preserves a stale draft and restores an immutable note revision', async ({
       .evaluate((element) => element.scrollWidth - element.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole('button', { name: 'Histórico' })).toBeInViewport();
-    await expect(page.getByRole('button', { name: 'Editar', exact: true })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeInViewport();
   }
 
   await page.getByRole('button', { name: 'Histórico' }).click();

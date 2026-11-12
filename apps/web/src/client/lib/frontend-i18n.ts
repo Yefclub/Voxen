@@ -1,4 +1,6 @@
 export const ptBrFrontendMessages = {
+  'design.noteContent': 'Conteúdo da nota',
+  'design.noteTitle': 'Título da nota',
   'design.guideMethod': 'Como seu Guia é calculado',
   'design.installFailed':
     'Não foi possível iniciar a instalação. Use a opção de instalar no menu do navegador.',
@@ -22,6 +24,8 @@ export const ptBrFrontendMessages = {
     'Esta captura não está disponível. Abra outra captura ou comece uma nova.',
 };
 export const enFrontendMessages: Record<keyof typeof ptBrFrontendMessages, string> = {
+  'design.noteContent': 'Note content',
+  'design.noteTitle': 'Note title',
   'design.guideMethod': 'How your Guide is calculated',
   'design.installFailed':
     'Installation could not start. Use the install option in your browser menu.',

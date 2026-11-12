@@ -1,11 +1,3 @@
-// ============================================================================
-// MarkdownEditor — wrapper de CodeMirror 6 com tema Voxen (zinc + violet)
-// ============================================================================
-// CodeMirror é o mesmo editor que Obsidian usa por baixo. Syntax highlight de
-// markdown (negrito, itálico, headings, listas, code blocks), wiki-links
-// [[título]] destacados em violeta, soft-wrap, sem line numbers.
-// ============================================================================
-
 import { useEffect, useMemo, useRef } from 'react';
 import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -13,8 +5,8 @@ import { EditorView } from '@codemirror/view';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { useI18n } from '../../lib/i18n';
+import { useTheme } from '../../lib/theme-provider';
 
-// Highlight estilo Voxen — combina com o tema dark zinc + acentos violet/emerald
 const voxenHighlight = HighlightStyle.define([
   { tag: t.heading1, class: 'text-[var(--color-app-fg)] font-display text-2xl font-bold' },
   { tag: t.heading2, class: 'text-[var(--color-app-fg)] font-display text-xl font-semibold' },
@@ -22,66 +14,66 @@ const voxenHighlight = HighlightStyle.define([
   { tag: t.heading4, class: 'text-[var(--color-app-subtle)] font-medium' },
   { tag: t.strong, class: 'text-[var(--color-app-fg)] font-semibold' },
   { tag: t.emphasis, class: 'italic text-[var(--color-app-subtle)]' },
-  { tag: t.link, color: 'oklch(72% 0.18 290)', textDecoration: 'underline' },
-  { tag: t.url, color: 'oklch(73% 0.16 159)' },
+  { tag: t.link, color: 'var(--color-accent-violet)', textDecoration: 'underline' },
+  { tag: t.url, color: 'var(--color-accent-primary)' },
   {
     tag: t.quote,
     class:
-      'text-[var(--color-app-muted)] italic border-l-2 border-[var(--color-app-border-strong)] pl-3',
+      'text-[var(--color-app-muted)] italic border-l border-[var(--color-app-border-strong)] pl-3',
   },
   { tag: t.list, class: 'text-[var(--color-app-subtle)]' },
   {
     tag: t.monospace,
-    color: 'oklch(80% 0.16 78)',
-    backgroundColor: 'oklch(28% 0.005 250 / 0.5)',
+    color: 'var(--color-accent-amber)',
+    backgroundColor: 'var(--color-app-surface)',
     class: 'font-mono px-1 rounded',
   },
-  { tag: t.processingInstruction, color: 'oklch(68% 0.008 250)' }, // marcadores #, *, [
-  { tag: t.contentSeparator, color: 'oklch(34% 0.008 250)' },
-  { tag: t.meta, color: 'oklch(68% 0.008 250)' },
+  { tag: t.processingInstruction, color: 'var(--color-app-muted)' },
+  { tag: t.contentSeparator, color: 'var(--color-app-muted)' },
+  { tag: t.meta, color: 'var(--color-app-muted)' },
 ]);
 
-// Tema base — zera bordas, fundo transparente (pega do Card), font padrão
-const voxenTheme = EditorView.theme(
-  {
-    '&': {
-      backgroundColor: 'transparent',
-      color: 'rgb(244 244 245)', // zinc-100
-      fontSize: '14.5px',
-      lineHeight: '1.7',
-      height: '100%',
+const createVoxenTheme = (dark: boolean) =>
+  EditorView.theme(
+    {
+      '&': {
+        backgroundColor: 'transparent',
+        color: 'var(--color-app-fg)',
+        fontSize: '16px',
+        lineHeight: '1.7',
+        height: '100%',
+      },
+      '.cm-content': {
+        caretColor: 'var(--color-accent-violet)',
+        fontFamily: 'var(--font-sans)',
+        padding: '4px 0',
+      },
+      '.cm-content[contenteditable="true"]': {
+        outline: 'none',
+      },
+      '.cm-focused': {
+        outline: 'none',
+      },
+      '.cm-line': {
+        padding: '0',
+      },
+      '.cm-cursor': {
+        borderLeftColor: 'var(--color-accent-violet)',
+        borderLeftWidth: '2px',
+      },
+      '.cm-selectionBackground, ::selection': {
+        backgroundColor: 'var(--theme-selection) !important',
+      },
+      '.cm-scroller': {
+        fontFamily: 'var(--font-sans)',
+        overflow: 'auto',
+      },
+      '.cm-gutters': {
+        display: 'none',
+      },
     },
-    '.cm-content': {
-      caretColor: 'oklch(72% 0.18 290)',
-      fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
-      padding: '4px 0',
-    },
-    '.cm-content[contenteditable="true"]': {
-      outline: 'none',
-    },
-    '.cm-focused': {
-      outline: 'none',
-    },
-    '.cm-line': {
-      padding: '0',
-    },
-    '.cm-cursor': {
-      borderLeftColor: 'oklch(72% 0.18 290)',
-      borderLeftWidth: '2px',
-    },
-    '.cm-selectionBackground, ::selection': {
-      backgroundColor: 'oklch(72% 0.18 290 / 0.25) !important',
-    },
-    '.cm-scroller': {
-      fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
-      overflow: 'auto',
-    },
-    '.cm-gutters': {
-      display: 'none', // sem line numbers (Obsidian-like)
-    },
-  },
-  { dark: true },
-);
+    { dark },
+  );
 
 interface Props {
   value: string;
@@ -100,14 +92,17 @@ export function MarkdownEditor({
 }: Props): React.ReactElement {
   const { t: translate } = useI18n();
   const ref = useRef<ReactCodeMirrorRef>(null);
+  const { theme } = useTheme();
+  const editorTheme = useMemo(() => createVoxenTheme(theme === 'dark'), [theme]);
 
   const extensions = useMemo(
     () => [
       markdown({ base: markdownLanguage, addKeymap: true }),
       syntaxHighlighting(voxenHighlight),
       EditorView.lineWrapping,
+      EditorView.contentAttributes.of({ 'aria-label': translate('design.noteContent') }),
     ],
-    [],
+    [translate],
   );
 
   useEffect(() => {
@@ -134,7 +129,7 @@ export function MarkdownEditor({
         searchKeymap: true,
       }}
       extensions={extensions}
-      theme={voxenTheme}
+      theme={editorTheme}
       height="100%"
       className="h-full"
     />

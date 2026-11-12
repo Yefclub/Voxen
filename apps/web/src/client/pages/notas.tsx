@@ -1,5 +1,3 @@
-// Notes keep their tree inside the workspace, alongside the selected document.
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
@@ -212,7 +210,6 @@ function NoteEditor({
   const [revision, setRevision] = useState(1);
   const [conflict, setConflict] = useState<RevisionConflict | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // O componente recebe key=noteId: toda nota recém-aberta começa em Preview.
   const [previewMode, setPreviewMode] = useState(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
@@ -377,6 +374,7 @@ function NoteEditor({
               }}
               onBlur={() => void save()}
               placeholder={t('notes.untitled')}
+              aria-label={t('design.noteTitle')}
               className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
             />
           )}
@@ -443,8 +441,8 @@ function NoteEditor({
             role="alert"
             data-note-revision-conflict
           >
-            <div>
-              <p className="text-sm font-medium text-rose-100">{t('notes.conflictTitle')}</p>
+            <div className="text-[var(--color-app-danger)]">
+              <p className="text-sm font-medium">{t('notes.conflictTitle')}</p>
               <p className="mt-0.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
                 {t('notes.conflictDescription', { revision: conflict.currentRevision })}
               </p>
