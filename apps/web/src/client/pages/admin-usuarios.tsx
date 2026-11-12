@@ -1,14 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Check,
-  Globe2,
-  Lock,
-  ShieldCheck,
-  ShieldX,
-  Trash2,
-  Users as UsersIcon,
-  X,
-} from '@/components/ui/icons';
+import { Check, ShieldCheck, ShieldX, Trash2, X } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -16,14 +7,13 @@ import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
 import { Spinner } from '../components/ui/spinner';
-import { Switch } from '../components/ui/switch';
 import { ApiError, apiPost, api } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n, type TranslateFn } from '../lib/i18n';
-import { TimezoneSelect } from '../components/timezone-select';
+import { InstanceAccessSettings } from '../components/admin/instance-access-settings';
 import { DataSurface } from '../components/ui/data-surface';
 import {
   Dialog,
@@ -234,77 +224,14 @@ export function AdminUsuariosPage(): React.ReactElement {
             retrying={instanceLoading}
           />
         ) : (
-          <>
-            {/* Toggle de cadastros */}
-            <Card elevated>
-              <CardContent className="pt-5 pb-5 flex items-center gap-4">
-                <div
-                  className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border ${
-                    allowSignups
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-[var(--color-accent-primary)]'
-                      : 'bg-[var(--color-app-surface-hover)] border-[var(--color-app-border)] text-[var(--color-app-muted)]'
-                  }`}
-                >
-                  {allowSignups ? <UsersIcon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--color-app-fg)]">
-                    {t('admin.users.newSignups')}
-                  </p>
-                  <p className="text-xs text-[var(--color-app-muted)] mt-0.5 leading-relaxed">
-                    {allowSignups === null
-                      ? t('admin.users.loading')
-                      : allowSignups
-                        ? t('admin.users.signupOpenCopy')
-                        : t('admin.users.signupClosedCopy')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  {togglingSignups && <Spinner className="text-[var(--color-app-muted)]" />}
-                  <Switch
-                    checked={allowSignups ?? false}
-                    onCheckedChange={toggleSignups}
-                    disabled={allowSignups === null || togglingSignups}
-                    aria-label={t('admin.users.allowSignups')}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Fuso da instância (spec 095) */}
-            <Card elevated>
-              <CardContent className="pt-5 pb-5 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border bg-violet-500/10 border-violet-500/30 text-[var(--color-accent-violet)]">
-                    <Globe2 className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <p className="text-sm font-medium text-[var(--color-app-fg)]">
-                      {t('admin.users.timezoneTitle')}
-                    </p>
-                    <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
-                      {t('admin.users.timezoneDescription')}
-                    </p>
-                  </div>
-                  {savingTimezone && <Spinner className="text-[var(--color-app-muted)] shrink-0" />}
-                </div>
-                {timezone === null ? (
-                  <p className="text-xs text-[var(--color-app-muted)]">
-                    {t('admin.users.loading')}
-                  </p>
-                ) : (
-                  <TimezoneSelect
-                    id="admin-instance-timezone"
-                    ariaLabel={t('admin.users.timezoneTitle')}
-                    value={timezone}
-                    onChange={(next) => void saveTimezone(next)}
-                    disabled={savingTimezone}
-                    hint={t('admin.users.timezoneHint')}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </>
+          <InstanceAccessSettings
+            allowSignups={allowSignups}
+            timezone={timezone}
+            togglingSignups={togglingSignups}
+            savingTimezone={savingTimezone}
+            onSignupsChange={toggleSignups}
+            onTimezoneChange={saveTimezone}
+          />
         )}
 
         <section className="space-y-4">
