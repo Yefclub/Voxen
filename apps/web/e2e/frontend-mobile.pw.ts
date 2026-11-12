@@ -223,4 +223,73 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     }
   });
+  test('defers installation during a capture and respects dismissal across navigation', async ({
+    page,
+  }) => {
+    await page.goto('/capturar');
+    await page
+      .getByRole('textbox', { name: 'Link para capturar' })
+      .fill('https://example.test/unsent');
+    await page.evaluate(() => {
+      const event = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+        prompt: async () => {},
+        userChoice: Promise.resolve({ outcome: 'dismissed' }),
+      });
+      window.dispatchEvent(event);
+    });
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByRole('textbox', { name: 'Link para capturar' })).toHaveValue(
+      'https://example.test/unsent',
+    );
+    await page.getByRole('link', { name: 'Biblioteca', exact: true }).click();
+    const install = page.getByRole('dialog');
+    await expect(install).toBeVisible();
+    await install.getByRole('button', { name: 'Agora não', exact: true }).click();
+    await expect(install).toBeHidden();
+    await page.getByRole('link', { name: 'Capturar', exact: true }).click();
+    await page.getByRole('link', { name: 'Biblioteca', exact: true }).click();
+    await expect(install).toBeHidden();
+  });
+  test('keeps a pending update away from an unsent capture and applies it on the library', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.assign(window, { frontendDocumentInstance: Math.random().toString(36) });
+    });
+    await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === '/api/version'),
+      page.goto('/capturar'),
+    ]);
+    const capture = page.getByRole('textbox', { name: 'Link para capturar' });
+    await capture.fill('https://example.test/keep-this-draft');
+    const original = await page.evaluate(
+      () => (window as unknown as { frontendDocumentInstance: string }).frontendDocumentInstance,
+    );
+    let checks = 0;
+    await page.route('**/api/version', (route) => {
+      checks += 1;
+      return route.fulfill({ json: { version: 'frontend-preview-225', gitSha: 'f'.repeat(40) } });
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => checks).toBeGreaterThan(0);
+    // Wait beyond the real update fallback (3.5s), rather than mocking apply().
+    await page.waitForTimeout(4300);
+    await expect(capture).toHaveValue('https://example.test/keep-this-draft');
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { frontendDocumentInstance: string }).frontendDocumentInstance,
+      ),
+    ).toBe(original);
+    await page.getByRole('link', { name: 'Biblioteca', exact: true }).click();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as unknown as { frontendDocumentInstance: string }).frontendDocumentInstance,
+          ),
+        { timeout: 10000 },
+      )
+      .not.toBe(original);
+  });
 });

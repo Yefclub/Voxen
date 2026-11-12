@@ -4,7 +4,7 @@ import { shouldOfferInstall } from '../src/client/components/pwa-install-prompt'
 describe('PWA install offer gate', () => {
   test('offers installation inside the app', () => {
     expect(shouldOfferInstall('/transcricoes', false)).toBe(true);
-    expect(shouldOfferInstall('/capturar', false)).toBe(true);
+    expect(shouldOfferInstall('/capturar', false)).toBe(false);
   });
 
   test('never offers it during login or the MCP OAuth consent', () => {
@@ -20,5 +20,22 @@ describe('PWA install offer gate', () => {
 
   test('never offers it in a window opened by another app', () => {
     expect(shouldOfferInstall('/transcricoes', true)).toBe(false);
+  });
+  test('does not interrupt captures, reading or editing', () => {
+    for (const path of [
+      '/capturar',
+      '/capturar/job',
+      '/conta',
+      '/conta/mcp',
+      '/conta/ia',
+      '/notas',
+      '/notas/id',
+      '/transcricoes/id',
+      '/grafo',
+      '/onboarding',
+      '/admin/usuarios',
+      '/qr-login',
+    ])
+      expect(shouldOfferInstall(path, false), path).toBe(false);
   });
 });

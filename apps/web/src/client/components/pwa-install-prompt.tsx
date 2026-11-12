@@ -39,7 +39,20 @@ function canPrompt(): boolean {
 }
 
 /** Sign-in and OAuth routes: installing there takes the tab out of the flow. */
-const NO_INSTALL_PREFIXES = ['/entrar', '/cadastro', '/pendente', '/oauth'];
+const NO_INSTALL_PREFIXES = [
+  '/entrar',
+  '/cadastro',
+  '/pendente',
+  '/oauth',
+  '/qr-login',
+  '/onboarding',
+  '/capturar',
+  '/notas',
+  '/conta',
+  '/admin',
+  '/setup',
+  '/grafo',
+];
 
 /**
  * Offer installation only inside the app itself: never during sign-in or the
@@ -47,7 +60,7 @@ const NO_INSTALL_PREFIXES = ['/entrar', '/cadastro', '/pendente', '/oauth'];
  * popup), where installing reopens Voxen on the library and drops the flow.
  */
 export function shouldOfferInstall(pathname: string, openedByAnotherWindow: boolean): boolean {
-  if (openedByAnotherWindow) return false;
+  if (openedByAnotherWindow || pathname.startsWith('/transcricoes/')) return false;
   return !NO_INSTALL_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
@@ -60,6 +73,7 @@ export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.React
   const [open, setOpen] = useState(false);
   const [ios, setIos] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState(false);
 
   useEffect(() => {
     if (isStandalone() || !canPrompt()) return;
@@ -80,7 +94,7 @@ export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.React
       setOpen(false);
       return;
     }
-    if (ios || deferred) setOpen(true);
+    if ((ios || deferred) && canPrompt()) setOpen(true);
   }, [deferred, enabled, ios]);
 
   const dismiss = (): void => {
@@ -98,14 +112,16 @@ export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.React
     try {
       await deferred.prompt();
       await deferred.userChoice;
-      setOpen(false);
+      dismiss();
+    } catch {
+      setInstallError(true);
     } finally {
       setInstalling(false);
       setDeferred(null);
     }
   };
 
-  if (!open || (!ios && !deferred)) return null;
+  if (!open || (!ios && !deferred && !installError)) return null;
 
   return (
     <Dialog open onOpenChange={(next) => !next && dismiss()}>
@@ -116,6 +132,11 @@ export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.React
             {t(ios ? 'pwa.installIosDescription' : 'pwa.installDescription')}
           </DialogDescription>
         </DialogHeader>
+        {installError && (
+          <p role="alert" className="text-sm text-[var(--color-app-danger)]">
+            {t('design.installFailed')}
+          </p>
+        )}
         {ios && (
           <ol className="space-y-2 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-3 text-sm text-[var(--color-app-subtle)]">
             <li className="flex items-center gap-2">
@@ -132,7 +153,7 @@ export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.React
           <Button type="button" variant="ghost" onClick={dismiss}>
             {t('pwa.installLater')}
           </Button>
-          {!ios && (
+          {!ios && deferred && (
             <Button
               type="button"
               variant="primary"
