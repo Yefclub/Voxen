@@ -10,6 +10,7 @@ import type {
 } from '../../shared/graph-centrality';
 import { buildGraphCommunitiesFromResponse, representativeFirst } from './graph-community-model';
 import { buildClientGraphCentrality } from './graph-centrality-model';
+import { overviewEdgeColor } from './graph-overview-color';
 
 export type { GraphCommunity } from '../../shared/graph-community';
 
@@ -231,19 +232,6 @@ export function toOpaqueGraphColor(color: string): string {
     .slice(1, 4)
     .map((channel) =>
       Math.max(0, Math.min(255, Math.round(Number(channel))))
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
-}
-
-/** Preblend overview edges so intersecting lines do not accumulate opacity. */
-function overviewEdgeColor(canvas: string, foreground: string): string {
-  const base = Number.parseInt(canvas.slice(1), 16);
-  const ink = Number.parseInt(foreground.slice(1), 16);
-  return `#${[16, 8, 0]
-    .map((shift) =>
-      Math.round(((base >> shift) & 255) * 0.88 + ((ink >> shift) & 255) * 0.12)
         .toString(16)
         .padStart(2, '0'),
     )
