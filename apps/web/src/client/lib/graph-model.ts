@@ -10,6 +10,7 @@ import type {
 } from '../../shared/graph-centrality';
 import { buildGraphCommunitiesFromResponse, representativeFirst } from './graph-community-model';
 import { buildClientGraphCentrality } from './graph-centrality-model';
+import { overviewEdgeColor } from './graph-overview-color';
 
 export type { GraphCommunity } from '../../shared/graph-community';
 
@@ -118,6 +119,7 @@ export interface GraphLayout {
 }
 
 export interface SigmaNodeAttributes {
+  forceLabel?: boolean;
   x: number;
   y: number;
   size: number;
@@ -287,7 +289,7 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
       activeLabel: '#ffffff',
       labelStroke: 'rgba(255, 255, 255, 0.92)',
       dimNode: 'rgba(161, 161, 170, 0.4)',
-      dimEdge: 'rgba(161, 161, 170, 0.16)',
+      dimEdge: overviewEdgeColor('#f7f7f8', '#09090b'),
       neutralEdge: 'rgba(113, 113, 122, 0.28)',
       nodes: LIGHT_NODE_COLORS,
       edges: LIGHT_EDGE_COLORS,
@@ -303,7 +305,7 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
     activeLabel: '#ffffff',
     labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.94)',
     dimNode: 'rgba(82, 82, 91, 0.42)',
-    dimEdge: 'rgba(82, 82, 91, 0.14)',
+    dimEdge: overviewEdgeColor(canvas, '#fafafa'),
     neutralEdge: 'rgba(148, 163, 184, 0.34)',
     nodes: NODE_COLORS,
     edges: EDGE_COLORS,
@@ -378,6 +380,7 @@ export function buildSigmaGraphModel(
   palette: GraphPalette = resolveGraphPalette('linear'),
 ): SigmaGraphModel {
   const communities = buildGraphCommunities(data);
+  const representativeIds = new Set(communities.map((community) => community.representativeNodeId));
   const layout = buildGraphLayout(data, layoutOptions, communities);
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     multi: true,
@@ -401,7 +404,7 @@ export function buildSigmaGraphModel(
     target: edge.to,
     label: translate ? translate(`graph.edge.${edge.kind}`) : edge.kind,
     size: edge.kind === 'links_to' ? 1.8 : edge.kind === 'related_to' ? 1.25 : 1,
-    fill: toOpaqueGraphColor(palette.edges[edge.kind]),
+    fill: palette.dimEdge,
     data: edge,
   }));
 
@@ -410,13 +413,17 @@ export function buildSigmaGraphModel(
     graph.addNode(node.id, {
       x: (node.x - layout.viewBox.width / 2) / 150,
       y: (node.y - layout.viewBox.height / 2) / 150,
-      size: Math.max(3.5, Math.min(10, node.radius / 3)),
+      size:
+        data.nodes.length > 250
+          ? Math.max(2.5, Math.min(6, node.radius / 5))
+          : Math.max(3.5, Math.min(10, node.radius / 3)),
       color: palette.nodes[node.type],
       label: node.label,
+      forceLabel: representativeIds.has(node.id),
       type: 'circle',
       nodeType: node.type,
       communityId: node.communityId,
-      zIndex: SOURCE_NODE_TYPES.has(node.type) ? 2 : 1,
+      zIndex: representativeIds.has(node.id) ? 3 : SOURCE_NODE_TYPES.has(node.type) ? 2 : 1,
       original: node,
     });
   }
@@ -527,65 +534,59 @@ export function buildGraphLayout(
   const maxNodeRadius = Math.max(minNodeRadius, options.maxNodeRadius ?? DEFAULT_MAX_NODE_RADIUS);
   const degree = graphDegrees(data.edges);
   const positions = new Map<string, { x: number; y: number; communityId: number }>();
-  // Núcleo (maior comunidade, id 0) no centro do viewBox; satélites em anel —
-  // o usuário vê a concentração de dados no meio da tela.
-  const coreCenter = { x: viewBox.width / 2, y: viewBox.height / 2 };
-  const satelliteCount = Math.max(communities.length - 1, 0);
-  const orbitRadius =
-    satelliteCount === 0
-      ? 0
-      : Math.min(viewBox.width, viewBox.height) * (satelliteCount === 1 ? 0.28 : 0.32);
-  const coreMaxRadius = Math.max(
-    48,
-    Math.min(viewBox.width, viewBox.height) * (satelliteCount === 0 ? 0.36 : 0.22),
-  );
-  const satMaxRadius = Math.max(
-    28,
-    Math.min(viewBox.width, viewBox.height) * (satelliteCount <= 2 ? 0.16 : 0.12),
-  );
-
-  for (const community of communities) {
-    let center = coreCenter;
-    if (community.id > 0 && satelliteCount > 0) {
-      const angle =
-        ((community.id - 1) / satelliteCount) * Math.PI * 2 -
-        Math.PI / 2 +
-        ((hashString(community.label) % 40) * Math.PI) / 180;
-      center = {
-        x: coreCenter.x + Math.cos(angle) * orbitRadius,
-        y: coreCenter.y + Math.sin(angle) * orbitRadius,
-      };
-    }
-    const maxRadius = community.id === 0 ? coreMaxRadius : satMaxRadius;
-    const angleOffset = ((hashString(community.label) % 360) * Math.PI) / 180;
-    const orderedNodeIds = representativeFirst(community);
-    orderedNodeIds.forEach((nodeId, index) => {
-      if (index === 0) {
-        positions.set(nodeId, { ...center, communityId: community.id });
-        return;
-      }
-      const progress = Math.sqrt(index / Math.max(orderedNodeIds.length - 1, 1));
-      const angle = angleOffset + index * GOLDEN_ANGLE;
-      const point = polarPoint(center, maxRadius * progress, angle);
-      positions.set(nodeId, { ...point, communityId: community.id });
-    });
-  }
-
   const isolatedNodes = data.nodes
-    .filter((node) => !positions.has(node.id))
+    .filter((node) => !communities.some((community) => community.nodeIds.includes(node.id)))
     .sort(compareGraphNodes);
-  const isolatedOrbit = Math.min(viewBox.width, viewBox.height) * 0.42;
+  const padding = 64;
+  const width = Math.max(1, viewBox.width - padding * 2);
+  const height = Math.max(1, viewBox.height - padding * 2);
+  const isolatedWidth =
+    isolatedNodes.length && communities.length
+      ? width * Math.min(0.35, Math.max(0.2, isolatedNodes.length / Math.max(data.nodes.length, 1)))
+      : 0;
+  const groupWidth = width - isolatedWidth;
+  const columns = Math.max(1, Math.ceil(Math.sqrt((communities.length * groupWidth) / height)));
+  const rows = Math.max(1, Math.ceil(communities.length / columns));
+  const cellWidth = groupWidth / columns;
+  const cellHeight = height / rows;
+  const cells = Array.from({ length: columns * rows }, (_, index) => ({
+    x: padding + ((index % columns) + 0.5) * cellWidth,
+    y: padding + (Math.floor(index / columns) + 0.5) * cellHeight,
+  })).sort(
+    (a, b) =>
+      Math.hypot(a.x - padding - groupWidth / 2, a.y - viewBox.height / 2) -
+        Math.hypot(b.x - padding - groupWidth / 2, b.y - viewBox.height / 2) ||
+      a.y - b.y ||
+      a.x - b.x,
+  );
+
+  // Separate thematic groups with a stable gutter; isolated nodes occupy a
+  // distinct grid rather than a crowded ring that implies a shared community.
+  communities.forEach((community, groupIndex) => {
+    const center = cells[groupIndex]!;
+    const maxRadius = Math.min(cellWidth, cellHeight) * 0.37;
+    const angleOffset = hashAngle(community.label);
+    const ordered = representativeFirst(community);
+    ordered.forEach((nodeId, index) => {
+      const progress = Math.sqrt(index / Math.max(ordered.length - 1, 1));
+      positions.set(nodeId, {
+        ...polarPoint(center, maxRadius * progress, angleOffset + index * GOLDEN_ANGLE),
+        communityId: community.id,
+      });
+    });
+  });
+
+  const orphanWidth = isolatedWidth || width;
+  const orphanLeft = padding + (isolatedWidth ? groupWidth : 0);
+  const orphanColumns = Math.max(
+    1,
+    Math.ceil(Math.sqrt((isolatedNodes.length * orphanWidth) / height)),
+  );
+  const orphanRows = Math.max(1, Math.ceil(isolatedNodes.length / orphanColumns));
   isolatedNodes.forEach((node, index) => {
-    if (isolatedNodes.length === 1 && communities.length === 0) {
-      positions.set(node.id, { ...coreCenter, communityId: -1 });
-      return;
-    }
-    const angle =
-      (index / Math.max(isolatedNodes.length, 1)) * Math.PI * 2 -
-      Math.PI / 2 +
-      ((hashString(node.id) % 24) * Math.PI) / 180;
     positions.set(node.id, {
-      ...polarPoint(coreCenter, isolatedOrbit, angle),
+      x: orphanLeft + (((index % orphanColumns) + 0.5) * orphanWidth) / orphanColumns,
+      y: padding + ((Math.floor(index / orphanColumns) + 0.5) * height) / orphanRows,
       communityId: -1,
     });
   });

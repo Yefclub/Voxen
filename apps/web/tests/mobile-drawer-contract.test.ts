@@ -37,7 +37,9 @@ describe('navegação mobile', () => {
     expect(markdown).toContain('data-drawer-gesture-ignore');
     expect(gesture).toContain("'[data-horizontal-scroll]'");
     expect(gesture).toContain("'canvas'");
-    expect(graph).toMatch(/<section\s+data-drawer-gesture-ignore\s+className="graph-canvas-grid/);
+    expect(graph).toMatch(
+      /<section\s+data-drawer-gesture-ignore[^>]*data-testid="knowledge-graph-map"/s,
+    );
     expect(drawer).not.toContain('shadow-2xl');
     expect(drawer).toContain('boxShadow: panelShadow');
     expect(drawer).toContain('visibility: panelVisibility');

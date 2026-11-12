@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseColor } from 'sigma/utils';
 import {
   ALL_GRAPH_NODE_TYPES,
   buildGraphCommunities,
@@ -95,6 +96,40 @@ describe('filterGraphData', () => {
 });
 
 describe('graph insights and deterministic layout', () => {
+  test('separates disconnected thematic groups instead of overlapping their bounds', () => {
+    const nodes = Array.from({ length: 12 }, (_, group) =>
+      Array.from({ length: 12 }, (_, index) =>
+        node(`g${group}-${index}`, `Group ${group} node ${index}`, 'topic'),
+      ),
+    ).flat();
+    const edges = Array.from({ length: 12 }, (_, group) =>
+      Array.from({ length: 11 }, (_, index) =>
+        edge(`g${group}-e${index}`, `g${group}-0`, `g${group}-${index + 1}`, 'related_to'),
+      ),
+    ).flat();
+    const graph = { nodes, edges, totalNodes: nodes.length, totalEdges: edges.length };
+    const layout = buildGraphLayout(graph);
+    const groups = buildGraphCommunities(graph).map((community) => {
+      const points = layout.nodes.filter((n) => community.nodeIds.includes(n.id));
+      return {
+        left: Math.min(...points.map((n) => n.x)),
+        right: Math.max(...points.map((n) => n.x)),
+        top: Math.min(...points.map((n) => n.y)),
+        bottom: Math.max(...points.map((n) => n.y)),
+      };
+    });
+    for (let a = 0; a < groups.length; a++)
+      for (let b = a + 1; b < groups.length; b++) {
+        const one = groups[a]!;
+        const two = groups[b]!;
+        expect(
+          one.right < two.left ||
+            two.right < one.left ||
+            one.bottom < two.top ||
+            two.bottom < one.top,
+        ).toBe(true);
+      }
+  });
   test('derives sorted communities and hubs from the visible graph', () => {
     const communities = buildGraphCommunities(DATA);
     const insights = buildGraphInsights(DATA);
@@ -170,6 +205,18 @@ describe('graph insights and deterministic layout', () => {
 });
 
 describe('graph palettes', () => {
+  test('uses opaque, subdued overview edges so overlapping connections do not accumulate brightness', () => {
+    for (const theme of ['linear', 'zinc', 'emerald', 'light'] as const) {
+      const palette = resolveGraphPalette(theme);
+      const edge = parseColor(palette.dimEdge);
+      const canvas = parseColor(palette.canvas);
+      expect(edge.a).toBe(1);
+      for (const channel of ['r', 'g', 'b'] as const) {
+        expect(Math.abs(edge[channel] - canvas[channel])).toBeGreaterThan(10);
+        expect(Math.abs(edge[channel] - canvas[channel])).toBeLessThan(40);
+      }
+    }
+  });
   test('uses readable, distinct palettes for light and dark themes', () => {
     const dark = resolveGraphPalette('zinc');
     const emerald = resolveGraphPalette('emerald');

@@ -99,6 +99,26 @@ describe('graph label collisions', () => {
         ).toBe(false);
       }
   });
+  test('places a representative label outside a dense group without crossing its markers', () => {
+    const { draw, context, settings, painted } = fixture();
+    const markers = [130, 160, 190].flatMap((x) => [70, 100, 130].map((y) => ({ x, y, size: 9 })));
+    draw(
+      context,
+      { x: 160, y: 100, size: 8, color: '', label: 'Representative', forceLabel: true, zIndex: 3 },
+      settings,
+    );
+    draw.flush(markers);
+    expect(painted).toHaveLength(1);
+    const label = painted[0]!;
+    for (const marker of markers) {
+      expect(
+        label.x + label.text.length * 8 < marker.x - marker.size ||
+          label.x > marker.x + marker.size ||
+          label.y + 3 < marker.y - marker.size ||
+          label.y - 10 > marker.y + marker.size,
+      ).toBe(true);
+    }
+  });
   test('releases occupied regions between camera frames', () => {
     const { draw, context, settings, painted } = fixture();
     const node = { x: 100, y: 100, size: 8, color: '', label: 'Source document' };

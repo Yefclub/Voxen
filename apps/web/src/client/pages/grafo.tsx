@@ -1,5 +1,6 @@
 import { Component, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useReducedMotion } from 'motion/react';
 import type {
   GraphCanvas as GraphCanvasType,
   GraphCanvasRef,
@@ -7,20 +8,16 @@ import type {
   Theme,
 } from 'reagraph';
 import {
-  ArrowLeft,
   Box,
   BrainCircuit,
   ChevronRight,
   ExternalLink,
-  Focus,
   Layers3,
   Network,
   PanelLeft,
   RefreshCw,
   Square,
   X,
-  ZoomIn,
-  ZoomOut,
 } from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { GraphServerSearch } from '../components/graph-server-search';
@@ -56,6 +53,7 @@ import {
   type GraphMode,
 } from '../lib/graph-renderer';
 import { KnowledgeGraphCanvas as BrainGraph2DCanvas } from '../components/graph/knowledge-graph-canvas';
+import { GraphViewportControls } from '../components/graph/graph-canvas-controls';
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useIsCoarsePointer } from '../lib/use-media-query';
@@ -121,7 +119,7 @@ class GraphRendererBoundary extends Component<
 function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
   return {
     ...baseTheme,
-    canvas: { background: palette.canvas, fog: palette.canvas },
+    canvas: { background: palette.canvas, fog: null },
     node: {
       ...baseTheme.node,
       fill: palette.nodes.content,
@@ -132,7 +130,7 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
       label: {
         color: palette.label,
         stroke: palette.labelStroke,
-        activeColor: palette.activeLabel,
+        activeColor: palette.label,
         // Halo semi-opaco no tom do canvas — título legível sobre nós coloridos.
         backgroundColor: palette.canvas,
         backgroundOpacity: 0.88,
@@ -148,12 +146,12 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
       ...baseTheme.edge,
       fill: toOpaqueGraphColor(palette.neutralEdge),
       activeFill: toOpaqueGraphColor(palette.label),
-      opacity: 0.42,
+      opacity: 1,
       selectedOpacity: 1,
       inactiveOpacity: 0.05,
       label: {
         color: palette.label,
-        activeColor: palette.activeLabel,
+        activeColor: palette.label,
         stroke: palette.labelStroke,
       },
     },
@@ -312,98 +310,88 @@ export function GrafoPage(): React.ReactElement {
   return (
     <AnimatedPage className="h-full">
       <div className="flex h-full min-h-0 flex-col bg-[var(--color-app-bg)] text-[var(--color-app-fg)]">
-        <header className="relative z-50 shrink-0 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+4.75rem)] md:px-4 md:pt-4 md:pr-36">
-          <div className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/92 p-3 shadow-sm backdrop-blur-xl md:p-3.5">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] md:hidden"
-                aria-label={t('shell.backToHome')}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]">
-                  <BrainCircuit className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h1 className="truncate font-display text-base font-semibold">
-                      {t('graph.title')}
-                    </h1>
-                    <GraphIndexStatusBadge
-                      state={graphIndexState(indexing, indexDeferred, indexFailed, Boolean(data))}
-                      translate={t}
-                    />
-                  </div>
-                  <p className="hidden truncate text-xs text-[var(--color-app-muted)] sm:block">
-                    {t('graph.subtitle')}
-                  </p>
-                </div>
-              </div>
-
-              {filtered && (
-                <div className="ml-auto hidden items-center gap-2 lg:flex">
-                  <MetricPill value={filtered.totalNodes} label={t('graph.nodes')} />
-                  <MetricPill value={filtered.totalEdges} label={t('graph.relations')} />
-                  <MetricPill
-                    value={insights?.communities.length ?? 0}
-                    label={t('graph.communities')}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2.5">
-              <GraphServerSearch
-                query={search}
-                results={serverSearchResults}
-                loading={searchLoading}
-                focusedId={focusedGraphId}
+        <header className="relative z-30 shrink-0 px-3 pb-3 pt-4 md:px-4">
+          <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BrainCircuit className="h-5 w-5 shrink-0 text-[var(--color-accent-primary)]" />
+              <h1 className="font-display text-xl font-semibold">{t('graph.title')}</h1>
+              <GraphIndexStatusBadge
+                state={graphIndexState(indexing, indexDeferred, indexFailed, Boolean(data))}
                 translate={t}
-                onQueryChange={setSearch}
-                onSelect={selectSearchResult}
-                onClearFocus={() => {
-                  setFocusedGraphId(null);
-                  setSelectedId(null);
-                }}
               />
-              <Button
-                variant="outline"
-                size="default"
-                onClick={() => setExplorerOpen((current) => !current)}
-                className="xl:hidden"
-              >
-                <PanelLeft className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t('graph.explore')}</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="default"
-                onPointerEnter={() => void loadReagraph()}
-                onFocus={() => void loadReagraph()}
-                onClick={() => setMode((current) => (current === '2d' ? '3d' : '2d'))}
-                title={t(mode === '2d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
-              >
-                {mode === '2d' ? (
-                  <Box className="h-3.5 w-3.5" />
-                ) : (
-                  <Square className="h-3.5 w-3.5" />
-                )}
-                <span>{mode === '2d' ? '3D' : '2D'}</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="default"
-                onClick={() => setReprocessOpen(true)}
-                disabled={loading || indexing}
-                title={t('graph.reprocessBrainTitle')}
-              >
-                <RefreshCw className={cn('h-3.5 w-3.5', (loading || indexing) && 'animate-spin')} />
-                <span className="hidden sm:inline">{t('graph.reprocessBrain')}</span>
-              </Button>
             </div>
+            {filtered && (
+              <p className="hidden text-xs tabular-nums text-[var(--color-app-muted)] sm:block">
+                {t('graph.visibleCount', {
+                  nodes: filtered.totalNodes,
+                  edges: filtered.totalEdges,
+                })}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <GraphServerSearch
+              query={search}
+              results={serverSearchResults}
+              loading={searchLoading}
+              focusedId={focusedGraphId}
+              translate={t}
+              onQueryChange={setSearch}
+              onSelect={selectSearchResult}
+              onClearFocus={() => {
+                setFocusedGraphId(null);
+                setSelectedId(null);
+              }}
+            />
+            <div
+              role="group"
+              aria-label={t('graph.viewMode')}
+              className="flex shrink-0 gap-0.5 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-0.5"
+            >
+              {(['2d', '3d'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={mode === value}
+                  onPointerEnter={value === '3d' ? () => void loadReagraph() : undefined}
+                  onFocus={value === '3d' ? () => void loadReagraph() : undefined}
+                  onClick={() => setMode(value)}
+                  title={t(value === '3d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
+                  className={cn(
+                    'flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                    mode === value
+                      ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                      : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
+                  )}
+                >
+                  {value === '2d' ? (
+                    <Square className="h-3.5 w-3.5" />
+                  ) : (
+                    <Box className="h-3.5 w-3.5" />
+                  )}
+                  {value.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setExplorerOpen((current) => !current)}
+              className="xl:hidden"
+              aria-expanded={explorerOpen}
+            >
+              <PanelLeft className="h-3.5 w-3.5" />
+              {t('graph.explore')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setReprocessOpen(true)}
+              disabled={loading || indexing}
+              title={t('graph.reprocessBrainTitle')}
+              aria-label={t('graph.reprocessBrain')}
+            >
+              <RefreshCw className={cn('h-4 w-4', (loading || indexing) && 'animate-spin')} />
+            </Button>
           </div>
         </header>
 
@@ -427,26 +415,11 @@ export function GrafoPage(): React.ReactElement {
           }}
         />
 
-        <div className="flex min-h-0 flex-1 gap-3 px-3 pb-3 md:px-4 md:pb-4">
-          {data && filtered && insights && (
-            <aside className="hidden w-72 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] xl:flex">
-              <GraphExplorer
-                sourceData={data}
-                visibleData={filtered}
-                insights={insights}
-                activeTypes={activeTypes}
-                palette={palette}
-                translate={t}
-                onToggleType={toggleType}
-                onReset={resetFilters}
-                onSelect={selectNode}
-              />
-            </aside>
-          )}
-
+        <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 md:px-4 md:pb-4 xl:flex-row">
           <section
             data-drawer-gesture-ignore
-            className="graph-canvas-grid relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] shadow-inner"
+            className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]"
+            data-testid="knowledge-graph-map"
           >
             <BrainGraphCanvas
               model={model}
@@ -461,13 +434,19 @@ export function GrafoPage(): React.ReactElement {
             />
 
             {filtered && hasGraph && (
-              <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,18rem)] flex-col gap-1">
-                <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] tabular-nums text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
-                  {t('graph.visibleCount', {
-                    nodes: filtered.totalNodes,
-                    edges: filtered.totalEdges,
-                  })}
-                </div>
+              <p className="pointer-events-none absolute bottom-3 left-3 right-3 z-10 hidden text-[11px] text-[var(--color-app-muted)] md:block">
+                {t(mode === '3d' ? 'graph.controlsHint3d' : 'graph.controlsHint')}
+              </p>
+            )}
+            {!loading && data && filtered && data.nodes.length > 0 && !hasGraph && (
+              <div
+                role="status"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center"
+              >
+                <p className="text-sm text-[var(--color-app-muted)]">{t('graph.noMatches')}</p>
+                <Button variant="outline" onClick={resetFilters}>
+                  {t('graph.resetFilters')}
+                </Button>
               </div>
             )}
 
@@ -480,7 +459,7 @@ export function GrafoPage(): React.ReactElement {
               </div>
             )}
             {loading && data && (
-              <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] backdrop-blur-md">
+              <div className="pointer-events-none absolute left-3 top-16 z-20 flex items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] backdrop-blur-md">
                 <Spinner size={12} />
                 {t('graph.refreshing')}
               </div>
@@ -545,7 +524,7 @@ export function GrafoPage(): React.ReactElement {
               <>
                 <button
                   type="button"
-                  className="absolute inset-0 z-20 bg-black/15 backdrop-blur-[1px] xl:hidden"
+                  className="absolute inset-0 z-20 bg-[var(--color-app-bg)]/60 xl:hidden"
                   aria-label={t('graph.closeExplorer')}
                   onClick={() => setExplorerOpen(false)}
                 />
@@ -565,34 +544,55 @@ export function GrafoPage(): React.ReactElement {
                 </aside>
               </>
             )}
-
-            {selectedNode && filtered && (
-              <>
-                <aside className="absolute bottom-3 right-3 top-3 z-30 hidden w-80 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/95 shadow-2xl backdrop-blur-xl md:flex">
-                  <GraphNodeInspector
-                    node={selectedNode}
-                    data={filtered}
-                    palette={palette}
-                    translate={t}
-                    onClose={() => setSelectedId(null)}
-                    onOpen={openNode}
-                    onSelect={selectNode}
-                  />
-                </aside>
-                <aside className="absolute inset-x-3 bottom-3 z-30 flex max-h-[62%] overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/98 shadow-2xl backdrop-blur-xl md:hidden">
-                  <GraphNodeInspector
-                    node={selectedNode}
-                    data={filtered}
-                    palette={palette}
-                    translate={t}
-                    onClose={() => setSelectedId(null)}
-                    onOpen={openNode}
-                    onSelect={selectNode}
-                  />
-                </aside>
-              </>
-            )}
           </section>
+          {selectedNode && filtered && (
+            <aside
+              aria-label={t('graph.nodeDetails')}
+              className="flex h-[52%] min-h-0 shrink-0 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] xl:hidden"
+            >
+              <GraphNodeInspector
+                key={selectedNode.id}
+                node={selectedNode}
+                data={filtered}
+                palette={palette}
+                translate={t}
+                onClose={() => setSelectedId(null)}
+                onOpen={openNode}
+                onSelect={selectNode}
+              />
+            </aside>
+          )}
+          {data && filtered && insights && (
+            <aside
+              aria-label={t(selectedNode ? 'graph.nodeDetails' : 'graph.explore')}
+              className="hidden w-72 shrink-0 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] xl:flex"
+            >
+              {selectedNode ? (
+                <GraphNodeInspector
+                  key={selectedNode.id}
+                  node={selectedNode}
+                  data={filtered}
+                  palette={palette}
+                  translate={t}
+                  onClose={() => setSelectedId(null)}
+                  onOpen={openNode}
+                  onSelect={selectNode}
+                />
+              ) : (
+                <GraphExplorer
+                  sourceData={data}
+                  visibleData={filtered}
+                  insights={insights}
+                  activeTypes={activeTypes}
+                  palette={palette}
+                  translate={t}
+                  onToggleType={toggleType}
+                  onReset={resetFilters}
+                  onSelect={selectNode}
+                />
+              )}
+            </aside>
+          )}
         </div>
       </div>
     </AnimatedPage>
@@ -606,17 +606,6 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
     return () => window.clearTimeout(timer);
   }, [delayMs, value]);
   return debounced;
-}
-
-function MetricPill({ value, label }: { value: number; label: string }): React.ReactElement {
-  return (
-    <span className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] px-2.5 py-1 text-[11px] text-[var(--color-app-muted)]">
-      <strong className="mr-1 font-semibold tabular-nums text-[var(--color-app-fg)]">
-        {value}
-      </strong>
-      {label}
-    </span>
-  );
 }
 
 function GraphExplorer({
@@ -651,9 +640,14 @@ function GraphExplorer({
           <p className="text-[11px] text-[var(--color-app-muted)]">
             {translate('graph.resultSummary', {
               nodes: visibleData.totalNodes,
-              total: sourceData.totalNodes,
+              total: sourceData.candidateNodes ?? sourceData.totalNodes,
             })}
           </p>
+          {sourceData.truncated && (
+            <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+              {translate('graph.sliceHint')}
+            </p>
+          )}
         </div>
         {onClose && (
           <button
@@ -668,11 +662,11 @@ function GraphExplorer({
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-        <section>
-          <div className="mb-2.5 flex items-center justify-between">
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
-              {translate('graph.filters')}
-            </h2>
+        <details className="group/filters">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+            {translate('graph.filters')}
+          </summary>
+          <div className="mb-2 mt-3 flex items-center justify-end">
             {!allActive && (
               <button
                 type="button"
@@ -684,7 +678,9 @@ function GraphExplorer({
             )}
           </div>
           <div className="grid grid-cols-2 gap-1.5">
-            {ALL_GRAPH_NODE_TYPES.map((type) => {
+            {ALL_GRAPH_NODE_TYPES.filter((type) =>
+              sourceData.nodes.some((node) => node.type === type),
+            ).map((type) => {
               const active = activeTypes.has(type);
               const count = sourceData.nodes.filter((node) => node.type === type).length;
               return (
@@ -710,7 +706,7 @@ function GraphExplorer({
               );
             })}
           </div>
-        </section>
+        </details>
 
         <section>
           <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
@@ -731,7 +727,12 @@ function GraphExplorer({
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{ background: palette.nodes[hub.type] }}
                 />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">{hub.label}</span>
+                <span
+                  className="min-w-0 flex-1 text-xs font-medium leading-relaxed line-clamp-2"
+                  title={hub.label}
+                >
+                  {hub.label}
+                </span>
                 <span className="rounded-md bg-[var(--color-app-bg)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-app-muted)]">
                   {Math.round((hub.weightedDegreeCentrality ?? 0) * 100)}%
                 </span>
@@ -761,7 +762,12 @@ function GraphExplorer({
                   <Network className="h-3.5 w-3.5" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium">{community.label}</span>
+                  <span
+                    className="text-xs font-medium leading-relaxed line-clamp-2"
+                    title={community.label}
+                  >
+                    {community.label}
+                  </span>
                   <span className="text-[10px] text-[var(--color-app-muted)]">
                     {translate('graph.communitySize', { count: community.size })}
                   </span>
@@ -836,13 +842,20 @@ function GraphNodeInspector({
   onOpen: (node: GraphNode) => void;
   onSelect: (id: string) => void;
 }): React.ReactElement {
+  const [connectionLimit, setConnectionLimit] = useState(20);
   const byId = useMemo(() => new Map(data.nodes.map((item) => [item.id, item])), [data.nodes]);
   const connections = useMemo(
     () =>
       data.edges
         .filter((edge) => edge.from === node.id || edge.to === node.id)
         .map((edge) => ({ edge, neighbor: byId.get(edge.from === node.id ? edge.to : edge.from) }))
-        .filter((item): item is { edge: GraphEdge; neighbor: GraphNode } => Boolean(item.neighbor)),
+        .filter((item): item is { edge: GraphEdge; neighbor: GraphNode } => Boolean(item.neighbor))
+        .sort(
+          (a, b) =>
+            Number(Boolean(nodePath(b.neighbor))) - Number(Boolean(nodePath(a.neighbor))) ||
+            b.neighbor.weight - a.neighbor.weight ||
+            a.neighbor.label.localeCompare(b.neighbor.label),
+        ),
     [byId, data.edges, node.id],
   );
   const path = nodePath(node);
@@ -855,12 +868,10 @@ function GraphNodeInspector({
           style={{ background: palette.nodes[node.type] }}
         />
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[var(--color-app-muted)]">
+          <h2 className="break-words text-base font-semibold leading-snug">{node.label}</h2>
+          <p className="mt-1 text-xs text-[var(--color-app-muted)]">
             {translate(`graph.node.${node.type}`)}
           </p>
-          <h2 className="mt-1 break-words font-display text-base font-semibold leading-snug">
-            {node.label}
-          </h2>
         </div>
         <button
           type="button"
@@ -874,55 +885,62 @@ function GraphNodeInspector({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {node.description && (
-          <p className="mb-4 text-xs leading-relaxed text-[var(--color-app-subtle)]">
-            {graphDescriptionText(node.description)}
-          </p>
+          <details className="mb-4 text-xs text-[var(--color-app-subtle)]">
+            <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
+              {translate('graph.aboutNode')}
+            </summary>
+            <p className="mt-2 leading-relaxed">{graphDescriptionText(node.description)}</p>
+          </details>
         )}
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-3">
-            <p className="text-lg font-semibold tabular-nums">{connections.length}</p>
-            <p className="text-[10px] text-[var(--color-app-muted)]">
-              {translate('graph.connectionsLabel')}
-            </p>
-          </div>
-          <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-3">
-            <p className="truncate text-xs font-semibold">
-              {node.source ?? node.sourceType ?? 'Brain'}
-            </p>
-            <p className="mt-1 text-[10px] text-[var(--color-app-muted)]">
-              {translate('graph.source')}
-            </p>
-          </div>
-        </div>
+        <p className="mb-5 text-xs text-[var(--color-app-muted)]">
+          {translate('graph.connections', { count: connections.length })} ·{' '}
+          {node.source ?? node.sourceType ?? 'Brain'}
+        </p>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-[var(--color-app-muted)]">
           {translate('graph.connectionsLabel')}
         </h3>
         <div className="space-y-1">
-          {connections.slice(0, 14).map(({ edge, neighbor }) => (
-            <button
+          {connections.slice(0, connectionLimit).map(({ edge, neighbor }) => (
+            <div
               key={edge.id}
-              type="button"
-              onClick={() => onSelect(neighbor.id)}
-              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-[var(--color-app-surface-hover)]"
+              className="border-b border-[var(--color-app-border)] py-2 last:border-0"
             >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: palette.nodes[neighbor.type] }}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium">{neighbor.label}</span>
-                <span className="block truncate text-[10px] text-[var(--color-app-muted)]">
-                  {translate('graph.relationReason', {
-                    reason: translate(`graph.edge.${edge.kind}`),
-                  })}
-                </span>
-                <span className="mt-0.5 block truncate text-[10px] text-[var(--color-app-muted)]">
-                  {translate('graph.relationMethod', { method: edge.method })} ·{' '}
-                  {translate('graph.relationConfidence', {
-                    confidence: String(Math.round(Number(edge.confidence) * 100)),
-                  })}
-                </span>
-                <span className="block truncate text-[10px] text-[var(--color-app-muted)]">
+              <div className="flex items-start gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSelect(neighbor.id)}
+                  className="flex min-w-0 flex-1 items-start gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                >
+                  <span
+                    className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: palette.nodes[neighbor.type] }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-xs font-medium leading-relaxed">
+                      {neighbor.label}
+                    </span>
+                    <span className="mt-1 block text-[11px] text-[var(--color-app-muted)]">
+                      {translate('graph.relationReason', {
+                        reason: translate(`graph.edge.${edge.kind}`),
+                      })}{' '}
+                      · {translate(`graph.node.${neighbor.type}`)}
+                    </span>
+                  </span>
+                </button>
+                {nodePath(neighbor) && (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(neighbor)}
+                    aria-label={translate('graph.openRelated', { title: neighbor.label })}
+                    title={translate('graph.openSource')}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <details className="ml-6 mt-1 text-[11px] text-[var(--color-app-muted)]">
+                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
                   {translate('graph.relationEvidence', {
                     evidence: translate(
                       edge.evidence === 'EXTRACTED'
@@ -932,11 +950,25 @@ function GraphNodeInspector({
                           : 'graph.evidenceAmbiguous',
                     ),
                   })}
-                </span>
-              </span>
-              <ChevronRight className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-            </button>
+                </summary>
+                <p className="mt-1 break-words leading-relaxed">
+                  {translate('graph.relationMethod', { method: edge.method })} ·{' '}
+                  {translate('graph.relationConfidence', {
+                    confidence: String(Math.round(Number(edge.confidence) * 100)),
+                  })}
+                </p>
+              </details>
+            </div>
           ))}
+          {connections.length > connectionLimit && (
+            <Button
+              variant="ghost"
+              className="mt-2 w-full"
+              onClick={() => setConnectionLimit((limit) => limit + 20)}
+            >
+              {translate('graph.moreConnections', { count: connections.length - connectionLimit })}
+            </Button>
+          )}
           {connections.length === 0 && (
             <p className="rounded-xl border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
               {translate('graph.noConnections')}
@@ -1055,6 +1087,7 @@ export function BrainGraph3DCanvas({
   onFallback: () => void;
   initializationTimeoutMs?: number;
 }): React.ReactElement {
+  const reduceMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
   const cancelInitializationBudgetRef = useRef<(() => void) | null>(null);
@@ -1070,21 +1103,27 @@ export function BrainGraph3DCanvas({
     () => (reagraph ? buildVoxenTheme(reagraph.darkTheme, palette) : null),
     [palette, reagraph],
   );
+  const positionedNodes = useMemo(
+    () => new Map<string, { x: number; y: number; z: number }>(),
+    [model?.positions3d],
+  );
   const layoutOverrides = useMemo(
     () =>
       ({
-        getNodePosition: (id: string, { drags }: NodePositionArgs) =>
-          drags?.[id]?.position ?? model?.positions3d.get(id) ?? { x: 0, y: 0, z: 0 },
+        getNodePosition: (id: string, { drags }: NodePositionArgs) => {
+          const position = drags?.[id]?.position ??
+            model?.positions3d.get(id) ?? { x: 0, y: 0, z: 0 };
+          if ([position.x, position.y, position.z].every(Number.isFinite))
+            positionedNodes.set(id, position);
+          return position;
+        },
       }) as unknown as React.ComponentProps<GraphCanvasComponent>['layoutOverrides'],
-    [model?.positions3d],
+    [model?.positions3d, positionedNodes],
   );
   primaryNodeIdsRef.current = model?.primaryNodeIds ?? [];
   renderedNodeIdsRef.current = new Set(model?.reagraphNodes.map((node) => node.id) ?? []);
   const handleGraphRef = useCallback((instance: GraphCanvasRef | null) => {
     graphRef.current = instance;
-    if (!instance) return;
-    cancelInitializationBudgetRef.current?.();
-    cancelInitializationBudgetRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -1132,22 +1171,84 @@ export function BrainGraph3DCanvas({
   const activeId = hoveredId ?? selectedId;
   const actives = useMemo(() => {
     if (!activeId || !model) return undefined;
-    return [...(model.neighborhoods.get(activeId) ?? new Set([activeId]))].filter((id) =>
-      renderedNodeIdsRef.current.has(id),
-    );
+    return [
+      ...[...(model.neighborhoods.get(activeId) ?? new Set([activeId]))].filter((id) =>
+        renderedNodeIdsRef.current.has(id),
+      ),
+      ...model.reagraphEdges
+        .filter((edge) => edge.source === activeId || edge.target === activeId)
+        .map((edge) => edge.id),
+    ];
   }, [activeId, model]);
 
-  const fitGraphView = useCallback((scope: 'primary' | 'all', animated: boolean) => {
-    try {
-      const ids =
-        scope === 'primary'
-          ? primaryNodeIdsRef.current.filter((id) => renderedNodeIdsRef.current.has(id))
-          : undefined;
-      graphRef.current?.fitNodesInView(ids?.length ? ids : undefined, { animated });
-    } catch {
-      // A câmera ainda pode estar preparando a cena.
-    }
-  }, []);
+  const fitGraphView = useCallback(
+    (scope: 'primary' | 'all' | 'selection', animated: boolean) => {
+      const instance = graphRef.current;
+      const graph = instance?.getGraph();
+      if (
+        !graph ||
+        !instance?.getControls() ||
+        ![...renderedNodeIdsRef.current].every((id) => graph.hasNode(id) && positionedNodes.has(id))
+      )
+        return false;
+      try {
+        const ids =
+          scope === 'primary'
+            ? primaryNodeIdsRef.current.filter((id) => renderedNodeIdsRef.current.has(id))
+            : scope === 'selection' && selectedId
+              ? [...(model?.neighborhoods.get(selectedId) ?? new Set([selectedId]))].filter((id) =>
+                  renderedNodeIdsRef.current.has(id),
+                )
+              : undefined;
+        const controls = instance.getControls();
+        const points = (ids?.length ? ids : [...renderedNodeIdsRef.current]).map(
+          (id) => positionedNodes.get(id)!,
+        );
+        const min = {
+          x: Math.min(...points.map((p) => p.x)),
+          y: Math.min(...points.map((p) => p.y)),
+          z: Math.min(...points.map((p) => p.z)),
+        };
+        const max = {
+          x: Math.max(...points.map((p) => p.x)),
+          y: Math.max(...points.map((p) => p.y)),
+          z: Math.max(...points.map((p) => p.z)),
+        };
+        const center = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+        // Reagraph publishes its ref before its internal node store is ready.
+        // Frame our known geometry directly; fitting that empty store poisons
+        // the camera and the first rendered node transforms with NaN values.
+        const zoomReset = controls.zoomTo(1, false);
+        controls.update(0);
+        const distance = controls.getDistanceToFitBox(
+          max.x - min.x + 150,
+          max.y - min.y + 150,
+          max.z - min.z + 150,
+        );
+        if (!Number.isFinite(distance)) return false;
+        void Promise.all([
+          zoomReset,
+          controls.setLookAt(
+            center.x,
+            center.y,
+            center.z + Math.max(controls.minDistance, Math.min(controls.maxDistance, distance)),
+            center.x,
+            center.y,
+            center.z,
+            animated,
+          ),
+        ]).catch(onFallback);
+        if (!animated) controls.update(0);
+        return true;
+      } catch {
+        onFallback();
+        return false;
+      }
+    },
+    [model?.neighborhoods, onFallback, positionedNodes, selectedId],
+  );
+  const fitGraphViewRef = useRef(fitGraphView);
+  fitGraphViewRef.current = fitGraphView;
 
   const zoomGraph = useCallback((direction: 'in' | 'out') => {
     try {
@@ -1160,30 +1261,26 @@ export function BrainGraph3DCanvas({
 
   useEffect(() => {
     if (!model || model.graph.order === 0 || !reagraph) return;
-    // 1º frame: fit global (cena ainda montando; ids primários podem faltar).
-    // Depois: enquadra o núcleo (maior comunidade) — concentração de dados no centro.
-    const frame =
-      typeof window.requestAnimationFrame === 'function'
-        ? window.requestAnimationFrame(() => fitGraphView('all', false))
-        : null;
-    const timer = window.setTimeout(() => {
-      const hasPrimary = primaryNodeIdsRef.current.some((id) => renderedNodeIdsRef.current.has(id));
-      fitGraphView(hasPrimary ? 'primary' : 'all', profile.animated);
-    }, 220);
+    let timer: number | undefined;
+    let cancelled = false;
+    const deadline = Date.now() + initializationTimeoutMs;
+    const fitWhenReady = (): void => {
+      if (cancelled) return;
+      if (fitGraphViewRef.current('all', false)) {
+        cancelInitializationBudgetRef.current?.();
+        cancelInitializationBudgetRef.current = null;
+      } else if (Date.now() >= deadline) {
+        onFallback();
+      } else {
+        timer = window.setTimeout(fitWhenReady, 16);
+      }
+    };
+    fitWhenReady();
     return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
+      cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [fitGraphView, model?.topologyKey, profile.animated, reagraph]);
-
-  useEffect(() => {
-    if (!reagraph || !selectedId || !renderedNodeIdsRef.current.has(selectedId)) return;
-    try {
-      graphRef.current?.centerGraph([selectedId]);
-    } catch {
-      // A seleção pode chegar antes de a câmera 3D estar pronta.
-    }
-  }, [model?.topologyKey, reagraph, selectedId]);
+  }, [initializationTimeoutMs, model?.topologyKey, onFallback, reagraph]);
 
   const GraphCanvas = reagraph?.GraphCanvas;
   return (
@@ -1205,13 +1302,13 @@ export function BrainGraph3DCanvas({
             theme={graphTheme}
             layoutType="custom"
             layoutOverrides={layoutOverrides}
-            labelType={profile.labelType}
+            labelType={activeId ? 'auto' : profile.labelType}
             edgeInterpolation={profile.edgeInterpolation}
             edgeArrowPosition="none"
             cameraMode="rotate"
             minDistance={180}
-            maxDistance={8_000}
-            animated={profile.animated}
+            maxDistance={50_000}
+            animated={profile.animated && !reduceMotion}
             draggable={profile.draggable}
             aggregateEdges={profile.aggregateEdges}
             glOptions={GRAPH_GL_OPTIONS}
@@ -1235,55 +1332,16 @@ export function BrainGraph3DCanvas({
         </GraphRendererBoundary>
       )}
       {GraphCanvas && model && model.graph.order > 0 && (
-        <>
-          <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/82 px-2.5 py-1 text-[10px] font-medium text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
-            3D · {translate(`graph.renderProfile.${profile.tier}`)}
-          </div>
-          <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
-            <CanvasButton label={translate('graph.zoomIn')} onClick={() => zoomGraph('in')}>
-              <ZoomIn className="h-3.5 w-3.5" />
-            </CanvasButton>
-            <CanvasButton label={translate('graph.zoomOut')} onClick={() => zoomGraph('out')}>
-              <ZoomOut className="h-3.5 w-3.5" />
-            </CanvasButton>
-            <CanvasButton
-              label={translate('graph.focusCore')}
-              onClick={() => fitGraphView('primary', true)}
-            >
-              <Focus className="h-3.5 w-3.5" />
-            </CanvasButton>
-            <CanvasButton
-              label={translate('graph.fitAll')}
-              onClick={() => fitGraphView('all', true)}
-            >
-              <Network className="h-3.5 w-3.5" />
-            </CanvasButton>
-          </div>
-        </>
+        <GraphViewportControls
+          translate={translate}
+          onZoomIn={() => zoomGraph('in')}
+          onZoomOut={() => zoomGraph('out')}
+          onFit={() => fitGraphView('all', !reduceMotion)}
+          onFocus={selectedId ? () => fitGraphView('selection', !reduceMotion) : undefined}
+          onFocusCore={() => fitGraphView('primary', !reduceMotion)}
+        />
       )}
     </div>
-  );
-}
-
-function CanvasButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-    >
-      {children}
-    </button>
   );
 }
 
