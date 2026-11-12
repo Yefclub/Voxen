@@ -9,6 +9,12 @@ export const ptBrFrontendMessages = {
   'design.own': 'Na sua própria instância',
   'design.ownDescription': 'Uma base de conhecimento self-hosted para você e sua equipe.',
   'design.footer': 'Seu conhecimento, no seu espaço.',
+  'design.documentTools': 'Opções do conteúdo',
+  'design.options': 'Opções',
+  'design.metadata': 'Informações do conteúdo',
+  'design.readContent': 'Ler conteúdo',
+  'design.relationships': 'Relações',
+  'design.captureWarnings': 'Conteúdo salvo com observações',
   'design.captureMissing':
     'Esta captura não está disponível. Abra outra captura ou comece uma nova.',
 };
@@ -23,5 +29,11 @@ export const enFrontendMessages: Record<keyof typeof ptBrFrontendMessages, strin
   'design.own': 'On your own instance',
   'design.ownDescription': 'A self-hosted knowledge base for you and your team.',
   'design.footer': 'Your knowledge, in your space.',
+  'design.documentTools': 'Content options',
+  'design.options': 'Options',
+  'design.metadata': 'Content information',
+  'design.readContent': 'Read content',
+  'design.relationships': 'Connections',
+  'design.captureWarnings': 'Content saved with notes',
   'design.captureMissing': 'This capture is unavailable. Open another capture or start a new one.',
 };

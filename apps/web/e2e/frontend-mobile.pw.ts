@@ -105,6 +105,21 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
     await page.goto(`/capturar?job=${job.id}`);
     await expect(page).toHaveURL(`/transcricoes/${workspace!.transcriptId}`);
     await expect(page.getByRole('heading', { name: 'Matrix source', exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole('status')
+        .filter({ hasText: 'As imagens e quadros do vídeo não foram descritos.' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Opções do conteúdo', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('dialog').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(
+      page.getByRole('dialog').getByRole('button', { name: 'Fechar', exact: true }),
+    ).toBeInViewport();
+    await page.goBack();
+    await expect(page.getByRole('dialog')).toBeHidden();
     let submissions = 0;
     page.on('request', (request) => {
       if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/captures')

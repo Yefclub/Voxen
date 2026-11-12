@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { CaptureWarnings } from './capture-warnings';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ExternalLink,
@@ -39,12 +40,6 @@ const METHOD: Record<string, I18nKey> = {
   SCRAPE: 'capture.method.scrape',
 };
 
-const WARNING: Record<string, I18nKey> = {
-  speech_not_transcribed: 'capture.warning.speech_not_transcribed',
-  frames_unavailable: 'capture.warning.frames_unavailable',
-  images_not_described: 'capture.warning.images_not_described',
-};
-
 interface CaptureJobCardProps {
   job: CaptureJob;
   /** Open an SSE stream while the job is active. */
@@ -65,7 +60,6 @@ export function CaptureJobCard({
   const { t, locale } = useI18n();
   const navigate = useNavigate();
   const [pending, setPending] = useState<'cancel' | 'retry' | null>(null);
-  const root = useRef<HTMLElement>(null);
   const [actionError, setActionError] = useState(false);
   useCaptureLive(job, live, onChange);
 
@@ -123,13 +117,9 @@ export function CaptureJobCard({
     job.costUsd !== null ? t('capture.cost', { cost: formatUsd(job.costUsd, locale) }) : null,
   ].filter(Boolean);
   const errorAction = job.error?.action;
-  const warningKeys = (job.warnings ?? [])
-    .map((code) => WARNING[code])
-    .filter((key): key is I18nKey => key !== undefined);
 
   return (
     <article
-      ref={root}
       tabIndex={-1}
       aria-labelledby={titleId}
       className={cn(
@@ -199,14 +189,10 @@ export function CaptureJobCard({
         </details>
       )}
 
-      {job.status === 'COMPLETED_WITH_WARNINGS' && warningKeys.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-xs text-[var(--color-app-warning-fg)]">
-          {warningKeys.map((key) => (
-            <li key={key} className="break-words">
-              {t(key)}
-            </li>
-          ))}
-        </ul>
+      {job.status === 'COMPLETED_WITH_WARNINGS' && (
+        <div className="mt-3">
+          <CaptureWarnings codes={job.warnings ?? []} />
+        </div>
       )}
 
       {job.status === 'FAILED' && (

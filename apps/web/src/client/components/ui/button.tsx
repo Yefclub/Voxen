@@ -35,8 +35,8 @@ const buttonVariants = cva(
         link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-emerald-400',
       },
       size: {
-        default: 'h-10 px-4 [@media(pointer:coarse)]:min-h-11',
-        sm: 'h-9 px-3 text-sm rounded-lg [@media(pointer:coarse)]:min-h-11',
+        default: 'min-h-10 px-4 py-2 [@media(pointer:coarse)]:min-h-11',
+        sm: 'min-h-9 px-3 py-1.5 text-sm rounded-lg [@media(pointer:coarse)]:min-h-11',
         lg: 'h-10 px-5',
         xl: 'h-12 px-7 text-base rounded-xl',
         icon: 'h-10 w-10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
@@ -94,7 +94,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         isDisabled={props.disabled}
         className={classes}
       >
-        <span className="inline-flex items-center justify-center gap-2">{children}</span>
+        <span className="inline-flex min-w-0 items-center justify-center gap-2 whitespace-normal">
+          {children}
+        </span>
       </AstryxButton>
     );
   },

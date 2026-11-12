@@ -14,7 +14,16 @@
 // bg-background) que não existem no design system do Voxen. Para garantir ZERO
 // regressão visual, sobrescrevemos os elementos estruturais com tags simples e
 // deixamos o tema zinc ser governado pelos seletores descendentes do wrapper.
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createElement,
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Streamdown, type Components, type ExtraProps } from 'streamdown';
 import { Check, Copy, Loader2, Workflow } from '@/components/ui/icons';
 import type { ChatCitation } from '../../../shared/chat-citations';
@@ -30,6 +39,7 @@ import { MermaidCanvas } from './mermaid-canvas';
 interface MarkdownProps {
   children: string;
   className?: string;
+  headingOffset?: 0 | 1 | 2;
   citations?: readonly ChatCitation[];
   onCitationOpen?: (citation: ChatCitation) => void;
 }
@@ -307,7 +317,7 @@ function kids(p: { children?: React.ReactNode }): React.ReactNode {
 
 // Componentes estruturais sobrescritos com tags simples para neutralizar as
 // classes shadcn default do Streamdown — o tema zinc vem do wrapper.
-const structuralComponents: Components = {
+const structuralComponents = {
   code: CodeBlock,
   inlineCode: InlineCode,
   a: Anchor,
@@ -341,14 +351,39 @@ const structuralComponents: Components = {
   tr: (p) => <tr>{kids(p)}</tr>,
   th: (p) => <th>{kids(p)}</th>,
   td: (p) => <td>{kids(p)}</td>,
-};
+} satisfies Components;
 
 export const Markdown = memo(function Markdown({
   children,
   className,
+  headingOffset = 0,
   citations = [],
   onCitationOpen,
 }: MarkdownProps): React.ReactElement {
+  const components = useMemo<Components>(() => {
+    if (headingOffset === 0) return structuralComponents;
+    const heading =
+      (level: number) =>
+      (props: { children?: React.ReactNode }): React.ReactElement => {
+        const tag = `h${Math.min(6, level + headingOffset)}` as
+          | 'h1'
+          | 'h2'
+          | 'h3'
+          | 'h4'
+          | 'h5'
+          | 'h6';
+        return createElement(tag, null, props.children);
+      };
+    return {
+      ...structuralComponents,
+      h1: heading(1),
+      h2: heading(2),
+      h3: heading(3),
+      h4: heading(4),
+      h5: heading(5),
+      h6: heading(6),
+    };
+  }, [headingOffset]);
   const content = useMemo(() => renderInlineCitations(children, citations), [children, citations]);
   const citationContext = useMemo(
     () => ({ citations, onCitationOpen }),
@@ -384,7 +419,7 @@ export const Markdown = memo(function Markdown({
     >
       <TooltipProvider delayDuration={120} skipDelayDuration={300} disableHoverableContent>
         <ChatCitationContext.Provider value={citationContext}>
-          <Streamdown parseIncompleteMarkdown controls={false} components={structuralComponents}>
+          <Streamdown parseIncompleteMarkdown controls={false} components={components}>
             {content}
           </Streamdown>
         </ChatCitationContext.Provider>
