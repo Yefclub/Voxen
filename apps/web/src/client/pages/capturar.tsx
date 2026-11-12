@@ -38,6 +38,10 @@ export function CapturarPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [sharedPending, setSharedPending] = useState(false);
   const [tick, setTick] = useState(0);
+  const [focusMissing, setFocusMissing] = useState<string | null>(null);
+  const [focusRetry, setFocusRetry] = useState(0);
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
   const navigatedCapture = useRef<string | null>(null);
   const focusedJob = jobs.find((job) => job.id === intent.focusJobId);
 
@@ -95,15 +99,22 @@ export function CapturarPage(): React.ReactElement {
   // A focused job (share target, library bar) may be older than the first page.
   useEffect(() => {
     const id = intent.focusJobId;
-    if (!id || loading || jobs.some((job) => job.id === id)) return;
+    if (!id || loading || jobsRef.current.some((job) => job.id === id)) return;
     let cancelled = false;
-    void fetchCapture(id).then((job) => {
-      if (job && !cancelled) upsert(job);
-    });
+    setFocusMissing(null);
+    void fetchCapture(id)
+      .then((job) => {
+        if (cancelled) return;
+        if (job) upsert(job);
+        else setFocusMissing(id);
+      })
+      .catch(() => {
+        if (!cancelled) setFocusMissing(id);
+      });
     return () => {
       cancelled = true;
     };
-  }, [intent.focusJobId, jobs, loading, upsert]);
+  }, [intent.focusJobId, loading, upsert, focusRetry]);
 
   // Surface share-target and redirect outcomes in the composer's notice slot.
   useEffect(() => {
@@ -114,14 +125,8 @@ export function CapturarPage(): React.ReactElement {
         message: captureErrorText(t, intent.error),
         action: actionForCode(intent.error),
       });
-    } else if (intent.existingTranscriptId) {
-      composer.current?.showNotice({
-        type: 'existing',
-        transcriptId: intent.existingTranscriptId,
-        title: '',
-      });
     }
-  }, [intent.error, intent.existingTranscriptId, t]);
+  }, [intent.error, t]);
 
   // After login the share target hands the link over as `?shared=`. A GET link
   // must never start a capture by itself (it could be forged cross-site), so
@@ -174,6 +179,7 @@ export function CapturarPage(): React.ReactElement {
     }
   }
 
+  const following = Boolean(intent.focusJobId);
   const history = jobs.filter((job) => job.id !== focusedJob?.id);
   const historyContent = (
     <>
@@ -222,9 +228,13 @@ export function CapturarPage(): React.ReactElement {
     <PageShell>
       <PageHeader
         title={t('capture.title')}
-        description={t(focusedJob ? 'capture.following' : 'capture.description')}
+        description={
+          focusMissing === intent.focusJobId && intent.focusJobId
+            ? undefined
+            : t(following ? 'capture.following' : 'capture.description')
+        }
         actions={
-          focusedJob && (
+          following && (
             <Button
               variant="secondary"
               onClick={() => {
@@ -239,16 +249,35 @@ export function CapturarPage(): React.ReactElement {
       />
       <section
         aria-label={t('capture.inputLabel')}
-        hidden={Boolean(focusedJob)}
+        hidden={following}
         className="max-w-3xl space-y-3"
       >
-        <CaptureComposer ref={composer} onJob={onJob} />
+        <CaptureComposer
+          ref={composer}
+          onJob={onJob}
+          onExisting={(id) => {
+            setSharedPending(false);
+            navigate(`/transcricoes/${encodeURIComponent(id)}`, { replace: true });
+          }}
+        />
         {sharedPending && (
           <p className="text-sm text-[var(--color-app-subtle)]" role="status">
             {t('capture.sharedReady')}
           </p>
         )}
       </section>
+      {following && !focusedJob && (
+        <section aria-label={t('capture.current')} className="max-w-3xl">
+          {focusMissing === intent.focusJobId ? (
+            <FetchError
+              message={t('design.captureMissing')}
+              onRetry={() => setFocusRetry((n) => n + 1)}
+            />
+          ) : (
+            <Skeleton className="h-44 w-full rounded-xl" aria-busy />
+          )}
+        </section>
+      )}
       {focusedJob && (
         <section aria-label={t('capture.current')} className="max-w-3xl">
           <CaptureJobCard
@@ -265,7 +294,7 @@ export function CapturarPage(): React.ReactElement {
           )}
         </section>
       )}
-      {focusedJob ? (
+      {following ? (
         <details className="border-t border-[var(--color-app-border)] pt-4">
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-[var(--color-app-subtle)]">
             {t('capture.recent')}

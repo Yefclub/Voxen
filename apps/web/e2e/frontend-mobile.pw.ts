@@ -105,5 +105,29 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
     await page.goto(`/capturar?job=${job.id}`);
     await expect(page).toHaveURL(`/transcricoes/${workspace!.transcriptId}`);
     await expect(page.getByRole('heading', { name: 'Matrix source', exact: true })).toBeVisible();
+    let submissions = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/captures')
+        submissions += 1;
+    });
+    await page.goto('/capturar?shared=' + encodeURIComponent('https://example.test/matrix'));
+    await expect(page.getByRole('textbox', { name: 'Link para capturar' })).toHaveValue(
+      'https://example.test/matrix',
+    );
+    expect(submissions).toBe(0);
+    await page.getByRole('button', { name: 'Capturar', exact: true }).click();
+    await expect(page).toHaveURL(`/transcricoes/${workspace!.transcriptId}`);
+    expect(submissions).toBe(1);
+    await page.goto('/capturar?job=capture-that-does-not-exist');
+    await expect(
+      page.getByText('Esta captura não está disponível. Abra outra captura ou comece uma nova.'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Nova captura' }).click();
+    await expect(page.getByRole('textbox', { name: 'Link para capturar' })).toBeVisible();
+    await page.route('**/api/captures/network-unavailable', (route) => route.abort('failed'));
+    await page.goto('/capturar?job=network-unavailable');
+    await expect(
+      page.getByText('Esta captura não está disponível. Abra outra captura ou comece uma nova.'),
+    ).toBeVisible();
   });
 });

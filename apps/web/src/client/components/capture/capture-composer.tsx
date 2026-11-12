@@ -1,13 +1,10 @@
 import { forwardRef, useCallback, useId, useImperativeHandle, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { ArrowRight, Link2, Upload } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
-import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
 import {
-  reprocessDocument,
   submitCaptureLink,
   uploadCaptureFile,
   type CaptureJob,
@@ -18,15 +15,13 @@ import { CaptureNotice, captureErrorText, type CaptureNoticeState } from './capt
 
 export interface CaptureComposerHandle {
   openFilePicker: () => void;
-  submitUrl: (url: string) => Promise<void>;
   /** Fills the link field and focuses it without submitting. */
   prefillUrl: (url: string) => void;
   showNotice: (notice: CaptureNoticeState | null) => void;
 }
 
 interface CaptureComposerProps {
-  /** `compact` is the library header entry; `page` is the /capturar form. */
-  variant?: 'page' | 'compact';
+  onExisting: (transcriptId: string) => void;
   onJob: (job: CaptureJob, deduped: boolean) => void;
 }
 
@@ -37,13 +32,13 @@ function hasFiles(event: React.DragEvent): boolean {
 /**
  * Link + file capture input. Enter submits the link; a picked or dropped file
  * goes to the upload endpoint. Synchronous outcomes other than a new job
- * (existing document, invalid link, AI not configured) render inline.
+ * Existing content opens directly; invalid links and configuration errors stay inline.
  */
 export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposerProps>(
-  function CaptureComposer({ variant = 'page', onJob }, ref) {
+  function CaptureComposer({ onJob, onExisting }, ref) {
     const { t } = useI18n();
     const [url, setUrl] = useState('');
-    const [busy, setBusy] = useState<'link' | 'upload' | 'reprocess' | null>(null);
+    const [busy, setBusy] = useState<'link' | 'upload' | null>(null);
     const [upload, setUpload] = useState<{ name: string; percent: number } | null>(null);
     const [notice, setNotice] = useState<CaptureNoticeState | null>(null);
     const [dragging, setDragging] = useState(false);
@@ -63,11 +58,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           return;
         }
         if (result.kind === 'existing') {
-          setNotice({
-            type: 'existing',
-            transcriptId: result.transcript.id,
-            title: result.transcript.title,
-          });
+          onExisting(result.transcript.id);
           return;
         }
         const code =
@@ -81,7 +72,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
         });
         if (code === 'INVALID_URL' || code === 'BLOCKED_ADDRESS') urlInput.current?.focus();
       },
-      [onJob, t],
+      [onJob, onExisting, t],
     );
 
     const submitUrl = useCallback(
@@ -122,49 +113,26 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
       [busy, handleResult],
     );
 
-    const reprocess = useCallback(
-      async (transcriptId: string): Promise<void> => {
-        setBusy('reprocess');
-        try {
-          handleResult(await reprocessDocument(transcriptId));
-        } catch {
-          handleResult({ kind: 'error', status: 0, error: null, message: null });
-        } finally {
-          setBusy(null);
-        }
-      },
-      [handleResult],
-    );
-
     useImperativeHandle(
       ref,
       () => ({
         openFilePicker: () => fileInput.current?.click(),
-        submitUrl: (value: string) => {
-          setUrl(value);
-          return submitUrl(value);
-        },
         prefillUrl: (value: string) => {
           setUrl(value);
           urlInput.current?.focus();
         },
         showNotice: setNotice,
       }),
-      [submitUrl],
+      [],
     );
 
     const invalidUrl =
       notice?.type === 'error' &&
       (notice.code === 'INVALID_URL' || notice.code === 'BLOCKED_ADDRESS');
-    const compact = variant === 'compact';
 
     return (
       <div
-        className={cn(
-          'relative space-y-2.5',
-          compact &&
-            'rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-3 sm:p-4',
-        )}
+        className="relative space-y-3"
         onDragEnter={(event) => {
           if (!hasFiles(event)) return;
           event.preventDefault();
@@ -187,20 +155,6 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           if (file) void sendFile(file);
         }}
       >
-        {compact && (
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor={inputId} className="text-sm font-semibold text-[var(--color-app-fg)]">
-              {t('capture.title')}
-            </label>
-            <Link
-              to="/capturar"
-              className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-            >
-              {t('capture.openPage')}
-              <ArrowRight className="h-3 w-3" aria-hidden />
-            </Link>
-          </div>
-        )}
         <form
           className="flex flex-col gap-3 sm:flex-row"
           onSubmit={(event) => {
@@ -225,7 +179,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               placeholder={t('capture.inputPlaceholder')}
-              aria-label={compact ? undefined : t('capture.inputLabel')}
+              aria-label={t('capture.inputLabel')}
               aria-invalid={invalidUrl || undefined}
               aria-describedby={notice ? noticeId : undefined}
               maxLength={4096}
@@ -243,7 +197,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
             ) : (
               <ArrowRight className="h-4 w-4" aria-hidden />
             )}
-            <span className={cn(compact && 'not-sr-only')}>{t('capture.submit')}</span>
+            <span>{t('capture.submit')}</span>
           </Button>
         </form>
         <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -288,9 +242,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           <CaptureNotice
             id={noticeId}
             notice={notice}
-            reprocessing={busy === 'reprocess'}
             onDismiss={() => setNotice(null)}
-            onReprocess={(id) => void reprocess(id)}
             onUpload={() => fileInput.current?.click()}
           />
         )}
