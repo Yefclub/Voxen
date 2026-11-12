@@ -32,7 +32,7 @@ export function LibrarySearch({
           maxLength={240}
           autoComplete="off"
           spellCheck={false}
-          className="h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-10 pr-11 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-500/50 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+          className="h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-10 pr-11 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors focus:border-[var(--theme-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus)]"
         />
         {value.length > 0 && (
           <button

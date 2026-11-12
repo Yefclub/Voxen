@@ -257,7 +257,7 @@ function AppearanceMenu(): React.ReactElement {
               {APP_THEMES.map((id) => (
                 <label
                   key={id}
-                  className="relative flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] text-[var(--color-app-subtle)] transition-colors hover:bg-[var(--color-app-surface)] has-[:checked]:bg-[var(--color-app-surface)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-violet-500/40"
+                  className="relative flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] text-[var(--color-app-subtle)] transition-colors hover:bg-[var(--color-app-surface)] has-[:checked]:bg-[var(--color-app-surface)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--theme-focus)]"
                 >
                   <input
                     type="radio"

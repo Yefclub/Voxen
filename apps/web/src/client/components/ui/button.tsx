@@ -39,7 +39,7 @@ const buttonVariants = cva(
         sm: 'min-h-9 px-3 py-1.5 text-sm rounded-lg [@media(pointer:coarse)]:min-h-11',
         lg: 'min-h-10 px-5 py-2',
         xl: 'h-12 px-7 text-base rounded-xl',
-        icon: 'h-10 w-10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+        icon: 'h-10 w-10 p-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
       },
     },
     defaultVariants: {

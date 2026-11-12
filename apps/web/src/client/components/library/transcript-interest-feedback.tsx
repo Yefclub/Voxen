@@ -109,7 +109,7 @@ export function TranscriptInterestFeedback({
                   className={cn(
                     'min-h-9 justify-center',
                     selected &&
-                      'border-violet-400/50 bg-violet-500/15 text-violet-100 hover:bg-violet-500/20',
+                      'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary-soft)] text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary-soft)]',
                   )}
                 >
                   {saving && pending === preference ? (

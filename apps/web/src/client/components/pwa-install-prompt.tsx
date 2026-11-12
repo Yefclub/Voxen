@@ -125,7 +125,7 @@ export function PwaInstallPrompt({ enabled }: { enabled: boolean }): React.React
 
   return (
     <Dialog open onOpenChange={(next) => !next && dismiss()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="md:max-w-sm">
         <DialogHeader>
           <DialogTitle>{t('pwa.installTitle')}</DialogTitle>
           <DialogDescription>

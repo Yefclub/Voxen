@@ -53,7 +53,7 @@ export function GraphServerSearch({
           <Combobox.Input
             aria-label={translate('graph.serverSearchPlaceholder')}
             placeholder={translate('graph.serverSearchPlaceholder')}
-            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-9 pr-9 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] focus-visible:ring-2 focus-visible:ring-violet-500/40"
+            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-9 pr-9 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
           />
           {query && (
             <IconButton

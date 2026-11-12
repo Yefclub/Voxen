@@ -181,12 +181,12 @@ export function NoteHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl p-0 overflow-hidden">
-        <DialogHeader className="border-b border-[var(--color-app-border)] px-5 py-4 pr-12">
+      <DialogContent className="gap-0 overflow-hidden p-0 md:max-w-4xl md:p-0">
+        <DialogHeader className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-4">
           <DialogTitle>{t('notes.historyTitle')}</DialogTitle>
           <DialogDescription>{t('notes.historyDescription')}</DialogDescription>
         </DialogHeader>
-        <div className="grid min-h-[420px] grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[240px_minmax(0,1fr)]">
           <div className="max-h-[60dvh] overflow-y-auto border-b border-[var(--color-app-border)] p-2 md:border-b-0 md:border-r">
             {loading && history.length === 0 ? (
               <div className="flex min-h-48 items-center justify-center">
@@ -199,12 +199,14 @@ export function NoteHistoryDialog({
                     key={item.revision}
                     type="button"
                     onClick={() => void inspectRevision(item.revision)}
-                    className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${selected?.revision === item.revision ? 'border-violet-400/40 bg-violet-500/10' : 'border-transparent hover:bg-[var(--color-app-surface-hover)]'}`}
+                    className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${selected?.revision === item.revision ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary-soft)]' : 'border-transparent hover:bg-[var(--color-app-surface-hover)]'}`}
                   >
                     <span className="flex items-center justify-between gap-2 text-xs font-semibold">
                       <span>{t('notes.revisionLabel', { revision: item.revision })}</span>
                       {item.revision === currentRevision ? (
-                        <span className="text-[10px] text-emerald-300">{t('notes.current')}</span>
+                        <span className="text-[10px] text-[var(--color-app-success-fg)]">
+                          {t('notes.current')}
+                        </span>
                       ) : null}
                     </span>
                     <span className="mt-1 block truncate text-[11px] text-[var(--color-app-muted)]">
@@ -257,9 +259,11 @@ export function NoteHistoryDialog({
             )}
           </div>
         </div>
-        <DialogFooter className="border-t border-[var(--color-app-border)] px-5 py-4">
+        <DialogFooter className="shrink-0 border-t border-[var(--color-app-border)] px-5 py-4">
           {dirty ? (
-            <p className="mr-auto text-xs text-amber-300">{t('notes.saveBeforeRestore')}</p>
+            <p className="mr-auto text-xs text-[var(--color-app-warning-fg)]">
+              {t('notes.saveBeforeRestore')}
+            </p>
           ) : null}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common.close')}

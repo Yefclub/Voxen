@@ -321,7 +321,7 @@ function GraphInspector({
                 placeholder={t('library.localGraph.searchNodes')}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-transparent pl-8 pr-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-transparent pl-8 pr-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
               />
             </div>
             <div className="space-y-0.5">

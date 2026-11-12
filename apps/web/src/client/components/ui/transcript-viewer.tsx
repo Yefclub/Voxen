@@ -272,7 +272,7 @@ function SegmentSpan({
             href={transcriptAnchorHash(noteAnchor)}
             aria-label={label}
             title={label}
-            className={`mx-0.5 inline-flex h-5 w-5 translate-y-0.5 items-center justify-center rounded-full border align-baseline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 ${
+            className={`mx-0.5 inline-flex h-5 w-5 translate-y-0.5 items-center justify-center rounded-full border align-baseline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] ${
               current
                 ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
                 : 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'

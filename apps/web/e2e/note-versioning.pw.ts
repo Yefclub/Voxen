@@ -56,6 +56,14 @@ test('preserves a stale draft and restores an immutable note revision', async ({
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: /Rev\. 1/ }).click();
   await expect(page.getByText('Original body')).toBeVisible();
+  const historyPanel = (await page.getByRole('dialog').boundingBox())!;
+  const restoreButton = (await page
+    .getByRole('button', { name: 'Restaurar revisão' })
+    .boundingBox())!;
+  expect(restoreButton.y + restoreButton.height).toBeLessThanOrEqual(
+    historyPanel.y + historyPanel.height,
+  );
+  expect(restoreButton.y + restoreButton.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.screenshot({ path: testInfo.outputPath('note-revision-history.png'), fullPage: true });
   await page.getByRole('button', { name: 'Restaurar revisão' }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();

@@ -101,7 +101,7 @@ export function LinkedNotesCard({
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
             placeholder={t('library.linkedNoteTitle')}
-            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-[var(--theme-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus)]"
             disabled={creating}
             maxLength={200}
           />
@@ -109,7 +109,7 @@ export function LinkedNotesCard({
             value={content}
             onChange={(event) => onContentChange(event.target.value)}
             placeholder={t('library.linkedNoteContent')}
-            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-[var(--theme-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus)]"
             disabled={creating}
             maxLength={200_000}
           />

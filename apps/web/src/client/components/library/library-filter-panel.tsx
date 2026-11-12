@@ -39,7 +39,9 @@ export function LibraryFilterPanel({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent aria-describedby={undefined}>
-        <DialogTitle>{t('library.filtersTitle')}</DialogTitle>
+        <DialogTitle asChild>
+          <span className="sr-only">{t('library.filtersTitle')}</span>
+        </DialogTitle>
         {children}
         <Button onClick={() => setOpen(false)}>{t('common.close')}</Button>
       </DialogContent>

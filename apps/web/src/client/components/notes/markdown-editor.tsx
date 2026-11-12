@@ -44,7 +44,7 @@ const createVoxenTheme = (dark: boolean) =>
         height: '100%',
       },
       '.cm-content': {
-        caretColor: 'var(--color-accent-violet)',
+        caretColor: 'var(--theme-focus)',
         fontFamily: 'var(--font-sans)',
         padding: '4px 0',
       },
@@ -58,7 +58,7 @@ const createVoxenTheme = (dark: boolean) =>
         padding: '0',
       },
       '.cm-cursor': {
-        borderLeftColor: 'var(--color-accent-violet)',
+        borderLeftColor: 'var(--theme-focus)',
         borderLeftWidth: '2px',
       },
       '.cm-selectionBackground, ::selection': {

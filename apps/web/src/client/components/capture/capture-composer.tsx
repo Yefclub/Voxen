@@ -183,7 +183,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
               aria-invalid={invalidUrl || undefined}
               aria-describedby={notice ? noticeId : undefined}
               maxLength={4096}
-              className="h-12 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500/40 aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
+              className="h-12 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus)] aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
             />
           </div>
           <Button

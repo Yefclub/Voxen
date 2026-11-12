@@ -111,7 +111,7 @@ export function TagFilterMenu({
           aria-label={translate('library.filterTags')}
           aria-pressed={active}
           className={[
-            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
             active
               ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
               : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -166,7 +166,7 @@ export function TagFilterMenu({
                 setOpen(false);
               }}
               className={[
-                'flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                'flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
                 activeTagId === tag.id
                   ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                   : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
