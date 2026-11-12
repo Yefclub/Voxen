@@ -349,15 +349,19 @@ function NoteEditor({
 
   return (
     <motion.div
+      className="min-w-0"
       key={noteId}
       initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
-      <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
+      <Card
+        elevated
+        className="@container min-w-0 overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col"
+      >
         <div
           data-note-editor-toolbar
-          className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 sm:flex-row sm:items-center sm:px-6 sm:py-4"
+          className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 @2xl:flex-row @2xl:items-center @2xl:px-6 @2xl:py-4"
         >
           {previewMode ? (
             <h2 className="min-w-0 flex-1 truncate font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)]">
@@ -376,8 +380,8 @@ function NoteEditor({
               className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
             />
           )}
-          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
-            <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl:w-auto @2xl:shrink-0">
+            <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums @2xl:mr-1">
               {conflict ? (
                 <span className="text-[var(--color-app-danger)]">{t('notes.conflict')}</span>
               ) : saving ? (

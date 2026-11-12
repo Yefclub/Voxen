@@ -53,7 +53,7 @@ const THEME_LABEL_KEY: Record<AppTheme, 'theme.switchToDark' | 'theme.switchToLi
 };
 
 const chromeControlClass =
-  'inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 md:h-8 md:w-8';
+  'inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:h-8 md:w-8';
 
 interface TopbarProps {
   user: MeUser;
@@ -151,7 +151,7 @@ export function Topbar({
                   chromeControlClass,
                   'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:rounded-full',
                 )}
-                aria-label={`${t('shell.userMenu')} (${initials(user.name)})`}
+                aria-label={`${t('shell.userMenu')}: ${initials(user.name)}`}
               >
                 <Avatar className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
                   {user.image && (

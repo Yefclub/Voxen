@@ -851,7 +851,7 @@ function LibraryFolderControl({
         disabled={organizing}
         onValueChange={(value) => void onMove(value === 'none' ? null : value)}
       >
-        <SelectTrigger className="h-10">
+        <SelectTrigger aria-label={t('library.folder')} className="h-10">
           <SelectValue placeholder={t('library.noFolder')} />
         </SelectTrigger>
         <SelectContent>
