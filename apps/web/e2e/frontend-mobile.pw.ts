@@ -196,4 +196,31 @@ test.describe('mobile knowledge workspace (spec 225)', () => {
     await page.keyboard.press('Space');
     await expect(control).toHaveAttribute('aria-checked', 'false');
   });
+  test('recovers administrative configuration failures without inventing empty policies', async ({
+    page,
+  }) => {
+    await db.user.update({ where: { id: workspace!.userId }, data: { role: 'ADMIN' } });
+    for (const { path, endpoint } of [
+      { path: '/admin/usuarios', endpoint: '/api/admin/instance' },
+      { path: '/admin/integracoes', endpoint: '/api/admin/config-revisions' },
+      { path: '/admin/integracoes', endpoint: '/api/admin/mcp' },
+      { path: '/admin/autenticacao', endpoint: '/api/admin/authentication/providers' },
+    ]) {
+      let unavailable = true;
+      await page.route(`**${endpoint}`, async (route) => {
+        if (unavailable && route.request().method() === 'GET')
+          await route.fulfill({ status: 503, json: { error: 'Temporary connection failure' } });
+        else await route.continue();
+      });
+      await page.goto(path);
+      const error = page
+        .getByRole('alert')
+        .filter({ has: page.getByRole('button', { name: 'Tentar novamente' }) });
+      await expect(error).toBeVisible();
+      unavailable = false;
+      await error.getByRole('button', { name: 'Tentar novamente' }).click();
+      await expect(error).toBeHidden();
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    }
+  });
 });

@@ -4,13 +4,13 @@
 // ============================================================================
 
 import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
-import { RotateCcw, Sparkles } from '@/components/ui/icons';
+import { RotateCcw } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
+import { FetchError } from '../components/ui/fetch-error';
 import { ApiError, apiGet, apiPost } from '../lib/api';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
@@ -24,9 +24,6 @@ export function AdminIntegracoesPage(): React.ReactElement {
     <PageShell width="workspace">
       <div data-page-content className="space-y-8 sm:space-y-10">
         <PageHeader
-          eyebrow={t('shell.admin')}
-          icon={Sparkles}
-          iconClassName="text-violet-400"
           title={t('admin.integrations.title')}
           description={t('admin.integrations.description')}
         />
@@ -55,6 +52,8 @@ interface ConfigRevision {
 
 function ConfigRevisionSection(): React.ReactElement {
   const { t, locale } = useI18n();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
   const [nextBefore, setNextBefore] = useState<number | null>(null);
   const [target, setTarget] = useState<ConfigRevision | null>(null);
@@ -62,15 +61,18 @@ function ConfigRevisionSection(): React.ReactElement {
   const [loadingMore, setLoadingMore] = useState(false);
 
   async function refresh(): Promise<void> {
+    setLoadError(null);
+    setRefreshing(true);
     try {
       const response = await apiGet<{ revisions: ConfigRevision[]; nextBefore: number | null }>(
         '/api/admin/config-revisions',
       );
       setRevisions(response.revisions);
       setNextBefore(response.nextBefore);
-    } catch {
-      setRevisions([]);
-      setNextBefore(null);
+    } catch (error) {
+      setLoadError(error instanceof ApiError ? error.message : t('common.error'));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -83,6 +85,8 @@ function ConfigRevisionSection(): React.ReactElement {
       );
       setRevisions((current) => [...(current ?? []), ...response.revisions]);
       setNextBefore(response.nextBefore);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t('common.error'));
     } finally {
       setLoadingMore(false);
     }
@@ -114,6 +118,8 @@ function ConfigRevisionSection(): React.ReactElement {
     }
   }
 
+  if (!revisions && loadError)
+    return <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />;
   if (!revisions) {
     return (
       <Card>
@@ -125,11 +131,14 @@ function ConfigRevisionSection(): React.ReactElement {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+    <div>
+      {loadError && (
+        <FetchError message={loadError} onRetry={() => void refresh()} retrying={refreshing} />
+      )}
       <Card elevated>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-display">
-            <RotateCcw className="h-4 w-4 text-sky-400" />
+            <RotateCcw className="h-4 w-4 text-[var(--color-accent-primary)]" />
             {t('admin.integrations.revisions.title')}
           </CardTitle>
           <CardDescription>{t('admin.integrations.revisions.description')}</CardDescription>
@@ -189,7 +198,7 @@ function ConfigRevisionSection(): React.ReactElement {
               onClick={() => void loadMore()}
               disabled={loadingMore}
             >
-              {loadingMore ? <Spinner /> : t('admin.integrations.revisions.loadMore')}
+              {loadingMore && <Spinner />} {t('admin.integrations.revisions.loadMore')}
             </Button>
           )}
         </CardContent>
@@ -203,6 +212,6 @@ function ConfigRevisionSection(): React.ReactElement {
         onConfirm={rollback}
         loading={rollingBack}
       />
-    </motion.div>
+    </div>
   );
 }

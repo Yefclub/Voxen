@@ -9,7 +9,6 @@ import {
   safelyRunAnimation,
   shouldAnimateDecoration,
 } from '../../lib/interface-foundation';
-import type { AnimatedIcon } from './icons';
 
 gsap.registerPlugin(useGSAP);
 
@@ -83,18 +82,12 @@ export function PageShell({
 }
 
 interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
-  eyebrow?: ReactNode;
-  icon?: AnimatedIcon;
-  iconClassName?: string;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
 }
 
 export function PageHeader({
-  eyebrow: _eyebrow,
-  icon: _icon,
-  iconClassName: _iconClassName,
   title,
   description,
   actions,

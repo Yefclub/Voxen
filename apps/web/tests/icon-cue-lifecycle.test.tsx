@@ -99,23 +99,20 @@ function CuedNav({
 
 describe('deixa de ícone ao abrir a página', () => {
   test('page headings remain immediately readable without decorative icon cues', async () => {
-    const log: string[] = [];
-    const Icon = probeIcon(log);
     let renderer!: ReactTestRenderer;
-
     await act(async () => {
       renderer = create(
         React.createElement(PageHeader, {
-          eyebrow: 'biblioteca',
-          icon: Icon,
           title: 'Transcrições',
+          description: 'Encontre seus conteúdos.',
+          actions: React.createElement('button', null, 'Capturar'),
         }),
       );
     });
-
+    expect(renderer.root.findAllByType('h1')).toHaveLength(1);
     expect(renderer.root.findByType('h1').children).toEqual(['Transcrições']);
-    expect(renderer.root.findAllByType(Icon)).toHaveLength(0);
-    expect(log).toEqual([]);
+    expect(renderer.root.findByType('p').children).toEqual(['Encontre seus conteúdos.']);
+    expect(renderer.root.findByType('button').children).toEqual(['Capturar']);
 
     await act(async () => renderer.unmount());
   });

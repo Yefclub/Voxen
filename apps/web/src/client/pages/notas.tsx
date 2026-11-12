@@ -9,7 +9,6 @@ import {
   EyeOff,
   FileText,
   FolderPlus,
-  Library,
   Loader2,
   Plus,
   RefreshCw,
@@ -96,9 +95,6 @@ export function NotasPage(): React.ReactElement {
   return (
     <PageShell width="workspace">
       <PageHeader
-        eyebrow={t('notes.manualBase')}
-        icon={Library}
-        iconClassName="text-violet-400"
         title={t('notes.title')}
         description={id ? undefined : t('notes.description')}
         actions={

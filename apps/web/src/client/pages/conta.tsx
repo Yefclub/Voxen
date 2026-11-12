@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Upload, User as UserIcon } from '@/components/ui/icons';
+import { Eye, EyeOff, KeyRound, Upload } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -154,13 +154,7 @@ export function ContaPage(): React.ReactElement {
 
   return (
     <PageShell width="wide">
-      <PageHeader
-        eyebrow={t('account.eyebrow')}
-        icon={UserIcon}
-        iconClassName="text-violet-400"
-        title={t('account.title')}
-        description={t('account.description')}
-      />
+      <PageHeader title={t('account.title')} description={t('account.description')} />
 
       <AccountPageNav />
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BrainCircuit, RefreshCw, Save, Trash2 } from '@/components/ui/icons';
+import { AlertTriangle, RefreshCw, Save, Trash2 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { AccountPageNav } from '../components/account/account-page-nav';
 import {
@@ -165,13 +165,7 @@ export function ContaIaPage(): React.ReactElement {
 
   return (
     <PageShell width="wide">
-      <PageHeader
-        eyebrow={t('account.eyebrow')}
-        icon={BrainCircuit}
-        iconClassName="text-violet-400"
-        title={t('account.ai.title')}
-        description={t('account.ai.description')}
-      />
+      <PageHeader title={t('account.ai.title')} description={t('account.ai.description')} />
 
       <AccountPageNav />
 

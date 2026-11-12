@@ -1,13 +1,5 @@
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  Clock,
-  ExternalLink,
-  LineChart,
-  Network,
-  RefreshCw,
-  Sparkles,
-} from '@/components/ui/icons';
+import { ArrowRight, Clock, ExternalLink, Network, RefreshCw, Sparkles } from '@/components/ui/icons';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -63,8 +55,6 @@ export function GuiaPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={t('guide.eyebrow')}
-        icon={LineChart}
         title={t('guide.title')}
         description={t('guide.description')}
         actions={

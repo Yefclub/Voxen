@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  RotateCw,
-  Search,
-  Sparkles,
-} from '@/components/ui/icons';
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, RotateCw, Search } from '@/components/ui/icons';
 import { useFetch } from '../lib/hooks';
 import { useI18n } from '../lib/i18n';
 import type { VersionEnvironment } from '../../shared/version-environment';
@@ -117,9 +109,6 @@ export function NovidadesPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={t('novidades.eyebrow')}
-        icon={Sparkles}
-        iconClassName="text-[var(--color-accent-primary)]"
         title={t('novidades.title')}
         description={t('novidades.description')}
         actions={

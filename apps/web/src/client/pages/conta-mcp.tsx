@@ -168,13 +168,7 @@ export function ContaMcpPage(): React.ReactElement {
 
   return (
     <PageShell width="wide">
-      <PageHeader
-        eyebrow={t('account.eyebrow')}
-        icon={KeyRound}
-        iconClassName="text-[var(--color-accent-primary)]"
-        title={t('account.mcp.title')}
-        description={t('account.mcp.description')}
-      />
+      <PageHeader title={t('account.mcp.title')} description={t('account.mcp.description')} />
 
       <AccountPageNav />
       {loadError && (

@@ -225,13 +225,7 @@ export function AdminUsuariosPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <div data-page-content className="space-y-6 sm:space-y-10">
-        <PageHeader
-          eyebrow={t('admin.eyebrow')}
-          icon={ShieldCheck}
-          iconClassName="text-[var(--color-accent-primary)]"
-          title={t('admin.users.title')}
-          description={t('admin.users.description')}
-        />
+        <PageHeader title={t('admin.users.title')} description={t('admin.users.description')} />
 
         {instanceError ? (
           <FetchError

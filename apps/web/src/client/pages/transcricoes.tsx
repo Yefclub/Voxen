@@ -6,7 +6,6 @@ import {
   FolderPlus,
   Globe,
   Inbox,
-  Library,
   Loader2,
   ChevronLeft,
   ChevronRight,
@@ -344,9 +343,6 @@ export function TranscricoesPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={t('library.eyebrow')}
-        icon={Library}
-        iconClassName="text-violet-400"
         title={t('library.title')}
         actions={
           <>
