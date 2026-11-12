@@ -209,7 +209,7 @@ export function MobileNavDrawer({
           </button>
         </div>
         <LayoutGroup id="mobile-nav">
-          <SidebarModeBody user={user} hideHome cueSignal={navCueSignal} />
+          <SidebarModeBody user={user} cueSignal={navCueSignal} />
         </LayoutGroup>
         <SidebarReleaseUpdateButton />
         <SidebarChangelogButton />

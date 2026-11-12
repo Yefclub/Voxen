@@ -85,7 +85,7 @@ describe('Voxen visual foundation', () => {
     const appLayout = read('src/client/components/layout/app-layout.tsx');
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
-    expect(sidebar).toContain('const SIDEBAR_WIDTH = 288');
+    expect(sidebar).toContain('const SIDEBAR_WIDTH = 244');
     expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
     expect(sidebar).toContain('id="desktop-sidebar"');
     expect(sidebar).toContain('aria-hidden');
@@ -96,7 +96,7 @@ describe('Voxen visual foundation', () => {
     expect(drawer).toContain('fica preparada fora da tela');
     expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
     expect(drawer).toContain('inert={present ? undefined : true}');
-    expect(drawer).toContain('<SidebarModeBody user={user} hideHome');
+    expect(drawer).toContain('<SidebarModeBody user={user}');
   });
 
   test('adota os primitives de página e dados nas telas administrativas', () => {

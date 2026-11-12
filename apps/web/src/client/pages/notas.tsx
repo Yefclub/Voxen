@@ -1,12 +1,7 @@
-// ============================================================================
-// /notas — KB manual (editor; tree fica na sidebar global contextual)
-// ============================================================================
-// Tree foi movida pra Sidebar (modo `notas`) — mesmo padrão de /chat.
-// Esta página renderiza apenas o editor da nota selecionada ou empty state.
-// ============================================================================
+// Notes keep their tree inside the workspace, alongside the selected document.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   Clock,
@@ -105,11 +100,26 @@ export function NotasPage(): React.ReactElement {
         icon={Library}
         iconClassName="text-violet-400"
         title={t('notes.title')}
-        description={t('notes.description')}
+        description={id ? undefined : t('notes.description')}
+        actions={
+          id && (
+            <Button asChild variant="secondary">
+              <Link to="/notas">{t('notes.allNotes')}</Link>
+            </Button>
+          )
+        }
       />
 
       {id ? (
-        <NoteEditor key={id} noteId={id} onSaved={() => void refresh()} />
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+          <aside
+            className="hidden border-r border-[var(--color-app-border)] pr-4 xl:block"
+            aria-label={t('notes.allNotes')}
+          >
+            <NotesTree activeId={id} variant="sidebar" />
+          </aside>
+          <NoteEditor key={id} noteId={id} onSaved={() => void refresh()} />
+        </div>
       ) : (
         <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
       )}
@@ -344,7 +354,7 @@ function NoteEditor({
   return (
     <motion.div
       key={noteId}
-      initial={{ opacity: 0, y: 6 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
@@ -373,15 +383,15 @@ function NoteEditor({
           <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
             <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
               {conflict ? (
-                <span className="text-rose-300">{t('notes.conflict')}</span>
+                <span className="text-[var(--color-app-danger)]">{t('notes.conflict')}</span>
               ) : saving ? (
                 <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
                   <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
                 </span>
               ) : dirty ? (
-                <span className="text-amber-300">{t('notes.pending')}</span>
+                <span className="text-[var(--color-app-warning-fg)]">{t('notes.pending')}</span>
               ) : (
-                <span className="text-emerald-300">{t('common.saved')}</span>
+                <span className="text-[var(--color-app-success-fg)]">{t('common.saved')}</span>
               )}
             </span>
             <span className="shrink-0 rounded-md border border-[var(--color-app-border)] px-2 py-1 text-[10px] font-medium tabular-nums text-[var(--color-app-muted)]">

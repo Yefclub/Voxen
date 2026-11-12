@@ -626,12 +626,11 @@ const ptBRMessages = {
 
   'notes.manualBase': 'Base manual',
   'notes.title': 'Notas',
-  'notes.description':
-    'Sua base de conhecimento escrita à mão. Use a árvore na lateral pra navegar entre notas e pastas. A Vox também pode criar/editar via chat com confirmação.',
+  'notes.allNotes': 'Todas as notas',
+  'notes.description': 'Seu espaço para escrever, organizar ideias e complementar a biblioteca.',
   'notes.emptyTitle': 'Comece sua base manual',
   'notes.selectTitle': 'Selecione uma nota',
-  'notes.emptyDescription':
-    'Crie sua primeira nota ou pasta na sidebar. Você também pode pedir pra Vox criar via chat (com confirmação antes).',
+  'notes.emptyDescription': 'Crie uma nota ou pasta para começar a organizar suas ideias.',
   'notes.selectDescription': 'Clique numa nota da árvore na sidebar pra abrir o editor.',
   'notes.libraryTitle': 'Biblioteca de notas',
   'notes.libraryDescription': 'Escolha uma nota ou organize seu conhecimento em pastas.',
@@ -1781,12 +1780,13 @@ const enMessages: Record<I18nKey, string> = {
 
   'notes.manualBase': 'Manual base',
   'notes.title': 'Notes',
+  'notes.allNotes': 'All notes',
   'notes.description':
-    'Your hand-written knowledge base. Use the sidebar tree to navigate notes and folders. Vox can also create or edit through chat with confirmation.',
+    'Your space to write, organize ideas, and add to the library.',
   'notes.emptyTitle': 'Start your manual base',
   'notes.selectTitle': 'Select a note',
   'notes.emptyDescription':
-    'Create your first note or folder in the sidebar. You can also ask Vox to create one through chat with confirmation.',
+    'Create a note or folder to start organizing your ideas.',
   'notes.selectDescription': 'Click a note in the sidebar tree to open the editor.',
   'notes.libraryTitle': 'Notes library',
   'notes.libraryDescription': 'Choose a note or organize your knowledge in folders.',
