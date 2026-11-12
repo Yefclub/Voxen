@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794504478",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Clearer graph exploration and reliable 3D framing",
+    "body": "The graph opens with a complete 3D overview instead of automatically zooming\ninto one community. Camera initialization waits for positioned nodes, and\ndistant nodes remain visible when zooming out.\n\nThe 2D overview separates thematic groups and keeps connections subtle, with\nreadable representative labels. Both modes share viewport controls and explicit\n2D/3D buttons. Desktop details sit beside the map, related content opens directly,\nand longer connection lists can be expanded. Search remains available across the\nwhole library, including nodes outside the displayed overview.",
+    "pr": 1073,
+    "author": "Kalyel",
+    "date": "2026-11-12T14:27:43-03:00",
+    "translations": {
+      "en": {
+        "title": "Clearer graph exploration and reliable 3D framing",
+        "body": "The graph opens with a complete 3D overview instead of automatically zooming\ninto one community. Camera initialization waits for positioned nodes, and\ndistant nodes remain visible when zooming out.\n\nThe 2D overview separates thematic groups and keeps connections subtle, with\nreadable representative labels. Both modes share viewport controls and explicit\n2D/3D buttons. Desktop details sit beside the map, related content opens directly,\nand longer connection lists can be expanded. Search remains available across the\nwhole library, including nodes outside the displayed overview."
+      },
+      "pt-BR": {
+        "title": "Grafo mais legível e enquadramento 3D corrigido",
+        "body": "O grafo abre com uma visão geral completa em 3D, sem aproximar automaticamente\numa única comunidade. A câmera aguarda o posicionamento dos nós, que continuam\nvisíveis quando a visualização se afasta.\n\nA visão 2D separa os grupos de temas e deixa as conexões mais discretas, com\nrótulos representativos legíveis. Os dois modos compartilham controles e botões\nexplícitos de 2D/3D. No desktop, os detalhes ficam ao lado do mapa, conteúdos\nrelacionados podem ser abertos diretamente e listas maiores de conexões podem\nser expandidas. A busca continua encontrando toda a base, inclusive nós fora da\nvisão geral exibida."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1073"
+  },
+  {
     "version": "0.15.1-dev.1794498234",
     "channel": "dev",
     "type": "fix",
