@@ -133,7 +133,7 @@ export function AppLayout(): React.ReactElement {
       <UpdateModal monitor={versionMonitor} />
       <div
         data-interface-mode="focus"
-        className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]"
+        className="flex h-[var(--visual-viewport-height,100dvh)] overflow-hidden bg-[var(--color-app-bg)]"
       >
         <Sidebar user={data.user} />
         <MobileNavDrawer
@@ -169,7 +169,7 @@ export function AppLayout(): React.ReactElement {
             showMobileMenu={!showBack && !isDesktop && isFullBleed}
             onOpenMobileNav={() => setMobileNavOpen(true)}
           />
-          <main ref={mainRef} className={mainClass}>
+          <main data-app-main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
           {!hideBottomNav && <MobileBottomNav user={data.user} />}

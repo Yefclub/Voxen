@@ -80,6 +80,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
 
   return (
     <nav
+      data-mobile-bottom-nav
       className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]"
       style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0px)' }}
       aria-label={t('shell.menu')}

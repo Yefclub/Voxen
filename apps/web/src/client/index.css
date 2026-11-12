@@ -170,6 +170,7 @@
   @media (pointer: coarse) {
     :where(button, select, input:not([type='checkbox'], [type='radio'])) {
       min-height: 44px;
+      min-width: 44px;
     }
 
     * {
@@ -497,4 +498,17 @@
 .prose-voxen a {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+@media (max-width: 767px) {
+  .voxen-dialog,
+  .voxen-sheet {
+    bottom: var(--visual-viewport-bottom, 0px);
+  }
+  html[data-keyboard='open'] [data-mobile-bottom-nav] {
+    display: none;
+  }
+  html[data-keyboard='open'] [data-app-main] {
+    padding-bottom: 1rem;
+  }
 }

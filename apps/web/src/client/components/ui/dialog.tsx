@@ -49,8 +49,8 @@ export const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          'voxen-dialog fixed inset-x-0 bottom-0 z-50 grid w-full max-h-[min(90dvh,var(--visual-viewport-height,90dvh))] gap-5 overflow-y-auto overflow-x-hidden overscroll-contain sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100vw-3rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2',
-          'rounded-t-2xl bg-[var(--color-app-bg-elevated)] px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-7 shadow-[var(--app-shadow-overlay)] sm:rounded-xl sm:p-7 data-[state=open]:anim-in',
+          'voxen-dialog fixed inset-x-0 bottom-0 z-50 grid w-full max-h-[min(90dvh,var(--visual-viewport-height,90dvh))] gap-5 overflow-y-auto overflow-x-hidden overscroll-contain md:inset-x-auto md:bottom-auto md:left-1/2 md:top-1/2 md:w-[calc(100vw-3rem)] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2',
+          'rounded-t-2xl bg-[var(--color-app-bg-elevated)] px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-7 shadow-[var(--app-shadow-overlay)] md:rounded-xl md:p-7 data-[state=open]:anim-in',
           className,
         )}
         {...props}
@@ -80,7 +80,7 @@ export function DialogFooter({
 }: React.HTMLAttributes<HTMLDivElement>): React.ReactElement {
   return (
     <div
-      className={cn('flex flex-col-reverse gap-3 sm:flex-row sm:justify-end', className)}
+      className={cn('flex flex-col-reverse gap-3 md:flex-row md:justify-end', className)}
       {...props}
     />
   );

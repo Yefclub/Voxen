@@ -34,7 +34,7 @@ export const SheetContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          'fixed inset-x-0 bottom-0 z-50 flex max-h-[min(90dvh,var(--visual-viewport-height,90dvh))] w-full flex-col overflow-y-auto overscroll-contain rounded-t-2xl bg-[var(--color-app-bg-elevated)] pb-[env(safe-area-inset-bottom)] shadow-[var(--app-shadow-overlay)] data-[state=open]:anim-in sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:w-[32rem] sm:rounded-none',
+          'voxen-sheet fixed inset-x-0 bottom-0 z-50 flex max-h-[min(90dvh,var(--visual-viewport-height,90dvh))] w-full flex-col overflow-y-auto overscroll-contain rounded-t-2xl bg-[var(--color-app-bg-elevated)] pb-[env(safe-area-inset-bottom)] shadow-[var(--app-shadow-overlay)] data-[state=open]:anim-in md:inset-x-auto md:inset-y-0 md:right-0 md:max-h-none md:w-[32rem] md:rounded-none',
           className,
         )}
         {...props}
