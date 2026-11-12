@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Button as AstryxButton } from '@astryxdesign/core/Button';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
@@ -17,8 +18,10 @@ const buttonVariants = cva(
       variant: {
         default:
           'bg-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)] hover:bg-[var(--color-app-inverted-hover)]',
-        primary: 'bg-emerald-500 text-emerald-950 font-semibold hover:bg-emerald-400',
-        violet: 'bg-violet-500 text-violet-950 font-semibold hover:bg-violet-400',
+        primary:
+          'bg-[var(--color-accent-primary)] text-[var(--color-app-bg)] font-semibold hover:brightness-110',
+        violet:
+          'bg-[var(--color-accent-primary)] text-[var(--color-app-bg)] font-semibold hover:brightness-110',
         secondary:
           'bg-[var(--color-app-surface)] text-[var(--color-app-fg)] border border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
         outline:
@@ -32,11 +35,11 @@ const buttonVariants = cva(
         link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-emerald-400',
       },
       size: {
-        default: 'h-9 px-4',
-        sm: 'h-8 px-3 text-xs rounded-lg',
+        default: 'h-10 px-4 [@media(pointer:coarse)]:min-h-11',
+        sm: 'h-9 px-3 text-sm rounded-lg [@media(pointer:coarse)]:min-h-11',
         lg: 'h-10 px-5',
         xl: 'h-12 px-7 text-base rounded-xl',
-        icon: 'h-9 w-9',
+        icon: 'h-10 w-10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
       },
     },
     defaultVariants: {
@@ -51,11 +54,48 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
+function buttonText(children: React.ReactNode): string {
+  return React.Children.toArray(children)
+    .map((child) => {
+      if (typeof child === 'string' || typeof child === 'number') return String(child);
+      if (React.isValidElement<{ children?: React.ReactNode }>(child))
+        return buttonText(child.props.children);
+      return '';
+    })
+    .join(' ')
+    .trim();
+}
+
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : 'button';
+  ({ className, variant, size, asChild = false, children, ...props }, ref) => {
+    const classes = cn(buttonVariants({ variant, size, className }));
+    if (asChild)
+      return (
+        <Slot className={classes} ref={ref} {...props}>
+          {children}
+        </Slot>
+      );
+    const label = props['aria-label'] ?? props.title ?? buttonText(children);
+    const astryxVariant =
+      variant === 'destructive'
+        ? 'destructive'
+        : variant === 'primary' || variant === 'violet' || !variant || variant === 'default'
+          ? 'primary'
+          : variant === 'ghost' || variant === 'link' || variant === 'disclosure'
+            ? 'ghost'
+            : 'secondary';
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <AstryxButton
+        {...props}
+        ref={ref}
+        label={label}
+        variant={astryxVariant}
+        size={size === 'sm' ? 'sm' : 'md'}
+        isDisabled={props.disabled}
+        className={classes}
+      >
+        <span className="inline-flex items-center justify-center gap-2">{children}</span>
+      </AstryxButton>
     );
   },
 );

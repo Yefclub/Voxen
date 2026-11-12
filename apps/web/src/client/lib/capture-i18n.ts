@@ -4,11 +4,17 @@
 
 export const ptBrCaptureMessages = {
   'capture.eyebrow': 'Captura',
-  'capture.title': 'Capturar',
-  'capture.description':
-    'Cole um link ou envie um arquivo. A Voxen extrai o conteúdo e cria um documento com resumo e tags.',
+  'capture.title': 'Capturas',
+  'capture.new': 'Nova captura',
+  'capture.current': 'Captura atual',
+  'capture.following': 'Seu conteúdo está a caminho da biblioteca.',
+  'capture.opensWhenReady':
+    'O documento abre aqui assim que estiver pronto. Você também pode continuar usando a Voxen.',
+  'capture.details': 'Detalhes do processamento',
+  'capture.actionError': 'Não foi possível concluir a ação. Tente de novo.',
+  'capture.description': 'Transforme links e arquivos em conhecimento para consultar depois.',
   'capture.inputLabel': 'Link para capturar',
-  'capture.inputPlaceholder': 'Cole um link (YouTube, TikTok, Instagram, X, página web)',
+  'capture.inputPlaceholder': 'Cole o link do conteúdo',
   'capture.submit': 'Capturar',
   'capture.submitting': 'Enviando…',
   'capture.pickFile': 'Enviar arquivo',
@@ -87,11 +93,18 @@ export const ptBrCaptureMessages = {
 
 export const enCaptureMessages: Record<keyof typeof ptBrCaptureMessages, string> = {
   'capture.eyebrow': 'Capture',
-  'capture.title': 'Capture',
+  'capture.title': 'Captures',
+  'capture.new': 'New capture',
+  'capture.current': 'Current capture',
+  'capture.following': 'Your content is on its way to the library.',
+  'capture.opensWhenReady':
+    'The document opens here as soon as it is ready. You can also keep using Voxen.',
+  'capture.details': 'Processing details',
+  'capture.actionError': 'This action could not be completed. Try again.',
   'capture.description':
     'Paste a link or upload a file. Voxen extracts the content and creates a document with a summary and tags.',
   'capture.inputLabel': 'Link to capture',
-  'capture.inputPlaceholder': 'Paste a link (YouTube, TikTok, Instagram, X, web page)',
+  'capture.inputPlaceholder': 'Paste a content link',
   'capture.submit': 'Capture',
   'capture.submitting': 'Sending…',
   'capture.pickFile': 'Upload file',

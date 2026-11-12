@@ -1,83 +1,74 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { describe, expect, test } from 'bun:test';
 import {
   APP_THEMES,
-  DARK_THEMES,
   DEFAULT_THEME,
   isAppTheme,
-  isDarkTheme,
   normalizeAppTheme,
+  persistedTheme,
   themeColor,
   toggleLightDark,
-  type AppTheme,
 } from './theme';
 
-function read(relativePath: string): string {
-  return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-}
-
-describe('theme helpers', () => {
-  test('normalizes unknown values to the default theme', () => {
-    expect(normalizeAppTheme(undefined)).toBe('linear');
-    expect(normalizeAppTheme('nope')).toBe('linear');
-    expect(normalizeAppTheme('linear')).toBe('linear');
-    expect(normalizeAppTheme('emerald')).toBe('emerald');
+describe('Voxen appearance migration', () => {
+  test('offers only light and dark appearances', () => {
+    expect(APP_THEMES).toEqual(['light', 'dark']);
+    expect(isAppTheme('light')).toBe(true);
+    expect(isAppTheme('dark')).toBe(true);
+    expect(isAppTheme('emerald')).toBe(false);
+    expect(isAppTheme('unknown')).toBe(false);
   });
-
-  test('isAppTheme accepts only known ids', () => {
-    for (const id of ['linear', 'zinc', 'emerald', 'light'] as AppTheme[]) {
-      expect(isAppTheme(id)).toBe(true);
+  test('retains every previous dark preference and the previous light preference', () => {
+    for (const stored of ['linear', 'zinc', 'emerald', 'dark', null, undefined, 'unknown']) {
+      expect(normalizeAppTheme(stored)).toBe(DEFAULT_THEME);
     }
-    expect(isAppTheme('dark')).toBe(false);
+    expect(normalizeAppTheme('light')).toBe('light');
   });
-
-  test('toggleLightDark switches to light from dark themes', () => {
-    expect(toggleLightDark('linear')).toBe('light');
-    expect(toggleLightDark('zinc')).toBe('light');
-    expect(toggleLightDark('emerald')).toBe('light');
+  test('preserves the public account API and extension identifiers', () => {
+    expect(persistedTheme('dark')).toBe('linear');
+    expect(persistedTheme('light')).toBe('light');
+    for (const theme of APP_THEMES) expect(normalizeAppTheme(persistedTheme(theme))).toBe(theme);
   });
-
-  test('maps each theme to its browser chrome color', () => {
-    expect(themeColor('linear')).toBe('#111113');
-    expect(themeColor('zinc')).toBe('#212121');
-    expect(themeColor('emerald')).toBe('#19211f');
-    expect(themeColor('light')).toBe('#f7f7f8');
+  test('toggles the complete identity and browser chrome together', () => {
+    expect(toggleLightDark('light')).toBe('dark');
+    expect(toggleLightDark('dark')).toBe('light');
+    expect(themeColor('dark')).toBe('#141a18');
+    expect(themeColor('light')).toBe('#f8f9f6');
   });
 });
 
-/**
- * O tema padrão é exibido como "Voxen" mas continua gravado como `linear`.
- * Estes testes travam essa separação: quem já tinha o padrão salvo não pode
- * cair em outro tema, e a extensão espelha o mesmo identificador.
- */
-describe('rótulo Voxen sobre o identificador persistido', () => {
-  test('mantém `linear` como identificador padrão e opção válida', () => {
-    expect(DEFAULT_THEME).toBe('linear');
-    expect(APP_THEMES).toContain('linear');
-    expect(DARK_THEMES).toContain('linear');
-    expect(isDarkTheme('linear')).toBe(true);
+describe('pre-paint appearance bootstrap', () => {
+  const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)![1]!;
+  function boot(stored: string | null, light: boolean): { theme?: string; chrome?: string } {
+    const result: { theme?: string; chrome?: string } = {};
+    const dataset = {
+      set theme(value: string) {
+        result.theme = value;
+      },
+    };
+    runInNewContext(script, {
+      localStorage: { getItem: () => stored },
+      matchMedia: () => ({ matches: light }),
+      document: {
+        documentElement: { dataset, style: {} },
+        querySelector: () => ({
+          setAttribute: (_: string, value: string) => {
+            result.chrome = value;
+          },
+        }),
+      },
+    });
+    return result;
+  }
+  test('normalizes all saved appearances before React or CSS loads', () => {
+    for (const legacy of ['linear', 'zinc', 'emerald', 'dark'])
+      expect(boot(legacy, true)).toEqual({ theme: 'dark', chrome: themeColor('dark') });
+    expect(boot('light', false)).toEqual({ theme: 'light', chrome: themeColor('light') });
   });
-
-  test('preserva o tema de quem já tinha o padrão gravado', () => {
-    // Valor vindo do banco / localStorage de uma conta anterior à renomeação.
-    const persisted: unknown = 'linear';
-
-    expect(isAppTheme(persisted)).toBe(true);
-    expect(normalizeAppTheme(persisted)).toBe(DEFAULT_THEME);
-    expect(themeColor(normalizeAppTheme(persisted))).toBe('#111113');
-  });
-
-  test('não introduz um identificador `voxen` que invalidaria o dado salvo', () => {
-    expect(isAppTheme('voxen')).toBe(false);
-    expect(normalizeAppTheme('voxen')).toBe('linear');
-    expect(APP_THEMES).not.toContain('voxen' as AppTheme);
-  });
-
-  test('exibe "Voxen" nos dois idiomas, sem tocar no identificador', () => {
-    const i18n = read('./i18n.tsx');
-    const labels = [...i18n.matchAll(/'theme\.linear': '([^']+)'/g)].map(([, label]) => label);
-
-    expect(labels).toEqual(['Voxen', 'Voxen']);
-    expect(i18n).not.toContain("'theme.linear': 'Linear'");
+  test('follows the system only when no preference was saved', () => {
+    expect(boot(null, true).theme).toBe('light');
+    expect(boot(null, false).theme).toBe('dark');
   });
 });

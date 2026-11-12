@@ -26,7 +26,7 @@ import type { MeUser } from '../../lib/types';
 import { Badge } from '../ui/badge';
 import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
-import { APP_THEMES, readLastDarkTheme, type AppTheme } from '../../lib/theme';
+import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
 import { hidesBottomNav } from '../../lib/mobile-nav';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
@@ -47,14 +47,9 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-const THEME_LABEL_KEY: Record<
-  AppTheme,
-  'theme.linear' | 'theme.zinc' | 'theme.emerald' | 'theme.light'
-> = {
-  linear: 'theme.linear',
-  zinc: 'theme.zinc',
-  emerald: 'theme.emerald',
-  light: 'theme.light',
+const THEME_LABEL_KEY: Record<AppTheme, 'theme.switchToDark' | 'theme.switchToLight'> = {
+  dark: 'theme.switchToDark',
+  light: 'theme.switchToLight',
 };
 
 const chromeControlClass =
@@ -222,7 +217,7 @@ function AppearanceMenu(): React.ReactElement {
         onValueChange={(next) => {
           const mode = next[0];
           if (mode === 'light' && !light) void setTheme('light');
-          if (mode === 'dark' && light) void setTheme(readLastDarkTheme());
+          if (mode === 'dark' && light) void setTheme('dark');
         }}
         className="hidden md:flex"
       >

@@ -1,8 +1,13 @@
 ---
 version: 1
-slug: "apps-web-src-client-app-tsx"
-primary_target: "apps/web/src/client/App.tsx"
-related_targets: ["apps/web/src/client/pages/capturar.tsx","apps/web/src/client/pages/login.tsx","apps/web/src/client/index.css"]
+slug: 'apps-web-src-client-app-tsx'
+primary_target: 'apps/web/src/client/App.tsx'
+related_targets:
+  [
+    'apps/web/src/client/pages/capturar.tsx',
+    'apps/web/src/client/pages/login.tsx',
+    'apps/web/src/client/index.css',
+  ]
 ---
 
 THESIS: Operate and Read. Put saved content and the current capture ahead of processing controls; replace the form-and-card scaffolding with a continuous workspace.

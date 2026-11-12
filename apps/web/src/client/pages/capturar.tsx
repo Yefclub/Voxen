@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download } from '@/components/ui/icons';
 import { Button } from '../components/ui/button';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
@@ -149,7 +148,10 @@ export function CapturarPage(): React.ReactElement {
   );
 
   const active = jobs.filter(isActiveCapture);
-  const liveIds = new Set(active.slice(0, MAX_LIVE_STREAMS).map((job) => job.id));
+  const prioritized = [...active].sort(
+    (a, b) => Number(b.id === intent.focusJobId) - Number(a.id === intent.focusJobId),
+  );
+  const liveIds = new Set(prioritized.slice(0, MAX_LIVE_STREAMS).map((job) => job.id));
   const needsPolling = active.length > liveIds.size;
 
   useEffect(() => {
@@ -172,76 +174,118 @@ export function CapturarPage(): React.ReactElement {
     }
   }
 
-  return (
-    <PageShell width="reading" className="max-w-3xl">
-      <PageHeader
-        eyebrow={t('capture.eyebrow')}
-        icon={Download}
-        iconClassName="text-violet-400"
-        title={t('capture.title')}
-        description={t('capture.description')}
-      />
+  const history = jobs.filter((job) => job.id !== focusedJob?.id);
+  const historyContent = (
+    <>
+      {error && jobs.length === 0 ? (
+        <FetchError message={error} onRetry={() => setTick((n) => n + 1)} />
+      ) : loading && jobs.length === 0 ? (
+        <div className="space-y-3" aria-busy>
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
+      ) : history.length === 0 ? (
+        <p className="py-10 text-sm leading-relaxed text-[var(--color-app-muted)]">
+          {t('capture.empty')}
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--color-app-border)]">
+          {history.map((job) => (
+            <li key={job.id}>
+              <CaptureJobCard
+                job={job}
+                live={liveIds.has(job.id)}
+                onChange={upsert}
+                onUpload={() => composer.current?.openFilePicker()}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {cursor && jobs.length > 0 && (
+        <div className="flex justify-center pt-4">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore && <Spinner size={14} />}
+            {t('capture.loadMore')}
+          </Button>
+        </div>
+      )}
+    </>
+  );
 
-      <section aria-label={t('capture.inputLabel')} className="space-y-3">
+  return (
+    <PageShell>
+      <PageHeader
+        title={t('capture.title')}
+        description={t(focusedJob ? 'capture.following' : 'capture.description')}
+        actions={
+          focusedJob && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setParams({});
+                setSharedPending(false);
+              }}
+            >
+              {t('capture.new')}
+            </Button>
+          )
+        }
+      />
+      <section
+        aria-label={t('capture.inputLabel')}
+        hidden={Boolean(focusedJob)}
+        className="max-w-3xl space-y-3"
+      >
         <CaptureComposer ref={composer} onJob={onJob} />
         {sharedPending && (
-          <p
-            className="flex items-center gap-2 text-sm text-[var(--color-app-muted)]"
-            role="status"
-          >
+          <p className="text-sm text-[var(--color-app-subtle)]" role="status">
             {t('capture.sharedReady')}
           </p>
         )}
       </section>
-
-      <section aria-labelledby="capture-recent-title" className="space-y-3">
-        <h2
-          id="capture-recent-title"
-          className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]"
+      {focusedJob && (
+        <section aria-label={t('capture.current')} className="max-w-3xl">
+          <CaptureJobCard
+            job={focusedJob}
+            live={liveIds.has(focusedJob.id)}
+            focused
+            onChange={upsert}
+            onUpload={() => composer.current?.openFilePicker()}
+          />
+          {isActiveCapture(focusedJob) && (
+            <p className="mt-4 text-sm leading-relaxed text-[var(--color-app-muted)]">
+              {t('capture.opensWhenReady')}
+            </p>
+          )}
+        </section>
+      )}
+      {focusedJob ? (
+        <details className="border-t border-[var(--color-app-border)] pt-4">
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-[var(--color-app-subtle)]">
+            {t('capture.recent')}
+          </summary>
+          {historyContent}
+        </details>
+      ) : (
+        <section
+          aria-labelledby="capture-recent-title"
+          className="border-t border-[var(--color-app-border)] pt-6"
         >
-          {t('capture.recent')}
-        </h2>
-        {error && jobs.length === 0 ? (
-          <FetchError message={error} onRetry={() => setTick((n) => n + 1)} />
-        ) : loading && jobs.length === 0 ? (
-          <div className="space-y-3" aria-busy>
-            <Skeleton className="h-[76px] w-full rounded-xl" />
-            <Skeleton className="h-[76px] w-full rounded-xl" />
-          </div>
-        ) : jobs.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-[var(--color-app-border)] px-4 py-8 text-center text-sm text-[var(--color-app-muted)]">
-            {t('capture.empty')}
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {jobs.map((job) => (
-              <li key={job.id}>
-                <CaptureJobCard
-                  job={job}
-                  live={liveIds.has(job.id)}
-                  focused={job.id === intent.focusJobId}
-                  onChange={upsert}
-                  onUpload={() => composer.current?.openFilePicker()}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-        {cursor && jobs.length > 0 && (
-          <div className="flex justify-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={loadingMore}
-              onClick={() => void loadMore()}
-            >
-              {loadingMore && <Spinner size={12} />}
-              {t('capture.loadMore')}
-            </Button>
-          </div>
-        )}
-      </section>
+          <h2
+            id="capture-recent-title"
+            className="mb-2 text-base font-semibold text-[var(--color-app-fg)]"
+          >
+            {t('capture.recent')}
+          </h2>
+          {historyContent}
+        </section>
+      )}
     </PageShell>
   );
 }

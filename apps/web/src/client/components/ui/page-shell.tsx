@@ -1,4 +1,4 @@
-import { useEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { useRef, type HTMLAttributes, type ReactNode } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { useReducedMotion } from 'motion/react';
@@ -9,7 +9,6 @@ import {
   safelyRunAnimation,
   shouldAnimateDecoration,
 } from '../../lib/interface-foundation';
-import { ICON_CUE_DURATION, ICON_CUE_PAGE_DELAY_MS, useIconCueGroup } from '../../lib/icon-cue';
 import type { AnimatedIcon } from './icons';
 
 gsap.registerPlugin(useGSAP);
@@ -25,7 +24,7 @@ interface PageShellProps extends HTMLAttributes<HTMLDivElement> {
  */
 export function PageShell({
   width = 'workspace',
-  animate = true,
+  animate = false,
   className,
   children,
   ...props
@@ -52,12 +51,11 @@ export function PageShell({
         () => {
           gsap.fromTo(
             targets,
-            { autoAlpha: 0, y: 10 },
+            { y: 6 },
             {
-              autoAlpha: 1,
               y: 0,
-              duration: 0.38,
-              stagger: 0.055,
+              duration: 0.22,
+              stagger: 0,
               ease: 'power3.out',
               clearProps: 'opacity,transform,visibility',
             },
@@ -73,7 +71,7 @@ export function PageShell({
     <div
       ref={root}
       className={cn(
-        'mx-auto min-h-full w-full space-y-6 px-4 pb-5 pt-0 sm:space-y-8 sm:px-7 sm:pb-9 sm:pt-0 md:pt-5 xl:px-10',
+        'mx-auto min-h-full w-full space-y-7 px-5 py-6 sm:space-y-8 sm:px-8 sm:py-8 xl:px-10',
         PAGE_SHELL_WIDTHS[width],
         className,
       )}
@@ -85,8 +83,8 @@ export function PageShell({
 }
 
 interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
-  eyebrow: ReactNode;
-  icon: AnimatedIcon;
+  eyebrow?: ReactNode;
+  icon?: AnimatedIcon;
   iconClassName?: string;
   title: ReactNode;
   description?: ReactNode;
@@ -94,54 +92,27 @@ interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
 }
 
 export function PageHeader({
-  eyebrow,
-  icon: EyebrowIcon,
-  iconClassName,
+  eyebrow: _eyebrow,
+  icon: _icon,
+  iconClassName: _iconClassName,
   title,
   description,
   actions,
   className,
   ...props
 }: PageHeaderProps): React.ReactElement {
-  const reduceMotion = useReducedMotion();
-  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
-
-  // Ao abrir a página, o ícone que nomeia a página se desenha uma vez. A deixa
-  // começa 120ms depois da montagem, ou seja, com o cabeçalho ainda subindo na
-  // timeline do PageShell (0.38s) — os dois gestos se sobrepõem de propósito,
-  // em elementos e propriedades diferentes, sem salto de layout. É a única
-  // deixa de ícone da página: animar todos a cada navegação vira ruído.
-  useEffect(() => {
-    playCue(ICON_CUE_PAGE_DELAY_MS);
-  }, [playCue]);
-
   return (
     <header
       data-page-reveal
-      className={cn(
-        'flex flex-col gap-5 border-b border-[var(--color-app-border)] pb-6 lg:flex-row lg:items-end lg:justify-between',
-        className,
-      )}
+      className={cn('flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between', className)}
       {...props}
     >
       <div className="min-w-0 space-y-2.5">
-        {eyebrow && (
-          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
-            <EyebrowIcon
-              ref={registerIcon('eyebrow')}
-              isAnimated
-              duration={ICON_CUE_DURATION}
-              aria-hidden
-              className={cn('h-3.5 w-3.5 text-[var(--color-accent-primary)]', iconClassName)}
-            />
-            {eyebrow}
-          </div>
-        )}
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.035em] text-[var(--color-app-fg)] sm:text-4xl">
+        <h1 className="font-display text-[28px] leading-tight font-semibold tracking-[-0.025em] text-[var(--color-app-fg)] sm:text-[34px]">
           {title}
         </h1>
         {description && (
-          <p className="max-w-3xl text-[15px] leading-relaxed text-[var(--color-app-muted)]">
+          <p className="max-w-2xl text-sm leading-relaxed text-[var(--color-app-muted)]">
             {description}
           </p>
         )}

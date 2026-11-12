@@ -5,9 +5,10 @@ import { join } from 'node:path';
 const read = (path: string): string => readFileSync(join(import.meta.dir, '..', path), 'utf8');
 
 describe('navegação mobile', () => {
-  test('a rota raiz é Chat e não existe uma aba Início redundante', () => {
+  test('content tasks replace the obsolete chat destination without a duplicate home', () => {
     const bottomNav = read('src/client/components/layout/mobile-bottom-nav.tsx');
-    expect(bottomNav).toContain("{ to: '/', labelKey: 'shell.nav.chat', Icon: MessageCircle }");
+    expect(bottomNav).toContain("to: '/capturar'");
+    expect(bottomNav).not.toContain("labelKey: 'shell.nav.chat'");
     expect(bottomNav).not.toContain("labelKey: 'shell.nav.home'");
     expect(bottomNav).not.toContain('Icon: House');
   });

@@ -130,8 +130,8 @@ describe('MCP documentation contract', () => {
     expect(card).toContain('text-[var(--color-app-warning-fg)]');
     expect(card).not.toContain('dark:text-');
     expect(theme).toContain("[data-theme='light']");
-    expect(theme).toContain('--color-app-success-fg: #047857');
-    expect(theme).toContain('--color-app-warning-fg: #92400e');
+    expect(theme).toContain('--color-app-success-fg: #076b50');
+    expect(theme).toContain('--color-app-warning-fg: #7b550c');
     expect(card).not.toContain('bg-[var(--color-app-subtle)]');
   });
 });

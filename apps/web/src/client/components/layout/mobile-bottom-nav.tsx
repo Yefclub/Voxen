@@ -1,24 +1,23 @@
+import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+  DialogClose,
+} from '../ui/dialog';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ListVideo,
   LogOut,
-  MessageCircle,
+  Download,
   Network,
   Notebook,
-  ShieldCheck,
   User as UserIcon,
 } from '@/components/ui/icons';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { Badge } from '../ui/badge';
 import { cn } from '../../lib/utils';
 import { useI18n, type I18nKey } from '../../lib/i18n';
 import { useMe } from '../../lib/hooks';
@@ -30,12 +29,12 @@ import { isBottomNavTab } from '../../lib/mobile-nav';
 interface MobileNavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof MessageCircle;
+  Icon: typeof Download;
 }
 
 const ITEMS: MobileNavItem[] = [
-  { to: '/', labelKey: 'shell.nav.chat', Icon: MessageCircle },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
+  { to: '/capturar', labelKey: 'shell.nav.capture', Icon: Download },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
 ];
@@ -57,6 +56,7 @@ function initials(name: string): string {
  */
 export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement {
   const location = useLocation();
+  const [profileOpen, setProfileOpen] = useState(false);
   const navigate = useNavigate();
   const { t } = useI18n();
   const { refresh } = useMe();
@@ -80,7 +80,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
 
   return (
     <nav
-      className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/95 backdrop-blur-xl"
+      className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]"
       style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0px)' }}
       aria-label={t('shell.menu')}
     >
@@ -98,7 +98,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
               className={cn(
                 'flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition-colors',
                 active
-                  ? 'text-emerald-300'
+                  ? 'text-[var(--color-accent-primary)]'
                   : 'text-[var(--color-app-muted)] active:text-[var(--color-app-fg)]',
               )}
               aria-current={active ? 'page' : undefined}
@@ -106,7 +106,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
               <span
                 className={cn(
                   'flex h-8 w-10 items-center justify-center rounded-full transition-colors',
-                  active ? 'bg-emerald-500/15' : 'bg-transparent',
+                  active ? 'bg-[var(--color-accent-primary-soft)]' : 'bg-transparent',
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -117,15 +117,15 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
         })}
 
         {/* Perfil/usuário — abre menu pra cima (Perfil / Sair). */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+          <DialogTrigger asChild>
             <button
               type="button"
               className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-[var(--color-app-muted)] transition-colors active:text-[var(--color-app-fg)]"
               aria-label={t('shell.userMenu')}
             >
               <span className="flex h-8 w-10 items-center justify-center">
-                <Avatar className="h-7 w-7 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+                <Avatar className="h-7 w-7 bg-[var(--color-app-surface)]">
                   {user.image && (
                     <AvatarPrimitive.Image
                       src={user.image}
@@ -140,66 +140,52 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
               </span>
               <span className="max-w-full truncate">{t('common.profile')}</span>
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            side="top"
-            sideOffset={8}
-            className="w-60 mb-1 max-h-[min(70vh,28rem)] overflow-y-auto"
-            style={{ marginBottom: 'max(env(safe-area-inset-bottom), 0.25rem)' }}
-          >
-            <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
-              <div className="flex items-center gap-2 w-full">
-                <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
-                  {user.name}
-                </span>
-                {user.role === 'ADMIN' && (
-                  <Badge variant="success" className="text-[9px] shrink-0">
-                    <ShieldCheck className="h-2.5 w-2.5" />
-                    {t('shell.admin')}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-[11px] text-[var(--color-app-muted)] truncate w-full font-normal">
-                {user.email}
-              </span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
-                <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-                <span className="truncate">{t('common.profile')}</span>
+          </DialogTrigger>
+          <DialogContent className="gap-5">
+            <DialogTitle>{user.name}</DialogTitle>
+            <DialogDescription>{user.email}</DialogDescription>
+            <DialogClose asChild>
+              <Link
+                to="/conta"
+                className="flex min-h-11 items-center gap-3 rounded-lg px-3 hover:bg-[var(--color-app-surface)]"
+              >
+                <UserIcon className="h-4 w-4" />
+                {t('common.profile')}
               </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            </DialogClose>
             {/* Unique non-tab destinations, grouped by product domain. */}
-            {menuGroups.map(({ scope, labelKey }, groupIndex) => {
+            {menuGroups.map(({ scope, labelKey }) => {
               const groupItems = menuItems.filter((item) => item.scope === scope);
               if (groupItems.length === 0) return null;
               return (
                 <div key={scope}>
-                  {groupIndex > 0 && <DropdownMenuSeparator />}
-                  <DropdownMenuLabel className="pb-1 text-[9px] uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+                  <p className="px-3 py-2 text-xs font-medium text-[var(--color-app-muted)]">
                     {t(labelKey)}
-                  </DropdownMenuLabel>
+                  </p>
                   {groupItems.map(({ to, labelKey: itemLabelKey, Icon }) => (
-                    <DropdownMenuItem key={to} asChild>
-                      <NavLink to={to} className="flex items-center gap-2 cursor-pointer">
+                    <DialogClose key={to} asChild>
+                      <NavLink
+                        to={to}
+                        className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm hover:bg-[var(--color-app-surface)]"
+                      >
                         <Icon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
                         <span className="truncate">{t(itemLabelKey)}</span>
                       </NavLink>
-                    </DropdownMenuItem>
+                    </DialogClose>
                   ))}
                 </div>
               );
             })}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem destructive onSelect={() => void onSignOut()}>
+
+            <button
+              className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-app-danger)] hover:bg-[var(--color-app-surface)]"
+              onClick={() => void onSignOut()}
+            >
               <LogOut className="h-3.5 w-3.5" />
               {t('common.signOut')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </button>
+          </DialogContent>
+        </Dialog>
       </div>
     </nav>
   );

@@ -112,6 +112,8 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
               setUpload({ name: file.name, percent: Math.round(fraction * 100) }),
             ),
           );
+        } catch {
+          handleResult({ kind: 'error', status: 0, error: null, message: null });
         } finally {
           setBusy(null);
           setUpload(null);
@@ -200,7 +202,7 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           </div>
         )}
         <form
-          className="flex gap-2"
+          className="flex flex-col gap-3 sm:flex-row"
           onSubmit={(event) => {
             event.preventDefault();
             void submitUrl(url);
@@ -227,12 +229,12 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
               aria-invalid={invalidUrl || undefined}
               aria-describedby={notice ? noticeId : undefined}
               maxLength={4096}
-              className="h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-violet-500/60 focus:outline-none focus:ring-2 focus:ring-violet-500/40 aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
+              className="h-12 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500/40 aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
             />
           </div>
           <Button
             type="submit"
-            variant="violet"
+            variant="primary"
             className="h-11 shrink-0 px-4"
             disabled={!url.trim() || busy !== null}
           >
@@ -241,11 +243,14 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
             ) : (
               <ArrowRight className="h-4 w-4" aria-hidden />
             )}
-            <span className={cn(compact && 'sr-only sm:not-sr-only')}>{t('capture.submit')}</span>
+            <span className={cn(compact && 'not-sr-only')}>{t('capture.submit')}</span>
           </Button>
         </form>
-        <div className="flex min-h-8 items-center justify-between gap-3">
-          <p className="min-w-0 truncate text-xs text-[var(--color-app-muted)]" aria-live="polite">
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p
+            className="min-w-0 text-xs leading-relaxed text-[var(--color-app-muted)]"
+            aria-live="polite"
+          >
             {upload
               ? t('capture.uploading', { name: upload.name, percent: upload.percent })
               : t('capture.fileHint')}

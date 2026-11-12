@@ -98,10 +98,7 @@ function CuedNav({
 }
 
 describe('deixa de ícone ao abrir a página', () => {
-  test('o ícone do cabeçalho se desenha uma vez depois da montagem', async () => {
-    // Requisito event-driven da spec 129: "when o usuário abre uma página, the
-    // system shall executar a animação dos ícones dessa página". Componente
-    // real, ícone sonda no lugar do ícone da página, timers reais.
+  test('page headings remain immediately readable without decorative icon cues', async () => {
     const log: string[] = [];
     const Icon = probeIcon(log);
     let renderer!: ReactTestRenderer;
@@ -116,14 +113,9 @@ describe('deixa de ícone ao abrir a página', () => {
       );
     });
 
-    // Nada no frame da montagem: a deixa entra depois, com o cabeçalho já
-    // subindo na timeline do PageShell.
+    expect(renderer.root.findByType('h1').children).toEqual(['Transcrições']);
+    expect(renderer.root.findAllByType(Icon)).toHaveLength(0);
     expect(log).toEqual([]);
-
-    await act(async () => {
-      await Bun.sleep(300);
-    });
-    expect(log).toEqual(['start']);
 
     await act(async () => renderer.unmount());
   });

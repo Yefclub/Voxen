@@ -1,15 +1,21 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="linear">
+<html lang="pt-BR" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#111113" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#141a18" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Voxen" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Voxen</title>
-    <meta name="description" content="Sua biblioteca de vídeos, navegada por um agente." />
+    <meta
+      name="description"
+      content="Sua base de conhecimento. Capture, conecte e reencontre o que importa."
+    />
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -17,29 +23,23 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="mask-icon" href="/voxen-256.png" color="#34d399" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
     <script>
       (function () {
         try {
-          var t = localStorage.getItem('voxen:theme');
-          if (t === 'linear' || t === 'zinc' || t === 'emerald' || t === 'light') {
-            document.documentElement.dataset.theme = t;
-            document.documentElement.style.colorScheme = t === 'light' ? 'light' : 'dark';
-            var themeColor =
-              t === 'linear'
-                ? '#111113'
-                : t === 'emerald'
-                  ? '#19211f'
-                  : t === 'light'
-                    ? '#f7f7f8'
-                    : '#212121';
-            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
-          }
+          var saved = localStorage.getItem('voxen:theme');
+          var t = saved
+            ? saved === 'light'
+              ? 'light'
+              : 'dark'
+            : matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+          document.documentElement.dataset.theme = t;
+          document.documentElement.style.colorScheme = t;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', t === 'light' ? '#f8f9f6' : '#141a18');
         } catch (e) {}
       })();
     </script>

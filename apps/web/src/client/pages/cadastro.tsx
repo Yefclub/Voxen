@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, Eye, EyeOff } from '@/components/ui/icons';
-import { motion } from 'motion/react';
+import {
+  AuthFrame,
+  AuthFieldLabel as FieldLabel,
+  AuthInputFrame,
+} from '../components/layout/auth-frame';
+import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { InstanceState } from '../lib/types';
-import { Logo } from '../components/ui/logo';
 import { cn } from '../lib/utils';
 import { useI18n } from '../lib/i18n';
 
@@ -80,182 +84,136 @@ export function CadastroPage(): React.ReactElement {
   ]);
 
   return (
-    <div className="min-h-dvh flex flex-col px-4 py-6 sm:px-8 sm:py-10 lg:px-16 relative">
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(ellipse 70% 50% at 50% 0%, oklch(73% 0.16 159 / 0.07), transparent 70%)',
-        }}
-      />
-      <header className="mb-12">
-        <Logo size={32} />
-      </header>
+    <AuthFrame>
+      <div className="space-y-2.5">
+        <h1 className="font-display text-[32px] font-semibold leading-tight tracking-[-0.025em] sm:text-[36px]">
+          {isFirstUser ? t('signup.titleFirst') : t('signup.titleDefault')}
+        </h1>
+        <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
+          {isFirstUser ? t('signup.subtitleFirst') : t('signup.subtitleDefault')}
+        </p>
+      </div>
 
-      <main className="flex-1 flex items-center justify-center relative">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full max-w-sm space-y-7"
-        >
-          <div className="space-y-2.5">
-            <h1 className="font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.04em]">
-              {isFirstUser ? t('signup.titleFirst') : t('signup.titleDefault')}
-            </h1>
-            <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-              {isFirstUser ? t('signup.subtitleFirst') : t('signup.subtitleDefault')}
-            </p>
-          </div>
+      <form onSubmit={onSubmit} className="space-y-5" noValidate>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          <form onSubmit={onSubmit} className="space-y-5" noValidate>
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+        <div className="space-y-2">
+          <FieldLabel htmlFor="name">{t('auth.name')}</FieldLabel>
+          <AuthInputFrame>
+            <input
+              id="name"
+              name="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('auth.namePlaceholder')}
+              autoComplete="name"
+              required
+              minLength={2}
+              className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
+            />
+          </AuthInputFrame>
+        </div>
 
-            <div className="space-y-2">
-              <FieldLabel htmlFor="name">{t('auth.name')}</FieldLabel>
-              <GlassInputWrapper>
-                <input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t('auth.namePlaceholder')}
-                  autoComplete="name"
-                  required
-                  minLength={2}
-                  className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
-                />
-              </GlassInputWrapper>
+        <div className="space-y-2">
+          <FieldLabel htmlFor="email">{t('auth.email')}</FieldLabel>
+          <AuthInputFrame>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t('auth.emailPlaceholder')}
+              autoComplete="email"
+              required
+              className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
+            />
+          </AuthInputFrame>
+        </div>
+
+        <div className="space-y-2">
+          <FieldLabel htmlFor="password">{t('auth.password')}</FieldLabel>
+          <AuthInputFrame>
+            <div className="relative">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={t('auth.passwordMin')}
+                autoComplete="new-password"
+                minLength={12}
+                required
+                className="w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
+                aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
+          </AuthInputFrame>
+          {password.length > 0 && <StrengthBar strength={passwordStrength} />}
+        </div>
 
-            <div className="space-y-2">
-              <FieldLabel htmlFor="email">{t('auth.email')}</FieldLabel>
-              <GlassInputWrapper>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={t('auth.emailPlaceholder')}
-                  autoComplete="email"
-                  required
-                  className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
-                />
-              </GlassInputWrapper>
-            </div>
-
-            <div className="space-y-2">
-              <FieldLabel htmlFor="password">{t('auth.password')}</FieldLabel>
-              <GlassInputWrapper>
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={t('auth.passwordMin')}
-                    autoComplete="new-password"
-                    minLength={12}
-                    required
-                    className="w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono tracking-[0.15em]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
-                    aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </GlassInputWrapper>
-              {password.length > 0 && <StrengthBar strength={passwordStrength} />}
-            </div>
-
-            <div className="space-y-2">
-              <FieldLabel htmlFor="confirm">{t('auth.passwordConfirm')}</FieldLabel>
-              <GlassInputWrapper>
-                <div className="relative">
-                  <input
-                    id="confirm"
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    placeholder={t('auth.passwordConfirm')}
-                    autoComplete="new-password"
-                    minLength={12}
-                    required
-                    className={cn(
-                      'w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono tracking-[0.15em]',
-                      confirm.length > 0 && confirm !== password && 'text-rose-300',
-                    )}
-                  />
-                  {confirm.length > 0 && confirm === password && (
-                    <span className="absolute inset-y-0 right-3 flex items-center text-emerald-400">
-                      <Check className="h-4 w-4" />
-                    </span>
-                  )}
-                </div>
-              </GlassInputWrapper>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {loading ? (
-                <Spinner />
-              ) : isFirstUser ? (
-                t('signup.submitFirst')
-              ) : (
-                t('signup.submitDefault')
+        <div className="space-y-2">
+          <FieldLabel htmlFor="confirm">{t('auth.passwordConfirm')}</FieldLabel>
+          <AuthInputFrame>
+            <div className="relative">
+              <input
+                id="confirm"
+                name="confirm"
+                type={showPassword ? 'text' : 'password'}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder={t('auth.passwordConfirm')}
+                autoComplete="new-password"
+                minLength={12}
+                required
+                className={cn(
+                  'w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]',
+                  confirm.length > 0 && confirm !== password && 'text-[var(--color-app-danger)]',
+                )}
+              />
+              {confirm.length > 0 && confirm === password && (
+                <span className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-emerald-400">
+                  <Check className="h-4 w-4" />
+                </span>
               )}
-              {!loading && <ArrowRight className="h-4 w-4" />}
-            </button>
-          </form>
+            </div>
+          </AuthInputFrame>
+        </div>
 
-          <p className="text-center text-sm text-[var(--color-app-muted)] pt-2 border-t border-[var(--color-app-border)]/60">
-            {t('signup.hasAccount')}{' '}
-            <Link
-              to="/entrar"
-              className="text-violet-400 font-medium hover:text-violet-300 hover:underline transition-colors"
-            >
-              {t('auth.signIn')}
-            </Link>
-          </p>
-        </motion.div>
-      </main>
-    </div>
-  );
-}
+        <Button variant="primary" type="submit" disabled={loading} className="h-12 w-full">
+          {loading ? (
+            <Spinner />
+          ) : isFirstUser ? (
+            t('signup.submitFirst')
+          ) : (
+            t('signup.submitDefault')
+          )}
+          {!loading && <ArrowRight className="h-4 w-4" />}
+        </Button>
+      </form>
 
-function FieldLabel({
-  htmlFor,
-  children,
-}: {
-  htmlFor: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <label
-      htmlFor={htmlFor}
-      className="block text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--color-app-muted)] mb-2"
-    >
-      {children}
-    </label>
-  );
-}
-
-function GlassInputWrapper({ children }: { children: React.ReactNode }): React.ReactElement {
-  return (
-    <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] backdrop-blur-sm transition-colors focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06] focus-within:ring-2 focus-within:ring-violet-500/15">
-      {children}
-    </div>
+      <p className="text-center text-sm text-[var(--color-app-muted)] pt-2 border-t border-[var(--color-app-border)]/60">
+        {t('signup.hasAccount')}{' '}
+        <Link
+          to="/entrar"
+          className="text-[var(--color-accent-primary)] font-medium hover:underline transition-colors"
+        >
+          {t('auth.signIn')}
+        </Link>
+      </p>
+    </AuthFrame>
   );
 }
 

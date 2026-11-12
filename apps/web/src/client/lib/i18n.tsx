@@ -1,3 +1,4 @@
+import { ptBrFrontendMessages, enFrontendMessages } from './frontend-i18n';
 import {
   createContext,
   useCallback,
@@ -39,6 +40,7 @@ export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> 
 const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
+  ...ptBrFrontendMessages,
   ...ptBrReleaseUpdateMessages,
   ...ptBrJobStageMessages,
   ...ptBrCaptureMessages,
@@ -53,6 +55,7 @@ const ptBRMessages = {
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
+  'common.filters': 'Filtros',
   'common.confirm': 'Confirmar',
   'common.continue': 'Continuar',
   'common.copy': 'Copiar',
@@ -410,9 +413,9 @@ const ptBRMessages = {
   'jobDetail.uploadedFile': 'Arquivo enviado',
 
   'library.eyebrow': 'Biblioteca',
-  'library.title': 'Transcrições',
+  'library.title': 'Biblioteca',
   'library.description': 'Encontre conteúdos por texto, organização e relações da sua base.',
-  'library.searchPlaceholder': 'Buscar nas transcrições…',
+  'library.searchPlaceholder': 'Buscar conteúdos…',
   'library.searchTitle': 'Explore sua base de conhecimento',
   'library.searchDescription': 'Encontre trechos, tags e conceitos conectados no seu grafo.',
   'library.graphMatch': 'Conceito do grafo',
@@ -1108,7 +1111,7 @@ const ptBRMessages = {
   'auth.emailPlaceholder': 'voce@exemplo.com',
   'auth.signIn': 'Entrar',
   'auth.signInTitle': 'Bem-vindo de volta',
-  'auth.signInSubtitle': 'Acesse sua biblioteca de vídeos transcritos.',
+  'auth.signInSubtitle': 'Entre na sua base de conhecimento.',
   'auth.signInError': 'E-mail ou senha incorretos.',
   'auth.unexpectedError': 'Erro inesperado. Tente novamente.',
   'auth.noAccount': 'Ainda não tem conta?',
@@ -1198,6 +1201,7 @@ export type I18nKey = keyof typeof ptBRMessages;
 export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>) => string;
 
 const enMessages: Record<I18nKey, string> = {
+  ...enFrontendMessages,
   ...enKnowledgeSearchMessages,
   ...enMermaidCanvasMessages,
   ...enNoteVersioningMessages,
@@ -1212,6 +1216,7 @@ const enMessages: Record<I18nKey, string> = {
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
+  'common.filters': 'Filters',
   'common.confirm': 'Confirm',
   'common.continue': 'Continue',
   'common.copy': 'Copy',
@@ -1563,9 +1568,9 @@ const enMessages: Record<I18nKey, string> = {
   'jobDetail.uploadedFile': 'Uploaded file',
 
   'library.eyebrow': 'Library',
-  'library.title': 'Transcripts',
+  'library.title': 'Library',
   'library.description': 'Find content through text, organization, and knowledge-base relations.',
-  'library.searchPlaceholder': 'Search transcripts…',
+  'library.searchPlaceholder': 'Search content…',
   'library.searchTitle': 'Explore your knowledge base',
   'library.searchDescription': 'Find passages, tags, and concepts connected in your graph.',
   'library.graphMatch': 'Graph concept',
@@ -2257,7 +2262,7 @@ const enMessages: Record<I18nKey, string> = {
   'auth.emailPlaceholder': 'you@example.com',
   'auth.signIn': 'Sign in',
   'auth.signInTitle': 'Welcome back',
-  'auth.signInSubtitle': 'Access your transcribed video library.',
+  'auth.signInSubtitle': 'Sign in to your knowledge base.',
   'auth.signInError': 'Incorrect email or password.',
   'auth.unexpectedError': 'Unexpected error. Try again.',
   'auth.noAccount': 'Do not have an account yet?',

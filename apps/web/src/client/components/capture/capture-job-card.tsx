@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ExternalLink,
@@ -66,16 +66,12 @@ export function CaptureJobCard({
   const navigate = useNavigate();
   const [pending, setPending] = useState<'cancel' | 'retry' | null>(null);
   const root = useRef<HTMLElement>(null);
+  const [actionError, setActionError] = useState(false);
   useCaptureLive(job, live, onChange);
-
-  useEffect(() => {
-    if (!focused || !root.current) return;
-    root.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    root.current.focus({ preventScroll: true });
-  }, [focused]);
 
   async function run(command: 'cancel' | 'retry'): Promise<void> {
     setPending(command);
+    setActionError(false);
     try {
       const { job: updated, result } = await captureCommand(job.id, command);
       if (updated) {
@@ -94,6 +90,8 @@ export function CaptureJobCard({
       } else {
         toast.error(message);
       }
+    } catch {
+      setActionError(true);
     } finally {
       setPending(null);
     }
@@ -135,27 +133,29 @@ export function CaptureJobCard({
       tabIndex={-1}
       aria-labelledby={titleId}
       className={cn(
-        'rounded-xl border bg-[var(--color-app-surface)] p-3 transition-colors focus:outline-none sm:p-4',
+        'py-5 transition-colors focus:outline-none',
         focused
-          ? 'border-violet-500/60 ring-2 ring-violet-500/25'
-          : 'border-[var(--color-app-border)]',
+          ? 'rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-5 sm:p-6'
+          : '',
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)]">
           <KindIcon className="h-4 w-4" aria-hidden />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-0">
           <p
             id={titleId}
-            className="truncate text-sm font-medium text-[var(--color-app-fg)]"
+            className="break-words text-[15px] font-medium leading-relaxed text-[var(--color-app-fg)]"
             title={job.sourceUrl ?? label}
           >
             {label}
           </p>
-          <p className="truncate text-xs text-[var(--color-app-muted)]">{subtitle.join(' · ')}</p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--color-app-muted)]">
+            {subtitle.join(' · ')}
+          </p>
         </div>
-        <Badge variant={status.variant} className="shrink-0">
+        <Badge variant={status.variant} className="ml-12 shrink-0 sm:ml-0">
           {t(status.key)}
         </Badge>
       </div>
@@ -191,9 +191,12 @@ export function CaptureJobCard({
       )}
 
       {finished && doneMeta.length > 0 && (
-        <p className="mt-2 truncate text-xs text-[var(--color-app-muted)]">
-          {doneMeta.join(' · ')}
-        </p>
+        <details className="mt-3 text-xs text-[var(--color-app-muted)]">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center gap-2">
+            {t('capture.details')}
+          </summary>
+          <p className="break-words pb-2 leading-relaxed">{doneMeta.join(' · ')}</p>
+        </details>
       )}
 
       {job.status === 'COMPLETED_WITH_WARNINGS' && warningKeys.length > 0 && (
@@ -212,6 +215,11 @@ export function CaptureJobCard({
         </p>
       )}
 
+      {actionError && (
+        <p role="alert" className="mt-3 text-sm text-[var(--color-app-danger)]">
+          {t('capture.actionError')}
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2 empty:hidden">
         {finished && job.transcript && (
           <Button asChild size="sm" variant="secondary">

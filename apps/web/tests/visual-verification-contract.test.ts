@@ -25,8 +25,8 @@ const PACKAGE_JSON = readFileSync(new URL('../../../package.json', import.meta.u
 const WEB_PACKAGE_JSON = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
 describe('integrated visual verification (spec 219 §acceptance)', () => {
-  test('all four themes resolve readable graph palettes', () => {
-    expect(APP_THEMES).toEqual(['linear', 'zinc', 'emerald', 'light']);
+  test('both Voxen appearances resolve readable graph palettes', () => {
+    expect(APP_THEMES).toEqual(['light', 'dark']);
     for (const theme of APP_THEMES) {
       const palette = resolveGraphPalette(theme);
       expect(palette.label.toLowerCase()).not.toBe(palette.canvas.toLowerCase());
@@ -34,7 +34,7 @@ describe('integrated visual verification (spec 219 §acceptance)', () => {
       expect(palette.labelStroke.length).toBeGreaterThan(0);
     }
     const canvases = new Set(APP_THEMES.map((theme) => resolveGraphPalette(theme).canvas));
-    expect(canvases.size).toBeGreaterThanOrEqual(3);
+    expect(canvases.size).toBe(2);
   });
 
   test('camera motion collapses to zero duration under reduced motion', () => {

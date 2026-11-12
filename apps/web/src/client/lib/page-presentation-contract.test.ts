@@ -20,18 +20,16 @@ describe('page presentation contracts', () => {
     expect(scrollRegion).toContain('focus-visible:shadow');
   });
 
-  test('page headers own an animated colored eyebrow icon', () => {
+  test('headings carry the page identity without a duplicate eyebrow', () => {
     const pageShell = source('components/ui/page-shell.tsx');
-
-    expect(pageShell).toContain('icon: AnimatedIcon');
-    expect(pageShell).toContain('isAnimated');
-    expect(pageShell).toContain('iconClassName');
+    expect(pageShell).toContain('<h1');
+    expect(pageShell).not.toContain('EyebrowIcon');
+    expect(pageShell).not.toContain('uppercase tracking-[0.16em]');
   });
 
-  test('does not duplicate the vertical reservation made by the floating topbar', () => {
+  test('page content is visible before any optional decoration runs', () => {
     const pageShell = source('components/ui/page-shell.tsx');
-
-    expect(pageShell).toContain('pt-0');
-    expect(pageShell).not.toContain('sm:py-9');
+    expect(pageShell).not.toContain('autoAlpha: 0');
+    expect(pageShell).not.toContain('opacity: 0');
   });
 });
