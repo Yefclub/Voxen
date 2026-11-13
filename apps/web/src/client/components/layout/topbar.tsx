@@ -165,7 +165,7 @@ export function Topbar({
               )}
               aria-label={`${t('shell.userMenu')}: ${initials(user.name)} ${user.name}`}
             >
-              <Avatar className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
+              <Avatar aria-hidden="true" className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
                 {user.image && (
                   <AvatarPrimitive.Image
                     src={user.image}
@@ -176,11 +176,15 @@ export function Topbar({
                 <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
                   {initials(user.name)}
                 </AvatarFallback>
-              </Avatar>
+              </Avatar>{' '}
               <span className="hidden max-w-32 truncate text-[13px] font-medium xl:block">
                 {user.name}
               </span>
-              <ChevronDown isAnimated={false} className="hidden h-3.5 w-3.5 shrink-0 xl:block" />
+              <ChevronDown
+                aria-hidden="true"
+                isAnimated={false}
+                className="hidden h-3.5 w-3.5 shrink-0 xl:block"
+              />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">

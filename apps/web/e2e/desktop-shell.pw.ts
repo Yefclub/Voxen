@@ -30,6 +30,11 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       await expect(
         page.locator('[data-app-header]').getByRole('button', { name: /Workspace Matrix E2E/ }),
       ).toBeVisible();
+      await expect(
+        page.locator('[data-app-header]').getByRole('button', { name: /Workspace Matrix E2E/ }),
+      ).toMatchAriaSnapshot(
+        `- 'button "Menu do usuário: WM Workspace Matrix E2E"': Workspace Matrix E2E`,
+      );
       for (const mode of ['light', 'dark']) {
         await page
           .getByRole('button', {
