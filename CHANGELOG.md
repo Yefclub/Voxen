@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.15.1-dev.1794597823 — 2026-11-13 · Dev
+
+### ✨ One continuous conversation with your knowledge
+
+Chat can now search your library, read and verify evidence, connect sources,
+capture requested links and create notes with your configured AI providers.
+Clear requests work directly; uncertain additions appear as exact proposals
+to confirm in the conversation, without a permission-mode selector.
+
+The new composer and conversation use Astryx's native Chat components in
+Voxen's Light and Dark appearances. Phone controls stay above the keyboard,
+and settings and editing use sheets. Attachments use the capture pipeline.
+Optional web research uses a personal encrypted Brave Search key and isolated
+page retrieval.
+
+There is one retained conversation per user. Work continues when you leave
+the page. Stop preserves partial answers; editing or returning to an earlier
+message discards the later conversation and memory while keeping content
+already saved in the library. Structured memory and retained-history search
+support longer conversations.
+
 ## v0.15.1-dev.1794582890 — 2026-11-13 · Dev
 
 ### 🐛 Readable buttons in narrow layouts
