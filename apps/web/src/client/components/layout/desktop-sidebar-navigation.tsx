@@ -29,8 +29,10 @@ export function DesktopSidebarNavigation({
       aria-label={t('shell.knowledgeBase')}
       header={
         <div className="desktop-brand-row">
-          <WorkspaceLink href="/transcricoes" className="desktop-brand-link" aria-label="Voxen">
-            <Logo size={40} withWordmark={false} />
+          <WorkspaceLink href="/transcricoes" className="desktop-brand-link">
+            <div aria-hidden="true">
+              <Logo size={40} withWordmark={false} />
+            </div>
             <span className="min-w-0">
               <span className="block font-display text-[22px] font-semibold tracking-tight">
                 Voxen

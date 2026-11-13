@@ -24,6 +24,12 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       await expect(sidebar.locator('.astryx-side-nav')).toBeVisible();
       await expect(page.locator('[data-app-header] .astryx-top-nav')).toBeVisible();
       expect((await page.locator('[data-app-header]').boundingBox())!.height).toBe(64);
+      await expect(
+        sidebar.getByRole('link', { name: /Voxen.*Base de conhecimento/i }),
+      ).toBeVisible();
+      await expect(
+        page.locator('[data-app-header]').getByRole('button', { name: /Workspace Matrix E2E/ }),
+      ).toBeVisible();
       for (const mode of ['light', 'dark']) {
         await page
           .getByRole('button', {

@@ -163,7 +163,7 @@ export function Topbar({
                 chromeControlClass,
                 'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:rounded-lg xl:h-11 xl:w-auto xl:gap-2 xl:rounded-xl xl:border xl:border-[var(--color-app-border)] xl:bg-[var(--color-app-bg)] xl:px-2.5',
               )}
-              aria-label={`${t('shell.userMenu')}: ${initials(user.name)}`}
+              aria-label={`${t('shell.userMenu')}: ${initials(user.name)} ${user.name}`}
             >
               <Avatar className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
                 {user.image && (
