@@ -25,7 +25,7 @@ overrides:
 
 patchedDependencies:
   reagraph@4.32.0:
-    hash: 7udzfwi3kjgbqmuritrvlbxjru
+    hash: isayxzerksnmsmgzvyyhh45upe
     path: patches/reagraph@4.32.0.patch
 
 importers:
@@ -220,7 +220,7 @@ importers:
         version: 7.18.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       reagraph:
         specifier: 4.32.0
-        version: 4.32.0(patch_hash=7udzfwi3kjgbqmuritrvlbxjru)(@types/react@19.2.15)(@types/three@0.185.1)(graphology-types@0.24.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
+        version: 4.32.0(patch_hash=isayxzerksnmsmgzvyyhh45upe)(@types/react@19.2.15)(@types/three@0.185.1)(graphology-types@0.24.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
       sigma:
         specifier: ^3.0.3
         version: 3.0.3(graphology-types@0.24.8)
@@ -11778,7 +11778,7 @@ snapshots:
 
   readdirp@4.1.2: {}
 
-  reagraph@4.32.0(patch_hash=7udzfwi3kjgbqmuritrvlbxjru)(@types/react@19.2.15)(@types/three@0.185.1)(graphology-types@0.24.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6)):
+  reagraph@4.32.0(patch_hash=isayxzerksnmsmgzvyyhh45upe)(@types/react@19.2.15)(@types/three@0.185.1)(graphology-types@0.24.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6)):
     dependencies:
       '@react-spring/three': 10.0.4(@react-three/fiber@9.6.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(three@0.184.0))(react@19.2.6)(three@0.184.0)
       '@react-three/drei': 10.7.7(@react-three/fiber@9.6.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(three@0.184.0))(@types/react@19.2.15)(@types/three@0.185.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(three@0.184.0)

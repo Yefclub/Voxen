@@ -1,8 +1,29 @@
 diff --git a/dist/index.js b/dist/index.js
-index 0117259db955318a0f68428fbe89c33dcfe4f2f4..8f46c126f2dd2314c3aab697de5d5c29d36c6b27 100644
+index 0117259db955318a0f68428fbe89c33dcfe4f2f4..962adfe8e84ac46b4bfa8f308f6ce6ab5789d365 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -5297,8 +5297,8 @@ var GraphCanvas = forwardRef(({ cameraMode = "pan", layoutType = "forceDirected2
+@@ -2315,11 +2315,16 @@ var Edge = ({ animated, arrowPlacement = "end", contextMenu, disabled, labelPlac
+ };
+ //#endregion
+ //#region src/symbols/edges/Edge.tsx
+-var Edge$1 = ({ animated, color, contextMenu, edge, labelFontUrl, labelPlacement = "inline", opacity, active }) => {
++var Edge$1 = (props) => {
++	const from = useStore$1((store) => store.nodeMap.get(props.edge.source));
++	const to = useStore$1((store) => store.nodeMap.get(props.edge.target));
++	// Edge components can outlive their endpoints during node-map hydration.
++	// Mount geometry hooks only once both endpoints are available.
++	return from && to ? /* @__PURE__ */ jsx(EdgeLabelContent, { ...props, from, to }) : null;
++};
++var EdgeLabelContent = ({ animated, color, contextMenu, edge, labelFontUrl, labelPlacement = "inline", opacity, active, from, to }) => {
+ 	const theme = useStore$1((state) => state.theme);
+-	const { target, source, label, labelVisible = false, size = 1 } = edge;
+-	const from = useStore$1((store) => store.nodeMap.get(source));
+-	const to = useStore$1((store) => store.nodeMap.get(target));
++	const { label, labelVisible = false, size = 1 } = edge;
+ 	const isDragging = useStore$1((state) => state.draggingIds.length > 0);
+ 	const labelOffset = useMemo(() => (size + theme.edge.label.fontSize) / 2, [size, theme.edge.label.fontSize]);
+ 	const midPoint = useMemo(() => getMidPoint(from.position, to.position, getLabelOffsetByType(labelOffset, labelPlacement)), [
+@@ -5297,8 +5302,8 @@ var GraphCanvas = forwardRef(({ cameraMode = "pan", layoutType = "forceDirected2
  	const { selections, actives, collapsedNodeIds } = rest;
  	const finalAnimated = edges.length + nodes.length > 400 ? false : animated;
  	const gl = useMemo(() => ({
