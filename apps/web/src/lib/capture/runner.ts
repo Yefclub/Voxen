@@ -17,15 +17,7 @@ import { publishJobEvent } from '../job-events';
 import { storageDeletePrefix } from '../storage';
 import { artifactFromWorker, captureArtifactPrefix, loadArtifact, saveArtifact } from './artifact';
 import { CaptureError, captureErrorMessage, type CaptureErrorCode } from './errors';
-import {
-  InterpretationSchema,
-  InterpretationWithAudienceSchema,
-  clampText,
-  interpretInstructions,
-  normalizeInterpretation,
-  sourceBlock,
-  type InterpretationOutput,
-} from './interpret';
+import { interpretStep } from './interpret-step';
 import {
   CAPTURE_MAX_ATTEMPTS,
   LeaseLostError,
@@ -38,17 +30,11 @@ import {
   withTimeout,
   type ClaimedCaptureJob,
 } from './lease';
-import {
-  aiSignal,
-  billFailure,
-  type CaptureCost,
-  type CaptureDeps,
-  type StepContext,
-} from './ports';
+import { type CaptureCost, type CaptureDeps, type StepContext } from './ports';
 import { publishCapturedDocument } from './publish';
 import { pickMethod, uploadBlob, usableText } from './steps';
 import { speechStep } from './stt-step';
-import type { CaptureArtifact, CaptureInterpretation, CaptureWarning } from './types';
+import type { CaptureArtifact, CaptureWarning } from './types';
 import { framesStep, visionStep } from './vision-step';
 import type { AudioFormat, WorkerAudio } from './worker-client';
 
@@ -60,8 +46,6 @@ export { captureArtifactKey, purgeStaleCaptureArtifacts } from './artifact';
 export { normalizeInterpretation } from './interpret';
 
 const EXTRACT_TIMEOUT_MS = 15 * 60_000;
-/** Per chain entry: two 3-minute calls (the schema retry included). */
-const MODEL_ENTRY_TIMEOUT_MS = 2 * 3 * 60_000;
 
 // ---------------------------------------------------------------------------
 // Job execution
@@ -119,41 +103,6 @@ async function extractStep(
   }
   await saveArtifact(job.userId, job.id, artifact);
   return { artifact, audioFromFile };
-}
-
-async function interpretStep(
-  ctx: StepContext,
-  artifact: CaptureArtifact,
-): Promise<{ interpretation: CaptureInterpretation; modelRef: string }> {
-  const { job, deps } = ctx;
-  await ensureLease(job, ctx.controller);
-  if (!(await deps.ai.isRoleConfigured(job.userId, 'standard')))
-    throw new CaptureError('AI_NOT_CONFIGURED');
-  await progress(job, 'interpreting', 75);
-  const finalText = usableText(artifact).trim();
-  const clamped = clampText(
-    artifact.segments.length > 0 ? finalText : (artifact.text ?? finalText),
-  );
-  const withComments = (artifact.comments?.length ?? 0) > 0;
-  try {
-    const result = await deps.ai.generateStructured<InterpretationOutput>({
-      userId: job.userId,
-      role: 'standard',
-      instructions: interpretInstructions(withComments),
-      untrusted: [{ text: sourceBlock(artifact, clamped.text, clamped.truncated) }],
-      schema: withComments ? InterpretationWithAudienceSchema : InterpretationSchema,
-      maxOutputTokens: 2_000,
-      signal: await aiSignal(ctx, 'standard', MODEL_ENTRY_TIMEOUT_MS),
-    });
-    ctx.cost.usd += result.costUsd ?? 0;
-    return {
-      modelRef: result.modelRef,
-      interpretation: normalizeInterpretation(result.output, artifact.title ?? job.sourceUrl),
-    };
-  } catch (error) {
-    billFailure(ctx, error);
-    throw mapUnknownError(error, ctx.signal);
-  }
 }
 
 async function executeCapture(
