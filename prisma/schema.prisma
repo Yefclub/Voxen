@@ -1291,6 +1291,9 @@ model TranscriptEnrichment {
   tokensOut                    Int                             @default(0)
   searchCallCount              Int                             @default(0)
   searchResultCount            Int                             @default(0)
+  generationSettings           Json                            @default("{}")
+  leaseOwner                   String?
+  leaseExpiresAt               DateTime?
   attempt                      Int                             @default(0)
   nextAttemptAt                DateTime?
   startedAt                    DateTime?

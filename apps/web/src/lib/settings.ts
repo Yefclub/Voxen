@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { db } from './db';
+import type { Prisma } from '../../prisma-generated/client';
 import { encrypt, decrypt } from './crypto';
 import { getMasterKey } from './master-key';
 import { DEFAULT_APP_TIMEZONE, normalizeAppTimezone } from './app-timezone';
@@ -47,7 +48,8 @@ export type UserSettingKey =
   /** JSON role → ordered [{provider, model}, …] fallback chain (spec 221). */
   | 'ai_model_chains'
   | 'assistant_preferences'
-  | 'assistant_search_key';
+  | 'assistant_search_key'
+  | 'library_research_preferences';
 
 export type AppLanguage = 'pt-BR' | 'en';
 
@@ -343,9 +345,10 @@ export async function setUserSetting(
   userId: string,
   key: UserSettingKey,
   value: string,
+  transaction?: Prisma.TransactionClient,
 ): Promise<void> {
   const valueEnc = encrypt(value, getMasterKey());
-  await db.$transaction(async (tx) => {
+  const write = async (tx: Prisma.TransactionClient) => {
     const existing = await tx.setting.findFirst({
       where: { scope: 'USER', userId, key },
       select: { id: true },
@@ -355,7 +358,9 @@ export async function setUserSetting(
     } else {
       await tx.setting.create({ data: { scope: 'USER', userId, key, valueEnc } });
     }
-  });
+  };
+  if (transaction) await write(transaction);
+  else await db.$transaction(write);
 }
 
 export async function deleteUserSettings(

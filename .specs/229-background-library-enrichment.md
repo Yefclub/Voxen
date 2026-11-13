@@ -51,6 +51,13 @@ and freshness principles retained from spec 175.
 
 - Where automatic organization or research is enabled, the system shall enforce
   bounded concurrency, attempts, duration and search calls per execution.
+- Where external research is enabled by a user, the system shall support manual
+  research or automatic research of new captures, with at most three discovery
+  calls, four page fetches, three execution attempts and ten minutes per run.
+- Where external research has not been enabled, the system shall perform no
+  background research calls.
+- Where research uses corrected source text, the system shall bind its settings
+  snapshot to that correction revision and invalidate it when the source changes.
 
 ### Unwanted behavior
 
@@ -75,7 +82,8 @@ and freshness principles retained from spec 175.
 
 1. Complete long-source capture analysis, including bounded synthesis, Unicode
    boundaries, cancellation and the cost of completed sections before a retry.
-2. Independent organization/research scheduling, review and lifecycle controls.
+2. Independent external research scheduling, review and lifecycle controls.
+3. Source-grounded background organization and entity relationships.
 
 Increment 1 does not claim to implement background research or its review UI.
 
