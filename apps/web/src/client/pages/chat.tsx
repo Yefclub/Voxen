@@ -2,7 +2,6 @@ import {
   ChatMessageList,
   ChatMessage,
   ChatMessageBubble,
-  ChatToolCalls,
   useChatStreamScroll,
   useChatNewMessages,
 } from '@astryxdesign/core/Chat';
@@ -22,6 +21,7 @@ import { Pencil, Settings, RotateCcw } from '../components/ui/icons';
 import { AssistantComposer } from '../components/assistant/assistant-composer';
 import { AssistantProposalCard } from '../components/assistant/assistant-proposal';
 import { AssistantPreferences } from '../components/assistant/assistant-preferences';
+import { AssistantProgress } from '../components/assistant/assistant-progress';
 import { useAssistant, type AssistantMessage } from '../lib/use-assistant';
 import { assistantCopy } from '../lib/assistant-i18n';
 import { useI18n } from '../lib/i18n';
@@ -40,6 +40,13 @@ export function ChatPage(): React.ReactElement {
   const uploading = useRef(false);
   const active = Boolean(chat.state?.activeRun);
   const messages = chat.state?.messages ?? [];
+  const progressLabel = !chat.connected
+    ? copy.reconnecting
+    : active
+      ? messages.at(-1)?.text
+        ? copy.writing
+        : copy.working
+      : '';
 
   const empty = Boolean(chat.state && !messages.length);
   const scrollControl = useChatStreamScroll({ scrollRef: scroll });
@@ -124,14 +131,22 @@ export function ChatPage(): React.ReactElement {
   }
 
   return (
-    <div data-assistant-workspace className="flex h-full min-h-0 flex-col">
-      <header className="mx-auto flex w-full max-w-5xl shrink-0 items-center justify-between gap-4 px-5 py-3 sm:px-8">
-        <div>
-          <h1 className="font-heading text-xl font-semibold tracking-tight">{copy.title}</h1>
-        </div>
+    <div data-assistant-workspace className="relative flex h-full min-h-0 flex-col">
+      <h1 className="sr-only">{copy.title}</h1>
+      <p
+        data-chat-announcement
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {progressLabel}
+      </p>
+      <header className="flex shrink-0 justify-end px-4 py-2 sm:px-6">
         <Button
           variant="ghost"
           size="icon"
+          className="h-11 w-11 text-[var(--color-app-muted)]"
           aria-label={copy.settings}
           onClick={() => setSettingsOpen(true)}
         >
@@ -144,21 +159,25 @@ export function ChatPage(): React.ReactElement {
             <h2 className="mx-auto max-w-[22ch] font-heading text-[28px] font-medium leading-[1.15] tracking-tight sm:text-[40px]">
               {copy.empty}
             </h2>
-            <p className="mx-auto mt-4 max-w-[50ch] text-base leading-relaxed text-[var(--color-app-muted)]">
+            <p className="mx-auto mt-3 max-w-[50ch] text-base leading-relaxed text-[var(--color-app-muted)]">
               {copy.hint}
             </p>
           </div>
         )}
         <div
           ref={scroll}
-          className={empty ? 'hidden' : 'min-h-0 flex-1 overflow-y-auto overscroll-contain'}
+          className={
+            empty
+              ? 'hidden'
+              : 'assistant-transcript min-h-0 flex-1 overflow-y-auto overscroll-contain'
+          }
         >
           <div ref={newMessages.contentRef}>
             <ChatMessageList
               align="top"
               density="spacious"
               isStreaming={active}
-              className="mx-auto w-full max-w-[75ch]"
+              className="assistant-messages mx-auto w-full max-w-[46rem]"
             >
               {chat.state?.hasMore && (
                 <Button
@@ -182,16 +201,13 @@ export function ChatPage(): React.ReactElement {
                   key={message.id}
                   sender={message.role === 'user' ? 'user' : 'assistant'}
                   density="spacious"
+                  className="assistant-message"
                 >
                   <ChatMessageBubble
                     variant={message.role === 'user' ? 'filled' : 'ghost'}
                     width={message.role === 'user' ? undefined : '100%'}
-                  >
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <h2 className="text-sm font-semibold text-[var(--color-app-subtle)]">
-                        {message.role === 'user' ? copy.user : copy.assistant}
-                      </h2>
-                      <div className="flex gap-1">
+                    metadata={
+                      <div className="assistant-message-actions flex gap-1">
                         {message.role === 'user' && (
                           <Button
                             variant="ghost"
@@ -211,7 +227,17 @@ export function ChatPage(): React.ReactElement {
                           <RotateCcw className="h-4 w-4" />
                         </Button>
                       </div>
-                    </div>
+                    }
+                  >
+                    <h2
+                      className={
+                        message.role === 'user'
+                          ? 'sr-only'
+                          : 'mb-3 text-sm font-medium text-[var(--color-app-muted)]'
+                      }
+                    >
+                      {message.role === 'user' ? copy.user : copy.assistant}
+                    </h2>
                     {message.text &&
                       (message.role === 'user' ? (
                         <p className="whitespace-pre-wrap break-words text-base leading-relaxed">
@@ -305,21 +331,14 @@ export function ChatPage(): React.ReactElement {
                   </ChatMessageBubble>
                 </ChatMessage>
               ))}
-              {active && chat.activity && (
-                <ChatToolCalls
-                  label={copy.searching}
-                  calls={[{ name: chat.activity, status: 'running' }]}
+              {(active || !chat.connected) && (
+                <AssistantProgress
+                  activity={chat.activity}
+                  connected={chat.connected}
+                  label={progressLabel}
+                  model={chat.state?.activeRun?.model ?? null}
                 />
               )}
-              <p role="status" className="min-h-6 text-sm text-[var(--color-app-muted)]">
-                {!chat.connected
-                  ? copy.reconnecting
-                  : active
-                    ? chat.activity
-                      ? copy.searching
-                      : copy.working
-                    : ''}
-              </p>
             </ChatMessageList>
           </div>
         </div>
@@ -376,10 +395,10 @@ export function ChatPage(): React.ReactElement {
             data-chat-suggestions
             className="mx-auto max-w-[46rem] flex-wrap justify-center gap-2"
           >
-            <Button variant="outline" size="sm" onClick={() => setText(copy.recentPrompt)}>
+            <Button variant="ghost" size="sm" onClick={() => setText(copy.recentPrompt)}>
               {copy.recentSuggestion}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setText(copy.connectPrompt)}>
+            <Button variant="ghost" size="sm" onClick={() => setText(copy.connectPrompt)}>
               {copy.connectSuggestion}
             </Button>
           </div>

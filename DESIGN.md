@@ -545,6 +545,24 @@ The [notes workspace](apps/web/src/client/pages/notas.tsx) keeps title, save/con
 
 The [graph palette](apps/web/src/client/lib/graph-model.ts), [2D renderer](apps/web/src/client/lib/graph-renderer.ts), and [3D presentation](apps/web/src/client/lib/graph-3d-presentation.ts) separate category color, selection, labels, and quiet edges. Names need a canvas-colored backing/halo, measured spacing, and framing headroom; selected labels stay available. The canvas grid belongs to this actual graph surface, not to general page decoration. Preserve responsive inspectors and readable labels rather than encoding a clipping workaround as a spacing token.
 
+### Continuous conversation
+
+The chat retains the workspace destination in navigation and an accessible page
+heading; it does not repeat a visible title. Preferences occupy the upper trailing
+workspace corner independently of the 46rem transcript/composer measure. The native
+Astryx composer uses a single growing row: 44px attachment and send targets surround
+the input, with a 60px empty footprint and bounded editor scrolling. The input stays
+mounted when the first answer arrives. Empty-state suggestions disappear while a
+draft or phone keyboard is present.
+
+Assistant prose remains open on the page ground; user messages use the existing
+tonal bubble. Message actions sit beneath content, appear on hover/focus for fine
+pointers, and remain visible for touch. Source and usage disclosures stay subordinate.
+One expandable activity line exposes localized received tool activity and model
+information; it does not imply completed work from a tool-start event. Its subtle
+rotation becomes static under reduced motion. Streamed Markdown appears progressively
+without replaying block entrances. Phone preferences and checkpoint edits retain sheets.
+
 ## Do's and Don'ts
 
 ### Do:
