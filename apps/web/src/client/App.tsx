@@ -10,6 +10,7 @@ import { I18nProvider, useI18n } from './lib/i18n';
 import { ThemeProvider } from './lib/theme-provider';
 import { useMe } from './lib/hooks';
 import { PwaInstallPrompt, shouldOfferInstall } from './components/pwa-install-prompt';
+import { MobilePortraitBoundary } from './components/mobile-portrait-boundary';
 
 // Telas carregadas somente quando a rota precisa delas. O shell, a sessao e a
 // navegacao continuam no bundle inicial; areas com editor, grafo e Markdown
@@ -88,9 +89,11 @@ export function App(): React.ReactElement {
       <ThemeProvider>
         <I18nRuntimeSync />
         <BrowserRouter>
-          <Toaster />
-          <PwaInstallGate />
-          <AppRoutes />
+          <MobilePortraitBoundary>
+            <Toaster />
+            <PwaInstallGate />
+            <AppRoutes />
+          </MobilePortraitBoundary>
         </BrowserRouter>
       </ThemeProvider>
     </I18nProvider>

@@ -22,8 +22,6 @@ import { TooltipProvider } from '../ui/tooltip';
 import { SessionUnavailable } from '../session-unavailable';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 
-const SURFACE_CORNER_RADIUS = 16;
-
 export function AppLayout(): React.ReactElement {
   const { data, loading, error, refresh } = useMe();
   const { collapsed } = useSidebarCollapsed();
@@ -132,7 +130,7 @@ export function AppLayout(): React.ReactElement {
       <UpdateModal monitor={versionMonitor} />
       <div
         data-interface-mode="focus"
-        className="flex h-[var(--visual-viewport-height,100dvh)] overflow-hidden bg-[var(--color-app-bg)]"
+        className="flex h-[var(--visual-viewport-height,100dvh)] overflow-hidden bg-[var(--color-app-bg)] md:bg-[var(--color-app-bg-elevated)]"
       >
         <Sidebar user={data.user} />
         <MobileNavDrawer
@@ -146,20 +144,13 @@ export function AppLayout(): React.ReactElement {
           data-app-surface
           initial={false}
           animate={{
-            // Move a borda curva para fora da viewport em vez de achatá-la
-            // durante a transição. O padding mantém o conteúdo fechado em x=0.
-            marginLeft: isDesktop ? (collapsed ? -SURFACE_CORNER_RADIUS : SIDEBAR_WIDTH) : 0,
-            paddingLeft: isDesktop && collapsed ? SURFACE_CORNER_RADIUS : 0,
-          }}
-          style={{
-            borderTopLeftRadius: isDesktop ? SURFACE_CORNER_RADIUS : 0,
-            borderBottomLeftRadius: isDesktop ? SURFACE_CORNER_RADIUS : 0,
+            marginLeft: isDesktop ? (collapsed ? 12 : SIDEBAR_WIDTH) : 0,
           }}
           transition={{
             duration: reduceMotion || !isDesktop ? 0 : 0.22,
             ease: [0.4, 0, 0.2, 1],
           }}
-          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden md:bg-[var(--color-app-bg)]"
+          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:my-3 md:mr-3 md:overflow-hidden md:rounded-2xl md:border md:border-[var(--color-app-border)]"
           inert={mobileNavPresent ? true : undefined}
         >
           <Topbar

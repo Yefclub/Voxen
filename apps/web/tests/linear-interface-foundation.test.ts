@@ -85,14 +85,14 @@ describe('Voxen visual foundation', () => {
     const appLayout = read('src/client/components/layout/app-layout.tsx');
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
-    expect(sidebar).toContain('const SIDEBAR_WIDTH = 244');
+    expect(sidebar).toContain('const SIDEBAR_WIDTH = 264');
     expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
     expect(sidebar).toContain('id="desktop-sidebar"');
     expect(sidebar).toContain('aria-hidden');
     expect(sidebar).not.toContain('SidebarRail');
     expect(sidebar).not.toContain('SidebarSpacer');
     expect(appLayout).toContain('marginLeft');
-    expect(appLayout).toContain('SURFACE_CORNER_RADIUS');
+    expect(appLayout).toContain('md:rounded-2xl');
     expect(drawer).toContain('fica preparada fora da tela');
     expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
     expect(drawer).toContain('inert={present ? undefined : true}');

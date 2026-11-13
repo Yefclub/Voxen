@@ -541,7 +541,7 @@
   ],
   "narrative": {
     "northStar": "Documentary contact sheet",
-    "overview": "Voxen is a continuous knowledge workspace: ink and warm white, restrained emerald interactions, real content, and crisp thin rules. Documentary contact-sheet discipline gives records a clear title, quiet metadata, and room to be read. The existing Voxen name and recognizable logo anchor the identity; Light and Dark express the same system.\n\nThe interface is precise and restrained. Flat surfaces and tonal layers organize work; softly shadowed overlays carry temporary context. Bricolage Grotesque supplies the display voice, Inter handles the interface and reading, and JetBrains Mono marks code and data. Mobile keeps the same hierarchy while moving contextual work into sheets.",
+    "overview": "Voxen is a continuous knowledge workspace: ink and warm white, restrained emerald interactions, real content, and crisp thin rules. Documentary contact-sheet discipline gives records a clear title, quiet metadata, and room to be read. The Voxen name and transparent emerald folded-form symbol anchor the identity; Light and Dark express the same system.\n\nThe interface is precise and restrained. Flat surfaces and tonal layers organize work; softly shadowed overlays carry temporary context. Bricolage Grotesque supplies the display voice, Inter handles the interface and reading, and JetBrains Mono marks code and data. Mobile keeps the same hierarchy while moving contextual work into sheets.",
     "keyCharacteristics": [
       "One Voxen identity in Light and Dark.",
       "Documentary rows, aligned headings, and thin separators.",
@@ -572,7 +572,7 @@
       }
     ],
     "dos": [
-      "**Do** use the existing semantic properties for both appearances and preserve the recognizable Voxen logo.",
+      "**Do** use the existing semantic properties for both appearances and preserve the approved transparent Voxen symbol.",
       "**Do** align page titles, actions, and content through the shared shell and spacing scale.",
       "**Do** keep document prose constrained, headings semantic, and metadata quieter than content.",
       "**Do** preserve mobile sheets, safe areas, keyboard offsets, visible focus, selection color, and touch hit regions together.",
@@ -580,7 +580,7 @@
       "**Do** honor reduced motion and leave content visible when optional animation cannot run."
     ],
     "donts": [
-      "**Don't** introduce another appearance pack, decorative accent palette, or replacement branding.",
+      "**Don't** introduce another appearance pack, decorative accent palette, the retired owl, or unapproved replacement branding.",
       "**Don't** turn every content row into a card, add nested decorative containers, or shadow persistent content.",
       "**Don't** shrink desktop dialogs onto mobile or rely on gestures as the only way to navigate or dismiss context.",
       "**Don't** enlarge the Switch's painted track to satisfy its separate touch hit region.",

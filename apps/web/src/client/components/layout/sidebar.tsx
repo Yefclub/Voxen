@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { LogOut, PanelLeftClose, Sparkles } from '@/components/ui/icons';
+import { LogOut, Sparkles } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
@@ -15,6 +15,7 @@ import {
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { SidebarReleaseUpdateButton } from './sidebar-release-update';
+import { DesktopSidebarNavigation } from './desktop-sidebar-navigation';
 import { NAV, NAV_SCOPES, NAV_SCOPE_LABELS, isNavItemActive, type NavItem } from './sidebar-nav';
 export { NAV, isNavItemActive } from './sidebar-nav';
 
@@ -23,7 +24,7 @@ export { NAV, isNavItemActive } from './sidebar-nav';
  * the bottom-nav profile menu. Keep top-level tabs aligned with
  * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
-export const SIDEBAR_WIDTH = 244;
+export const SIDEBAR_WIDTH = 264;
 
 /**
  * A cor vem de `--color-app-danger` e não de um tom fixo do Tailwind: o app
@@ -75,14 +76,23 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
       id="desktop-sidebar"
       aria-hidden={collapsed}
       inert={collapsed ? true : undefined}
-      className="fixed inset-y-0 left-0 z-0 hidden flex-col overflow-hidden bg-[var(--color-app-bg)] md:flex"
+      className={cn(
+        'fixed inset-y-0 left-0 z-0 hidden flex-col overflow-hidden bg-[var(--color-app-bg-elevated)] md:flex',
+        collapsed && 'invisible',
+      )}
       style={{ width: SIDEBAR_WIDTH }}
     >
-      <SidebarHeader onCollapse={() => setCollapsed(true)} />
-      <SidebarModeBody user={user} />
-      <SidebarReleaseUpdateButton />
-      <SidebarChangelogButton />
-      <SidebarSignOut />
+      <DesktopSidebarNavigation
+        user={user}
+        onCollapse={() => setCollapsed(true)}
+        footer={
+          <>
+            <SidebarReleaseUpdateButton />
+            <SidebarChangelogButton />
+            <SidebarSignOut />
+          </>
+        }
+      />
     </aside>
   );
 }
@@ -129,37 +139,6 @@ export function SidebarSignOut(): React.ReactElement {
       >
         <LogOut className="h-4 w-4 shrink-0" />
         <span className="truncate">{label}</span>
-      </button>
-    </div>
-  );
-}
-
-function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactElement {
-  const { t } = useI18n();
-  return (
-    <div className={cn('flex h-14 shrink-0 items-center px-4')}>
-      <div className="relative shrink-0 h-9 w-9">
-        <img
-          src="/voxen-256.png"
-          alt="Voxen"
-          width={36}
-          height={36}
-          draggable={false}
-          className="rounded-lg select-none pointer-events-none"
-        />
-      </div>
-      <div className="ml-3 flex min-w-0 flex-col leading-none">
-        <span className="text-lg font-semibold tracking-tight font-display">Voxen</span>
-      </div>
-      <button
-        type="button"
-        onClick={onCollapse}
-        id="desktop-sidebar-close"
-        className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
-        aria-label={t('shell.collapse')}
-        title={t('shell.collapse')}
-      >
-        <PanelLeftClose className="h-4 w-4" />
       </button>
     </div>
   );

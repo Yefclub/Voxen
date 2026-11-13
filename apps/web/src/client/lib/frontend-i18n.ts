@@ -1,4 +1,8 @@
 export const ptBrFrontendMessages = {
+  'design.workspaceControls': 'Controles do workspace',
+  'design.portraitTitle': 'Use a Voxen na vertical',
+  'design.portraitDescription':
+    'Gire o telefone para continuar. Seu conteúdo e o que você estava fazendo continuam aqui.',
   'design.noteContent': 'Conteúdo da nota',
   'design.noteTitle': 'Título da nota',
   'design.guideMethod': 'Como seu Guia é calculado',
@@ -24,6 +28,10 @@ export const ptBrFrontendMessages = {
     'Esta captura não está disponível. Abra outra captura ou comece uma nova.',
 };
 export const enFrontendMessages: Record<keyof typeof ptBrFrontendMessages, string> = {
+  'design.workspaceControls': 'Workspace controls',
+  'design.portraitTitle': 'Use Voxen in portrait',
+  'design.portraitDescription':
+    'Turn your phone upright to continue. Your content and current work are still here.',
   'design.noteContent': 'Note content',
   'design.noteTitle': 'Note title',
   'design.guideMethod': 'How your Guide is calculated',
