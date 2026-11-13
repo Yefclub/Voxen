@@ -40,6 +40,7 @@ export async function reindexTranscriptEnrichmentBrain(
       title: true,
       content: true,
       citations: true,
+      editedAt: true,
       transcriptId: true,
       updatedAt: true,
     },
@@ -59,7 +60,7 @@ export async function reindexTranscriptEnrichmentBrain(
     sourceType: 'EXTERNAL_ENRICHMENT',
     sourceId: enrichment.id,
     metadata: {
-      authority: 'external-derived',
+      authority: enrichment.editedAt ? 'external-curated' : 'external-derived',
       enrichmentRevision: enrichment.revision,
       transcriptId: enrichment.transcriptId,
       citations: { items: enrichment.citations },

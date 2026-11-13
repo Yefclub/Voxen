@@ -34,6 +34,7 @@ import { MAX_MEDIA_UPLOAD_REQUEST_BYTES } from './lib/media-upload';
 import { requestLogging } from './lib/request-logging';
 import { captureRoutes } from './routes/captures';
 import { assistantRoutes } from './routes/assistant';
+import { researchRoutes } from './routes/research';
 import { shareTargetRoutes } from './routes/share-target';
 import type { ResearchScheduleCursor } from './lib/research/schedule';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
@@ -185,6 +186,7 @@ app.route('/api/notes', notesRoutes);
 app.route('/api/library', libraryRoutes);
 app.route('/api/captures', captureRoutes);
 app.route('/api/chat', assistantRoutes);
+app.route('/api/research', researchRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
@@ -401,6 +403,29 @@ if (process.env.NODE_ENV === 'production') {
 // reclaims expired leases and backoff-delayed retries. Runs in production and
 // local development (Compose forces NODE_ENV=development); never under tests.
 if (process.env.NODE_ENV !== 'test') {
+  void import('./lib/research/projection')
+    .then(({ drainResearchProjections }) => {
+      const drain = () => {
+        void drainResearchProjections().catch((error) => {
+          structuredDiagnostic(
+            'warning',
+            'research-projection-failed',
+            'RESEARCH_PROJECTION_FAILED',
+            error,
+          );
+        });
+      };
+      drain();
+      setInterval(drain, 10_000).unref();
+    })
+    .catch((error) => {
+      structuredDiagnostic(
+        'warning',
+        'research-projection-unavailable',
+        'RESEARCH_PROJECTION_FAILED',
+        error,
+      );
+    });
   void Promise.all([import('./lib/research/runner'), import('./lib/research/schedule')])
     .then(([{ drainResearch }, { scheduleCapturedResearch }]) => {
       let busy = false;

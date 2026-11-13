@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { db } from '../src/lib/db';
+import { getUserSetting } from '../src/lib/settings';
 import { getResearchPreferences, saveResearchPreferences } from '../src/lib/research/preferences';
 
 const suite = process.env.DATABASE_URL ? describe : describe.skip;
@@ -96,8 +97,11 @@ suite('research consent and source invalidation', () => {
       await db.$executeRawUnsafe(
         `CREATE TRIGGER ${name} BEFORE UPDATE ON "TranscriptEnrichment" FOR EACH ROW EXECUTE FUNCTION ${name}('${users[0]}')`,
       );
-      await expect(saveResearchPreferences(users[0]!, 'OFF')).rejects.toThrow();
+      await expect(
+        saveResearchPreferences(users[0]!, 'OFF', 'fixture-replacement-key'),
+      ).rejects.toThrow();
       expect(await getResearchPreferences(users[0]!)).toMatchObject({ mode: 'MANUAL' });
+      expect(await getUserSetting(users[0]!, 'assistant_search_key')).toBeNull();
       expect(await db.transcriptEnrichment.findUnique({ where: { id: row.id } })).toMatchObject({
         status: 'PENDING',
         cancelRequestedAt: null,
@@ -106,6 +110,33 @@ suite('research consent and source invalidation', () => {
       await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${name} ON "TranscriptEnrichment"`);
       await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${name}()`);
     }
+  });
+  test('updates the shared discovery key without resetting automatic consent and fences removal', async () => {
+    const first = await saveResearchPreferences(users[0]!, 'AUTO', 'fixture-first-search-key');
+    expect(first.automaticSince).not.toBeNull();
+    expect(await saveResearchPreferences(users[0]!, 'AUTO', 'fixture-next-search-key')).toEqual(
+      first,
+    );
+    expect(await getUserSetting(users[0]!, 'assistant_search_key')).toBe('fixture-next-search-key');
+    const doc = await document();
+    const row = await db.transcriptEnrichment.create({
+      data: {
+        userId: users[0]!,
+        transcriptId: doc.id,
+        runKey: randomUUID(),
+        trigger: 'AUTO',
+        status: 'RUNNING',
+        leaseOwner: 'fixture-owner',
+        leaseExpiresAt: new Date(Date.now() + 90_000),
+      },
+    });
+    await saveResearchPreferences(users[0]!, 'OFF', null);
+    expect(await getUserSetting(users[0]!, 'assistant_search_key')).toBe('');
+    expect(await db.transcriptEnrichment.findUnique({ where: { id: row.id } })).toMatchObject({
+      status: 'CANCELLED',
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    });
   });
   test('archiving hides accepted context without making it stale after an unchanged restore', async () => {
     const doc = await document();

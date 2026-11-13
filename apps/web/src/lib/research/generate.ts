@@ -158,6 +158,7 @@ export async function generateResearch(input: {
     }
     await before();
     usage.searchCalls++;
+    await before();
     const result = await deps.search(userId, query, signal);
     if ('error' in result && result.error) throw new ResearchError('WEB_NOT_CONFIGURED');
     usage.searchResults += result.sources.length;
@@ -181,6 +182,7 @@ export async function generateResearch(input: {
     }
     await before();
     usage.fetchCalls++;
+    await before();
     let page: Awaited<ReturnType<typeof fetchWebPage>>;
     try {
       page = await deps.fetchPage(candidate.url, signal);

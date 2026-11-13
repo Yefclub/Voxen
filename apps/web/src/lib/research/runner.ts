@@ -56,7 +56,7 @@ export async function executeResearch(
     if (!run) return false;
     const settings = ResearchSettingsSchema.parse(run.generationSettings);
     const previous = run.generationSettings as Record<string, unknown>;
-    let execution = savedResearchExecution(previous);
+    let execution: ResearchExecution | null = null;
     const usage: ResearchUsage = {
       costUsd: run.attempt === 1 ? 0 : run.costUsd === null ? null : Number(run.costUsd),
       tokensIn: run.tokensIn,
@@ -99,6 +99,7 @@ export async function executeResearch(
     };
     let heartbeatBusy = false;
     try {
+      execution = savedResearchExecution(previous);
       if (Date.now() >= deadline) throw new ResearchError('TIMEOUT');
       timer = setTimeout(
         () => controller.abort(new ResearchError('TIMEOUT')),

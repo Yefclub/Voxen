@@ -37,15 +37,21 @@ export async function readResearchPreferences(tx: Prisma.TransactionClient, user
 export async function saveResearchPreferences(
   userId: string,
   mode: z.infer<typeof ResearchModeSchema>,
+  searchKey?: string | null,
 ) {
   ResearchModeSchema.parse(mode);
+  if (searchKey !== undefined && searchKey !== null)
+    z.string().trim().min(8).max(512).parse(searchKey);
   return db.$transaction(async (tx) => {
     await lockResearchUser(tx, userId);
     const previous = await readResearchPreferences(tx, userId);
-    if (previous.mode === mode) return previous;
+    if (searchKey !== undefined)
+      await setUserSetting(userId, 'assistant_search_key', searchKey?.trim() ?? '', tx);
+    if (previous.mode === mode && searchKey !== null) return previous;
     const next: ResearchPreferences = {
       mode,
-      automaticSince: mode === 'AUTO' ? new Date().toISOString() : null,
+      automaticSince:
+        mode === 'AUTO' ? (previous.automaticSince ?? new Date().toISOString()) : null,
     };
     await setUserSetting(userId, KEY, JSON.stringify(next), tx);
     await tx.transcriptEnrichment.updateMany({

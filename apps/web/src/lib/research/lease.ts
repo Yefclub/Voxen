@@ -105,18 +105,6 @@ export function researchFence(run: ResearchLease) {
     leaseExpiresAt: { gt: new Date() },
   };
 }
-export async function assertResearchLease(run: ResearchLease) {
-  const row = await db.transcriptEnrichment.findFirst({
-    where: {
-      ...researchFence(run),
-      user: { status: 'APPROVED' },
-      transcript: { userId: run.userId, status: 'ACTIVE' },
-    },
-    select: { id: true },
-  });
-  if (!row || (await getResearchPreferences(run.userId)).mode === 'OFF')
-    throw new ResearchError('LEASE_LOST');
-}
 export async function withResearchLease<T>(
   run: ResearchLease,
   fn: (tx: Prisma.TransactionClient, source: ResearchSource) => Promise<T>,

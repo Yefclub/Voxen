@@ -183,6 +183,29 @@ describe('bounded grounded external research', () => {
     }
   });
 
+  test('persists each discovery and page-read allowance before making the external call', async () => {
+    const f = fixture();
+    let savedSearch = 0;
+    let savedFetch = 0;
+    const search = f.dependencies.search;
+    const fetchPage = f.dependencies.fetchPage;
+    f.dependencies.search = async (...args) => {
+      expect(savedSearch).toBe(f.usage.searchCalls);
+      expect(savedSearch).toBe(1);
+      return search(...args);
+    };
+    f.dependencies.fetchPage = async (...args) => {
+      expect(savedFetch).toBe(f.usage.fetchCalls);
+      expect(savedFetch).toBe(1);
+      return fetchPage(...args);
+    };
+    await f.run(async () => {
+      savedSearch = f.usage.searchCalls;
+      savedFetch = f.usage.fetchCalls;
+    });
+    expect(f.calls.fetch).toHaveLength(1);
+  });
+
   test('includes billed failed model attempts in the accumulated cost', async () => {
     const f = fixture();
     const generate = f.dependencies.generate;
