@@ -22,8 +22,27 @@ test.describe('continuous assistant workspace', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/chat');
     await expect(page.locator('main h1').first()).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Conversar', exact: true })).toBeVisible();
+    const pageHeading = page.getByRole('heading', { name: 'Conversar', exact: true });
+    await expect(pageHeading).toHaveCount(1);
+    expect((await pageHeading.boundingBox())!.width).toBeLessThanOrEqual(1);
     await expect(page.getByRole('textbox', { name: 'Mensagem' })).toBeVisible();
+    const composer = page.locator('.assistant-composer');
+    const settings = page.getByRole('button', { name: 'Preferências da conversa' });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const bounds = (await composer.boundingBox())!;
+      expect(bounds.height).toBeLessThanOrEqual(72);
+      const workspace = (await page.locator('[data-assistant-workspace]').boundingBox())!;
+      const corner = (await settings.boundingBox())!;
+      expect(workspace.x + workspace.width - corner.x - corner.width).toBeLessThanOrEqual(24);
+      expect(corner.y - workspace.y).toBeLessThanOrEqual(16);
+      expect(corner.width).toBeGreaterThanOrEqual(44);
+      const input = page.getByRole('textbox', { name: 'Mensagem' });
+      await input.fill('A first line\nA second line\nA third line\nA fourth line');
+      expect((await composer.boundingBox())!.height).toBeGreaterThan(bounds.height);
+      await input.fill('');
+      expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(72);
+    }
     await page.getByRole('button', { name: 'Conectar ideias', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Mensagem' })).toContainText('relações');
     await expect(page.locator('[data-chat-suggestions]')).toHaveCount(0);
@@ -115,11 +134,17 @@ test.describe('continuous assistant workspace', () => {
     );
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.goto('/chat');
+    const inputIdentity = await page.getByRole('textbox', { name: 'Mensagem' }).elementHandle();
+    const announcement = page.locator('[data-chat-announcement]');
+    await expect(announcement).toHaveText('');
+    const announcementIdentity = await announcement.elementHandle();
     await page
       .getByRole('textbox', { name: 'Mensagem' })
       .fill('Consulte minhas fontes recentes e salve uma nota com as conexões importantes.');
     await page.getByRole('button', { name: 'Enviar', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible();
+    await expect(announcement).toHaveText('Preparando resposta…');
+    expect(await announcementIdentity!.evaluate((element) => element.isConnected)).toBe(true);
     const run = await db.assistantRun.findFirstOrThrow({ where: { userId, status: 'QUEUED' } });
     let step = 0;
     let release!: () => void;
@@ -129,6 +154,14 @@ test.describe('continuous assistant workspace', () => {
     });
     const held = new Promise<void>((resolve) => {
       release = resolve;
+    });
+    let releaseTool!: () => void;
+    let enteredTool!: () => void;
+    const toolReady = new Promise<void>((resolve) => {
+      enteredTool = resolve;
+    });
+    const toolHeld = new Promise<void>((resolve) => {
+      releaseTool = resolve;
     });
     const answer = `As suas fontes se conectam pelo tema **conhecimento verificável**.\n\n### O que aparece nas fontes\n\nA primeira fonte registra o conceito em um trecho com marcação de tempo. A segunda acrescenta contexto relacionado. Essa relação permite retomar a ideia sem depender de um resumo isolado.\n\n### Como aproveitar\n\n- Leia a passagem original antes de usar uma afirmação.\n- Compare as fontes para distinguir evidência e interpretação.\n- Use a nota salva para reunir o que merece ser revisitado.\n\nA nota foi salva na sua biblioteca.`;
     const usage = {
@@ -156,6 +189,10 @@ test.describe('continuous assistant workspace', () => {
                       },
                 ),
               });
+              if (turn === 0) {
+                enteredTool();
+                await toolHeld;
+              }
               c.enqueue({
                 type: 'finish',
                 finishReason: { unified: 'tool-calls', raw: undefined },
@@ -188,7 +225,29 @@ test.describe('continuous assistant workspace', () => {
         costUsd: 0,
       }),
     });
+    await toolReady;
+    const progress = page.locator('[data-chat-progress]');
+    await expect(progress).toHaveCount(1);
+    await expect(progress).not.toHaveAttribute('open');
+    await progress.locator('summary').click();
+    await expect(progress).toHaveAttribute('open', '');
+    await expect(progress.getByText(/Consultando conteúdos recentes/)).toBeVisible();
+    await page.screenshot({ path: '/tmp/voxen-chat-layout-tools.png' });
+    releaseTool();
     await ready;
+    await expect(announcement).toHaveText('Escrevendo resposta…');
+    expect(await announcementIdentity!.evaluate((element) => element.isConnected)).toBe(true);
+    await expect(progress.getByRole('status')).toHaveCount(0);
+    await expect(progress.locator('summary')).toContainText('Escrevendo resposta…');
+    await expect(page.getByText(/As suas fontes se conectam/)).toBeVisible();
+    expect(await inputIdentity!.evaluate((element) => element.isConnected)).toBe(true);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await progress
+        .locator('.assistant-progress-spinner')
+        .evaluate((element) => getComputedStyle(element).animationName),
+    ).toBe('none');
+    await page.screenshot({ path: '/tmp/voxen-chat-layout-streaming.png' });
     await page.goto('/notas');
     release();
     await execution;
@@ -196,6 +255,7 @@ test.describe('continuous assistant workspace', () => {
     await expect(
       page.getByText('A nota foi salva na sua biblioteca.', { exact: true }),
     ).toBeVisible();
+    await expect(announcement).toHaveText('');
     await page.getByText('Fontes consultadas', { exact: true }).click();
     await expect(page.getByRole('link', { name: 'Matrix source', exact: true })).toBeVisible();
     for (const theme of ['dark', 'light']) {
@@ -229,6 +289,55 @@ test.describe('continuous assistant workspace', () => {
     expect(await db.note.count({ where: { userId, title: 'Conexões verificáveis' } })).toBe(1);
     await page.getByRole('button', { name: 'Parar', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toHaveCount(0);
+  });
+
+  test('keeps a persistent announcement when an idle event stream fails and reconnects', async ({
+    page,
+  }) => {
+    let release!: () => void;
+    let requested!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    const events = /\/api\/chat\/events\?/;
+    await page.route(events, async (route) => {
+      requested();
+      await held;
+      await route.abort('connectionfailed');
+    });
+    try {
+      await page.goto('/chat');
+      await ready;
+      const announcement = page.locator('[data-chat-announcement]');
+      await expect(announcement).toHaveAttribute('role', 'status');
+      await expect(announcement).toHaveAttribute('aria-live', 'polite');
+      await expect(announcement).toHaveText('');
+      const identity = await announcement.elementHandle();
+      expect(
+        await announcement.evaluate((element) => {
+          for (
+            let ancestor: Element | null = element;
+            ancestor;
+            ancestor = ancestor.parentElement
+          ) {
+            if (getComputedStyle(ancestor).display === 'none') return false;
+          }
+          return true;
+        }),
+      ).toBe(true);
+      release();
+      await expect(announcement).toHaveText('Reconectando à conversa…');
+      expect(await identity!.evaluate((element) => element.isConnected)).toBe(true);
+      await page.unroute(events);
+      await expect(announcement).toHaveText('');
+      expect(await identity!.evaluate((element) => element.isConnected)).toBe(true);
+    } finally {
+      release();
+      await page.unroute(events);
+    }
   });
 
   test('uploads an attachment through the owned capture pipeline', async ({ page }) => {
