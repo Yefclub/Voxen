@@ -173,6 +173,9 @@ The owner chose one compact, expandable progress line.
   1280px widths); longer drafts shall grow within a bounded scrolling editor.
 - While streaming, the interface shall expose one compact progress disclosure
   with localized tool details, partial answer text, stop and reconnect behavior.
+- The polite status region shall remain mounted and outside hidden transcript
+  ancestors while idle, so entering work or reconnecting updates an existing
+  announcement region without duplicating announcements in the disclosure.
 - Conversation content shall lead the hierarchy; edit/rewind controls, sources
   and model usage shall remain discoverable without competing with the answer.
 - Streaming feedback shall respect reduced motion, preserve the mounted input,

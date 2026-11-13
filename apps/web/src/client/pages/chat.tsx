@@ -40,6 +40,13 @@ export function ChatPage(): React.ReactElement {
   const uploading = useRef(false);
   const active = Boolean(chat.state?.activeRun);
   const messages = chat.state?.messages ?? [];
+  const progressLabel = !chat.connected
+    ? copy.reconnecting
+    : active
+      ? messages.at(-1)?.text
+        ? copy.writing
+        : copy.working
+      : '';
 
   const empty = Boolean(chat.state && !messages.length);
   const scrollControl = useChatStreamScroll({ scrollRef: scroll });
@@ -126,6 +133,15 @@ export function ChatPage(): React.ReactElement {
   return (
     <div data-assistant-workspace className="relative flex h-full min-h-0 flex-col">
       <h1 className="sr-only">{copy.title}</h1>
+      <p
+        data-chat-announcement
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {progressLabel}
+      </p>
       <header className="flex shrink-0 justify-end px-4 py-2 sm:px-6">
         <Button
           variant="ghost"
@@ -319,7 +335,7 @@ export function ChatPage(): React.ReactElement {
                 <AssistantProgress
                   activity={chat.activity}
                   connected={chat.connected}
-                  writing={active && Boolean(messages.at(-1)?.text)}
+                  label={progressLabel}
                   model={chat.state?.activeRun?.model ?? null}
                 />
               )}

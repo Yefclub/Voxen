@@ -135,11 +135,16 @@ test.describe('continuous assistant workspace', () => {
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.goto('/chat');
     const inputIdentity = await page.getByRole('textbox', { name: 'Mensagem' }).elementHandle();
+    const announcement = page.locator('[data-chat-announcement]');
+    await expect(announcement).toHaveText('');
+    const announcementIdentity = await announcement.elementHandle();
     await page
       .getByRole('textbox', { name: 'Mensagem' })
       .fill('Consulte minhas fontes recentes e salve uma nota com as conexões importantes.');
     await page.getByRole('button', { name: 'Enviar', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible();
+    await expect(announcement).toHaveText('Preparando resposta…');
+    expect(await announcementIdentity!.evaluate((element) => element.isConnected)).toBe(true);
     const run = await db.assistantRun.findFirstOrThrow({ where: { userId, status: 'QUEUED' } });
     let step = 0;
     let release!: () => void;
@@ -230,7 +235,10 @@ test.describe('continuous assistant workspace', () => {
     await page.screenshot({ path: '/tmp/voxen-chat-layout-tools.png' });
     releaseTool();
     await ready;
-    await expect(progress.getByRole('status')).toHaveText('Escrevendo resposta…');
+    await expect(announcement).toHaveText('Escrevendo resposta…');
+    expect(await announcementIdentity!.evaluate((element) => element.isConnected)).toBe(true);
+    await expect(progress.getByRole('status')).toHaveCount(0);
+    await expect(progress.locator('summary')).toContainText('Escrevendo resposta…');
     await expect(page.getByText(/As suas fontes se conectam/)).toBeVisible();
     expect(await inputIdentity!.evaluate((element) => element.isConnected)).toBe(true);
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -247,6 +255,7 @@ test.describe('continuous assistant workspace', () => {
     await expect(
       page.getByText('A nota foi salva na sua biblioteca.', { exact: true }),
     ).toBeVisible();
+    await expect(announcement).toHaveText('');
     await page.getByText('Fontes consultadas', { exact: true }).click();
     await expect(page.getByRole('link', { name: 'Matrix source', exact: true })).toBeVisible();
     for (const theme of ['dark', 'light']) {
@@ -280,6 +289,55 @@ test.describe('continuous assistant workspace', () => {
     expect(await db.note.count({ where: { userId, title: 'Conexões verificáveis' } })).toBe(1);
     await page.getByRole('button', { name: 'Parar', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toHaveCount(0);
+  });
+
+  test('keeps a persistent announcement when an idle event stream fails and reconnects', async ({
+    page,
+  }) => {
+    let release!: () => void;
+    let requested!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    const events = /\/api\/chat\/events\?/;
+    await page.route(events, async (route) => {
+      requested();
+      await held;
+      await route.abort('connectionfailed');
+    });
+    try {
+      await page.goto('/chat');
+      await ready;
+      const announcement = page.locator('[data-chat-announcement]');
+      await expect(announcement).toHaveAttribute('role', 'status');
+      await expect(announcement).toHaveAttribute('aria-live', 'polite');
+      await expect(announcement).toHaveText('');
+      const identity = await announcement.elementHandle();
+      expect(
+        await announcement.evaluate((element) => {
+          for (
+            let ancestor: Element | null = element;
+            ancestor;
+            ancestor = ancestor.parentElement
+          ) {
+            if (getComputedStyle(ancestor).display === 'none') return false;
+          }
+          return true;
+        }),
+      ).toBe(true);
+      release();
+      await expect(announcement).toHaveText('Reconectando à conversa…');
+      expect(await identity!.evaluate((element) => element.isConnected)).toBe(true);
+      await page.unroute(events);
+      await expect(announcement).toHaveText('');
+      expect(await identity!.evaluate((element) => element.isConnected)).toBe(true);
+    } finally {
+      release();
+      await page.unroute(events);
+    }
   });
 
   test('uploads an attachment through the owned capture pipeline', async ({ page }) => {
