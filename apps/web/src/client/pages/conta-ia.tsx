@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RefreshCw, Save, Trash2 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { AccountPageNav } from '../components/account/account-page-nav';
+import { ResearchPreferencesSection } from '../components/account/research-preferences';
 import {
   chainsEqual,
   reasoningEqual,
@@ -361,6 +362,7 @@ export function ContaIaPage(): React.ReactElement {
               )}
             </CardContent>
           </Card>
+          <ResearchPreferencesSection />
         </>
       )}
 
