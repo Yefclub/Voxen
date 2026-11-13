@@ -11,6 +11,8 @@ import { ThemeProvider } from './lib/theme-provider';
 import { useMe } from './lib/hooks';
 import { PwaInstallPrompt, shouldOfferInstall } from './components/pwa-install-prompt';
 import { MobilePortraitBoundary } from './components/mobile-portrait-boundary';
+import { LinkProvider } from '@astryxdesign/core/Link';
+import { WorkspaceLink } from './components/layout/workspace-link';
 
 // Telas carregadas somente quando a rota precisa delas. O shell, a sessao e a
 // navegacao continuam no bundle inicial; areas com editor, grafo e Markdown
@@ -89,11 +91,13 @@ export function App(): React.ReactElement {
       <ThemeProvider>
         <I18nRuntimeSync />
         <BrowserRouter>
-          <MobilePortraitBoundary>
-            <Toaster />
-            <PwaInstallGate />
-            <AppRoutes />
-          </MobilePortraitBoundary>
+          <LinkProvider component={WorkspaceLink}>
+            <MobilePortraitBoundary>
+              <Toaster />
+              <PwaInstallGate />
+              <AppRoutes />
+            </MobilePortraitBoundary>
+          </LinkProvider>
         </BrowserRouter>
       </ThemeProvider>
     </I18nProvider>

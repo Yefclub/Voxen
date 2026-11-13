@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { TopNav } from '@astryxdesign/core/TopNav';
 import { Breadcrumbs, BreadcrumbItem } from '@astryxdesign/core/Breadcrumbs';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Check,
   ChevronDown,
@@ -16,12 +16,9 @@ import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
+  DropdownMenuDivider,
+} from '@astryxdesign/core/DropdownMenu';
 import { useMe } from '../../lib/hooks';
 import { apiPost } from '../../lib/api';
 import type { MeUser } from '../../lib/types';
@@ -35,11 +32,11 @@ import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { NAV, isNavItemActive } from './sidebar-nav';
 import { WorkspaceLink } from './workspace-link';
 import { useIsDesktop } from '../../lib/use-media-query';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Popover } from '@astryxdesign/core/Popover';
 import { MobileBackButton } from './mobile-back-button';
 import { MobileMenuButton } from './mobile-menu-button';
 import { IconButton } from '../ui/icon-button';
-import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 
 function initials(name: string): string {
   return name
@@ -155,10 +152,33 @@ export function Topbar({
           !mobileUserMenuNeeded && 'max-md:hidden',
         )}
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <DropdownMenu
+          presentation="popover"
+          alignment="end"
+          menuWidth={240}
+          className="voxen-account-menu"
+          header={
+            <div className="px-3 py-3 border-b border-[var(--color-app-border)]">
+              <div className="flex items-center gap-2 w-full">
+                <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
+                  {user.name}
+                </span>
+                {user.role === 'ADMIN' && (
+                  <Badge variant="success" className="text-[9px] shrink-0">
+                    <ShieldCheck className="h-2.5 w-2.5" />
+                    {t('shell.admin')}
+                  </Badge>
+                )}
+              </div>
+              <span className="text-[11px] text-[var(--color-app-muted)] truncate w-full font-normal">
+                {user.email}
+              </span>
+            </div>
+          }
+          renderTrigger={(triggerProps) => (
             <button
               type="button"
+              {...triggerProps}
               className={cn(
                 chromeControlClass,
                 'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:rounded-lg xl:h-11 xl:w-auto xl:gap-2 xl:rounded-xl xl:border xl:border-[var(--color-app-border)] xl:bg-[var(--color-app-bg)] xl:px-2.5',
@@ -186,37 +206,20 @@ export function Topbar({
                 className="hidden h-3.5 w-3.5 shrink-0 xl:block"
               />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
-              <div className="flex items-center gap-2 w-full">
-                <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
-                  {user.name}
-                </span>
-                {user.role === 'ADMIN' && (
-                  <Badge variant="success" className="text-[9px] shrink-0">
-                    <ShieldCheck className="h-2.5 w-2.5" />
-                    {t('shell.admin')}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-[11px] text-[var(--color-app-muted)] truncate w-full font-normal">
-                {user.email}
-              </span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
-                <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-                <span className="truncate">{t('common.profile')}</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem destructive onSelect={onSignOut}>
-              <LogOut className="h-3.5 w-3.5" />
-              {t('common.signOut')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+          )}
+        >
+          <DropdownMenuItem
+            href="/conta"
+            label={t('common.profile')}
+            icon={<UserIcon className="h-4 w-4" />}
+          />
+          <DropdownMenuDivider />
+          <DropdownMenuItem
+            label={t('common.signOut')}
+            icon={<LogOut className="h-4 w-4" />}
+            variant="destructive"
+            onClick={() => void onSignOut()}
+          />
         </DropdownMenu>
       </div>
     </div>
@@ -250,44 +253,35 @@ function AppearanceMenu(): React.ReactElement {
 
   return (
     <div role="group" aria-label={t('theme.appearance')} className="flex items-center gap-1">
-      <ToggleGroup
-        aria-label={t('theme.label')}
-        value={[light ? 'light' : 'dark']}
-        onValueChange={(next) => {
-          const mode = next[0];
-          if (mode === 'light' && !light) void setTheme('light');
-          if (mode === 'dark' && light) void setTheme('dark');
+      <SegmentedControl
+        label={t('theme.label')}
+        value={theme}
+        onChange={(mode) => {
+          if (mode === 'light' || mode === 'dark') void setTheme(mode);
         }}
-        className="hidden md:flex"
+        className="voxen-appearance-segments hidden md:flex"
       >
-        <ToggleGroupItem value="light" label={t('theme.switchToLight')}>
-          <Sun isAnimated={false} className="h-4 w-4" />
-        </ToggleGroupItem>
-        <ToggleGroupItem value="dark" label={t('theme.switchToDark')}>
-          <Moon isAnimated={false} className="h-4 w-4" />
-        </ToggleGroupItem>
-      </ToggleGroup>
-      <Popover>
-        <PopoverTrigger asChild>
-          <IconButton type="button" label={t('theme.appearance')} className={chromeControlClass}>
-            <span aria-hidden className="md:hidden">
-              {light ? (
-                <Sun isAnimated={false} className="h-4 w-4" />
-              ) : (
-                <Moon isAnimated={false} className="h-4 w-4" />
-              )}
-            </span>
-            <span aria-hidden className="hidden md:inline-flex">
-              <ChevronDown isAnimated={false} className="h-3.5 w-3.5" />
-            </span>
-          </IconButton>
-        </PopoverTrigger>
-        <PopoverContent
-          align="end"
-          sideOffset={8}
-          aria-label={t('theme.appearance')}
-          className="w-56 max-w-[calc(100vw-2rem)] rounded-xl border-0 p-2 shadow-lg"
-        >
+        <SegmentedControlItem
+          value="light"
+          label={t('theme.switchToLight')}
+          isLabelHidden
+          icon={<Sun isAnimated={false} className="h-4 w-4" />}
+        />
+        <SegmentedControlItem
+          value="dark"
+          label={t('theme.switchToDark')}
+          isLabelHidden
+          icon={<Moon isAnimated={false} className="h-4 w-4" />}
+        />
+      </SegmentedControl>
+      <Popover
+        presentation="popover"
+        alignment="end"
+        label={t('theme.appearance')}
+        width={224}
+        padding={2}
+        className="voxen-appearance-popover"
+        content={
           <fieldset>
             <legend className="px-2 py-2 text-xs font-medium text-[var(--color-app-muted)]">
               {t('theme.label')}
@@ -325,7 +319,27 @@ function AppearanceMenu(): React.ReactElement {
               ))}
             </div>
           </fieldset>
-        </PopoverContent>
+        }
+      >
+        {(triggerProps) => (
+          <IconButton
+            type="button"
+            {...triggerProps}
+            label={t('theme.appearance')}
+            className={chromeControlClass}
+          >
+            <span aria-hidden className="md:hidden">
+              {light ? (
+                <Sun isAnimated={false} className="h-4 w-4" />
+              ) : (
+                <Moon isAnimated={false} className="h-4 w-4" />
+              )}
+            </span>
+            <span aria-hidden className="hidden md:inline-flex">
+              <ChevronDown isAnimated={false} className="h-3.5 w-3.5" />
+            </span>
+          </IconButton>
+        )}
       </Popover>
     </div>
   );

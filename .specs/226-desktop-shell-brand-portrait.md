@@ -22,6 +22,12 @@ honest about which source material was analyzed.
 - The interface shall retain all authorized destinations, ownership controls,
   account actions, sidebar persistence, editor drafts, and graph behavior.
 - The mobile interface shall retain its bottom navigation and contextual sheets.
+- The application shall use the requested design system's behavior-bearing
+  navigation, account menu, appearance controls, and controlled search/capture
+  fields instead of limiting adoption to a styled button.
+- Shared component adoption shall preserve form submission, native field
+  identity, input refs, asynchronous request ownership, mobile geometry, and
+  public API contracts.
 - The brand symbol shall contain no text, background, or owl imagery and shall
   replace the old symbol across authentication, navigation, browser icons,
   installed-app icons, and error states.
@@ -33,6 +39,11 @@ honest about which source material was analyzed.
   and its content without moving the row's content.
 - When the sidebar is hidden or restored, focus shall move to its corresponding
   visible control and the current document/editor shall stay mounted.
+- When users open an account or appearance menu, keyboard navigation, dismissal,
+  focus return, and accessible names shall remain usable without leaving
+  focusable background controls hidden from assistive technology.
+- When a user clears a Library query, the search field shall retain focus and
+  the existing URL/filter synchronization shall apply.
 - When a phone is rotated to landscape, the application shall request portrait
   orientation where supported and otherwise show a portrait instruction that
   prevents interaction with the underlying application.
@@ -69,6 +80,9 @@ honest about which source material was analyzed.
       positions; long titles and metadata do not overflow.
 - [ ] Navigation, account actions, appearance, and collapse/restore work with
       keyboard and pointer; route contents are preserved during collapse.
+- [ ] Native design-system menus, appearance selection, and controlled fields
+      are exercised through real keyboard, clear, submit, busy, and error states;
+      search and capture mobile contracts retain their geometry and behavior.
 - [ ] The replacement logo has actual transparency, is legible at small sizes,
       and appears in every existing brand and PWA icon location.
 - [ ] Phone portrait/landscape transitions preserve unsaved input, block
@@ -99,3 +113,5 @@ dimension is below 600 CSS pixels. The manifest's portrait preference applies
 to installed apps, including installed tablets whose platform honors it.
 
 > 2026-11-13: Created from the owner's desktop screenshot and explicit follow-up.
+> 2026-11-13: Expanded after the owner's explicit request to use Astryx beyond
+> navigation and styled buttons; existing mobile navigation remains approved.

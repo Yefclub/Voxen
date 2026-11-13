@@ -476,6 +476,18 @@ Mobile overlays round their top corners using the `2xl` step. Desktop dialogs ro
 
 ## Components
 
+### Shared Astryx behavior
+
+Desktop SideNav and TopNav own the workspace navigation structure. Account actions
+use DropdownMenu and the appearance control uses SegmentedControl plus Popover.
+The shared LinkProvider routes native component links through WorkspaceLink so
+ordinary navigation stays in the SPA while modified clicks retain browser behavior.
+InternationalizationProvider follows the current Voxen locale, including native
+clear and loading announcements. Controlled TextInput fields retain the Library's
+URL synchronization and the capture composer's input ref, form submission, limits,
+request ownership, and inline error descriptions. Their frame is 44px high in search
+and 48px in capture; touch text remains 16px to avoid input zoom.
+
 ### Buttons
 
 Restrained, legible controls with explicit action hierarchy. [Button](apps/web/src/client/components/ui/button.tsx) wraps Astryx for accessible control behavior and applies Voxen's appearance tokens. Keep the wrapper as the implementation entry point.

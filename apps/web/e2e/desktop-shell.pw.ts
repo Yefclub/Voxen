@@ -37,7 +37,7 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       );
       for (const mode of ['light', 'dark']) {
         await page
-          .getByRole('button', {
+          .getByRole('radio', {
             name: mode === 'light' ? 'Mudar para tema claro' : 'Mudar para tema escuro',
             exact: true,
           })
@@ -135,6 +135,108 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
     }
   });
 
+  test('uses native account-menu keyboard navigation and clears search without losing focus', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/transcricoes');
+    const search = page.getByRole('searchbox');
+    const control = page.locator('.astryx-text-input');
+    await expect(control).toBeVisible();
+    await search.fill('Matrix');
+    await expect(page).toHaveURL(/q=Matrix/);
+    await control.getByRole('button', { name: /^Limpar/ }).click();
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue('');
+    await expect(page).not.toHaveURL(/q=Matrix/);
+    await page.evaluate(() => {
+      document.body.dataset.menuNavigationProof = 'retained';
+    });
+    const trigger = page.getByRole('button', { name: /^Menu do usuário:/ });
+    await trigger.focus();
+    await page.keyboard.press('ArrowDown');
+    const menu = page.getByRole('menu');
+    await expect(menu).toHaveClass(/astryx-dropdown-menu/);
+    await page.keyboard.press('Home');
+    await expect(page.getByRole('menuitem', { name: 'Perfil', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await page.getByRole('menuitem', { name: 'Perfil', exact: true }).click();
+    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page.locator('#name')).toBeVisible();
+    expect(await page.evaluate(() => document.body.dataset.menuNavigationProof)).toBe('retained');
+  });
+
+  test('uses native theme keyboard selection and restores focus from appearance settings', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/transcricoes');
+    const modes = page.getByRole('radiogroup', { name: 'Tema', exact: true });
+    const light = modes.getByRole('radio', { name: 'Mudar para tema claro' });
+    const dark = modes.getByRole('radio', { name: 'Mudar para tema escuro' });
+    await light.click();
+    await light.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(dark).toBeFocused();
+    await expect(dark).toBeChecked();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    const trigger = page.getByRole('button', { name: 'Aparência', exact: true });
+    await trigger.click();
+    const appearance = page.getByRole('dialog', { name: 'Aparência', exact: true });
+    await expect(appearance).toBeVisible();
+    await appearance.getByText('Mudar para tema claro', { exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await page.keyboard.press('Escape');
+    await expect(appearance).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
+  test('preserves capture input refs, pending submission and accessible errors in the native field', async ({
+    page,
+  }) => {
+    await page.goto('/capturar');
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let submissions = 0;
+    await page.route('**/api/captures', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      submissions += 1;
+      expect(route.request().postDataJSON()).toEqual({ url: 'invalid capture' });
+      await gate;
+      await route.fulfill({
+        status: 400,
+        json: { error: { code: 'INVALID_URL', action: 'edit_url' } },
+      });
+    });
+    const input = page.getByRole('textbox', { name: 'Link para capturar' });
+    const submit = page.getByRole('button', { name: 'Capturar', exact: true });
+    try {
+      await expect(input).toHaveAttribute('maxlength', '4096');
+      await expect(input).toHaveAttribute('inputmode', 'url');
+      await input.fill('invalid capture');
+      await input.press('Enter');
+      await expect.poll(() => submissions).toBe(1);
+      await expect(submit).toHaveAttribute('aria-disabled', 'true');
+      await input.press('Enter');
+      release();
+      await expect(input).toHaveAttribute('aria-invalid', 'true');
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue('invalid capture');
+      const description = await input.getAttribute('aria-describedby');
+      expect(description).toBeTruthy();
+      await expect(page.locator(`[id="${description}"]`)).toBeVisible();
+      await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
+      expect(submissions).toBe(1);
+    } finally {
+      release();
+    }
+  });
+
   test.describe('phones', () => {
     test.use({
       viewport: { width: 390, height: 844 },
@@ -186,6 +288,8 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       });
       await expect(guard).toBeVisible();
       await expect(guard).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(guard).toBeVisible();
       await page.evaluate(() => {
         Object.assign(screen.orientation, { type: 'portrait-primary' });
         screen.orientation.dispatchEvent(new Event('change'));
@@ -195,6 +299,33 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       await expect(filters).toContainText('Filtros da biblioteca');
       await page.goBack();
       await expect(filters).toBeHidden();
+    });
+
+    test('covers an open native appearance popup when rotated and keeps focus contained', async ({
+      page,
+    }) => {
+      await page.addInitScript(() => {
+        const orientation = Object.assign(new EventTarget(), { type: 'portrait-primary' });
+        Object.defineProperty(screen, 'orientation', { configurable: true, value: orientation });
+      });
+      await page.goto('/capturar');
+      await page.getByRole('button', { name: 'Aparência', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Aparência', exact: true })).toBeVisible();
+      await page.evaluate(() => {
+        Object.assign(screen.orientation, { type: 'landscape-primary' });
+        screen.orientation.dispatchEvent(new Event('change'));
+      });
+      const guard = page.getByRole('alertdialog', { name: 'Use a Voxen na vertical' });
+      await expect(guard).toBeVisible();
+      await expect(guard).toBeFocused();
+      const centerIsGuard = await guard.evaluate((element) => {
+        const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        return element === top || element.contains(top);
+      });
+      expect(centerIsGuard).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(guard).toBeVisible();
+      await expect(guard).toBeFocused();
     });
 
     test('keeps the portrait fallback usable when installed native locking rejects', async ({

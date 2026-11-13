@@ -5,7 +5,9 @@ titulo_pt_br: Um workspace desktop mais definido e uma nova marca Voxen
 ---
 
 Desktop navigation and the header now use Astryx with a distinct content frame,
-clearer selected destinations, and consistent account controls. Library row
+clearer selected destinations, and native account/appearance menus. Astryx also
+handles keyboard theme selection, controlled capture fields, and localized search
+clearing/loading states. Library row
 highlights have room around thumbnails and metadata without shifting content.
 
 A minimal transparent emerald symbol replaces the owl across the application
@@ -16,7 +18,9 @@ instruction while preserving the current work.
 <!-- pt-BR -->
 
 A navegação e o cabeçalho desktop agora usam Astryx, com separação visual do
-conteúdo, destinos selecionados mais claros e controles de conta consistentes.
+conteúdo, destinos selecionados mais claros e menus nativos de conta e aparência.
+O Astryx também cuida da seleção de tema por teclado, do campo de captura e dos
+estados de limpeza e carregamento da busca em português e inglês.
 O destaque das linhas da Biblioteca ganhou espaço ao redor das miniaturas e dos
 metadados, sem deslocar o conteúdo.
 

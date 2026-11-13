@@ -1,0 +1,90 @@
+@layer components {
+  .voxen-appearance-segments {
+    min-height: 36px;
+    padding: 3px;
+    gap: 2px;
+    border-radius: 10px;
+    background: var(--color-app-surface);
+  }
+
+  .voxen-appearance-segments [role='radio'] {
+    min-width: 32px;
+    min-height: 30px;
+    padding: 6px 8px;
+    color: var(--color-app-muted);
+    border-radius: 7px;
+  }
+
+  .voxen-appearance-segments [aria-checked='true'] {
+    color: var(--color-app-fg);
+    background: var(--color-app-bg-elevated);
+  }
+
+  .voxen-appearance-popover {
+    color: var(--color-app-fg);
+    background: var(--color-app-bg-elevated);
+    font-family: var(--font-sans);
+    border: 1px solid var(--color-app-border);
+    border-radius: 12px;
+  }
+
+  .voxen-account-menu {
+    color: var(--color-app-fg);
+    font-family: var(--font-sans);
+  }
+
+  .voxen-text-field {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .voxen-text-control {
+    min-width: 0;
+    min-height: 44px;
+    height: 44px;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid var(--color-app-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-app-bg-elevated);
+    color: var(--color-app-fg);
+    font-family: var(--font-sans);
+    font-size: 16px;
+  }
+
+  .voxen-text-control input {
+    min-width: 0;
+    color: inherit;
+    font: inherit;
+  }
+
+  .voxen-text-control input::placeholder {
+    color: var(--color-app-muted);
+    opacity: 1;
+  }
+
+  .voxen-text-control:focus-within {
+    border-color: var(--theme-focus);
+    outline: 2px solid var(--theme-focus);
+    outline-offset: 1px;
+  }
+
+  .voxen-text-control[data-status='error'] {
+    border-color: var(--color-app-danger);
+  }
+
+  .library-search-control {
+    background: var(--color-app-bg);
+  }
+
+  .capture-url-control {
+    min-height: 48px;
+    height: 48px;
+  }
+
+  @media (min-width: 768px) and (pointer: fine) {
+    .voxen-text-control {
+      font-size: 14px;
+    }
+  }
+}
