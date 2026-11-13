@@ -140,7 +140,9 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/transcricoes');
-    const search = page.getByRole('searchbox');
+    const search = page
+      .getByRole('region', { name: 'Explore sua base de conhecimento' })
+      .getByRole('searchbox', { name: 'Explore sua base de conhecimento' });
     const control = page.locator('.astryx-text-input');
     await expect(control).toBeVisible();
     await search.fill('Matrix');
@@ -167,6 +169,24 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
     await expect(page).toHaveURL(/\/conta$/);
     await expect(page.locator('#name')).toBeVisible();
     expect(await page.evaluate(() => document.body.dataset.menuNavigationProof)).toBe('retained');
+    await page.goto('/transcricoes');
+    await page.route('**/api/me', async (route) => {
+      const response = await route.fetch();
+      expect(response.ok()).toBeTruthy();
+      const body = await response.json();
+      // Language is instance-owned; keep the real authenticated owner unchanged.
+      await route.fulfill({ response, json: { ...body, language: 'en' } });
+    });
+    await page.reload();
+    const english = page
+      .getByRole('region', { name: 'Explore your knowledge base' })
+      .getByRole('searchbox', { name: 'Explore your knowledge base' });
+    await english.fill('Matrix');
+    await page
+      .getByRole('button', { name: 'Clear Explore your knowledge base', exact: true })
+      .click();
+    await expect(english).toHaveValue('');
+    await expect(english).toBeFocused();
   });
 
   test('uses native theme keyboard selection and restores focus from appearance settings', async ({

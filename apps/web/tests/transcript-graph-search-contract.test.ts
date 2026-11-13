@@ -16,7 +16,7 @@ describe('transcript graph search contract', () => {
   test('places discovery first and exposes no capture entrypoint', () => {
     expect(page).toContain('<LibrarySearch');
     expect(page).not.toContain('<ContentIngestCard');
-    expect(search).toContain('aria-labelledby="library-search-title"');
+    expect(search).toContain("label={t('library.searchTitle')}");
     expect(page).toContain("translate('library.graphMatch')");
     expect(page).toContain('t.graphMatch');
   });
