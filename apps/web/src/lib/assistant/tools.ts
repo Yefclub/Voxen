@@ -1,10 +1,11 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { db } from '../db';
+import type { Prisma } from '../../../prisma-generated/client';
 import { searchKnowledgeBaseMultiQuery } from '../knowledge-search-multiquery';
 import { findRelated, parseOutline, readLinesFromMd, verifyClaimAgainstMd } from '../retrieval';
 import { loadEffectiveTranscriptMarkdown } from '../transcript-content';
-import { submitCaptureUrl, submitRateLimited } from '../capture/submit';
+import { notifyCaptureQueued, submitCaptureUrl, submitRateLimited } from '../capture/submit';
 import { JOB_SELECT, serializeJob } from '../capture/jobs';
 import { createPreparedNote } from '../prepared-note-ingest';
 import { syncNoteGraph } from '../note-versioning';
@@ -62,7 +63,8 @@ export async function buildAssistantTools(
   const action = async (
     name: AdditionName,
     args: unknown,
-    fn: (key: string) => Promise<unknown>,
+    fn: (key: string, tx: Prisma.TransactionClient) => Promise<unknown>,
+    afterCommit: (result: unknown) => Promise<void>,
   ) => {
     const permission = await authorizeAddition(run, name, args, signal, classify);
     if (!permission.authorized)
@@ -74,7 +76,7 @@ export async function buildAssistantTools(
       });
       if (previous) return previous.result;
       if (++writes > 3) return { error: 'ADDITION_LIMIT' };
-      const value = await fn(key);
+      const value = await fn(key, tx);
       if (
         value &&
         typeof value === 'object' &&
@@ -105,6 +107,7 @@ export async function buildAssistantTools(
       )
     ) {
       announcedActions.add(key);
+      await afterCommit(result);
       await onAction(name, result);
     }
     return result;
@@ -178,20 +181,43 @@ export async function buildAssistantTools(
         }),
     }),
     read_note: tool({
-      description: 'Read an owned note, including its current revision.',
-      inputSchema: z.object({ id: z.string().max(128) }),
-      execute: ({ id }) =>
+      description:
+        'Read an owned note in bounded UTF-16 character windows. Follow nextOffset using the returned revision as expectedRevision to avoid mixing revisions.',
+      inputSchema: z.object({
+        id: z.string().max(128),
+        offset: z.number().int().min(0).max(100_000_000).default(0),
+        limit: z.number().int().min(128).max(16_000).default(16_000),
+        expectedRevision: z.number().int().positive().optional(),
+      }),
+      execute: ({ id, offset = 0, limit = 16_000, expectedRevision }) =>
         guarded(async () => {
           const note = await db.note.findFirst({
             where: { id, userId: run.userId, kind: 'NOTE' },
             select: { id: true, title: true, content: true, revision: true },
           });
           if (!note) return { error: 'NOT_FOUND' };
+          if (offset > 0 && expectedRevision === undefined) return { error: 'REVISION_REQUIRED' };
+          if (expectedRevision !== undefined && note.revision !== expectedRevision)
+            return { error: 'STALE_REVISION', currentRevision: note.revision };
+          if (offset > note.content.length) return { error: 'INVALID_OFFSET' };
+          const low = (value: number) => value >= 0xdc00 && value <= 0xdfff;
+          const high = (value: number) => value >= 0xd800 && value <= 0xdbff;
+          if (
+            offset &&
+            low(note.content.charCodeAt(offset)) &&
+            high(note.content.charCodeAt(offset - 1))
+          )
+            return { error: 'INVALID_OFFSET' };
+          let end = Math.min(note.content.length, offset + limit);
+          if (high(note.content.charCodeAt(end - 1)) && low(note.content.charCodeAt(end))) end--;
           remember({ id, title: note.title, href: `/notas/${id}`, source: 'library' });
           return {
             ...note,
-            content: note.content.slice(0, 16_000),
-            truncated: note.content.length > 16_000,
+            content: note.content.slice(offset, end),
+            offset,
+            nextOffset: end < note.content.length ? end : null,
+            totalCharacters: note.content.length,
+            truncated: offset > 0 || end < note.content.length,
           };
         }),
     }),
@@ -300,13 +326,22 @@ export async function buildAssistantTools(
       inputSchema: CaptureAdditionSchema,
       execute: ({ url }) =>
         guarded(() =>
-          action('capture_url', { url }, async () => {
-            if (await submitRateLimited(run.userId)) return { error: 'RATE_LIMITED' };
-            const outcome = await submitCaptureUrl(run.userId, url);
-            return outcome.kind === 'existing'
-              ? { ...outcome, href: `/transcricoes/${outcome.transcriptId}` }
-              : outcome;
-          }),
+          action(
+            'capture_url',
+            { url },
+            async (_key, tx) => {
+              if (await submitRateLimited(run.userId)) return { error: 'RATE_LIMITED' };
+              const outcome = await submitCaptureUrl(run.userId, url, tx);
+              return outcome.kind === 'existing'
+                ? { ...outcome, href: `/transcricoes/${outcome.transcriptId}` }
+                : outcome;
+            },
+            async (result) => {
+              const capture = result as { kind?: string; jobId?: string; deduped?: boolean };
+              if (capture.kind === 'job' && capture.jobId && !capture.deduped)
+                await notifyCaptureQueued(run.userId, capture.jobId);
+            },
+          ),
         ),
     });
     tools.create_note = tool({
@@ -315,26 +350,37 @@ export async function buildAssistantTools(
       inputSchema: NoteAdditionSchema,
       execute: ({ title, content, sourceIds }) =>
         guarded(() =>
-          action('create_note', { title, content, sourceIds }, async (key) => {
-            const ids = [...new Set(sourceIds ?? [])];
-            if (
-              (await db.transcript.count({
-                where: { userId: run.userId, id: { in: ids }, status: 'ACTIVE' },
-              })) !== ids.length
-            )
-              return { error: 'NOT_FOUND' };
-            const note = await createPreparedNote(run.userId, {
-              title,
-              content,
-              transcriptIds: ids,
-              anchors: [],
-              actor: 'USER',
-              idempotencyKey: key,
-              producerId: 'voxen-assistant',
-            });
-            await syncNoteGraph(run.userId, note.id);
-            return { ...note, href: `/notas/${note.id}` };
-          }),
+          action(
+            'create_note',
+            { title, content, sourceIds },
+            async (key, tx) => {
+              const ids = [...new Set(sourceIds ?? [])];
+              if (
+                (await tx.transcript.count({
+                  where: { userId: run.userId, id: { in: ids }, status: 'ACTIVE' },
+                })) !== ids.length
+              )
+                return { error: 'NOT_FOUND' };
+              const note = await createPreparedNote(
+                run.userId,
+                {
+                  title,
+                  content,
+                  transcriptIds: ids,
+                  anchors: [],
+                  actor: 'USER',
+                  idempotencyKey: key,
+                  producerId: 'voxen-assistant',
+                },
+                tx,
+              );
+              return { ...note, href: `/notas/${note.id}` };
+            },
+            async (result) => {
+              const note = result as { id?: string };
+              if (note.id) await syncNoteGraph(run.userId, note.id);
+            },
+          ),
         ),
     });
   }

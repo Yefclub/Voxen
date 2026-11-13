@@ -66,15 +66,16 @@ export async function textRoleConfigured(userId: string): Promise<boolean> {
 
 export async function enqueueCapture(
   data: Prisma.JobUncheckedCreateInput,
+  transaction?: Prisma.TransactionClient,
 ): Promise<{ id: string; deduped: boolean }> {
   try {
-    const job = await db.job.create({ data, select: { id: true } });
-    await publishJobEvent(data.userId, { jobId: job.id, stage: 'queued', percent: 0 }).catch(
-      () => {},
-    );
-    await notifyNewJob(job.id).catch(() => {});
+    const job = await (transaction ?? db).job.create({ data, select: { id: true } });
+    if (!transaction) await notifyCaptureQueued(data.userId, job.id);
     return { id: job.id, deduped: false };
   } catch (error) {
+    // PostgreSQL aborts a caller-owned transaction after a uniqueness error.
+    // Let its caller roll back its publication and receipt together.
+    if (transaction) throw error;
     // Job_user_url_active_unique: a concurrent submit won the race.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const active = await db.job.findFirst({
@@ -87,26 +88,37 @@ export async function enqueueCapture(
   }
 }
 
+/** Best-effort wakeups after the durable job commit; periodic drains recover loss. */
+export async function notifyCaptureQueued(userId: string, jobId: string) {
+  await publishJobEvent(userId, { jobId, stage: 'queued', percent: 0 }).catch(() => {});
+  await notifyNewJob(jobId).catch(() => {});
+}
+
 export type SubmitOutcome =
   | { kind: 'error'; status: 400 | 409 | 413 | 415; code: CaptureErrorCode }
   | { kind: 'job'; jobId: string; deduped: boolean }
   | { kind: 'existing'; transcriptId: string; title: string };
 
 /** Spec 220 submit order: validate → active job → library → text role → enqueue. */
-export async function submitCaptureUrl(userId: string, input: unknown): Promise<SubmitOutcome> {
+export async function submitCaptureUrl(
+  userId: string,
+  input: unknown,
+  transaction?: Prisma.TransactionClient,
+): Promise<SubmitOutcome> {
+  const client = transaction ?? db;
   const parsed = parseCaptureUrl(input);
   if (isCaptureUrlError(parsed)) return { kind: 'error', status: 400, code: parsed.code };
   const candidates = [...new Set([parsed.canonical, parsed.url])];
-  const active = await db.job.findFirst({
+  const active = await client.job.findFirst({
     where: { userId, sourceUrl: { in: candidates }, status: { in: [...ACTIVE] } },
     select: { id: true },
     orderBy: { queuedAt: 'desc' },
   });
   if (active) return { kind: 'job', jobId: active.id, deduped: true };
   for (const candidate of candidates) {
-    const existing = await findTranscriptBySourceIdentity(db, userId, candidate);
+    const existing = await findTranscriptBySourceIdentity(client, userId, candidate);
     if (existing) {
-      const doc = await db.transcript.findFirst({
+      const doc = await client.transcript.findFirst({
         where: { id: existing.id, userId },
         select: { title: true },
       });
@@ -115,13 +127,16 @@ export async function submitCaptureUrl(userId: string, input: unknown): Promise<
   }
   if (!(await textRoleConfigured(userId)))
     return { kind: 'error', status: 409, code: 'AI_NOT_CONFIGURED' };
-  const job = await enqueueCapture({
-    userId,
-    type: 'CAPTURE_LINK',
-    status: 'QUEUED',
-    sourceUrl: parsed.canonical,
-    captureMeta: { submittedUrl: parsed.url, platform: parsed.platform.toLowerCase() },
-  });
+  const job = await enqueueCapture(
+    {
+      userId,
+      type: 'CAPTURE_LINK',
+      status: 'QUEUED',
+      sourceUrl: parsed.canonical,
+      captureMeta: { submittedUrl: parsed.url, platform: parsed.platform.toLowerCase() },
+    },
+    transaction,
+  );
   return { kind: 'job', jobId: job.id, deduped: job.deduped };
 }
 

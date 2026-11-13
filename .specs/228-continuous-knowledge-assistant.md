@@ -46,6 +46,8 @@ knowledge-base content. Architecture is recorded in ADR-017.
   conversation text from reappearing through conversation-memory retrieval.
 - When the assistant searches, the system shall offer owner-scoped search,
   outlines, bounded passage reading, related content and citation verification.
+- When reading a long note, the system shall return bounded continuation
+  windows tied to its revision and reject a continuation from a stale revision.
 - When a user clearly requests an addition in natural language, the system shall
   infer the requested capability from that user's request, execute bounded,
   idempotent URL capture or note creation through existing domain services and
@@ -55,6 +57,9 @@ knowledge-base content. Architecture is recorded in ADR-017.
   confirmation before executing it.
 - When a user confirms or dismisses a proposed addition, the system shall
   validate its owner and conversation revision and persist the decision.
+- When an addition publishes a note or enqueues a capture, the system shall
+  commit that publication and its durable assistant receipt atomically;
+  graph synchronization and notifications shall run after the commit.
 - When a user includes files, the system shall submit them through the existing
   capture upload contract and expose their resulting owned references to chat.
 - When context reaches its configured limit, the system shall compact older
@@ -68,6 +73,8 @@ knowledge-base content. Architecture is recorded in ADR-017.
 - While composing messages, the interface shall not require selecting a mode
   or enabling a permission toggle; clear requests and contextual confirmations
   shall determine addition intent.
+- While a nonblank draft exists or the phone keyboard is open, starter
+  suggestions shall be unavailable and shall not replace the draft.
 - While compacting, the system shall keep objectives, explicit decisions,
   constraints, identifiers, pending work and uncertainty distinct; authorization
   shall remain server state and shall never be inferred from a summary.
@@ -105,6 +112,10 @@ knowledge-base content. Architecture is recorded in ADR-017.
   events, while preserving previously published knowledge and receipts.
 - [x] Multi-step knowledge tools return usable owned passages and references.
 - [x] Capture and note additions are bounded and idempotent across retries.
+- [x] Publication and receipt fault injection proves atomic rollback and
+  post-commit recovery of the single publication and its visible reference.
+- [x] Long-note continuation reaches later passages, preserves Unicode
+  boundaries and rejects absent or stale continuation revisions.
 - [x] Clear requests execute without a mode; ambiguous additions require exact,
   revision-bound confirmation; retrieved instructions cannot grant permissions.
 - [x] Attachments use existing capture limits and storage ownership.

@@ -144,4 +144,45 @@ suite('assistant knowledge tools', () => {
     expect(tools.web_fetch).toBeUndefined();
     expect(tools.web_search).toBeUndefined();
   });
+
+  test('continues beyond the first note window and rejects a changed revision', async () => {
+    const note = await db.note.create({
+      data: {
+        userId: users[0]!,
+        kind: 'NOTE',
+        title: 'Long note',
+        content: 'a'.repeat(15_999) + '😀 A distinctive passage beyond the initial window.',
+      },
+    });
+    const first = (await tools.read_note!.execute!({ id: note.id }, options)) as {
+      content: string;
+      revision: number;
+      nextOffset: number;
+    };
+    expect(first.content.length).toBeLessThanOrEqual(16_000);
+    expect(first.content).not.toContain('distinctive passage');
+    expect(first.nextOffset).toBeGreaterThan(0);
+    expect(
+      await tools.read_note!.execute!({ id: note.id, offset: first.nextOffset }, options),
+    ).toMatchObject({ error: 'REVISION_REQUIRED' });
+    const next = await tools.read_note!.execute!(
+      { id: note.id, offset: first.nextOffset, expectedRevision: first.revision },
+      options,
+    );
+    expect(next).toMatchObject({
+      content: '😀 A distinctive passage beyond the initial window.',
+      nextOffset: null,
+      revision: 1,
+    });
+    await db.note.update({
+      where: { id: note.id },
+      data: { content: 'A changed note.', revision: { increment: 1 } },
+    });
+    expect(
+      await tools.read_note!.execute!(
+        { id: note.id, offset: first.nextOffset, expectedRevision: first.revision },
+        options,
+      ),
+    ).toMatchObject({ error: 'STALE_REVISION', currentRevision: 2 });
+  });
 });

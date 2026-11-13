@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { db } from './db';
+import type { Prisma } from '../../prisma-generated/client';
 import { noteContentChecksum } from './note-revisions';
 import {
   assertIngestContractVersion,
@@ -101,8 +102,12 @@ export type PreparedNoteResult = {
   duplicate: boolean;
 };
 
-async function readNoteBrief(userId: string, noteId: string) {
-  const note = await db.note.findFirst({
+async function readNoteBrief(
+  userId: string,
+  noteId: string,
+  client: Pick<Prisma.TransactionClient, 'note'> = db,
+) {
+  const note = await client.note.findFirst({
     where: { id: noteId, userId, kind: 'NOTE' },
     select: { id: true, title: true, content: true, revision: true },
   });
@@ -118,21 +123,23 @@ async function readNoteBrief(userId: string, noteId: string) {
 export async function createPreparedNote(
   userId: string,
   input: PreparedNoteInput,
+  transaction?: Prisma.TransactionClient,
 ): Promise<PreparedNoteResult> {
+  const client = transaction ?? db;
   assertIngestContractVersion(input.contractVersion);
   const title = input.title.trim();
   if (!title) throw new PreparedIngestContractError('Title is required.');
   if (input.idempotencyKey !== undefined) assertIngestKey(input.idempotencyKey);
 
   if (input.idempotencyKey !== undefined) {
-    const existing = await findIngestTarget(userId, input.idempotencyKey);
+    const existing = await findIngestTarget(userId, input.idempotencyKey, client);
     if (existing) {
-      return { ...(await readNoteBrief(userId, existing.targetId)), duplicate: true };
+      return { ...(await readNoteBrief(userId, existing.targetId, client)), duplicate: true };
     }
   }
 
   try {
-    const created = await db.$transaction(async (tx) => {
+    const create = async (tx: Prisma.TransactionClient) => {
       const note = await tx.note.create({
         data: {
           userId,
@@ -167,7 +174,8 @@ export async function createPreparedNote(
         });
       }
       return note;
-    });
+    };
+    const created = transaction ? await create(transaction) : await db.$transaction(create);
     return {
       id: created.id,
       title: created.title,
@@ -176,6 +184,9 @@ export async function createPreparedNote(
       duplicate: false,
     };
   } catch (error) {
+    // A caller-owned transaction must roll back as a whole; never recover a
+    // publication independently from its caller's durable receipt.
+    if (transaction) throw error;
     if (input.idempotencyKey !== undefined && error instanceof PreparedIngestContractError) {
       if (error.code === 'CONFLICT') throw error;
       const raced = await findIngestTarget(userId, input.idempotencyKey);

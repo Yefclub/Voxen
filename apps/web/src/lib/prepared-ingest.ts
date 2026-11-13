@@ -114,8 +114,9 @@ export async function claimIngestKey(
 export async function findIngestTarget(
   userId: string,
   key: string,
+  client: Pick<Prisma.TransactionClient, 'preparedIngestKey'> = db,
 ): Promise<{ targetType: string; targetId: string } | null> {
-  return db.preparedIngestKey.findUnique({
+  return client.preparedIngestKey.findUnique({
     where: { userId_key: { userId, key } },
     select: { targetType: true, targetId: true },
   });

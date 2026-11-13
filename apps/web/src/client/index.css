@@ -141,6 +141,10 @@
     background: transparent;
   }
 
+  [data-chat-suggestions] {
+    display: flex;
+  }
+
   html[data-keyboard='open'] [data-chat-welcome],
   html[data-keyboard='open'] [data-chat-suggestions] {
     display: none;

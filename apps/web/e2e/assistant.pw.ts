@@ -26,7 +26,9 @@ test.describe('continuous assistant workspace', () => {
     await expect(page.getByRole('textbox', { name: 'Mensagem' })).toBeVisible();
     await page.getByRole('button', { name: 'Conectar ideias', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Mensagem' })).toContainText('relações');
+    await expect(page.locator('[data-chat-suggestions]')).toHaveCount(0);
     await page.getByRole('textbox', { name: 'Mensagem' }).fill('');
+    await expect(page.locator('[data-chat-suggestions]')).toBeVisible();
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
       await page.getByRole('button', { name: 'Preferências da conversa' }).click();
@@ -413,11 +415,21 @@ test.describe('continuous assistant workspace', () => {
         window.visualViewport!.dispatchEvent(new Event('resize'));
       });
       await expect(phone.locator('html')).toHaveAttribute('data-keyboard', 'open');
+      await expect(phone.locator('[data-chat-suggestions]')).toHaveCount(0);
       const send = (await phone
         .getByRole('button', { name: 'Enviar', exact: true })
         .boundingBox())!;
       expect(send.y + send.height).toBeLessThanOrEqual(500);
       await phone.screenshot({ path: '/tmp/voxen-assistant-keyboard-390.png' });
+      await input.fill('');
+      await expect(phone.locator('[data-chat-suggestions]')).toHaveCount(1);
+      await expect(phone.locator('[data-chat-suggestions]')).toBeHidden();
+      await phone.screenshot({ path: '/tmp/voxen-assistant-keyboard-empty-390.png' });
+      await phone.evaluate(() => {
+        Object.assign(window.visualViewport!, { height: 844 });
+        window.visualViewport!.dispatchEvent(new Event('resize'));
+      });
+      await expect(phone.locator('[data-chat-suggestions]')).toBeVisible();
     } finally {
       await context.close();
     }

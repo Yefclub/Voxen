@@ -27,6 +27,12 @@ upload pipeline. Captures are asynchronous: follow their job reference to
 see progress or the final document. Sending a file starts its capture before
 the conversational message is submitted.
 
+Note creation or capture enqueueing commits in the same database transaction
+as its assistant receipt. Graph synchronization and queue notifications follow
+that commit. Progressive note reads return a continuation offset and revision;
+later windows require that revision so an edited note cannot be stitched into
+an older reading.
+
 ## Checkpoints and memory
 
 Edit a user message to replace it and generate another continuation. **Return

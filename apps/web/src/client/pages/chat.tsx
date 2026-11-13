@@ -371,10 +371,10 @@ export function ChatPage(): React.ReactElement {
             />
           </div>
         </div>
-        {empty && (
+        {empty && !text.trim() && (
           <div
             data-chat-suggestions
-            className="mx-auto flex max-w-[46rem] flex-wrap justify-center gap-2"
+            className="mx-auto max-w-[46rem] flex-wrap justify-center gap-2"
           >
             <Button variant="outline" size="sm" onClick={() => setText(copy.recentPrompt)}>
               {copy.recentSuggestion}
