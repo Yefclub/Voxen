@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1794579147 — 2026-11-13 · Dev
+
+### 🐛 Centered sidebar control icons
+
+The sidebar reopen control now aligns with the header breadcrumb. Icon-only
+buttons use Astryx's dedicated icon slot, removing the text-baseline offset
+while retaining labels, focus behavior and control dimensions.
+
 ## v0.15.1-dev.1794542773 — 2026-11-13 · Dev
 
 ### 🎨 A distinct desktop workspace and a new Voxen symbol
