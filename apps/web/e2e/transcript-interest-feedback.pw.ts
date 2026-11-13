@@ -70,8 +70,25 @@ test('records a personal transcript preference with accessible reversible feedba
     await expect(more).toHaveAttribute('aria-pressed', 'false');
     await expect(less).toHaveAttribute('aria-pressed', 'false');
 
+    let releaseSave: (() => void) | undefined;
+    const saveGate = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    await page.route(interestEndpoint, async (route) => {
+      if (route.request().method() === 'PUT') await saveGate;
+      await route.continue();
+    });
     await more.click();
+    await expect(more).toBeDisabled();
+    await expect(less).toBeDisabled();
+    await feedback.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath('transcript-interest-pending-desktop.png'),
+      fullPage: true,
+    });
+    releaseSave?.();
     await expect(more).toHaveAttribute('aria-pressed', 'true');
+    await page.unroute(interestEndpoint);
     await expect(feedback.getByText(/Preferência selecionada/)).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('transcript-interest-selected-desktop.png'),
@@ -119,6 +136,11 @@ test('records a personal transcript preference with accessible reversible feedba
     await page.getByRole('button', { name: 'Opções do conteúdo', exact: true }).click();
     await expect(feedback.getByText('Não foi possível carregar sua preferência.')).toBeVisible();
     await expect(feedback.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
+    await feedback.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath('transcript-interest-retry-mobile.png'),
+      fullPage: true,
+    });
   } finally {
     await db.user.delete({ where: { id: user.id } }).catch(() => undefined);
   }
