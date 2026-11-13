@@ -492,6 +492,10 @@ and 48px in capture; touch text remains 16px to avoid input zoom.
 
 Restrained, legible controls with explicit action hierarchy. [Button](apps/web/src/client/components/ui/button.tsx) wraps Astryx for accessible control behavior and applies Voxen's appearance tokens. Keep the wrapper as the implementation entry point.
 
+Text-button heights are minima: wrapped labels grow their control with its
+internal padding. Related actions wrap according to their container's available
+width. Icon-only controls retain their fixed square geometry.
+
 - **Shape and size:** standard labels use `label`, the `lg` radius, and the frontmatter padding. Default and large sizes have a minimum height (2.5rem); small uses (2.25rem), extra-large (3rem), and icon-only uses a square (2.5rem). Coarse-pointer sizing preserves the touch minimum. Large and extra-large sizes use wider horizontal padding (1.25rem / 1.75rem); extra-large uses `xl` rounding and base-sized text.
 - **Default / primary:** inverted high contrast / emerald with the page-ground foreground. Default hover uses the inverted-hover token; primary hover brightens its existing fill (1.1). The `violet` API variant is an alias of primary.
 - **Secondary / outline:** surface-filled or transparent, with a strong rule. Hover uses the next authored surface layer.
