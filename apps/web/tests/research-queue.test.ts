@@ -81,6 +81,10 @@ suite('owner-bound durable research queue', () => {
     const doc = await document();
     expect(await enqueueResearch(users[0]!, doc.id, 'AUTO')).toBeNull();
     await saveResearchPreferences(users[0]!, 'AUTO');
+    await db.transcript.update({
+      where: { id: doc.id },
+      data: { sourceCollectedAt: new Date(), sourceMetadata: { producer: 'voxen-capture' } },
+    });
     const first = await enqueueResearch(users[0]!, doc.id, 'AUTO');
     expect((await enqueueResearch(users[0]!, doc.id, 'AUTO'))!.id).toBe(first!.id);
     await db.transcript.update({

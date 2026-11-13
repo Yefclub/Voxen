@@ -22,6 +22,9 @@ and freshness principles retained from spec 175.
 
 - When capture publishes a document, the system shall enqueue enabled derived
   work independently of capture completion.
+- When recovering automatic research after interruption, the system shall
+  schedule only captures collected since the current automatic consent began,
+  including refreshed documents, without duplicating a source revision.
 - When organizing, the system shall reuse existing topic and entity identities,
   add supported relationships and preserve manually selected organization.
 - When research is enabled, the system shall determine whether additional
@@ -33,6 +36,11 @@ and freshness principles retained from spec 175.
   shall invalidate affected external context and search/graph projections.
 - When the user reviews external context, the system shall support accepting,
   dismissing, deleting and requesting refreshed research.
+- When editing or reviewing external context, the system shall reject obsolete
+  revision/checksum guards and identify edited context as manually curated,
+  requiring renewed acceptance without altering original evidence records.
+- When accepting refreshed context, the system shall supersede previously
+  accepted context for that document in the same transaction.
 
 ### State-driven
 

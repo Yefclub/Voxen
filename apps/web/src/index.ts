@@ -35,6 +35,7 @@ import { requestLogging } from './lib/request-logging';
 import { captureRoutes } from './routes/captures';
 import { assistantRoutes } from './routes/assistant';
 import { shareTargetRoutes } from './routes/share-target';
+import type { ResearchScheduleCursor } from './lib/research/schedule';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -400,6 +401,41 @@ if (process.env.NODE_ENV === 'production') {
 // reclaims expired leases and backoff-delayed retries. Runs in production and
 // local development (Compose forces NODE_ENV=development); never under tests.
 if (process.env.NODE_ENV !== 'test') {
+  void Promise.all([import('./lib/research/runner'), import('./lib/research/schedule')])
+    .then(([{ drainResearch }, { scheduleCapturedResearch }]) => {
+      let busy = false;
+      let cursor: ResearchScheduleCursor | null = null;
+      const drain = () => {
+        if (busy) return;
+        busy = true;
+        void scheduleCapturedResearch(cursor)
+          .then(async (result) => {
+            cursor = result.cursor;
+            await drainResearch();
+          })
+          .catch((error) => {
+            structuredDiagnostic(
+              'warning',
+              'research-drain-failed',
+              'RESEARCH_DRAIN_FAILED',
+              error,
+            );
+          })
+          .finally(() => {
+            busy = false;
+          });
+      };
+      drain();
+      setInterval(drain, 15_000).unref();
+    })
+    .catch((error) => {
+      structuredDiagnostic(
+        'warning',
+        'research-runner-unavailable',
+        'RESEARCH_RUNNER_UNAVAILABLE',
+        error,
+      );
+    });
   void import('./lib/assistant/runner')
     .then(({ drainAssistantRuns }) => {
       const drain = () => {

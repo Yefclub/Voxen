@@ -93,6 +93,19 @@ export async function enqueueResearch(
     if (trigger === 'AUTO' && policy.mode !== 'AUTO') return null;
     if (policy.mode === 'OFF') throw new ResearchError('DISABLED');
     const source = await lockResearchSource(tx, userId, transcriptId);
+    if (trigger === 'AUTO') {
+      if (!policy.automaticSince) return null;
+      const captured = await tx.transcript.findFirst({
+        where: {
+          id: transcriptId,
+          userId,
+          sourceMetadata: { path: ['producer'], equals: 'voxen-capture' },
+          sourceCollectedAt: { gte: new Date(policy.automaticSince) },
+        },
+        select: { id: true },
+      });
+      if (!captured) return null;
+    }
     const settings = {
       executorVersion: 1 as const,
       role: 'standard' as const,
