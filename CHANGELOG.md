@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1794542773 — 2026-11-13 · Dev
+
+### 🎨 A distinct desktop workspace and a new Voxen symbol
+
+Desktop navigation and the header now use Astryx with a distinct content frame,
+clearer selected destinations, and native account/appearance menus. Astryx also
+handles keyboard theme selection, controlled capture fields, and localized search
+clearing/loading states. Library row
+highlights have room around thumbnails and metadata without shifting content.
+
+A minimal transparent emerald symbol replaces the owl across the application
+and browser/app icons. Mobile navigation and sheets retain their existing layout.
+Phones prefer portrait orientation; browsers that cannot lock rotation show an
+instruction while preserving the current work.
+
 ## v0.15.1-dev.1794530298 — 2026-11-12 · Dev
 
 ### 🐛 Keep 3D graph exploration working across search results

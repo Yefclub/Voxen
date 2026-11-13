@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794542773",
+    "channel": "dev",
+    "type": "ui",
+    "title": "A distinct desktop workspace and a new Voxen symbol",
+    "body": "Desktop navigation and the header now use Astryx with a distinct content frame,\nclearer selected destinations, and native account/appearance menus. Astryx also\nhandles keyboard theme selection, controlled capture fields, and localized search\nclearing/loading states. Library row\nhighlights have room around thumbnails and metadata without shifting content.\n\nA minimal transparent emerald symbol replaces the owl across the application\nand browser/app icons. Mobile navigation and sheets retain their existing layout.\nPhones prefer portrait orientation; browsers that cannot lock rotation show an\ninstruction while preserving the current work.",
+    "pr": 1080,
+    "author": "Kalyel",
+    "date": "2026-11-13T01:06:02-03:00",
+    "translations": {
+      "en": {
+        "title": "A distinct desktop workspace and a new Voxen symbol",
+        "body": "Desktop navigation and the header now use Astryx with a distinct content frame,\nclearer selected destinations, and native account/appearance menus. Astryx also\nhandles keyboard theme selection, controlled capture fields, and localized search\nclearing/loading states. Library row\nhighlights have room around thumbnails and metadata without shifting content.\n\nA minimal transparent emerald symbol replaces the owl across the application\nand browser/app icons. Mobile navigation and sheets retain their existing layout.\nPhones prefer portrait orientation; browsers that cannot lock rotation show an\ninstruction while preserving the current work."
+      },
+      "pt-BR": {
+        "title": "Um workspace desktop mais definido e uma nova marca Voxen",
+        "body": "A navegação e o cabeçalho desktop agora usam Astryx, com separação visual do\nconteúdo, destinos selecionados mais claros e menus nativos de conta e aparência.\nO Astryx também cuida da seleção de tema por teclado, do campo de captura e dos\nestados de limpeza e carregamento da busca em português e inglês.\nO destaque das linhas da Biblioteca ganhou espaço ao redor das miniaturas e dos\nmetadados, sem deslocar o conteúdo.\n\nUma marca esmeralda minimalista e transparente substitui a coruja na aplicação e\nnos ícones do navegador e do app. A navegação e os sheets mobile mantêm seu layout.\nO celular prioriza a posição vertical; navegadores que não conseguem travar a\nrotação mostram uma orientação, preservando o trabalho em andamento."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1080"
+  },
+  {
     "version": "0.15.1-dev.1794530298",
     "channel": "dev",
     "type": "fix",
