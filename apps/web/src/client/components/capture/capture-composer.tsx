@@ -11,6 +11,7 @@ import { ArrowRight, Link2, Upload } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
+import { TextInput } from '../ui/text-input';
 import { useI18n } from '../../lib/i18n';
 import {
   submitCaptureLink,
@@ -205,27 +206,25 @@ export const CaptureComposer = forwardRef<CaptureComposerHandle, CaptureComposer
           }}
         >
           <div className="relative min-w-0 flex-1">
-            <Link2
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]"
-              aria-hidden
-            />
-            <input
+            <TextInput
               ref={urlInput}
               id={inputId}
               type="text"
+              label={t('capture.inputLabel')}
+              isLabelHidden
+              startIcon={<Link2 className="h-4 w-4" />}
               inputMode="url"
               autoComplete="off"
               autoCapitalize="off"
-              spellCheck={false}
+              hasSpellCheck={false}
               enterKeyHint="go"
               value={url}
-              onChange={(event) => setUrl(event.target.value)}
+              onChange={setUrl}
               placeholder={t('capture.inputPlaceholder')}
-              aria-label={t('capture.inputLabel')}
-              aria-invalid={invalidUrl || undefined}
+              status={invalidUrl ? { type: 'error' } : undefined}
               aria-describedby={notice ? noticeId : undefined}
               maxLength={4096}
-              className="h-12 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] pl-9 pr-3 text-[15px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-focus)] aria-[invalid=true]:border-[var(--color-app-danger)]/60 sm:text-sm"
+              controlClassName="capture-url-control"
             />
           </div>
           <Button

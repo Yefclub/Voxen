@@ -359,7 +359,7 @@ components:
 
 **Creative North Star: "Documentary contact sheet"**
 
-Voxen is a continuous knowledge workspace: ink and warm white, restrained emerald interactions, real content, and crisp thin rules. Documentary contact-sheet discipline gives records a clear title, quiet metadata, and room to be read. The existing Voxen name and recognizable logo anchor the identity; Light and Dark express the same system.
+Voxen is a continuous knowledge workspace: ink and warm white, restrained emerald interactions, real content, and crisp thin rules. Documentary contact-sheet discipline gives records a clear title, quiet metadata, and room to be read. The Voxen name and transparent emerald folded-form symbol anchor the identity; Light and Dark express the same system.
 
 The interface is precise and restrained. Flat surfaces and tonal layers organize work; softly shadowed overlays carry temporary context. Bricolage Grotesque supplies the display voice, Inter handles the interface and reading, and JetBrains Mono marks code and data. Mobile keeps the same hierarchy while moving contextual work into sheets.
 
@@ -439,7 +439,13 @@ The shared [PageShell and PageHeader](apps/web/src/client/components/ui/page-she
 
 PageShell uses compact horizontal/vertical padding (1.25rem / 1.5rem), then increases both at the small breakpoint (2rem), with wider horizontal padding at the extra-large breakpoint (2.5rem). Section separation steps from the `7` spacing token to `8`. Headers stack actions beneath the title on small screens, then align them in a wrapping row. Widths are maximums, not minimums: child content must be able to shrink and wrap.
 
-At the medium breakpoint, the application mounts its desktop sidebar (244px), uses a compact topbar (3.5rem), and keeps scrolling in the main region. The desktop content surface has left corners matching the large surface radius (16px). Sidebar collapse moves the surface while returning focus to the available toggle. On mobile, the sidebar is replaced with bottom navigation and an accessible contextual drawer. Four content destinations plus profile share the bottom bar (4rem high, plus bottom safe area). Main content reserves space for it; routes with their own chrome follow the shell's existing navigation policy.
+At the medium breakpoint, the application mounts the Astryx SideNav in a 264px rail and TopNav in a 4rem header. Raised chrome surrounds a page-ground content surface with a 1px rule, 16px corners, and 12px outer inset. Sidebar collapse moves the surface while returning focus to the available toggle, without remounting page content. On mobile, the approved bottom navigation and accessible contextual drawer remain in place. Four content destinations plus profile share the bottom bar (4rem high, plus bottom safe area). Main content reserves space for it; routes with their own chrome follow the shell's existing navigation policy.
+
+Desktop Library hover and focus treatments extend 16px beyond the aligned content on each side, with 12px corners. The thumbnail, title, and metadata do not move. The separator remains aligned with the content rather than the expanded hover boundary.
+
+The owner-approved replacement symbol is [voxen-symbol.png](apps/web/public/brand/voxen-symbol.png), a generated raster with actual alpha and no wordmark or enclosing background. Browser/navigation icons preserve transparency; installed maskable and Apple icons place it on the existing warm-white ground inside their safe area. Generation provenance is embedded in each PNG. The owl is no longer part of the product identity.
+
+Phones use a portrait manifest preference and native orientation locking where available to installed apps. On coarse-pointer screens with a shorter physical dimension below 600 CSS pixels, landscape displays a modal instruction; page state and input remain mounted. Physical orientation detection avoids confusing software-keyboard viewport changes with rotation. Desktop and tablet browsers remain usable in landscape.
 
 Use the existing small, medium, large, and extra-large viewport breakpoints from the sidecar. Responsive behavior also follows available component width: local graphs change at a container width (680px), global graph inspectors at (720px), and the note toolbar at its container threshold (42rem). Reader tools move beside prose only when the extra-large layout has space (280px tool column). The notes list similarly gains an adjacent tree (220px) at that breakpoint. Public authentication uses a single form column on small screens and reveals its story beside the form at the large breakpoint.
 
@@ -469,6 +475,18 @@ The form language is gently curved and ruled. The authored radius scale is prese
 Mobile overlays round their top corners using the `2xl` step. Desktop dialogs round all corners using `xl`; desktop side sheets meet the viewport edge with square corners. Badges and the Switch use full rounding. Disclosure rows remain square, with an inset focus ring so focus is visible inside clipped collection boundaries. Most separators and control edges use a thin stroke (1px); heading and reading hierarchy carry the structure rather than ornamental framing.
 
 ## Components
+
+### Shared Astryx behavior
+
+Desktop SideNav and TopNav own the workspace navigation structure. Account actions
+use DropdownMenu and the appearance control uses SegmentedControl plus Popover.
+The shared LinkProvider routes native component links through WorkspaceLink so
+ordinary navigation stays in the SPA while modified clicks retain browser behavior.
+InternationalizationProvider follows the current Voxen locale, including native
+clear and loading announcements. Controlled TextInput fields retain the Library's
+URL synchronization and the capture composer's input ref, form submission, limits,
+request ownership, and inline error descriptions. Their frame is 44px high in search
+and 48px in capture; touch text remains 16px to avoid input zoom.
 
 ### Buttons
 
@@ -527,7 +545,7 @@ The [graph palette](apps/web/src/client/lib/graph-model.ts), [2D renderer](apps/
 
 ### Do:
 
-- **Do** use the existing semantic properties for both appearances and preserve the recognizable Voxen logo.
+- **Do** use the existing semantic properties for both appearances and preserve the approved transparent Voxen symbol.
 - **Do** align page titles, actions, and content through the shared shell and spacing scale.
 - **Do** keep document prose constrained, headings semantic, and metadata quieter than content.
 - **Do** preserve mobile sheets, safe areas, keyboard offsets, visible focus, selection color, and touch hit regions together.
@@ -536,7 +554,7 @@ The [graph palette](apps/web/src/client/lib/graph-model.ts), [2D renderer](apps/
 
 ### Don't:
 
-- **Don't** introduce another appearance pack, decorative accent palette, or replacement branding.
+- **Don't** introduce another appearance pack, decorative accent palette, the retired owl, or unapproved replacement branding.
 - **Don't** turn every content row into a card, add nested decorative containers, or shadow persistent content.
 - **Don't** shrink desktop dialogs onto mobile or rely on gestures as the only way to navigate or dismiss context.
 - **Don't** enlarge the Switch's painted track to satisfy its separate touch hit region.

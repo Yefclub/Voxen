@@ -38,7 +38,7 @@ test('keeps a pending note draft readable and mounted across both appearances', 
       ['light', 'Mudar para tema claro'],
       ['dark', 'Mudar para tema escuro'],
     ] as const) {
-      await page.getByRole('button', { name: label, exact: true }).click();
+      await page.getByRole('radio', { name: label, exact: true }).click();
       await expect(page.locator('html')).toHaveAttribute('data-theme', mode);
       await expect(editor).toContainText(draft);
       expect(await editor.evaluate((element, previous) => element === previous, original)).toBe(

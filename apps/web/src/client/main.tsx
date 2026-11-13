@@ -6,6 +6,8 @@ import './index.css';
 import './scrollbar.css';
 import './overlay.css';
 import './graph-containers.css';
+import './desktop-chrome.css';
+import './astryx-controls.css';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('Root element não encontrado');

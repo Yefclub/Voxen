@@ -10,7 +10,7 @@ describe('chrome de navegação mobile compacto', () => {
     const source = readClientSource('components/layout/topbar.tsx');
 
     expect(source).toContain('data-app-header');
-    expect(source).toContain('md:h-14');
+    expect(source).toContain('h-[calc(3.5rem+env(safe-area-inset-top))]');
     expect(source).toContain("aria-label={t('shell.currentSection')}");
     expect(source).toContain('data-sidebar-toggle');
     expect(source).toContain('aria-controls="desktop-sidebar"');

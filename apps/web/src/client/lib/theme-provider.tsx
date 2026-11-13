@@ -1,4 +1,6 @@
 import { Theme } from '@astryxdesign/core/theme';
+import { InternationalizationProvider } from '@astryxdesign/core/i18n';
+import ptBrAstryxMessages from '@astryxdesign/core/locales/pt-BR.json';
 import { neutralTheme } from '@astryxdesign/theme-neutral/built';
 import {
   createContext,
@@ -11,6 +13,7 @@ import {
 } from 'react';
 import { apiPatch } from './api';
 import { useMe } from './hooks';
+import { useI18n } from './i18n';
 import {
   applyThemeToDocument,
   DEFAULT_THEME,
@@ -31,6 +34,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }): React.ReactElement {
+  const { locale } = useI18n();
   const { data, refresh } = useMe();
   const [theme, setThemeState] = useState<AppTheme>(
     () =>
@@ -78,9 +82,11 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.Reac
 
   return (
     <ThemeContext.Provider value={value}>
-      <Theme theme={neutralTheme} mode={theme}>
-        {children}
-      </Theme>
+      <InternationalizationProvider locale={locale} messages={{ 'pt-BR': ptBrAstryxMessages }}>
+        <Theme theme={neutralTheme} mode={theme}>
+          {children}
+        </Theme>
+      </InternationalizationProvider>
     </ThemeContext.Provider>
   );
 }

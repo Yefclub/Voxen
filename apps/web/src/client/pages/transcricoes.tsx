@@ -870,7 +870,7 @@ function TranscriptRow({
   return (
     <Link
       to={`/transcricoes/${t.id}`}
-      className="group flex items-start gap-4 border-b border-[var(--color-app-border)] py-5 transition-colors hover:bg-[var(--color-app-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
+      className="library-result-row group flex items-start gap-4 py-5 transition-colors hover:bg-[var(--color-app-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[var(--color-app-bg-elevated)] sm:h-24 sm:w-36">
         <img

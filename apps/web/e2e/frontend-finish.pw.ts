@@ -11,7 +11,7 @@ test('keeps desktop appearance glyphs inside their clipping ancestors', async ({
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/transcricoes');
     await expect(
-      page.getByRole('button', { name: 'Mudar para tema claro', exact: true }),
+      page.getByRole('radio', { name: 'Mudar para tema claro', exact: true }),
     ).toBeVisible();
     const clipped = await page.locator('[aria-label="Aparência"] button svg').evaluateAll(
       (icons) =>

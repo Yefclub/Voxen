@@ -48,12 +48,17 @@ PT-BR and English remain supported.
 
 ## Brand Commitments
 
-Keep the Voxen name and recognizable existing logo. The owner explicitly named
+Keep the Voxen name. The owner replaced the owl with a minimal, transparent,
+emerald symbol based on connected folded forms (spec 226). The owner explicitly named
 Meta Astryx and GoogleChrome Modern Web Guidance as required design/platform
 references. The new frontend must be cohesive, content-focused and adapted to
 mobile PWA use, including login, account and administration screens.
 The owner explicitly prefers mobile sheets for contextual tasks instead of
 shrinking desktop modals onto a phone.
+
+The desktop shell uses the same identity with distinct navigation and content
+surfaces. The approved mobile navigation stays in place. Phone use is portrait;
+platform orientation restrictions use an honest in-app fallback when necessary.
 
 ## Evidence on Hand
 
