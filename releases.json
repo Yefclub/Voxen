@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794597823",
+    "channel": "dev",
+    "type": "feat",
+    "title": "One continuous conversation with your knowledge",
+    "body": "Chat can now search your library, read and verify evidence, connect sources,\ncapture requested links and create notes with your configured AI providers.\nClear requests work directly; uncertain additions appear as exact proposals\nto confirm in the conversation, without a permission-mode selector.\n\nThe new composer and conversation use Astryx's native Chat components in\nVoxen's Light and Dark appearances. Phone controls stay above the keyboard,\nand settings and editing use sheets. Attachments use the capture pipeline.\nOptional web research uses a personal encrypted Brave Search key and isolated\npage retrieval.\n\nThere is one retained conversation per user. Work continues when you leave\nthe page. Stop preserves partial answers; editing or returning to an earlier\nmessage discards the later conversation and memory while keeping content\nalready saved in the library. Structured memory and retained-history search\nsupport longer conversations.",
+    "pr": 1088,
+    "author": "Kalyel",
+    "date": "2026-11-13T16:23:32-03:00",
+    "translations": {
+      "en": {
+        "title": "One continuous conversation with your knowledge",
+        "body": "Chat can now search your library, read and verify evidence, connect sources,\ncapture requested links and create notes with your configured AI providers.\nClear requests work directly; uncertain additions appear as exact proposals\nto confirm in the conversation, without a permission-mode selector.\n\nThe new composer and conversation use Astryx's native Chat components in\nVoxen's Light and Dark appearances. Phone controls stay above the keyboard,\nand settings and editing use sheets. Attachments use the capture pipeline.\nOptional web research uses a personal encrypted Brave Search key and isolated\npage retrieval.\n\nThere is one retained conversation per user. Work continues when you leave\nthe page. Stop preserves partial answers; editing or returning to an earlier\nmessage discards the later conversation and memory while keeping content\nalready saved in the library. Structured memory and retained-history search\nsupport longer conversations."
+      },
+      "pt-BR": {
+        "title": "Uma conversa contínua com o seu conhecimento",
+        "body": "O chat agora busca na sua biblioteca, lê e verifica evidências, conecta fontes,\ncaptura links solicitados e cria notas usando os provedores de IA da sua conta.\nPedidos claros funcionam diretamente; adições incertas aparecem como propostas\nexatas para confirmar na conversa, sem seletor de modo ou permissão.\n\nO novo campo de mensagem e a conversa usam os componentes nativos de Chat do\nAstryx nos temas Claro e Escuro da Voxen. No celular, os controles ficam acima\ndo teclado e as preferências e a edição usam sheets. Anexos seguem o fluxo de\ncapturas. A pesquisa opcional na web usa uma chave pessoal cifrada da Brave\nSearch e leitura de páginas pelo serviço isolado.\n\nCada usuário tem uma conversa contínua. O trabalho continua ao sair da página.\nParar preserva a resposta parcial; editar ou voltar a uma mensagem anterior\ndescarta a continuação e sua memória, mantendo os conteúdos já salvos na base.\nA memória estruturada e a busca no histórico preservado apoiam conversas longas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1088"
+  },
+  {
     "version": "0.15.1-dev.1794582890",
     "channel": "dev",
     "type": "fix",
