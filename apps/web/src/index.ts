@@ -36,7 +36,7 @@ import { captureRoutes } from './routes/captures';
 import { assistantRoutes } from './routes/assistant';
 import { researchRoutes } from './routes/research';
 import { shareTargetRoutes } from './routes/share-target';
-import type { ResearchScheduleCursor } from './lib/research/schedule';
+import { startResearchRuntime } from './lib/research/runtime';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -403,64 +403,7 @@ if (process.env.NODE_ENV === 'production') {
 // reclaims expired leases and backoff-delayed retries. Runs in production and
 // local development (Compose forces NODE_ENV=development); never under tests.
 if (process.env.NODE_ENV !== 'test') {
-  void import('./lib/research/projection')
-    .then(({ drainResearchProjections }) => {
-      const drain = () => {
-        void drainResearchProjections().catch((error) => {
-          structuredDiagnostic(
-            'warning',
-            'research-projection-failed',
-            'RESEARCH_PROJECTION_FAILED',
-            error,
-          );
-        });
-      };
-      drain();
-      setInterval(drain, 10_000).unref();
-    })
-    .catch((error) => {
-      structuredDiagnostic(
-        'warning',
-        'research-projection-unavailable',
-        'RESEARCH_PROJECTION_FAILED',
-        error,
-      );
-    });
-  void Promise.all([import('./lib/research/runner'), import('./lib/research/schedule')])
-    .then(([{ drainResearch }, { scheduleCapturedResearch }]) => {
-      let busy = false;
-      let cursor: ResearchScheduleCursor | null = null;
-      const drain = () => {
-        if (busy) return;
-        busy = true;
-        void scheduleCapturedResearch(cursor)
-          .then(async (result) => {
-            cursor = result.cursor;
-            await drainResearch();
-          })
-          .catch((error) => {
-            structuredDiagnostic(
-              'warning',
-              'research-drain-failed',
-              'RESEARCH_DRAIN_FAILED',
-              error,
-            );
-          })
-          .finally(() => {
-            busy = false;
-          });
-      };
-      drain();
-      setInterval(drain, 15_000).unref();
-    })
-    .catch((error) => {
-      structuredDiagnostic(
-        'warning',
-        'research-runner-unavailable',
-        'RESEARCH_RUNNER_UNAVAILABLE',
-        error,
-      );
-    });
+  startResearchRuntime();
   void import('./lib/assistant/runner')
     .then(({ drainAssistantRuns }) => {
       const drain = () => {
