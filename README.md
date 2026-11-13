@@ -65,6 +65,14 @@ credentials, private content, or unredacted logs in a public report.
    the Brain knowledge graph, with deterministic search and progressive reads.
 6. Notes can preserve verified transcript passages by line and timestamp.
 
+Captures above 60,000 UTF-16 units use complete source sections and bounded
+hierarchical synthesis, rather than keeping only the beginning and end. Long
+analysis allows at most 24 sections of 48,000 units and 15 minutes. A source
+that cannot fit those sections fails with `TEXT_TOO_LARGE` before text-model
+calls, with guidance to submit smaller parts. Completed section calls and
+failed billed attempts contribute to retry costs. The original captured text
+remains complete; derived synthesis does not replace it.
+
 ## Stack
 
 - **Web/API:** Bun, Hono, Vite, React, Tailwind CSS v4, and shadcn/ui

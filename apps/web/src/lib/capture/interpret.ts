@@ -9,7 +9,6 @@ import { commentsPromptBlock } from './comments';
 import { formatTimestamp, sanitizeModelText } from './markdown';
 import type { CaptureArtifact, CaptureInterpretation } from './types';
 
-const MAX_INTERPRET_CHARS = 60_000;
 const MAX_DESCRIPTION_PROMPT_CHARS = 5_000;
 
 export const InterpretationSchema = z.object({
@@ -60,21 +59,13 @@ function blockSafe(text: string): string {
   return text.replace(/<(\/?)(source)\b/gi, '‹$1$2');
 }
 
-export function clampText(text: string): { text: string; truncated: boolean } {
-  if (text.length <= MAX_INTERPRET_CHARS) return { text, truncated: false };
-  const head = text.slice(0, Math.floor(MAX_INTERPRET_CHARS * 0.75));
-  const tail = text.slice(-Math.floor(MAX_INTERPRET_CHARS * 0.25));
-  return { text: `${head}\n[…]\n${tail}`, truncated: true };
-}
-
-export function sourceBlock(artifact: CaptureArtifact, text: string, truncated: boolean): string {
+export function sourceBlock(artifact: CaptureArtifact, text: string): string {
   const meta = [
     artifact.title ? `title: ${artifact.title}` : null,
     artifact.author ? `author: ${artifact.author}` : null,
     artifact.channel ? `channel: ${artifact.channel}` : null,
     artifact.publishedAt ? `published_at: ${artifact.publishedAt}` : null,
     `platform: ${artifact.platform}`,
-    truncated ? 'note: the middle of a long text was omitted' : null,
   ]
     .filter(Boolean)
     .join('\n');

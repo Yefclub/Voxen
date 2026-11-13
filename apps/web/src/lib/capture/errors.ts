@@ -12,6 +12,7 @@ export const CAPTURE_ERROR_CODES = [
   'REMOVED',
   'NO_TEXT',
   'TOO_LARGE',
+  'TEXT_TOO_LARGE',
   'STT_NOT_CONFIGURED',
   'AI_NOT_CONFIGURED',
   'LLM_AUTH',
@@ -58,6 +59,7 @@ const ACTIONS: Record<CaptureErrorCode, CaptureErrorAction> = {
   REMOVED: 'none',
   NO_TEXT: 'upload',
   TOO_LARGE: 'none',
+  TEXT_TOO_LARGE: 'none',
   STT_NOT_CONFIGURED: 'configure_ai',
   AI_NOT_CONFIGURED: 'configure_ai',
   LLM_AUTH: 'configure_ai',
@@ -80,6 +82,8 @@ const MESSAGES: Record<CaptureLocale, Record<CaptureErrorCode, string>> = {
     RATE_LIMITED: 'A plataforma limitou as requisições. Tente de novo em alguns minutos.',
     REMOVED: 'O conteúdo foi removido, é privado ou não existe mais.',
     NO_TEXT: 'Não encontrei texto, fala nem imagens úteis neste conteúdo.',
+    TEXT_TOO_LARGE:
+      'Texto longo demais para uma análise completa. Divida o conteúdo em partes e envie novamente.',
     TOO_LARGE: 'O conteúdo excede o limite (3 h de áudio ou 500 MB por arquivo).',
     STT_NOT_CONFIGURED:
       'STT não configurado. Adicione uma chave da OpenAI, xAI ou OpenRouter em Conta → Provedores de IA.',
@@ -101,6 +105,8 @@ const MESSAGES: Record<CaptureLocale, Record<CaptureErrorCode, string>> = {
     RATE_LIMITED: 'The platform rate-limited the request. Try again in a few minutes.',
     REMOVED: 'The content was removed, is private, or no longer exists.',
     NO_TEXT: 'No usable text, speech, or images were found in this content.',
+    TEXT_TOO_LARGE:
+      'The text is too long for a complete analysis. Split the content into parts and submit it again.',
     TOO_LARGE: 'The content exceeds the limit (3 h of audio or 500 MB per file).',
     STT_NOT_CONFIGURED:
       'Speech-to-text is not configured. Add an OpenAI, xAI, or OpenRouter key in Account → AI providers.',

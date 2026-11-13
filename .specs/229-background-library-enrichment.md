@@ -41,6 +41,11 @@ and freshness principles retained from spec 175.
   and exclude it from default factual retrieval until accepted.
 - While processing long sources, the system shall analyze bounded sections and
   synthesize their grounded findings without silently dropping the middle.
+- While interpreting a capture, the system shall retain the complete original
+  text and include every section in analysis before publishing its synthesis.
+- While interpreting long content, the system shall limit execution to 24 source
+  sections of at most 48,000 UTF-16 units each and 15 minutes; oversized text
+  shall fail explicitly before model calls rather than silently omit sections.
 
 ### Optional
 
@@ -59,12 +64,20 @@ and freshness principles retained from spec 175.
 ## Acceptance criteria
 
 - [ ] Publication schedules independent, deduplicated derived work.
-- [ ] Long-source tests cover facts in the middle of the source.
+- [x] Long-source tests cover facts in the middle of the source.
 - [ ] Organization preserves manual changes and links evidence-backed content.
 - [ ] Research produces sourced, reviewable context or an explicit no-research result.
 - [ ] Source changes, review transitions and deletion update retrieval and graph.
 - [ ] Configuration, costs, cancellation and failures are visible in both locales.
 - [ ] Owner isolation, stale publication and retries are regression-tested.
+
+## Delivery increments
+
+1. Complete long-source capture analysis, including bounded synthesis, Unicode
+   boundaries, cancellation and the cost of completed sections before a retry.
+2. Independent organization/research scheduling, review and lifecycle controls.
+
+Increment 1 does not claim to implement background research or its review UI.
 
 ## Out of scope
 
