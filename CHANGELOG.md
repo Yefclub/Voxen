@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794600176 — 2026-11-13 · Dev
+
+### 🐛 Recognize direct requests to create notes
+
+Chat better recognizes explicit requests to create a note when its title and
+text are included. Ambiguous requests still show the exact addition for
+confirmation; questions, negations and quoted instructions do not authorize
+library changes.
+
 ## v0.15.1-dev.1794597823 — 2026-11-13 · Dev
 
 ### ✨ One continuous conversation with your knowledge

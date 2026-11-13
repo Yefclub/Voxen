@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794600176",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Recognize direct requests to create notes",
+    "body": "Chat better recognizes explicit requests to create a note when its title and\ntext are included. Ambiguous requests still show the exact addition for\nconfirmation; questions, negations and quoted instructions do not authorize\nlibrary changes.",
+    "pr": 1090,
+    "author": "Kalyel",
+    "date": "2026-11-13T17:02:43-03:00",
+    "translations": {
+      "en": {
+        "title": "Recognize direct requests to create notes",
+        "body": "Chat better recognizes explicit requests to create a note when its title and\ntext are included. Ambiguous requests still show the exact addition for\nconfirmation; questions, negations and quoted instructions do not authorize\nlibrary changes."
+      },
+      "pt-BR": {
+        "title": "Reconhecimento de pedidos diretos para criar notas",
+        "body": "O chat reconhece melhor pedidos explícitos para criar uma nota com título e\ntexto. Pedidos ambíguos continuam mostrando a adição exata para confirmação;\nperguntas, negações e instruções citadas não autorizam alterações na biblioteca."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1090"
+  },
+  {
     "version": "0.15.1-dev.1794597823",
     "channel": "dev",
     "type": "feat",
