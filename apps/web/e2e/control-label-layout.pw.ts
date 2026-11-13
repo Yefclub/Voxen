@@ -87,7 +87,9 @@ test.describe('readable control labels (spec 227)', () => {
             }, textScale);
             await feedback.scrollIntoViewIfNeeded();
             for (const action of await actions.all()) {
+              await action.scrollIntoViewIfNeeded();
               await expect(action).toBeVisible();
+              await expect(action).toBeInViewport({ ratio: 1 });
               const geometry = await labelGeometry(action);
               expect(geometry.top).toBeGreaterThanOrEqual(geometry.paddingTop - 0.5);
               expect(geometry.bottom).toBeGreaterThanOrEqual(geometry.paddingBottom - 0.5);
