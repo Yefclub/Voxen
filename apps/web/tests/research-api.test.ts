@@ -156,4 +156,36 @@ suite('authenticated external research API', () => {
     ).toBe(409);
     expect(await db.transcriptEnrichment.count({ where: { transcriptId: documentId } })).toBe(1);
   });
+  test('resolves a linked result beyond the first history page without leaking another owner', async () => {
+    const oldest = await db.transcriptEnrichment.findFirstOrThrow({
+      where: { userId: users[0]!, transcriptId: documentId },
+    });
+    await db.transcriptEnrichment.createMany({
+      data: Array.from({ length: 11 }, (_, i) => ({
+        userId: users[0]!,
+        transcriptId: documentId,
+        runKey: randomUUID(),
+        trigger: 'MANUAL' as const,
+        status: 'FAILED' as const,
+        createdAt: new Date(Date.now() + i + 1),
+      })),
+    });
+    const path = `/documents/${documentId}`;
+    const firstPage = (await (await call(path)).json()) as {
+      enrichments: Array<{ id: string }>;
+      nextCursor: string;
+    };
+    expect(firstPage.enrichments).toHaveLength(10);
+    expect(firstPage.enrichments.some((item) => item.id === oldest.id)).toBe(false);
+    expect(firstPage.nextCursor).toBeTruthy();
+    const linked = await call(`${path}/${oldest.id}`);
+    expect(linked.status).toBe(200);
+    expect(await linked.json()).toMatchObject({ id: oldest.id, status: 'CANCELLED' });
+    for (const id of [oldest.id, 'missing'])
+      expect((await call(`${path}/${id}`, 'GET', undefined, cookies[1])).status).toBe(404);
+    const nextPage = (await (await call(`${path}?cursor=${firstPage.nextCursor}`)).json()) as {
+      enrichments: Array<{ id: string }>;
+    };
+    expect(nextPage.enrichments.some((item) => item.id === oldest.id)).toBe(true);
+  });
 });

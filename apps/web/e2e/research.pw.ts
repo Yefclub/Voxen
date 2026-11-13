@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { seedWorkspace, cleanupWorkspace, type WorkspaceSeed } from './workspace-seed';
 import { setUserSetting } from '../src/lib/settings';
+import { db } from '../src/lib/db';
 
 test.describe('opted-in library research', () => {
   let workspace: WorkspaceSeed | undefined;
@@ -27,6 +28,15 @@ test.describe('opted-in library research', () => {
     const status = settings.getByRole('status', { name: 'Estado da pesquisa' });
     await expect(mode).toHaveValue('OFF');
     await expect(save).toBeDisabled();
+    const legacy = await db.transcriptEnrichment.create({
+      data: {
+        userId: workspace!.userId,
+        transcriptId: workspace!.transcriptId,
+        runKey: 'legacy-fixture',
+        trigger: 'MANUAL',
+        status: 'PENDING',
+      },
+    });
     await mode.selectOption('MANUAL');
     await key.fill('browser-fixture-discovery-key-229');
     await save.click();
@@ -47,6 +57,9 @@ test.describe('opted-in library research', () => {
     );
     await save.click();
     await expect(status).toHaveText('Preferências de pesquisa salvas.');
+    expect(await db.transcriptEnrichment.findUnique({ where: { id: legacy.id } })).toMatchObject({
+      status: 'CANCELLED',
+    });
     await page.reload();
     await expect(mode).toHaveValue('MANUAL');
     await expect(key).toHaveValue('');

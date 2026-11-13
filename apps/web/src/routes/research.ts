@@ -14,7 +14,12 @@ import {
 } from '../lib/research/preferences';
 import { enqueueResearch, ResearchError } from '../lib/research/queue';
 import { prepareResearch } from '../lib/research/context';
-import { listResearch, ResearchReviewSchema, reviewResearch } from '../lib/research/review';
+import {
+  listResearch,
+  readResearch,
+  ResearchReviewSchema,
+  reviewResearch,
+} from '../lib/research/review';
 
 export const researchRoutes = new Hono<{ Variables: { userId: string } }>();
 researchRoutes.use('*', async (c, next) => {
@@ -107,6 +112,15 @@ researchRoutes.post('/documents/:transcriptId', async (c) => {
   await prepareResearch(userId, null);
   const row = await enqueueResearch(userId, transcriptId, 'MANUAL', input.requestKey);
   return c.json({ id: row!.id }, 202);
+});
+researchRoutes.get('/documents/:transcriptId/:id', async (c) => {
+  return c.json(
+    await readResearch(
+      c.get('userId'),
+      Id.parse(c.req.param('transcriptId')),
+      Id.parse(c.req.param('id')),
+    ),
+  );
 });
 researchRoutes.patch('/documents/:transcriptId/:id', async (c) => {
   const input = ResearchReviewSchema.parse(await json(c.req.raw, 850_000));

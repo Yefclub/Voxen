@@ -156,6 +156,16 @@ export async function listResearch(userId: string, transcriptId: string, cursor?
   });
 }
 
+export async function readResearch(userId: string, transcriptId: string, id: string) {
+  return db.$transaction(async (tx) => {
+    await lockResearchUser(tx, userId);
+    await lockParent(tx, userId, transcriptId);
+    const row = await tx.transcriptEnrichment.findFirst({ where: { id, userId, transcriptId } });
+    if (!row) throw new ResearchError('NOT_FOUND');
+    return serialize(row, (await tx.job.count({ where: deletionWhere(userId, [id]) })) > 0);
+  });
+}
+
 export async function reviewResearch(
   userId: string,
   transcriptId: string,
