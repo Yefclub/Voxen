@@ -28,6 +28,7 @@ function fixture(
     invalidQuote?: boolean;
     unsafeQuery?: boolean;
     unsafeUrl?: boolean;
+    sourceText?: string;
   } = {},
 ) {
   const calls = { model: 0, search: [] as string[], fetch: [] as string[] };
@@ -105,7 +106,7 @@ function fixture(
   const run = (checkpoint: () => Promise<void> = async () => undefined) =>
     generateResearch({
       userId: source.userId,
-      source,
+      source: { ...source, plainText: options.sourceText ?? source.plainText },
       language: 'en',
       signal: new AbortController().signal,
       usage,
@@ -144,6 +145,55 @@ describe('bounded grounded external research', () => {
     expect(f.calls.search).toHaveLength(1);
     expect(f.calls.fetch).toHaveLength(1);
     expect(f.usage).toMatchObject({ tokensIn: 200, tokensOut: 100, searchCalls: 1, fetchCalls: 1 });
+  });
+  test('turns a middle-only research question in a long source into discovery and grounded output', async () => {
+    const question = 'How many reviewers are required before Orion can accept a release?';
+    const query = 'Orion release reviewer requirement primary specification';
+    const sourceText =
+      'The saved source begins with established context.\n\n' +
+      'Background context. '.repeat(3500) +
+      `\n\nOpen question: ${question}\n\n` +
+      'Background context. '.repeat(3500) +
+      '\n\nThe saved source ends without further open questions.';
+    expect(sourceText.indexOf(question)).toBeGreaterThan(60_000);
+    expect(sourceText.length - sourceText.indexOf(question)).toBeGreaterThan(60_000);
+    const f = fixture({ sourceText });
+    const plannedSections: string[] = [];
+    const generate = f.dependencies.generate;
+    f.dependencies.generate = async (input) => {
+      const result = await generate(input);
+      if (!Object.is(input.schema, ResearchPlanSchema)) return result;
+      const part = input.untrusted[0];
+      if (!part || !('text' in part)) throw new Error('Expected a source-text planning request');
+      const section = (JSON.parse(part.text) as { text: string }).text;
+      plannedSections.push(section);
+      const needsResearch = section.includes(question);
+      return {
+        ...result,
+        output: input.schema.parse({
+          rationale: needsResearch
+            ? 'Resolve the open reviewer requirement using the primary specification.'
+            : 'This section already contains sufficient background.',
+          questions: needsResearch ? [{ query, priority: 3 }] : [],
+        }),
+      };
+    };
+    const result = await f.run();
+    expect(result.status).toBe('READY');
+    expect(f.calls.search).toEqual([query]);
+    expect(result.queries).toEqual([query]);
+    expect(result.content).toContain('forty-two reviewers');
+    expect(result.citations).toEqual([
+      {
+        url: 'https://example.com/orion/(release)',
+        title: 'Release documentation',
+        excerpt: quote,
+        retrievedAt: '2026-11-13T20:00:00.000Z',
+      },
+    ]);
+    expect(plannedSections.length).toBeGreaterThan(1);
+    expect(plannedSections[0]).toContain('The saved source begins');
+    expect(plannedSections.at(-1)).toContain('The saved source ends');
   });
   test('rejects invented quotes rather than attaching an unsupported citation', async () => {
     const f = fixture({ invalidQuote: true });
