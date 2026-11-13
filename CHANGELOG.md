@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1-dev.1794607023 — 2026-11-13 · Dev
+
+### 🐛 A more compact and readable chat
+
+Chat now uses a compact, growing message field, corner preferences,
+quieter message actions and one expandable live activity line. Desktop and phone
+layouts retain drafts, streamed answers and accessible controls in both appearances.
+
 ## v0.15.1-dev.1794601740 — 2026-11-13 · Dev
 
 ### 🐛 Analyze the middle of long captured content

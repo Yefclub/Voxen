@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794607023",
+    "channel": "dev",
+    "type": "fix",
+    "title": "A more compact and readable chat",
+    "body": "Chat now uses a compact, growing message field, corner preferences,\nquieter message actions and one expandable live activity line. Desktop and phone\nlayouts retain drafts, streamed answers and accessible controls in both appearances.",
+    "pr": 1095,
+    "author": "Kalyel",
+    "date": "2026-11-13T18:56:51-03:00",
+    "translations": {
+      "en": {
+        "title": "A more compact and readable chat",
+        "body": "Chat now uses a compact, growing message field, corner preferences,\nquieter message actions and one expandable live activity line. Desktop and phone\nlayouts retain drafts, streamed answers and accessible controls in both appearances."
+      },
+      "pt-BR": {
+        "title": "Uma conversa mais compacta e legível",
+        "body": "A conversa agora tem um campo compacto que cresce com a mensagem,\npreferências no canto, ações mais discretas e uma linha de atividade expansível.\nDesktop e celular preservam rascunhos, respostas em tempo real e controles acessíveis\nnas duas aparências."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1095"
+  },
+  {
     "version": "0.15.1-dev.1794601740",
     "channel": "dev",
     "type": "fix",
