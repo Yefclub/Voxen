@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.15.1-dev.1794601740 — 2026-11-13 · Dev
+
+### 🐛 Analyze the middle of long captured content
+
+Long captures are analyzed in sections before their findings are synthesized.
+The middle of the source is no longer omitted from AI interpretation, and the
+complete original remains in the document. Oversized analysis fails explicitly
+and asks for smaller parts. Cancellation stops subsequent model calls, and a
+retry includes the cost of sections already processed.
+
 ## v0.15.1-dev.1794600176 — 2026-11-13 · Dev
 
 ### 🐛 Recognize direct requests to create notes

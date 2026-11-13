@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794601740",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Analyze the middle of long captured content",
+    "body": "Long captures are analyzed in sections before their findings are synthesized.\nThe middle of the source is no longer omitted from AI interpretation, and the\ncomplete original remains in the document. Oversized analysis fails explicitly\nand asks for smaller parts. Cancellation stops subsequent model calls, and a\nretry includes the cost of sections already processed.",
+    "pr": 1092,
+    "author": "Kalyel",
+    "date": "2026-11-13T17:28:49-03:00",
+    "translations": {
+      "en": {
+        "title": "Analyze the middle of long captured content",
+        "body": "Long captures are analyzed in sections before their findings are synthesized.\nThe middle of the source is no longer omitted from AI interpretation, and the\ncomplete original remains in the document. Oversized analysis fails explicitly\nand asks for smaller parts. Cancellation stops subsequent model calls, and a\nretry includes the cost of sections already processed."
+      },
+      "pt-BR": {
+        "title": "Análise do meio de conteúdos longos capturados",
+        "body": "Capturas longas são analisadas por seções antes da síntese dos resultados.\nO meio da fonte deixa de ser omitido da interpretação por IA, e o original\ncompleto continua no documento. Uma análise extensa demais falha de forma\nexplícita e pede o envio em partes menores. O cancelamento interrompe as próximas\nchamadas ao modelo, e uma nova tentativa inclui o custo das seções já processadas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1092"
+  },
+  {
     "version": "0.15.1-dev.1794600176",
     "channel": "dev",
     "type": "fix",
