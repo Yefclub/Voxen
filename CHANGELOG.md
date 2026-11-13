@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794530298 — 2026-11-12 · Dev
+
+### 🐛 Keep 3D graph exploration working across search results
+
+Searching the graph and selecting related nodes now keep 3D exploration available
+when the visible graph changes. The new view frames its nodes and source links
+remain usable. Selection, hover and appearance changes preserve camera navigation
+when the graph itself is unchanged.
+
 ## v0.15.1-dev.1794526347 — 2026-11-12 · Dev
 
 ### 🎨 A rebuilt Voxen workspace for capture, reading and mobile use
