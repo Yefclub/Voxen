@@ -7,6 +7,8 @@ import { listResearch, reviewResearch } from '../src/lib/research/review';
 import { projectResearch } from '../src/lib/research/projection';
 import { ftsSearchTranscriptEnrichments } from '../src/lib/retrieval-enrichments';
 import { filterCurrentOwnedBrainSources } from '../src/lib/brain-source-visibility';
+import { runKnowledgeDeletionJob } from '../src/lib/knowledge-deletion-executor';
+import { cancelKnowledgeDeletionJob } from '../src/lib/knowledge-deletion-cancellation';
 
 const suite = process.env.DATABASE_URL ? describe : describe.skip;
 const users: string[] = [];
@@ -28,6 +30,7 @@ suite('external research review and projection lifecycle', () => {
   });
   afterEach(async () => {
     await db.transcript.deleteMany({ where: { userId: { in: users } } });
+    await db.brainSource.deleteMany({ where: { userId: { in: users } } });
     await db.brainNode.deleteMany({ where: { userId: { in: users } } });
     await db.job.deleteMany({ where: { userId: { in: users } } });
   });
@@ -265,5 +268,110 @@ suite('external research review and projection lifecycle', () => {
       leaseOwner: null,
       leaseExpiresAt: null,
     });
+  });
+  test('executes a reviewed deletion after its revision changes and recovers after canonical cleanup', async () => {
+    const { source, item } = await fixture();
+    const accepted = await reviewResearch(users[0]!, source.id, item.id, {
+      action: 'accept',
+      ...guard(item),
+    });
+    await projectResearch(users[0]!, item.id);
+    expect(
+      await db.brainSource.count({ where: { userId: users[0]!, sourceId: item.id } }),
+    ).toBeGreaterThan(0);
+    await db.brainSource.create({
+      data: { userId: users[1]!, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: item.id },
+    });
+    const deleting = await reviewResearch(users[0]!, source.id, item.id, {
+      action: 'delete',
+      ...guard(accepted),
+    });
+    expect(deleting.revision).toBeGreaterThan(accepted.revision);
+    const job = await db.job.findFirstOrThrow({
+      where: { userId: users[0]!, deletionTargetId: item.id, type: 'DELETE_KNOWLEDGE' },
+    });
+    expect(job.deletionTargetTitle).toBe(accepted.title);
+    expect(await runKnowledgeDeletionJob(job.id)).toBe(true);
+    expect(await db.job.findUnique({ where: { id: job.id } })).toMatchObject({ status: 'DONE' });
+    expect(await db.transcriptEnrichment.findUnique({ where: { id: item.id } })).toBeNull();
+    expect(await db.brainNode.count({ where: { userId: users[0]!, sourceId: item.id } })).toBe(0);
+    expect(await db.brainSource.count({ where: { userId: users[0]!, sourceId: item.id } })).toBe(0);
+    expect(await db.brainSource.count({ where: { userId: users[1]!, sourceId: item.id } })).toBe(1);
+    expect(await db.transcript.findUnique({ where: { id: source.id } })).toMatchObject({
+      plainText: source.plainText,
+      title: source.title,
+      sourceVersion: source.sourceVersion,
+      sourceChecksum: source.sourceChecksum,
+    });
+    expect(await runKnowledgeDeletionJob(job.id)).toBe(false);
+    // Simulate interruption after canonical cleanup but before terminal persistence.
+    await db.job.update({
+      where: { id: job.id },
+      data: {
+        status: 'RUNNING',
+        workerId: 'interrupted-fixture',
+        leaseExpiresAt: new Date(Date.now() + 90_000),
+        attempt: 1,
+      },
+    });
+    const running = {
+      id: job.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'RUNNING',
+      deletionTargetType: 'TRANSCRIPT_ENRICHMENT' as const,
+      deletionTargetId: item.id,
+    };
+    expect(await cancelKnowledgeDeletionJob(users[0]!, running)).toBe('running');
+    await db.job.update({ where: { id: job.id }, data: { leaseExpiresAt: new Date(0) } });
+    expect(await runKnowledgeDeletionJob(job.id)).toBe(true);
+    expect(await db.job.findUnique({ where: { id: job.id } })).toMatchObject({
+      status: 'DONE',
+      workerId: null,
+      leaseExpiresAt: null,
+    });
+    expect(await db.brainSource.count({ where: { userId: users[1]!, sourceId: item.id } })).toBe(1);
+  });
+  test('cancels only an owned queued deletion and retains context for explicit reacceptance', async () => {
+    const { source, item } = await fixture();
+    const accepted = await reviewResearch(users[0]!, source.id, item.id, {
+      action: 'accept',
+      ...guard(item),
+    });
+    const deleting = await reviewResearch(users[0]!, source.id, item.id, {
+      action: 'delete',
+      ...guard(accepted),
+    });
+    const job = await db.job.findFirstOrThrow({
+      where: { userId: users[0]!, deletionTargetId: item.id, type: 'DELETE_KNOWLEDGE' },
+    });
+    const queued = {
+      id: job.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'TRANSCRIPT_ENRICHMENT' as const,
+      deletionTargetId: item.id,
+    };
+    expect(await cancelKnowledgeDeletionJob(users[1]!, queued)).toBe('stale');
+    expect(await db.job.findUnique({ where: { id: job.id } })).toMatchObject({ status: 'QUEUED' });
+    expect(await cancelKnowledgeDeletionJob(users[0]!, queued)).toBe('cancelled');
+    expect(await runKnowledgeDeletionJob(job.id)).toBe(false);
+    const retained = (await listResearch(users[0]!, source.id)).enrichments[0]!;
+    expect(retained).toMatchObject({
+      content: deleting.content,
+      title: deleting.title,
+      revision: deleting.revision,
+      reviewState: 'DISMISSED',
+      deletionPending: false,
+      citations: deleting.citations,
+    });
+    expect(await ftsSearchTranscriptEnrichments(users[0]!, 'neutrino', 8)).toEqual([]);
+    await reviewResearch(users[0]!, source.id, item.id, { action: 'accept', ...guard(retained) });
+    await projectResearch(users[0]!, item.id);
+    expect((await ftsSearchTranscriptEnrichments(users[0]!, 'neutrino', 8))[0]?.id).toBe(item.id);
+    expect(
+      await filterCurrentOwnedBrainSources(users[0]!, [
+        { sourceType: 'EXTERNAL_ENRICHMENT', sourceId: item.id },
+      ]),
+    ).toHaveLength(1);
   });
 });
