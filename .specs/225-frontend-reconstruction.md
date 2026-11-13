@@ -58,6 +58,10 @@ the source of truth.
   navigation and scroll behavior while preserving detail/editor state where
   the existing flow requires it.
 
+- When search or a related-node selection replaces the graph topology in 3D,
+  the system shall publish a coherent scene, retain 3D mode and permit source
+  navigation without an intermediate renderer exception.
+
 ### State-driven
 
 - While a capture is processing, the system shall expose clear progress and
@@ -73,6 +77,8 @@ the source of truth.
   provide an appropriate readable state without exposing sensitive internals.
 - While a graph or editor owns its viewport, the system shall preserve its
   interaction space and the graph framing protections delivered in spec 224.
+- While graph topology is unchanged, the system shall retain camera navigation
+  across selection, hover and appearance updates.
 
 ### Optional
 
@@ -120,6 +126,8 @@ install prompt, offline/update states and touch/keyboard interaction.
       keyboard focus, error announcements and reduced motion are verified.
 - [x] Existing security, workspace, ingestion, MCP, graph and data-preservation
       contracts pass without weakening tests or quality/security gates.
+- [x] A 500-node 3D overview transitions to search results and related nodes
+      without renderer exceptions, retains 3D and opens an owned source.
 - [ ] Required checks, real builds, independent code/visual review and remote CI
       pass; the change merges to dev and the updated deployment is verified.
 
@@ -165,3 +173,16 @@ Independent visual review scored all six material findings resolved and then
 confirmed the separate graph-label clipping correction with no introduced visual
 regression. The design system is documented. Exact-final independent technical
 review, remote CI, merge to dev and live deployment verification remain pending.
+
+## Deployed graph follow-up
+
+The initial deployment at `e4020cc5` reproduced a Reagraph edge-label failure
+while search replaced the 500-node overview with a focused graph. The edge-label
+renderer accessed an endpoint absent from its internal node map during that
+transition and fell back to 2D. A separate settled capture confirmed the 3D
+overview was rendered; the earlier immediate camera capture preceded its paint.
+The follow-up shall cover a real renderer transition from a dense overview to a
+focused scene, assert that 3D remains selected with no page exceptions, and open
+an owned source through a related node. Existing camera-persistence and WebGL
+fallback contracts remain required. Production-data diagnostics stay outside
+the repository; the regression uses synthetic isolated workspace data.
