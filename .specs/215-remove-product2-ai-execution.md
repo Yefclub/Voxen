@@ -1,5 +1,9 @@
 # Spec 215 — Remove Product 2 and built-in AI execution
 
+> Amended 2026-11-13 by specs 228–230: integrated continuous chat, grounded
+> background enrichment and passage retrieval are authorized again. Other
+> retired capabilities remain removed unless a later spec explicitly restores them.
+
 > Amended 2026-11-09 by spec 220. Link capture, speech-to-text, vision and
 > AI interpretation return as a Voxen extension that calls cloud providers
 > (OpenAI, Anthropic, OpenRouter, xAI) with per-user keys. The rest of this

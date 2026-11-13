@@ -20,6 +20,8 @@
 | Prisma 6                  | Postgres e migrations       |
 | MCP SDK                   | acesso MCP isolado por usuário |
 | Zod 4                     | validação                   |
+| Vercel AI SDK 7            | Optional bounded assistant loop and explicit cloud providers |
+| Astryx Chat                | Native themed chat composer, messages and interaction primitives |
 
 ## Infraestrutura
 

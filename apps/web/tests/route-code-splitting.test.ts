@@ -9,7 +9,8 @@ describe('carregamento progressivo de rotas', () => {
   test('declara telas roteáveis como imports dinâmicos em vez de incluí-las no bundle inicial', () => {
     const source = readClientSource('App.tsx');
 
-    expect(source).not.toContain("const ChatPage = lazy(() => import('./pages/chat')");
+    expect(source).toContain('const ChatPage = lazy(() =>');
+    expect(source).toContain("import('./pages/chat')");
     expect(source).toContain('const GrafoPage = lazy(() =>');
     expect(source).toContain("import('./pages/grafo')");
     expect(source).toContain("import('./pages/notas')");

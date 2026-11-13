@@ -4,8 +4,9 @@
 // Resolves the user's ordered chain of models for a role, then calls each
 // entry through an explicit AI SDK provider object with a fixed base URL until
 // one answers. Never pass a plain string model id to AI SDK functions: that
-// routes through the AI gateway. No tools are ever attached; captured content
-// is wrapped as untrusted data.
+// routes through the AI gateway. Capture calls attach no tools; captured
+// content is wrapped as untrusted data. Spec 228 reuses only model resolution
+// and explicit provider construction in a separate assistant executor.
 // ============================================================================
 
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -468,12 +469,20 @@ export function createAiClient(dependencies: AiClientDependencies = {}) {
     }
   }
 
-  return { resolveRole, resolveRoleChain, generateStructured, transcribeAudio, sttPrefersWav };
+  return {
+    resolveRole,
+    resolveRoleChain,
+    generateStructured,
+    transcribeAudio,
+    sttPrefersWav,
+    providerLanguageModel,
+  };
 }
 
 const defaultClient = createAiClient();
 export const resolveRole = defaultClient.resolveRole;
 export const resolveRoleChain = defaultClient.resolveRoleChain;
+export const providerLanguageModel = defaultClient.providerLanguageModel;
 export const generateStructured = defaultClient.generateStructured;
 export const transcribeAudio = defaultClient.transcribeAudio;
 export const sttPrefersWav = defaultClient.sttPrefersWav;

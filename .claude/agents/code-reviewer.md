@@ -39,7 +39,7 @@ or approve your own delivery.
 
 1. **Non-negotiable rules violated.** Walk `CLAUDE.md` item by item:
    - Spec 215/220/221 boundary? Local model execution other than the
-     `stt-local` sidecar, embeddings, chat, or cookies reintroduced? Downloads
+     `stt-local` sidecar, embeddings, chat capabilities outside spec 228, or cookies reintroduced? Downloads
      or ffmpeg outside `capture-worker`? Provider calls outside
      OpenAI/Anthropic/OpenRouter/xAI/Gemini/`stt-local` or through the default
      AI gateway? Product 1 path that now requires a provider key?

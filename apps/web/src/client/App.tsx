@@ -73,6 +73,7 @@ const TranscricaoDetalhePage = lazy(() =>
 const CapturarPage = lazy(() =>
   import('./pages/capturar').then(({ CapturarPage }) => ({ default: CapturarPage })),
 );
+const ChatPage = lazy(() => import('./pages/chat').then(({ ChatPage }) => ({ default: ChatPage })));
 const NotasPage = lazy(() =>
   import('./pages/notas').then(({ NotasPage }) => ({ default: NotasPage })),
 );
@@ -179,8 +180,8 @@ function AppRoutes(): React.ReactElement {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/transcricoes" replace />} />
         <Route path="/dashboard" element={<Navigate to="/transcricoes" replace />} />
-        <Route path="/chat" element={<Navigate to="/transcricoes" replace />} />
-        <Route path="/chat/:id" element={<Navigate to="/transcricoes" replace />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:id" element={<Navigate to="/chat" replace />} />
         <Route path="/setup" element={<RedirectPreserveSearch to="/admin/configuracao" />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Navigate to="configuracao" replace />} />

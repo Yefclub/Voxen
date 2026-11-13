@@ -33,8 +33,8 @@ describe('isBottomNavTab', () => {
     expect(isBottomNavTab(path)).toBe(false);
   });
 
-  test('/chat herda a mesma semântica de topo da rota canônica /', () => {
-    expect(isBottomNavTab('/chat')).toBe(true);
+  test('/chat is reachable from the contextual menu rather than a bottom tab', () => {
+    expect(isBottomNavTab('/chat')).toBe(false);
   });
 });
 
@@ -110,13 +110,14 @@ describe('hidesBottomNav', () => {
     expect(hidesBottomNav('/', false)).toBe(false);
   });
 
-  test('the legacy chat alias keeps library navigation visible', () => {
-    expect(hidesBottomNav('/chat', false)).toBe(false);
+  test('the conversation owns its viewport so the composer stays above the keyboard', () => {
+    expect(hidesBottomNav('/chat', false)).toBe(true);
+    expect(hasOwnMobileChrome('/chat')).toBe(true);
   });
 
-  test('rota de chat no DESKTOP não esconde (a bottom-nav nem monta lá, mas a decisão não depende disso)', () => {
+  test('the chat chrome decision remains consistent on desktop', () => {
     expect(hidesBottomNav('/', true)).toBe(false);
-    expect(hidesBottomNav('/chat', true)).toBe(false);
+    expect(hidesBottomNav('/chat', true)).toBe(true);
   });
 
   test('grafo esconde a bottom-nav independente de desktop/mobile (chrome próprio)', () => {
@@ -159,7 +160,7 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
     expect(shouldShowBack(path)).toBe(true);
   });
 
-  test('/chat visitada diretamente é alias da home e abre o mesmo menu', () => {
+  test('/chat has contextual chrome rather than a second back button', () => {
     expect(shouldShowBack('/chat')).toBe(false);
   });
 });

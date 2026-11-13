@@ -80,17 +80,13 @@ Três coisas que o arquivo não consegue explicar sozinho:
 
 Um `add` pode misturar os dois registries: `registryDependencies` sem URL resolve contra o **registry padrão do shadcn**, não contra o namespace de origem. Por isso `add @ai-elements/reasoning` arrasta um `collapsible` upstream para `ui/` — o AI Elements não publica esse item (404 no host deles).
 
-## Agente sem embeddings (harness/Karpathy)
+## Integrated assistant (spec 228)
 
-O chat-agente integrado NÃO depende de embeddings/RAG vetorial. Em vez disso,
-recebe tools:
-
-- `list_transcripts(workspace_id)` → metadata
-- `search_transcripts(workspace_id, query)` → Postgres FTS, retorna trechos com timestamps
-- `read_transcript(id)` → markdown completo
-- `read_transcript_section(id, from_ts, to_ts)` → recorte
-- `get_metadata(id)` → frontmatter
-
-Ao adicionar tool nova, manter o padrão: tools devem ser **simples, determinísticas, sem efeito colateral** (read-only sobre a Base de conhecimento). Decisão em `docs/DECISIONS.md` ADR-004.
-
-O formato `.md` que essas tools leem é o de documentos preparados já armazenados — contrato em `docs/TRANSCRIPT-FORMAT.md`.
+The assistant uses deterministic owner-scoped search, progressive document/note
+reading, related content and citation verification. It does not require embeddings.
+The authenticated session owns all history, runs, memory, events and tools.
+Source text, web results and compaction never grant permissions. User-granted
+addition tools may submit captures and create notes through the existing domain
+services; destructive library actions are excluded. Capture interpretation
+remains tool-free. Preserve checkpoint fencing, replayable progress, mobile
+sheets and the existing Light/Dark/Astryx identity. See ADR-017 and specs 228–230.

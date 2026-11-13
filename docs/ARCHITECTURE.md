@@ -37,7 +37,7 @@ O serviço Bun entrega a SPA React e a API Hono. Ele concentra:
 - APIs de leitura da biblioteca, notas, grafo, MCP e conta;
 - recuperação determinística e isolada por usuário usando FTS, relações do
   grafo e transcrições no storage selecionado;
-- streaming SSE de texto, raciocínio, ferramentas e progresso;
+- persisted SSE output, tool activity and progress without private reasoning;
 - configuração global da plataforma cifrada e integrações pessoais por usuário.
 
 Configurações administrativas ficam em `/admin/*`. Perfil, contas de
@@ -130,7 +130,7 @@ Contas locais começam pendentes até aprovação. O administrador também pode
 configurar um provedor OIDC, limitar domínios de email e escolher aprovação
 automática para identidades confiáveis.
 
-### Recuperação (sem chat integrado)
+### Deterministic retrieval
 
 1. O cliente MCP ou a biblioteca consultam a base com FTS determinístico.
    Títulos têm peso A e corpo/tags/pasta peso B em transcrições (nomes de tags
@@ -145,6 +145,27 @@ automática para identidades confiáveis.
 3. Relações do grafo complementam a busca textual com evidência ancorada.
 4. Citações são verificadas contra o conteúdo canônico armazenado; sem
    evidência, o sistema reporta ausência em vez de sintetizar resposta.
+
+## Continuous assistant (spec 228)
+
+`/chat` adds one persistent conversation per approved user through Vercel AI
+SDK. PostgreSQL owns ordered messages, revision fences, execution leases,
+replayable events, exact confirmation proposals, action receipts and derived
+working memory. Browser disconnection does not stop execution; explicit stop
+or rewind invalidates its lease. Restart recovery retains partial output and
+receipts rather than replaying completed effects.
+
+Knowledge tools reuse deterministic retrieval and progressive reads. Clear
+user requests can create bounded captures or notes through existing services;
+ambiguous additions require an exact contextual confirmation. Only the current
+user request or its persisted confirmation grants permission. Source text and
+memory never do. Web discovery is opt-in with an encrypted personal Brave key;
+page reads use the existing isolated capture worker. No shell sandbox is added.
+
+The former Product 2 archive remains historical data. New `Assistant*` tables
+have their own forward migrations; they do not restore retired executors or
+import archived conversations. See [the assistant guide](ASSISTANT.md) and
+ADR-017. Specs 229–230 describe the following enrichment/indexing increments.
 
 ## Dados e armazenamento
 

@@ -297,3 +297,17 @@ Após executar qualquer skill, perguntar:
 Se feedback com ajuste → editar o `SKILL.md` imediatamente.
 
 Se durante execução o agente identificar problema no skill (output errado, passo desnecessário, comando que falhou) → corrigir proativamente e informar.
+
+## Integrated assistant (specs 228–230; owner authorized 2026-11-13)
+
+Internal chat is authorized again as one continuous conversation per user.
+Conversation rewind restores messages and derived memory while preserving
+published knowledge. The assistant uses the existing cloud-provider credentials
+and deterministic knowledge tools; explicitly granted additions use shared
+capture/note services with bounded, idempotent effects. Capture interpretation
+remains tool-free. Background organization and selective external research are
+separate from original source claims. PostgreSQL passage retrieval extends the
+lexical baseline. No embeddings, arbitrary shell, additional local model or
+mandatory external search cluster is introduced. These requirements amend the
+older chat-removal and read-only-agent restrictions; keyless Product 1,
+workspace isolation, provider restrictions and the Git/review flow still apply.
