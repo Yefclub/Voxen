@@ -76,6 +76,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         </Slot>
       );
     const label = props['aria-label'] ?? props.title ?? buttonText(children);
+    const isIconOnly = size === 'icon';
     const astryxVariant =
       variant === 'destructive'
         ? 'destructive'
@@ -89,14 +90,18 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
         ref={ref}
         label={label}
+        icon={isIconOnly ? children : undefined}
+        isIconOnly={isIconOnly}
         variant={astryxVariant}
         size={size === 'sm' ? 'sm' : 'md'}
         isDisabled={props.disabled}
         className={classes}
       >
-        <span className="inline-flex min-w-0 items-center justify-center gap-2 whitespace-normal">
-          {children}
-        </span>
+        {isIconOnly ? null : (
+          <span className="inline-flex min-w-0 items-center justify-center gap-2 whitespace-normal">
+            {children}
+          </span>
+        )}
       </AstryxButton>
     );
   },

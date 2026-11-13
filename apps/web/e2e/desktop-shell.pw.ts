@@ -84,6 +84,58 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
     }
   });
 
+  test('centers sidebar and appearance glyphs on the desktop header axis', async ({
+    page,
+  }, testInfo) => {
+    const centeredGlyph = async (button: ReturnType<typeof page.getByRole>): Promise<number> => {
+      await expect(button).toBeVisible();
+      return button.evaluate((element) => {
+        const control = element.getBoundingClientRect();
+        const glyphs = Array.from(element.querySelectorAll('svg'))
+          .map((svg) => svg.getBoundingClientRect())
+          .filter((rect) => rect.width > 0 && rect.height > 0);
+        if (glyphs.length !== 1) throw new Error('Expected one visible control glyph');
+        const glyph = glyphs[0]!;
+        return glyph.y + glyph.height / 2 - (control.y + control.height / 2);
+      });
+    };
+    for (const width of [1280, 2000]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/transcricoes');
+      for (const mode of ['light', 'dark']) {
+        await page
+          .getByRole('radio', {
+            name: mode === 'light' ? 'Mudar para tema claro' : 'Mudar para tema escuro',
+            exact: true,
+          })
+          .click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', mode);
+        await page.locator('#desktop-sidebar-close').click();
+        const toggle = page.locator('[data-sidebar-toggle]');
+        await expect(toggle).toBeFocused();
+        expect(Math.abs(await centeredGlyph(toggle))).toBeLessThanOrEqual(0.5);
+        const axisDelta = await toggle.evaluate((element) => {
+          const control = element.getBoundingClientRect();
+          const breadcrumb = document
+            .querySelector('.desktop-breadcrumbs')!
+            .getBoundingClientRect();
+          return control.y + control.height / 2 - (breadcrumb.y + breadcrumb.height / 2);
+        });
+        expect(Math.abs(axisDelta)).toBeLessThanOrEqual(0.5);
+        expect(
+          Math.abs(
+            await centeredGlyph(page.getByRole('button', { name: 'Aparência', exact: true })),
+          ),
+        ).toBeLessThanOrEqual(0.5);
+        await page.screenshot({ path: testInfo.outputPath(`header-axis-${mode}-${width}.png`) });
+        await toggle.click();
+        const close = page.locator('#desktop-sidebar-close');
+        await expect(close).toBeFocused();
+        expect(Math.abs(await centeredGlyph(close))).toBeLessThanOrEqual(0.5);
+      }
+    }
+  });
+
   test('keeps an unsaved note editor mounted while the desktop sidebar moves', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const response = await page.request.post('/api/notes', {

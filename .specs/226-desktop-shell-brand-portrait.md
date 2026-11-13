@@ -39,6 +39,9 @@ honest about which source material was analyzed.
   and its content without moving the row's content.
 - When the sidebar is hidden or restored, focus shall move to its corresponding
   visible control and the current document/editor shall stay mounted.
+- When a sidebar control is rendered as an icon-only button, its glyph shall
+  share the button's vertical center; the collapsed-sidebar control shall also
+  align with the adjacent breadcrumb without a text-baseline offset.
 - When users open an account or appearance menu, keyboard navigation, dismissal,
   focus return, and accessible names shall remain usable without leaving
   focusable background controls hidden from assistive technology.
@@ -80,6 +83,8 @@ honest about which source material was analyzed.
       positions; long titles and metadata do not overflow.
 - [ ] Navigation, account actions, appearance, and collapse/restore work with
       keyboard and pointer; route contents are preserved during collapse.
+- [ ] Sidebar control glyphs remain centered in Light/Dark at desktop widths
+      and 1x/1.5x display scale, including the collapsed header state.
 - [ ] Native design-system menus, appearance selection, and controlled fields
       are exercised through real keyboard, clear, submit, busy, and error states;
       search and capture mobile contracts retain their geometry and behavior.
@@ -115,3 +120,5 @@ to installed apps, including installed tablets whose platform honors it.
 > 2026-11-13: Created from the owner's desktop screenshot and explicit follow-up.
 > 2026-11-13: Expanded after the owner's explicit request to use Astryx beyond
 > navigation and styled buttons; existing mobile navigation remains approved.
+> 2026-11-13: Added icon-only glyph centering after the owner's collapsed-header
+> screenshot exposed a text-baseline offset inside the shared button adapter.
