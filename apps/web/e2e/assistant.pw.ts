@@ -22,8 +22,27 @@ test.describe('continuous assistant workspace', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/chat');
     await expect(page.locator('main h1').first()).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Conversar', exact: true })).toBeVisible();
+    const pageHeading = page.getByRole('heading', { name: 'Conversar', exact: true });
+    await expect(pageHeading).toHaveCount(1);
+    expect((await pageHeading.boundingBox())!.width).toBeLessThanOrEqual(1);
     await expect(page.getByRole('textbox', { name: 'Mensagem' })).toBeVisible();
+    const composer = page.locator('.assistant-composer');
+    const settings = page.getByRole('button', { name: 'Preferências da conversa' });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const bounds = (await composer.boundingBox())!;
+      expect(bounds.height).toBeLessThanOrEqual(72);
+      const workspace = (await page.locator('[data-assistant-workspace]').boundingBox())!;
+      const corner = (await settings.boundingBox())!;
+      expect(workspace.x + workspace.width - corner.x - corner.width).toBeLessThanOrEqual(24);
+      expect(corner.y - workspace.y).toBeLessThanOrEqual(16);
+      expect(corner.width).toBeGreaterThanOrEqual(44);
+      const input = page.getByRole('textbox', { name: 'Mensagem' });
+      await input.fill('A first line\nA second line\nA third line\nA fourth line');
+      expect((await composer.boundingBox())!.height).toBeGreaterThan(bounds.height);
+      await input.fill('');
+      expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(72);
+    }
     await page.getByRole('button', { name: 'Conectar ideias', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Mensagem' })).toContainText('relações');
     await expect(page.locator('[data-chat-suggestions]')).toHaveCount(0);
@@ -115,6 +134,7 @@ test.describe('continuous assistant workspace', () => {
     );
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.goto('/chat');
+    const inputIdentity = await page.getByRole('textbox', { name: 'Mensagem' }).elementHandle();
     await page
       .getByRole('textbox', { name: 'Mensagem' })
       .fill('Consulte minhas fontes recentes e salve uma nota com as conexões importantes.');
@@ -129,6 +149,14 @@ test.describe('continuous assistant workspace', () => {
     });
     const held = new Promise<void>((resolve) => {
       release = resolve;
+    });
+    let releaseTool!: () => void;
+    let enteredTool!: () => void;
+    const toolReady = new Promise<void>((resolve) => {
+      enteredTool = resolve;
+    });
+    const toolHeld = new Promise<void>((resolve) => {
+      releaseTool = resolve;
     });
     const answer = `As suas fontes se conectam pelo tema **conhecimento verificável**.\n\n### O que aparece nas fontes\n\nA primeira fonte registra o conceito em um trecho com marcação de tempo. A segunda acrescenta contexto relacionado. Essa relação permite retomar a ideia sem depender de um resumo isolado.\n\n### Como aproveitar\n\n- Leia a passagem original antes de usar uma afirmação.\n- Compare as fontes para distinguir evidência e interpretação.\n- Use a nota salva para reunir o que merece ser revisitado.\n\nA nota foi salva na sua biblioteca.`;
     const usage = {
@@ -156,6 +184,10 @@ test.describe('continuous assistant workspace', () => {
                       },
                 ),
               });
+              if (turn === 0) {
+                enteredTool();
+                await toolHeld;
+              }
               c.enqueue({
                 type: 'finish',
                 finishReason: { unified: 'tool-calls', raw: undefined },
@@ -188,7 +220,26 @@ test.describe('continuous assistant workspace', () => {
         costUsd: 0,
       }),
     });
+    await toolReady;
+    const progress = page.locator('[data-chat-progress]');
+    await expect(progress).toHaveCount(1);
+    await expect(progress).not.toHaveAttribute('open');
+    await progress.locator('summary').click();
+    await expect(progress).toHaveAttribute('open', '');
+    await expect(progress.getByText(/Consultando conteúdos recentes/)).toBeVisible();
+    await page.screenshot({ path: '/tmp/voxen-chat-layout-tools.png' });
+    releaseTool();
     await ready;
+    await expect(progress.getByRole('status')).toHaveText('Escrevendo resposta…');
+    await expect(page.getByText(/As suas fontes se conectam/)).toBeVisible();
+    expect(await inputIdentity!.evaluate((element) => element.isConnected)).toBe(true);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await progress
+        .locator('.assistant-progress-spinner')
+        .evaluate((element) => getComputedStyle(element).animationName),
+    ).toBe('none');
+    await page.screenshot({ path: '/tmp/voxen-chat-layout-streaming.png' });
     await page.goto('/notas');
     release();
     await execution;

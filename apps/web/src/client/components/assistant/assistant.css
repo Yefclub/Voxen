@@ -1,0 +1,168 @@
+@keyframes assistant-progress-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  [data-assistant-workspace] {
+    --color-background-popover: var(--color-app-bg-elevated);
+    --color-background-muted: var(--color-app-surface);
+    --color-neutral: var(--color-app-surface);
+    --color-border-emphasized: var(--color-app-border-strong);
+    --color-on-accent: var(--color-app-bg);
+    --color-text-disabled: var(--color-app-muted);
+    --color-text-success: var(--color-app-success-fg);
+    --color-icon-success: var(--color-app-success-fg);
+    --color-text-error: var(--color-app-danger);
+    --color-icon-error: var(--color-app-danger);
+    --radius-chat: var(--radius-xl);
+    --text-body-size: 1rem;
+    --text-body-leading: 1.65;
+  }
+
+  .assistant-stage {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .assistant-stage[data-empty='true'] {
+    justify-content: center;
+    gap: 1.5rem;
+    padding: 1.5rem 1.25rem max(3rem, 12dvh);
+    overflow-y: auto;
+  }
+
+  /* Use the native composer's three slots as one growing writing row. */
+  .assistant-composer > div {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: end;
+    column-gap: 0.5rem;
+  }
+
+  .assistant-composer > div > :nth-child(2) {
+    min-width: 0;
+    align-self: center;
+    padding-block: 0.5rem;
+  }
+
+  .assistant-composer > div > :last-child {
+    gap: 0;
+  }
+
+  .assistant-composer [contenteditable] {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-app-border-strong) transparent;
+  }
+
+  .assistant-composer-input > [aria-hidden='true'] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .assistant-transcript {
+    padding: 1rem 1.25rem 0;
+    scrollbar-gutter: stable;
+  }
+
+  .assistant-message-actions {
+    justify-content: flex-end;
+    padding-top: 0.25rem;
+  }
+
+  .assistant-message-actions button {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
+
+  .assistant-progress {
+    margin-inline: 1.25rem;
+    color: var(--color-app-muted);
+  }
+
+  .assistant-progress > summary {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .assistant-progress > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .assistant-progress > summary:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 4px;
+    border-radius: var(--radius-sm);
+  }
+
+  .assistant-progress-chevron {
+    transition: transform 160ms ease-out;
+  }
+
+  .assistant-progress[open] .assistant-progress-chevron {
+    transform: rotate(90deg);
+  }
+
+  .assistant-progress-spinner {
+    animation: assistant-progress-turn 1.4s linear infinite;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .assistant-message-actions {
+      opacity: 0;
+      transition: opacity 160ms ease-out;
+    }
+
+    .assistant-message:hover .assistant-message-actions,
+    .assistant-message:focus-within .assistant-message-actions {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-progress-spinner {
+      animation: none;
+    }
+
+    .assistant-progress-chevron,
+    .assistant-message-actions {
+      transition: none;
+    }
+  }
+
+  .assistant-dock {
+    flex-shrink: 0;
+    padding: 1rem 1.25rem max(1rem, env(safe-area-inset-bottom));
+    background: var(--color-app-bg);
+  }
+
+  .assistant-stage[data-empty='true'] .assistant-dock {
+    padding: 0;
+    background: transparent;
+  }
+
+  [data-chat-suggestions] {
+    display: flex;
+  }
+
+  html[data-keyboard='open'] [data-chat-welcome],
+  html[data-keyboard='open'] [data-chat-suggestions] {
+    display: none;
+  }
+
+  html[data-keyboard='open'] .assistant-stage[data-empty='true'] {
+    justify-content: flex-end;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}

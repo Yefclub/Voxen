@@ -20,13 +20,14 @@ OWN-WORLD: Inherit the documentary workspace, emerald interaction, Inter prose,
 Bricolage headings, thin rules and the shared Astryx Button wrapper.
 STORY: Ask about saved content, follow real sources, request additions or confirm an exact proposal,
 and edit a prior question without losing published knowledge.
-FIRST VIEWPORT: A compact title and preferences action, a restrained empty-state
-question, a readable central transcript and a centered composer in the empty state and a docked composer during conversation.
+FIRST VIEWPORT: Navigation supplies the destination title; the page heading remains accessible without repeating it visually. Preferences sit in the upper trailing workspace corner, outside the centered reading column. A restrained empty-state question leads into a compact single-row composer that grows with the draft; during conversation the same composer docks below the transcript.
 The phone keeps the input above the keyboard; preferences and editing use sheets.
 Use the installed native Astryx ChatComposer/Input, ChatMessage/List/Bubble,
-ChatToolCalls and stream-scroll hooks. Keep the same input mounted when the first
+and stream-scroll hooks. Progress uses one native details disclosure with localized received tool activity; it never invents successful steps. Keep the same input mounted when the first
 message arrives. Use a simple upward send arrow and no permission-mode selector. The owner prefers Meta where an equivalent exists, otherwise
 Vercel AI Elements. Streaming and tools use Vercel AI SDK.
 FORM: Continuous reading surface extending the existing documentary contact sheet;
 existing direction reference seed:386810c868ac3e64. No new visual identity or assets.
+REFERENCE: Orbital main ff9de896a5293c5de78233314c3e580a6893f396 informs compact composition, quiet message actions and progressive reading. Its private source is not copied. The owner selected compact expandable activity.
+MOTION: One restrained live-activity rotation marks ongoing work; reduced motion keeps the indicator static. Streamed Markdown remains readable as it arrives without replaying paragraph entrances.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance

@@ -35,6 +35,7 @@ export function AssistantComposer(props: Props) {
     <>
       <ChatComposer
         className="assistant-composer"
+        density="compact"
         elevation="none"
         value={props.value}
         onChange={props.onChange}
@@ -46,8 +47,8 @@ export function AssistantComposer(props: Props) {
           <ChatComposerInput
             label={copy.message}
             placeholder={copy.placeholder}
-            className="min-h-14 text-base"
-            maxRows={8}
+            className="assistant-composer-input text-base"
+            maxRows={6}
             hasHistory={false}
             pasteAsToken={false}
             onSubmit={submit}
@@ -73,7 +74,7 @@ export function AssistantComposer(props: Props) {
             }}
           />
         }
-        footerActions={
+        headerActions={
           <div className="flex min-w-0 items-center gap-1">
             <input
               ref={input}
@@ -91,6 +92,7 @@ export function AssistantComposer(props: Props) {
             <Button
               variant="ghost"
               size="icon"
+              className="h-11 w-11 rounded-full"
               aria-label={copy.attach}
               disabled={props.busy || props.active}
               onClick={() => input.current?.click()}

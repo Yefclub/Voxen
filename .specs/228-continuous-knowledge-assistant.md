@@ -154,3 +154,30 @@ need; controlled web tools do not require arbitrary code execution.
 > 2026-11-13: The owner rejected the initial composer and its permission mode.
 > Use a text-first modern composer, a centered empty state, a simple upward
 > send arrow and natural-language intent with contextual confirmation.
+
+
+## Chat presentation refinement — 2026-11-13
+
+The owner selected Orbital's composer, conversation hierarchy and live activity
+as a reference, while retaining Voxen's identity and single conversation.
+Reference source: Orbital main `ff9de896a5293c5de78233314c3e580a6893f396`.
+It is a behavioral/visual reference; its private, unlicensed source is not vendored.
+The owner chose one compact, expandable progress line.
+
+- The chat workspace shall retain an accessible page heading without repeating
+  the visible destination title already supplied by desktop navigation.
+- The preferences action shall occupy the upper trailing workspace corner,
+  independently of the centered reading column, with a reachable touch target.
+- While the draft is empty or one line, the composer shall use a single compact
+  row for attachment, input and send (at most 72 CSS pixels high at 390px and
+  1280px widths); longer drafts shall grow within a bounded scrolling editor.
+- While streaming, the interface shall expose one compact progress disclosure
+  with localized tool details, partial answer text, stop and reconnect behavior.
+- Conversation content shall lead the hierarchy; edit/rewind controls, sources
+  and model usage shall remain discoverable without competing with the answer.
+- Streaming feedback shall respect reduced motion, preserve the mounted input,
+  retain failed drafts and keep the user's scrolled-up reading position.
+
+Acceptance: rendered desktop/phone Light/Dark geometry; long-draft growth and
+shrinkage; corner preferences; real persisted streaming and expandable activity;
+stop, reconnect, navigation, failed drafts and publication-preserving rewind.
