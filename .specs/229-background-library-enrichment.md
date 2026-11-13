@@ -56,6 +56,9 @@ and freshness principles retained from spec 175.
   calls, four page fetches, three execution attempts and ten minutes per run.
 - Where external research has not been enabled, the system shall perform no
   background research calls.
+- While research is executing, the system shall permit at most one valid
+  execution lease across web processes, renew it during provider calls and
+  enforce ten minutes from the first claim across retries, excluding queue time.
 - Where research uses corrected source text, the system shall bind its settings
   snapshot to that correction revision and invalidate it when the source changes.
 

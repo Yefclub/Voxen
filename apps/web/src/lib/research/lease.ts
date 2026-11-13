@@ -13,6 +13,9 @@ import {
 export const RESEARCH_LEASE_MS = 90_000;
 export const RESEARCH_MAX_ATTEMPTS = 3;
 export type ResearchLease = { id: string; userId: string; leaseOwner: string };
+function lockResearchExecution(tx: Prisma.TransactionClient) {
+  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('voxen:research:execution', 0))`;
+}
 export async function claimResearch(
   userId: string,
   id: string,
@@ -21,6 +24,18 @@ export async function claimResearch(
 ) {
   if ((await getResearchPreferences(userId)).mode === 'OFF') return null;
   return db.$transaction(async (tx) => {
+    await lockResearchExecution(tx);
+    const active = await tx.transcriptEnrichment.findFirst({
+      where: {
+        status: 'RUNNING',
+        cancelRequestedAt: null,
+        staleReason: null,
+        leaseExpiresAt: { gt: now },
+        generationSettings: { path: ['executorVersion'], equals: 1 },
+      },
+      select: { id: true },
+    });
+    if (active) return null;
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT enrichment.id FROM "TranscriptEnrichment" enrichment
       JOIN "Transcript" source ON source.id = enrichment."transcriptId" AND source."userId" = enrichment."userId"
@@ -69,7 +84,7 @@ export async function claimResearch(
         status: 'RUNNING',
         leaseOwner: owner,
         leaseExpiresAt: new Date(now.getTime() + RESEARCH_LEASE_MS),
-        startedAt: now,
+        startedAt: row.startedAt ?? now,
         nextAttemptAt: null,
         attempt: { increment: 1 },
         lastError: null,
@@ -133,5 +148,18 @@ export async function withResearchLease<T>(
     if (!row || !matchesResearchSource(row.generationSettings, source))
       throw new ResearchError('LEASE_LOST');
     return fn(tx, source);
+  });
+}
+
+export async function renewResearchLease(run: ResearchLease) {
+  return withResearchLease(run, async (tx) => {
+    // Claim and renewal share the short global lock. Re-check after acquiring
+    // it so a delayed heartbeat cannot revive an expired/replaced execution.
+    await lockResearchExecution(tx);
+    const renewed = await tx.transcriptEnrichment.updateMany({
+      where: researchFence(run),
+      data: { leaseExpiresAt: new Date(Date.now() + RESEARCH_LEASE_MS) },
+    });
+    if (renewed.count !== 1) throw new ResearchError('LEASE_LOST');
   });
 }

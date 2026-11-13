@@ -43,6 +43,8 @@ export type ResearchDependencies = {
   fetchPage: typeof fetchWebPage;
 };
 export type ResearchCitation = { url: string; title: string; excerpt: string; retrievedAt: string };
+export const RESEARCH_SEARCH_LIMIT = 3;
+export const RESEARCH_FETCH_LIMIT = 4;
 export type ResearchResult = {
   status: 'READY' | 'NO_RESEARCH_NEEDED';
   title: string;
@@ -65,6 +67,8 @@ export async function generateResearch(input: {
   dependencies?: ResearchDependencies;
 }): Promise<ResearchResult> {
   const { userId, source, signal, usage, checkpoint } = input;
+  if (usage.searchCalls >= RESEARCH_SEARCH_LIMIT || usage.fetchCalls >= RESEARCH_FETCH_LIMIT)
+    throw new ResearchError('CALL_LIMIT');
   const deps = input.dependencies ?? {
     generate: generateStructured,
     search: searchWeb,
@@ -148,6 +152,10 @@ export async function generateResearch(input: {
   const candidates: Array<{ url: string; title: string }> = [];
   const urls = new Set<string>();
   for (const query of queries) {
+    if (usage.searchCalls >= RESEARCH_SEARCH_LIMIT) {
+      usage.warnings.add('DISCOVERY_LIMIT_REACHED');
+      break;
+    }
     await before();
     usage.searchCalls++;
     const result = await deps.search(userId, query, signal);
@@ -167,6 +175,10 @@ export async function generateResearch(input: {
   const rationales: string[] = [];
   let readPages = 0;
   for (const candidate of candidates.slice(0, 4)) {
+    if (usage.fetchCalls >= RESEARCH_FETCH_LIMIT) {
+      usage.warnings.add('FETCH_LIMIT_REACHED');
+      break;
+    }
     await before();
     usage.fetchCalls++;
     let page: Awaited<ReturnType<typeof fetchWebPage>>;

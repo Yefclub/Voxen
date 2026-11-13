@@ -44,32 +44,31 @@ function fixture(
   const dependencies: ResearchDependencies = {
     generate: async <T>(input: GenerateStructuredInput<T>) => {
       calls.model++;
-      const answer =
-        Object.is(input.schema, ResearchPlanSchema)
-          ? {
-              rationale: 'Check the original release process documentation.',
-              questions: options.noResearch
-                ? []
-                : [
-                    {
-                      query: options.unsafeQuery
-                        ? 'Bearer secretExampleCredential1234'
-                        : 'Orion release process official documentation',
-                      priority: 3,
-                    },
-                  ],
-            }
-          : {
-              rationale: 'The original documentation confirms the requirement.',
-              claims: [
-                {
-                  text: 'The documented release process requires forty-two reviewers.',
-                  quote: options.invalidQuote
-                    ? 'A fabricated quotation that never appeared in the fetched source document.'
-                    : quote,
-                },
-              ],
-            };
+      const answer = Object.is(input.schema, ResearchPlanSchema)
+        ? {
+            rationale: 'Check the original release process documentation.',
+            questions: options.noResearch
+              ? []
+              : [
+                  {
+                    query: options.unsafeQuery
+                      ? 'Bearer secretExampleCredential1234'
+                      : 'Orion release process official documentation',
+                    priority: 3,
+                  },
+                ],
+          }
+        : {
+            rationale: 'The original documentation confirms the requirement.',
+            claims: [
+              {
+                text: 'The documented release process requires forty-two reviewers.',
+                quote: options.invalidQuote
+                  ? 'A fabricated quotation that never appeared in the fetched source document.'
+                  : quote,
+              },
+            ],
+          };
       return {
         output: input.schema.parse(answer),
         modelRef: 'fixture:model',
@@ -175,6 +174,15 @@ describe('bounded grounded external research', () => {
     expect(f.calls.fetch).toEqual([]);
     expect(f.calls.model).toBe(1);
   });
+  test('does not restart paid work after the durable discovery or fetch budget is exhausted', async () => {
+    for (const exhausted of ['searchCalls', 'fetchCalls'] as const) {
+      const f = fixture();
+      f.usage[exhausted] = exhausted === 'searchCalls' ? 3 : 4;
+      await expect(f.run()).rejects.toThrow('CALL_LIMIT');
+      expect(f.calls).toEqual({ model: 0, search: [], fetch: [] });
+    }
+  });
+
   test('includes billed failed model attempts in the accumulated cost', async () => {
     const f = fixture();
     const generate = f.dependencies.generate;

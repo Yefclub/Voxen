@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../src/lib/db';
 import { saveResearchPreferences } from '../src/lib/research/preferences';
 import { enqueueResearch } from '../src/lib/research/queue';
-import { claimResearch, withResearchLease } from '../src/lib/research/lease';
+import { claimResearch, withResearchLease, renewResearchLease } from '../src/lib/research/lease';
 
 const suite = process.env.DATABASE_URL ? describe : describe.skip;
 const users: string[] = [];
@@ -142,6 +142,37 @@ suite('owner-bound durable research queue', () => {
     });
   });
 
+  test('allows only one valid execution lease across different owners', async () => {
+    await saveResearchPreferences(users[0]!, 'MANUAL');
+    await saveResearchPreferences(users[1]!, 'MANUAL');
+    const a = await document(users[0]!);
+    const b = await document(users[1]!);
+    const jobs = [
+      (await enqueueResearch(users[0]!, a.id, 'MANUAL', randomUUID()))!,
+      (await enqueueResearch(users[1]!, b.id, 'MANUAL', randomUUID()))!,
+    ];
+    const claimed = await Promise.all(jobs.map((job) => claimResearch(job.userId, job.id)));
+    const active = claimed.filter((job) => job !== null);
+    expect(active).toHaveLength(1);
+    const owner = active[0]!;
+    const waiting = jobs.find((job) => job.id !== owner.id)!;
+    await renewResearchLease(owner);
+    expect(await claimResearch(waiting.userId, waiting.id)).toBeNull();
+    await db.transcriptEnrichment.update({
+      where: { id: owner.id },
+      data: { leaseExpiresAt: new Date(0) },
+    });
+    await expect(renewResearchLease(owner)).rejects.toThrow('LEASE_LOST');
+    const replacement = await claimResearch(waiting.userId, waiting.id);
+    expect(replacement?.id).toBe(waiting.id);
+    await expect(renewResearchLease(owner)).rejects.toThrow('LEASE_LOST');
+
+    await db.transcriptEnrichment.updateMany({
+      where: { id: { in: jobs.map((job) => job.id) } },
+      data: { status: 'CANCELLED', leaseOwner: null, leaseExpiresAt: null },
+    });
+  });
+
   test('claims once, fences an expired owner and does not publish after source changes', async () => {
     await saveResearchPreferences(users[0]!, 'MANUAL');
     const doc = await document();
@@ -153,7 +184,13 @@ suite('owner-bound durable research queue', () => {
       where: { id: first.id },
       data: { leaseExpiresAt: new Date(0) },
     });
+    const originalStart = new Date(Date.now() - 5_000);
+    await db.transcriptEnrichment.update({
+      where: { id: first.id },
+      data: { startedAt: originalStart },
+    });
     const next = (await claimResearch(users[0]!, queued.id, 'second-worker'))!;
+    expect(next.startedAt).toEqual(originalStart);
     expect(next.attempt).toBe(2);
     await expect(
       withResearchLease(first, async (tx) =>
