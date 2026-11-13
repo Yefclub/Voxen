@@ -123,12 +123,26 @@ knowledge-base content. Architecture is recorded in ADR-017.
   retrieval; editing before a compacted range removes its future facts.
 - [x] Desktop/mobile, Light/Dark, keyboard, edit, prune, stop and errors are
   verified in the browser with recorded evidence.
-- [ ] Existing tests, repository gates, independent review and dev deployment pass.
+- [x] Existing tests, repository gates, independent review and dev deployment pass.
 
-Local evidence: 1,512 application tests, 125 automation tests, additional SSE and
-web contracts, Chromium workflows and WebKit keyboard/confirmation regressions.
-Keyboard viewport behavior is emulated; physical OS behavior is not claimed.
-Independent review, remote CI and deployment remain pending.
+Delivery evidence for PR #1088: 1,514 application tests, 125 automation tests,
+additional SSE and web contracts, Chromium workflows and WebKit
+keyboard/confirmation regressions. Independent technical and visual reviews
+passed, and the final head passed every remote check. Development build
+`0.15.1-dev.1794597823` (`af57f318`) was deployed with both forward migrations
+applied. Live health checks and the four desktop/phone Light/Dark composer and
+preferences states passed without browser errors. Keyboard viewport behavior
+is emulated; physical OS behavior is not claimed.
+
+A subsequent live-provider intent check found false negatives for explicit
+Portuguese and English note requests that include a title and body. The prompt
+correction distinguishes classification from executing embedded instructions,
+while retaining exact user evidence, conservative ambiguity handling and
+existing publication fences. Live semantic evaluation is separate from mocked
+SDK contract tests; a green mock suite does not establish intent accuracy. Eight
+live-provider cases passed after the correction: direct note/capture requests
+in both locales, negation, a how-to question, a quoted command and ambiguous
+interest. This is a bounded regression sample, not a general accuracy claim.
 
 ## Out of scope
 
