@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794530298",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Keep 3D graph exploration working across search results",
+    "body": "Searching the graph and selecting related nodes now keep 3D exploration available\nwhen the visible graph changes. The new view frames its nodes and source links\nremain usable. Selection, hover and appearance changes preserve camera navigation\nwhen the graph itself is unchanged.",
+    "pr": 1078,
+    "author": "Kalyel",
+    "date": "2026-11-12T21:38:06-03:00",
+    "translations": {
+      "en": {
+        "title": "Keep 3D graph exploration working across search results",
+        "body": "Searching the graph and selecting related nodes now keep 3D exploration available\nwhen the visible graph changes. The new view frames its nodes and source links\nremain usable. Selection, hover and appearance changes preserve camera navigation\nwhen the graph itself is unchanged."
+      },
+      "pt-BR": {
+        "title": "Mantenha a exploração 3D ao buscar conteúdos relacionados",
+        "body": "A busca no grafo e a seleção de nós relacionados mantêm a exploração em 3D\nquando o conjunto de nós visíveis muda. A nova visualização enquadra seus nós e\nos links para as fontes continuam acessíveis. Seleção, passagem do cursor e\nmudanças de aparência preservam a navegação da câmera quando o grafo não muda."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1078"
+  },
+  {
     "version": "0.15.1-dev.1794526347",
     "channel": "dev",
     "type": "ui",
