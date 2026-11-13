@@ -90,6 +90,13 @@ model User {
   oauthAccessTokens             OauthAccessToken[]
   oauthConsents                 OauthConsent[]
   configRevisions               ConfigRevision[]               @relation("ConfigRevisionActor")
+  assistantConversation         AssistantConversation?
+  assistantMessages             AssistantMessage[]
+  assistantRuns                 AssistantRun[]
+  assistantEvents               AssistantEvent[]
+  assistantMemories             AssistantMemory[]
+  assistantActions              AssistantAction[]
+  assistantProposals            AssistantProposal[]
 
   @@index([status])
   @@index([role])
@@ -1359,4 +1366,109 @@ model OauthClientAssertion {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+// Continuous assistant (spec 228). Publications and action receipts survive rewind.
+model AssistantConversation {
+  userId       String   @id
+  revision     Int      @default(0)
+  nextPosition Int      @default(1)
+  activeRunId  String?
+  updatedAt    DateTime @default(now()) @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AssistantMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  position  Int
+  role      String
+  text      String   @default("") @db.Text
+  details   Json     @default("{}")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, position])
+}
+
+model AssistantRun {
+  id                 String              @id @default(cuid())
+  userId             String
+  requestKey         String
+  revision           Int
+  inputPosition      Int
+  outputMessageId    String
+  intent             Json?
+  approvedProposalId String?
+  status             String              @default("QUEUED")
+  workerId           String?
+  leaseExpiresAt     DateTime?
+  errorCode          String?
+  model              String?
+  inputTokens        Int                 @default(0)
+  outputTokens       Int                 @default(0)
+  costUsd            Decimal?            @db.Decimal(10, 6)
+  createdAt          DateTime            @default(now())
+  finishedAt         DateTime?
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events             AssistantEvent[]
+  proposals          AssistantProposal[]
+
+  @@unique([userId, requestKey])
+  @@index([status, leaseExpiresAt, createdAt])
+  @@index([userId, inputPosition])
+}
+
+model AssistantEvent {
+  id        Int          @id @default(autoincrement())
+  userId    String
+  runId     String
+  revision  Int
+  kind      String
+  data      Json
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  run       AssistantRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([userId, id])
+}
+
+model AssistantMemory {
+  id              String   @id @default(cuid())
+  userId          String
+  throughPosition Int
+  sourceDigest    String
+  content         Json
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, throughPosition])
+}
+
+model AssistantAction {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  name      String
+  result    Json
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+model AssistantProposal {
+  id          String       @id @default(cuid())
+  userId      String
+  runId       String
+  revision    Int
+  fingerprint String
+  name        String
+  input       Json
+  status      String       @default("PENDING")
+  createdAt   DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  run         AssistantRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, runId, fingerprint])
 }

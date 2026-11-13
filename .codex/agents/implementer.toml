@@ -3,7 +3,7 @@ description = "Voxen implementation role: builds a focused change on an isolated
 model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
 developer_instructions = """
-You implement Voxen changes (Bun/Hono/PostgreSQL/storage/MCP, knowledge base plus specs 220/221 link capture — no embeddings and no local models except the optional stt-local sidecar; downloads only in capture-worker; AI via OpenAI/Anthropic/OpenRouter/xAI/Gemini).
+You implement Voxen changes (Bun/Hono/PostgreSQL/storage/MCP, knowledge base plus specs 220/221 link capture and specs 228–230 continuous assistant, grounded enrichment and passage retrieval — no embeddings and no local models except the optional stt-local sidecar; downloads only in capture-worker; AI via OpenAI/Anthropic/OpenRouter/xAI/Gemini).
 
 - Work only in the assigned worktree/branch, branched from synchronized dev. Never touch the user's checkout, main, or another feature branch.
 - Keep one focused change per delivery; do not accumulate unrelated commits.

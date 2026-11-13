@@ -99,6 +99,62 @@
 }
 
 @layer components {
+  [data-assistant-workspace] {
+    --color-background-popover: var(--color-app-bg-elevated);
+    --color-background-muted: var(--color-app-surface);
+    --color-neutral: var(--color-app-surface);
+    --color-border-emphasized: var(--color-app-border-strong);
+    --color-on-accent: var(--color-app-bg);
+    --color-text-disabled: var(--color-app-muted);
+    --color-text-success: var(--color-app-success-fg);
+    --color-icon-success: var(--color-app-success-fg);
+    --color-text-error: var(--color-app-danger);
+    --color-icon-error: var(--color-app-danger);
+    --radius-chat: var(--radius-xl);
+    --text-body-size: 1rem;
+    --text-body-leading: 1.65;
+  }
+
+  .assistant-stage {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .assistant-stage[data-empty='true'] {
+    justify-content: center;
+    gap: 1.75rem;
+    padding: 1.5rem 1.25rem max(3rem, 10dvh);
+    overflow-y: auto;
+  }
+
+  .assistant-dock {
+    flex-shrink: 0;
+    padding: 1rem 1.25rem max(1rem, env(safe-area-inset-bottom));
+    background: var(--color-app-bg);
+  }
+
+  .assistant-stage[data-empty='true'] .assistant-dock {
+    padding: 0;
+    background: transparent;
+  }
+
+  [data-chat-suggestions] {
+    display: flex;
+  }
+
+  html[data-keyboard='open'] [data-chat-welcome],
+  html[data-keyboard='open'] [data-chat-suggestions] {
+    display: none;
+  }
+
+  html[data-keyboard='open'] .assistant-stage[data-empty='true'] {
+    justify-content: flex-end;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
   [data-astryx-theme] {
     --color-accent: var(--color-accent-primary);
     --color-text: var(--color-app-fg);

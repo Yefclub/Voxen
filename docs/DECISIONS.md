@@ -497,3 +497,40 @@ providers. File upload and retry/reprocessing remain outside the MCP
 contract. Internal publishing contract version 2 remains private; prepared
 content import and deterministic knowledge-base reads keep their existing
 behavior without requiring AI keys.
+
+## ADR-017 — Continuous assistant and versioned derived knowledge
+
+**Date**: 2026-11-13
+**Status**: Accepted by owner (specs 228–230; amends specs 215/175 and ADR-004)
+
+The integrated assistant uses AI SDK 7 with explicit objects for the existing
+cloud providers and encrypted per-user credentials. Capture interpretation stays
+tool-free. PostgreSQL owns the single conversation per user, message revisions,
+run leases, replayable progress, structured compaction and action receipts.
+Disconnect does not cancel execution; stop, edits and pruning fence older work.
+Completed publications survive rewinds; discarded conversation text and derived
+memory cannot be retrieved.
+
+Chat tools adapt shared knowledge/capture/note services, never a loopback MCP
+token. A separate intent check reads the authenticated user's current request,
+not retrieved content, to grant bounded additions. Ambiguous intent/targets
+produce exact, revision-bound proposals for confirmation in the conversation.
+There is no composer permission mode. Destructive tools are excluded.
+Retrieval uses full-text search, progressive reading, graph relationships and
+verified references. Summaries are versioned derived state, never authorization.
+
+Background organization and optional web research are independent of capture
+completion. Research uses a separately configured encrypted search credential
+and the isolated capture-worker for page retrieval. Suggested context remains
+separate and excluded from default factual retrieval until accepted.
+
+PostgreSQL passage indexes and trigram discovery extend the lexical baseline.
+BM25 extensions require a measured proof before changing the database image.
+Embeddings, a separate search cluster and arbitrary shell execution are not
+required. General sandbox runtimes and Workflow Postgres reference deployments
+require a separate compatibility proof; controlled web tools use the existing
+worker without exposing a shell to AI.
+
+References: [AI SDK](https://ai-sdk.dev/docs/agents/loop-control),
+[resumption](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-resume-streams),
+[contextual retrieval](https://www.anthropic.com/research/contextual-retrieval).

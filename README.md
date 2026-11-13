@@ -16,6 +16,13 @@ it with the cloud AI provider each user configures (OpenAI, Anthropic,
 OpenRouter, xAI, or Google Gemini). Voxen runs no local models and no embeddings, and the
 knowledge base keeps working without any provider key.
 
+An optional [continuous assistant](docs/ASSISTANT.md) searches your library,
+reads and verifies evidence, connects sources, and adds requested captures or
+notes. It uses your configured cloud providers through Vercel AI SDK. Clear
+requests need no mode selector; uncertain additions are confirmed in the
+conversation. Editing an earlier message rewinds the conversation while
+retaining already published knowledge.
+
 > [!IMPORTANT]
 > **Project status: beta / active validation.** Voxen is already useful in the
 > maintainer's personal workflow, but it is not yet considered fully stable.
@@ -71,7 +78,9 @@ credentials, private content, or unredacted logs in a public report.
 - **Storage:** shared local volume by default; optional MinIO/S3-compatible driver
 - **Content:** prepared documents, notes, and assets are ingested through versioned
   HTTP/MCP contracts; retrieval is deterministic full-text search with
-  progressive reads — no built-in model execution
+  progressive reads
+- **Assistant (optional):** Vercel AI SDK, the native Astryx Chat kit, durable
+  PostgreSQL execution, checkpoint-linked memory, and controlled web tools
 - **Capture (optional):** `capture-worker` container with yt-dlp, Deno,
   ffmpeg/ffprobe (unmodified LGPL build), Trafilatura, and the Smokescreen
   egress proxy; interpretation and speech-to-text through per-user keys for

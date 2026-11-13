@@ -45,7 +45,9 @@ export type UserSettingKey =
   /** Legacy (spec 220) JSON role → {provider, model}; read-only since spec 221. */
   | 'ai_model_roles'
   /** JSON role → ordered [{provider, model}, …] fallback chain (spec 221). */
-  | 'ai_model_chains';
+  | 'ai_model_chains'
+  | 'assistant_preferences'
+  | 'assistant_search_key';
 
 export type AppLanguage = 'pt-BR' | 'en';
 
