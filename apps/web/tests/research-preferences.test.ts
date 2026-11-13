@@ -107,6 +107,31 @@ suite('research consent and source invalidation', () => {
       await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${name}()`);
     }
   });
+  test('archiving hides accepted context without making it stale after an unchanged restore', async () => {
+    const doc = await document();
+    const accepted = await db.transcriptEnrichment.create({
+      data: {
+        userId: users[0]!,
+        transcriptId: doc.id,
+        runKey: randomUUID(),
+        trigger: 'MANUAL',
+        status: 'READY',
+        reviewState: 'ACCEPTED',
+        sourceVersion: 1,
+        sourceChecksum: 'original-checksum',
+        content: 'Previously accepted context.',
+      },
+    });
+    await db.transcript.update({ where: { id: doc.id }, data: { status: 'ARCHIVED' } });
+    await db.transcript.update({ where: { id: doc.id }, data: { status: 'ACTIVE' } });
+    expect(await db.transcriptEnrichment.findUnique({ where: { id: accepted.id } })).toMatchObject({
+      status: 'READY',
+      reviewState: 'ACCEPTED',
+      staleReason: null,
+      content: 'Previously accepted context.',
+    });
+  });
+
   test('source corrections invalidate accepted evidence atomically and archive cancels pending work', async () => {
     const doc = await document();
     const accepted = await db.transcriptEnrichment.create({
