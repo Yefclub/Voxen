@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794579147",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Centered sidebar control icons",
+    "body": "The sidebar reopen control now aligns with the header breadcrumb. Icon-only\nbuttons use Astryx's dedicated icon slot, removing the text-baseline offset\nwhile retaining labels, focus behavior and control dimensions.",
+    "pr": 1084,
+    "author": "Kalyel",
+    "date": "2026-11-13T11:12:13-03:00",
+    "translations": {
+      "en": {
+        "title": "Centered sidebar control icons",
+        "body": "The sidebar reopen control now aligns with the header breadcrumb. Icon-only\nbuttons use Astryx's dedicated icon slot, removing the text-baseline offset\nwhile retaining labels, focus behavior and control dimensions."
+      },
+      "pt-BR": {
+        "title": "Ícones dos controles da sidebar centralizados",
+        "body": "O botão de reabrir a sidebar agora fica alinhado ao breadcrumb do cabeçalho.\nBotões com ícone usam o espaço nativo do Astryx, eliminando o deslocamento da\nlinha de texto e preservando rótulos, foco e dimensões dos controles."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1084"
+  },
+  {
     "version": "0.15.1-dev.1794542773",
     "channel": "dev",
     "type": "ui",
