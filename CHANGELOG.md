@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794582890 — 2026-11-13 · Dev
+
+### 🐛 Readable buttons in narrow layouts
+
+Guide preference actions now rearrange within the content tools column instead
+of squeezing their labels against the border. Text buttons grow when labels
+wrap, including enlarged text. Guide instructions, selection feedback and errors
+also follow the Light and Dark appearance colors.
+
 ## v0.15.1-dev.1794579147 — 2026-11-13 · Dev
 
 ### 🐛 Centered sidebar control icons

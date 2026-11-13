@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794582890",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Readable buttons in narrow layouts",
+    "body": "Guide preference actions now rearrange within the content tools column instead\nof squeezing their labels against the border. Text buttons grow when labels\nwrap, including enlarged text. Guide instructions, selection feedback and errors\nalso follow the Light and Dark appearance colors.",
+    "pr": 1086,
+    "author": "Kalyel",
+    "date": "2026-11-13T12:14:38-03:00",
+    "translations": {
+      "en": {
+        "title": "Readable buttons in narrow layouts",
+        "body": "Guide preference actions now rearrange within the content tools column instead\nof squeezing their labels against the border. Text buttons grow when labels\nwrap, including enlarged text. Guide instructions, selection feedback and errors\nalso follow the Light and Dark appearance colors."
+      },
+      "pt-BR": {
+        "title": "Botões legíveis em espaços estreitos",
+        "body": "As ações de preferência do Guia agora se reorganizam na coluna de opções do\nconteúdo, sem apertar o texto contra a borda. Botões de texto crescem quando o\nrótulo ocupa mais de uma linha, inclusive com texto ampliado. Instruções, retorno\nde seleção e erros do Guia também acompanham as cores dos temas Claro e Escuro."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1086"
+  },
+  {
     "version": "0.15.1-dev.1794579147",
     "channel": "dev",
     "type": "fix",
