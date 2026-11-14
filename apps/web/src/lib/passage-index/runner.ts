@@ -21,7 +21,8 @@ export async function executePassageIndex(
     const known = error instanceof PassageBuildError || error instanceof PassageSourceError;
     const code = known ? error.code : 'INDEX_FAILED';
     await failPassageIndex(claim, code, !(error instanceof PassageBuildError));
-    if (!known) structuredDiagnostic('warning', 'passage-index-failed', 'INDEX_FAILED', error);
+    if (!known)
+      structuredDiagnostic('warning', 'passage-index-failed', 'PASSAGE_INDEX_FAILED', error);
     return false;
   }
 }

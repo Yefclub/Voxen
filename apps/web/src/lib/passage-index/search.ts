@@ -6,6 +6,7 @@ import { structuredDiagnostic } from '../structured-log';
 import type { PassageKind } from './build';
 import type { SourceEvidenceAuthority } from '../../shared/source-evidence';
 import { visiblePassageSources, passageQuery, passageLiteral, exactIdentifier } from './sql';
+import { discoverKnowledgeNames } from './discovery';
 
 export const PassageSearchSchema = z
   .object({
@@ -168,12 +169,21 @@ export async function searchPassages(userId: string, raw: PassageSearchInput) {
   } catch (error) {
     rows = [];
     limitations.add('INDEX_UNAVAILABLE');
-    structuredDiagnostic('warning', 'passage-search-unavailable', 'INDEX_UNAVAILABLE', error);
+    structuredDiagnostic(
+      'warning',
+      'passage-search-unavailable',
+      'PASSAGE_INDEX_UNAVAILABLE',
+      error,
+    );
   }
   const baseline =
     limitations.has('PARTIAL_INDEX') || limitations.has('INDEX_UNAVAILABLE')
       ? await baselineSearch(userId, input)
       : { results: [], truncated: false };
+  const discovery = rows.length
+    ? { matches: [], unavailable: false }
+    : await discoverKnowledgeNames(userId, input.query, input);
+  if (discovery.unavailable) limitations.add('PASSAGE_DISCOVERY_UNAVAILABLE');
   return {
     results: rows.slice(0, input.limit).map((row) => {
       const {
@@ -186,6 +196,7 @@ export async function searchPassages(userId: string, raw: PassageSearchInput) {
       return { ...reference, ...excerpt(row, input.query) } satisfies PassageHit;
     }),
     truncated: rows.length > input.limit,
+    discovery: discovery.matches,
     coverage,
     limitations: [...limitations].sort(),
     baseline: baseline.results
