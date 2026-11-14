@@ -89,8 +89,8 @@ search as their respective baselines.
 | Complete fixture quotation in returned excerpt | 4/30 | 30/30 |
 | Misspelled entity discovered | 0/4 | 4/4 |
 | Canonical versioned passage citations checked | Not supplied by baseline | 30/30 valid |
-| Warm p50 search | 1.87 ms | 33.64 ms |
-| Warm p95 search | 23.43 ms | 39.30 ms |
+| Warm p50 search | 1.16 ms | 31.87 ms |
+| Warm p95 search | 24.27 ms | 40.84 ms |
 
 Complete-quotation recall is stricter than headline relevance: baseline snippets
 retain their existing short word limit, while candidate excerpts allow up to
@@ -99,13 +99,18 @@ is incorrect. Similar-name leads count only toward discovery, never passage
 recall or citation verification. These deterministic samples do not establish
 general semantic accuracy or performance on larger libraries.
 
-Initial indexing took 5.12 seconds, excluding corpus creation. Derived ledger
-and passage relations occupied 3,235,840 bytes including their indexes and
+Initial indexing took 2.75 seconds, excluding corpus creation. Derived ledger
+and passage relations occupied 3,211,264 bytes including their indexes and
 TOAST, plus 8,192 bytes for the entity-name index. Existing note/transcript FTS
 indexes occupied 204,800 bytes. Index size is reported as additional storage,
 not a claim of reduced storage cost. This candidate passes the predeclared
 quality/isolation and 250 ms p95 gate; it offers richer retrieval at an observed
 latency/storage cost while retaining baseline discovery.
+
+This run was recorded at 2026-11-14T21:30:14Z with default GiST signatures.
+Custom signature options were removed in a forward migration after a repeated
+Prisma shadow reset rejected their introspection. Normal upgrade/declarative
+drift checks pass without changing the migration gate or its existing allowlist.
 
 The opt-in benchmark lives in `apps/web/tests/passage-benchmark.test.ts`. It
 requires a dedicated local database named `voxen_passage_benchmark` (or an
