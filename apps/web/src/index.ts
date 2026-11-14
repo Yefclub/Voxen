@@ -35,6 +35,7 @@ import { requestLogging } from './lib/request-logging';
 import { captureRoutes } from './routes/captures';
 import { assistantRoutes } from './routes/assistant';
 import { researchRoutes } from './routes/research';
+import { organizationRoutes } from './routes/organization';
 import { shareTargetRoutes } from './routes/share-target';
 import { startResearchRuntime } from './lib/research/runtime';
 import { startOrganizationRuntime } from './lib/organization/runtime';
@@ -188,6 +189,7 @@ app.route('/api/library', libraryRoutes);
 app.route('/api/captures', captureRoutes);
 app.route('/api/chat', assistantRoutes);
 app.route('/api/research', researchRoutes);
+app.route('/api/organization', organizationRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
