@@ -551,6 +551,59 @@ suite('organization source lifecycle and current graph visibility', () => {
         });
     }
   });
+  test('shared legacy support archives and restores an organization identity through the application service', async () => {
+    const f = await published(),
+      legacySource = await queued();
+    const organization = await db.brainEdge.findFirstOrThrow({
+      where: {
+        userId: users[0],
+        kind: 'PART_OF',
+        method: 'llm-grounded-organization',
+      },
+    });
+    const legacy = await db.brainEdge.create({
+      data: {
+        userId: users[0]!,
+        fromNodeId: organization.fromNodeId,
+        toNodeId: organization.toNodeId,
+        kind: 'RELATED_TO',
+        method: 'llm-grounded-relation',
+      },
+    });
+    await db.brainSource.createMany({
+      data: [legacy.fromNodeId, legacy.toNodeId].map((nodeId) => ({
+        userId: users[0]!,
+        edgeId: legacy.id,
+        nodeId,
+        sourceType: 'TRANSCRIPT' as const,
+        sourceId: legacySource.source.id,
+        evidenceKey: randomUUID(),
+        excerpt: quote,
+      })),
+    });
+    await db.transcript.update({
+      where: { id: f.source.id },
+      data: { title: 'Obsolete organization source' },
+    });
+    expect(
+      await db.brainEdge.findFirstOrThrow({ where: { id: organization.id, userId: users[0] } }),
+    ).toMatchObject({ status: 'ARCHIVED' });
+    for (const status of ['ARCHIVED', 'ACTIVE'] as const) {
+      expect(
+        await applyTranscriptLifecycle(users[0]!, legacySource.source.id, status),
+      ).not.toBeNull();
+      expect(
+        await db.brainEdge.findFirstOrThrow({ where: { id: legacy.id, userId: users[0] } }),
+      ).toMatchObject({ status });
+      for (const id of [legacy.fromNodeId, legacy.toNodeId])
+        expect(
+          await db.brainNode.findFirstOrThrow({ where: { id, userId: users[0] } }),
+        ).toMatchObject({ status });
+    }
+    expect(
+      await db.brainEdge.findFirstOrThrow({ where: { id: organization.id, userId: users[0] } }),
+    ).toMatchObject({ status: 'ARCHIVED' });
+  });
   test('actual deletion removes owned runs and keys while preserving another source and foreign evidence', async () => {
     const one = await published(),
       two = await published();

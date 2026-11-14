@@ -13,8 +13,8 @@ type TranscriptListItem = Prisma.TranscriptGetPayload<{ select: typeof TRANSCRIP
  * Projects source lifecycle into the navigable graph without deleting the
  * temporal ledger. A grounded edge is current only while at least one of its
  * non-invalidated transcript sources is ACTIVE.
- * Organization source triggers own its lifecycle markers and manual archives;
- * this legacy pass must not overwrite those decisions.
+ * Organization effects retain lifecycle markers so shared legacy support can
+ * be reconciled without undoing explicit manual archives.
  */
 export async function reconcileGroundedBrainLifecycle(
   userId: string,
@@ -52,6 +52,12 @@ export async function reconcileGroundedBrainLifecycle(
   await client.$executeRaw(Prisma.sql`
     WITH desired AS (
       SELECT node.id,
+        EXISTS (
+          SELECT 1 FROM "BrainEdge" organization
+          WHERE organization."userId" = node."userId"
+            AND organization.method = 'llm-grounded-organization'
+            AND (organization."fromNodeId" = node.id OR organization."toNodeId" = node.id)
+        ) AS organization_managed,
         CASE WHEN EXISTS (
             SELECT 1 FROM "BrainEdge" edge
             WHERE edge."userId" = ${userId}
@@ -63,19 +69,20 @@ export async function reconcileGroundedBrainLifecycle(
         AND node.metadata->>'method' = 'llm-grounded'
         AND node."sourceType" IS NULL
         AND node.status <> 'TRASH'::"ContentStatus"
-        AND NOT EXISTS (
-          SELECT 1 FROM "BrainEdge" organization
-          WHERE organization."userId" = node."userId"
-            AND organization.method = 'llm-grounded-organization'
-            AND (organization."fromNodeId" = node.id OR organization."toNodeId" = node.id)
-        )
     )
     UPDATE "BrainNode" node
     SET status = desired.status,
+        metadata = CASE WHEN desired.organization_managed THEN
+          CASE WHEN desired.status = 'ARCHIVED'::"ContentStatus"
+            THEN node.metadata || '{"organizationLifecycleArchived":true}'::jsonb
+            ELSE node.metadata - 'organizationLifecycleArchived' END
+          ELSE node.metadata END,
         "updatedAt" = CURRENT_TIMESTAMP
     FROM desired
     WHERE node.id = desired.id
       AND node.status IS DISTINCT FROM desired.status
+      AND (NOT desired.organization_managed OR node.status = 'ACTIVE'::"ContentStatus"
+        OR node.metadata->>'organizationLifecycleArchived' = 'true')
   `);
 }
 
