@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794617842",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Review cited research alongside your saved sources",
+    "body": "Optional library research finds cited external context independently of capture.\nEnable manual research or research on new captures, inspect sources and costs,\nand accept, edit, dismiss or delete results without changing the original.\nOnly accepted current context participates in factual retrieval. Long accepted\ncontext can be read progressively by the assistant.",
+    "pr": 1097,
+    "author": "Kalyel",
+    "date": "2026-11-13T21:57:07-03:00",
+    "translations": {
+      "en": {
+        "title": "Review cited research alongside your saved sources",
+        "body": "Optional library research finds cited external context independently of capture.\nEnable manual research or research on new captures, inspect sources and costs,\nand accept, edit, dismiss or delete results without changing the original.\nOnly accepted current context participates in factual retrieval. Long accepted\ncontext can be read progressively by the assistant."
+      },
+      "pt-BR": {
+        "title": "Revise pesquisas com fontes junto dos seus conteúdos",
+        "body": "A pesquisa opcional da biblioteca encontra contexto externo com fontes,\nindependentemente da captura. Ative a pesquisa manual ou em novas capturas,\nconfira fontes e custos e aceite, edite, dispense ou exclua resultados sem\nalterar o original. Apenas contexto aceito e atual entra na busca factual.\nO assistente também consegue ler contextos longos de forma progressiva."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1097"
+  },
+  {
     "version": "0.15.1-dev.1794607023",
     "channel": "dev",
     "type": "fix",

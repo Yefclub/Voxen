@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.15.1-dev.1794617842 — 2026-11-13 · Dev
+
+### ✨ Review cited research alongside your saved sources
+
+Optional library research finds cited external context independently of capture.
+Enable manual research or research on new captures, inspect sources and costs,
+and accept, edit, dismiss or delete results without changing the original.
+Only accepted current context participates in factual retrieval. Long accepted
+context can be read progressively by the assistant.
+
 ## v0.15.1-dev.1794607023 — 2026-11-13 · Dev
 
 ### 🐛 A more compact and readable chat
