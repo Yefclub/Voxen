@@ -324,7 +324,8 @@ suite('organization source lifecycle and current graph visibility', () => {
       where: { userId: users[0], sourceId: f.source.id },
       orderBy: { id: 'asc' },
     });
-    const edgeIds = evidence.map((row) => row.edgeId).sort();
+    const edgeIds = evidence.flatMap((row) => (row.edgeId ? [row.edgeId] : [])).sort();
+    expect(edgeIds).toHaveLength(3);
     await db.transcript.update({ where: { id: f.source.id }, data: { title: 'Title B' } });
     await db.transcript.update({ where: { id: f.source.id }, data: { title: f.source.title } });
     expect(
