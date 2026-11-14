@@ -22,6 +22,7 @@
 | Zod 4                     | validação                   |
 | Vercel AI SDK 7            | Optional bounded assistant loop and explicit cloud providers |
 | Astryx Chat                | Native themed chat composer, messages and interaction primitives |
+| jsdiff 9 (`diff`, BSD-3-Clause) | Bounded server-side line mapping for source-evidence provenance |
 
 ## Infraestrutura
 

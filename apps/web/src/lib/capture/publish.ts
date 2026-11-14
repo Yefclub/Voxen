@@ -6,7 +6,8 @@
 // the same job returns the same document and writes the same storage keys.
 // Reprocess: updates the existing transcript in place, snapshotting the
 // previous canonical text as a SourceContentVersion first.
-// Markdown versions are immutable: workspaces/<u>/transcripts/<id>/sources/vN.md
+// Markdown objects are content-addressed inside each source version, so a late
+// duplicate attempt cannot overwrite the committed document's evidence bytes.
 // ============================================================================
 
 import { createHash } from 'node:crypto';
@@ -21,9 +22,10 @@ import { invalidateGraphCache } from '../graph-cache';
 import { claimIngestKey, PREPARED_DOCUMENT_CONTRACT_VERSION } from '../prepared-ingest';
 import { storageGet, storagePut } from '../storage';
 import { applyTagsToTranscript } from '../tags';
-import { invalidateTranscriptReadCache } from '../transcript-content';
+import { invalidateTranscriptReadCache, TranscriptReadError } from '../transcript-content';
 import { buildCaptureMarkdown } from './markdown';
 import type { CaptureArtifact, CaptureInterpretation } from './types';
+import type { SourceEvidenceManifest } from '../source-provenance';
 
 export const CAPTURE_PRODUCER_ID = 'voxen-capture';
 
@@ -56,8 +58,13 @@ export function sourceChecksum(plainText: string): string {
     .digest('hex');
 }
 
-export function sourceVersionKey(userId: string, transcriptId: string, version: number): string {
-  return `workspaces/${userId}/transcripts/${transcriptId}/sources/v${version}.md`;
+export function sourceVersionKey(
+  userId: string,
+  transcriptId: string,
+  version: number,
+  canonicalChecksum: string,
+): string {
+  return `workspaces/${userId}/transcripts/${transcriptId}/sources/v${version}-${canonicalChecksum}.md`;
 }
 
 const SOURCE_BY_PLATFORM: Record<CaptureArtifact['platform'], TranscriptSource> = {
@@ -165,10 +172,14 @@ function documentFields(input: PublishInput, fallbackSource?: TranscriptSource):
   };
 }
 
-function sourceMetadata(input: PublishInput): Prisma.InputJsonValue {
+function sourceMetadata(
+  input: PublishInput,
+  evidenceManifest: SourceEvidenceManifest,
+): Prisma.InputJsonValue {
   const { artifact } = input;
   return {
     producer: CAPTURE_PRODUCER_ID,
+    evidenceManifest,
     contractVersion: PREPARED_DOCUMENT_CONTRACT_VERSION,
     jobId: input.jobId,
     platform: artifact.platform,
@@ -190,8 +201,13 @@ async function renderAndStore(
   version: number,
   fields: DocumentFields,
   thumbnail: string | null,
-): Promise<{ mdPath: string; plainText: string; checksum: string }> {
-  const { markdown, plainText } = buildCaptureMarkdown({
+): Promise<{
+  mdPath: string;
+  plainText: string;
+  checksum: string;
+  evidenceManifest: SourceEvidenceManifest;
+}> {
+  const { markdown, plainText, evidenceManifest } = buildCaptureMarkdown({
     id: transcriptId,
     userId: input.userId,
     source: MD_SOURCE[fields.source],
@@ -211,9 +227,14 @@ async function renderAndStore(
     artifact: input.artifact,
     interpretation: input.interpretation,
   });
-  const mdPath = sourceVersionKey(input.userId, transcriptId, version);
+  const mdPath = sourceVersionKey(
+    input.userId,
+    transcriptId,
+    version,
+    evidenceManifest.canonicalChecksum,
+  );
   await storagePut({ key: mdPath, body: markdown, contentType: 'text/markdown; charset=utf-8' });
-  return { mdPath, plainText, checksum: sourceChecksum(plainText) };
+  return { mdPath, plainText, checksum: sourceChecksum(plainText), evidenceManifest };
 }
 
 async function finishTags(userId: string, transcriptId: string, tags: string[]): Promise<void> {
@@ -298,7 +319,7 @@ async function publishNew(input: PublishInput): Promise<PublishResult> {
         sourceChecksum: stored.checksum,
         sourceVersion: 1,
         sourceCollectedAt: new Date(),
-        sourceMetadata: sourceMetadata(input),
+        sourceMetadata: sourceMetadata(input, stored.evidenceManifest),
       },
     });
     if (input.artifact.segments.length > 0) {
@@ -354,8 +375,36 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
   const stored = await renderAndStore(input, refreshId, nextVersion, fields, thumbnail);
   const previousChecksum = current.sourceChecksum ?? sourceChecksum(current.plainText);
 
-  await db.$transaction(async (tx) => {
+  const refreshed = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:reprocess:${refreshId}`}))`;
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Transcript" WHERE id = ${refreshId} AND "userId" = ${input.userId}
+      FOR UPDATE
+    `;
+    if (!locked.length) throw new Error('Reprocess target no longer exists.');
+    const latest = await tx.transcript.findFirstOrThrow({
+      where: { id: refreshId, userId: input.userId },
+      select: {
+        sourceVersion: true,
+        sourceChecksum: true,
+        mdPath: true,
+        plainText: true,
+        sourceMetadata: true,
+      },
+    });
+    if ((latest.sourceMetadata as Record<string, unknown> | null)?.jobId === input.jobId)
+      return false;
+    if (
+      latest.sourceVersion !== current.sourceVersion ||
+      latest.sourceChecksum !== current.sourceChecksum ||
+      latest.mdPath !== current.mdPath ||
+      latest.plainText !== current.plainText ||
+      JSON.stringify(latest.sourceMetadata) !== JSON.stringify(current.sourceMetadata)
+    )
+      throw new TranscriptReadError(
+        'STALE_REVISION',
+        'Reprocess source changed before publication.',
+      );
     await tx.sourceContentVersion.createMany({
       data: [
         {
@@ -363,9 +412,9 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
           transcriptId: refreshId,
           version: baseline,
           checksum: previousChecksum,
-          mdPath: current.mdPath,
-          plainText: current.plainText,
-          metadata: (current.sourceMetadata ?? {}) as Prisma.InputJsonValue,
+          mdPath: latest.mdPath,
+          plainText: latest.plainText,
+          metadata: (latest.sourceMetadata ?? {}) as Prisma.InputJsonValue,
         },
       ],
       skipDuplicates: true,
@@ -373,7 +422,7 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
     // Tags are additive on reprocess: manual tags the user added stay.
     await tx.chunk.deleteMany({ where: { transcriptId: refreshId } });
     await tx.transcript.update({
-      where: { id: refreshId },
+      where: { id: refreshId, userId: input.userId },
       data: {
         url: fields.url,
         title: fields.title,
@@ -401,7 +450,7 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
         sourceChecksum: stored.checksum,
         sourceVersion: nextVersion,
         sourceCollectedAt: new Date(),
-        sourceMetadata: sourceMetadata(input),
+        sourceMetadata: sourceMetadata(input, stored.evidenceManifest),
         sourceRefreshStatus: 'CURRENT',
         sourceRefreshError: null,
       },
@@ -410,7 +459,7 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
       UPDATE "Transcript"
       SET "correctionState" = 'STALE'::"TranscriptCorrectionState",
           "correctionStaleReason" = 'source-version-changed'
-      WHERE id = ${refreshId} AND "correctionRevision" > 0
+      WHERE id = ${refreshId} AND "userId" = ${input.userId} AND "correctionRevision" > 0
     `;
     if (input.artifact.segments.length > 0) {
       await tx.chunk.createMany({
@@ -424,9 +473,14 @@ async function publishRefresh(input: PublishInput, refreshId: string): Promise<P
           })),
       });
     }
+    return true;
   });
   await finishTags(input.userId, refreshId, input.interpretation.tags);
-  return { transcriptId: refreshId, created: false, changed: stored.checksum !== previousChecksum };
+  return {
+    transcriptId: refreshId,
+    created: false,
+    changed: refreshed && stored.checksum !== previousChecksum,
+  };
 }
 
 export async function publishCapturedDocument(input: PublishInput): Promise<PublishResult> {

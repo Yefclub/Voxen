@@ -5,8 +5,12 @@ const SINGLE_TEXT_LIMIT = 60_000;
 export const SECTION_LIMIT = 48_000;
 const MAX_SECTIONS = 24;
 
-export function sourceSections(text: string): string[] {
-  if (text.length <= SINGLE_TEXT_LIMIT) return [text];
+export function sourceSections(
+  text: string,
+  options: { strictSectionLimit?: boolean } = {},
+): string[] {
+  if (text.length <= (options.strictSectionLimit ? SECTION_LIMIT : SINGLE_TEXT_LIMIT))
+    return [text];
   if (text.length > SECTION_LIMIT * MAX_SECTIONS) throw new CaptureError('TEXT_TOO_LARGE');
   const sections: string[] = [];
   let start = 0;

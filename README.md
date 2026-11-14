@@ -87,7 +87,25 @@ the earlier accepted result. Cancelling or deleting research preserves the
 original document. Source changes and expiry invalidate affected context.
 Discovery is bounded to three searches, four page fetches and three attempts
 within ten minutes from the first claim. These cloud calls can incur provider
-costs. Background organization and passage indexing are separate increments.
+costs.
+
+Optional **AI providers → Library organization** is also off by default and has
+independent manual/new-capture consent. It uses the Standard model without a
+discovery key. In a document, **AI connections** shows progress, cancellable work
+and expandable history with model, cost and interrupted-call uncertainty.
+Automatic work starts with captures collected after activation.
+
+Organization connects graph concepts using literal eligible source passages,
+not generated summaries, visual descriptions or audience comments. Evidence
+distinguishes captured, user-corrected and prepared-document passages in the
+reader, MCP and assistant. This classification records origin, not factual
+truth. Manual graph choices, folders, tags and original text remain intact.
+Ambiguous aliases are not merged. Older captures without a provenance manifest
+need reprocessing before this additional analysis; keyless search stays usable.
+Organization allows at most 24 sections of 48,000 UTF-16 units, three execution
+claims and fifteen minutes from the first claim. Paid completed analyses survive
+retries; an interrupted unconfirmed call is reported as unknown cost. Passage
+indexing is a separate increment.
 
 ## Stack
 

@@ -58,6 +58,7 @@ import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 import { TranscriptCorrectionsCard } from '../components/library/transcript-corrections-card';
 import { TranscriptKnowledgeGraph } from '../components/library/transcript-knowledge-graph';
 import { TranscriptResearch } from '../components/library/transcript-research';
+import { TranscriptOrganization } from '../components/library/transcript-organization';
 import { TranscriptInterestFeedback } from '../components/library/transcript-interest-feedback';
 import { CaptureJobCard } from '../components/capture/capture-job-card';
 import { captureErrorText } from '../components/capture/capture-notice';
@@ -775,7 +776,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 t={translate}
               />
               {canUseContextualActions && (
-                <TranscriptKnowledgeGraph key={t.id} transcriptId={t.id} />
+                <>
+                  <TranscriptOrganization
+                    key={`organization-${t.id}`}
+                    transcriptId={t.id}
+                    sourceActive={t.status === 'ACTIVE'}
+                  />
+                  <TranscriptKnowledgeGraph key={t.id} transcriptId={t.id} />
+                </>
               )}
               <TranscriptCorrectionsCard
                 transcriptId={t.id}

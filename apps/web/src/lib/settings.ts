@@ -49,7 +49,8 @@ export type UserSettingKey =
   | 'ai_model_chains'
   | 'assistant_preferences'
   | 'assistant_search_key'
-  | 'library_research_preferences';
+  | 'library_research_preferences'
+  | 'library_organization_preferences';
 
 export type AppLanguage = 'pt-BR' | 'en';
 

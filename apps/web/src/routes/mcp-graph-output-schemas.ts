@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SOURCE_EVIDENCE_AUTHORITIES } from '../shared/source-evidence';
 export const MCP_GRAPH_NODE_SCHEMA = z.object({
   id: z.string(),
   key: z.string(),
@@ -22,6 +23,7 @@ const source = z
     startSec: z.number().nullable(),
     endSec: z.number().nullable(),
     excerpt: z.string().nullable(),
+    authority: z.enum(SOURCE_EVIDENCE_AUTHORITIES).optional(),
     id: z.string().optional(),
     edgeId: z.string().nullable().optional(),
     chunkId: z.string().nullable().optional(),

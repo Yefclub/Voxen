@@ -1,6 +1,7 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { runWithBrainIndexLease, type BrainReindexGuard } from './brain-index-lease';
+import { upsertEntityNode, upsertTopicNode } from './brain-concept-nodes';
 import {
   buildNoteIndexes,
   noteBrainSelect,
@@ -836,39 +837,6 @@ async function upsertNoteNode(
     sourceType: 'NOTE',
     sourceId: note.id,
     metadataMode: options.resetCompletion ? 'reset-completion' : 'merge',
-  });
-}
-
-async function upsertTopicNode(userId: string, topic: TopicCandidate) {
-  return upsertBrainNode({
-    userId,
-    key: `TOPIC:${topic.slug}`,
-    type: 'TOPIC',
-    label: topic.label,
-    description: 'Tópico detectado automaticamente nos conteúdos da biblioteca.',
-    status: 'ACTIVE',
-    metadata: {
-      method: 'keyword',
-    },
-    sourceType: null,
-    sourceId: null,
-  });
-}
-
-async function upsertEntityNode(userId: string, entity: EntityCandidate) {
-  return upsertBrainNode({
-    userId,
-    key: `ENTITY:${entity.slug}`,
-    type: 'ENTITY',
-    label: entity.label,
-    description: 'Entidade detectada automaticamente nos conteúdos da biblioteca.',
-    status: 'ACTIVE',
-    metadata: {
-      method: 'entity-heuristic',
-      kind: entity.kind,
-    },
-    sourceType: null,
-    sourceId: null,
   });
 }
 

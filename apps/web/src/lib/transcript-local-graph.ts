@@ -1,6 +1,10 @@
 import type { BrainCompilationStatus } from '../../prisma-generated/client';
 import { db } from './db';
 import {
+  serializeEvidenceAuthority,
+  type SourceEvidenceAuthority,
+} from '../shared/source-evidence';
+import {
   readGraphSlice,
   toGraphReadEdge,
   toGraphReadNode,
@@ -12,6 +16,7 @@ export type TranscriptGraphScope = 'content' | 'connections';
 export type TranscriptGraphState = 'NOT_INDEXED' | 'INDEXING' | 'PARTIAL' | 'FAILED' | 'READY';
 
 export interface TranscriptGraphEvidence {
+  authority?: SourceEvidenceAuthority;
   id: string;
   nodeId: string | null;
   edgeId: string | null;
@@ -267,6 +272,7 @@ async function readEvidence(
 }
 
 function toTranscriptGraphEvidence(source: {
+  authority?: SourceEvidenceAuthority | null;
   id: string;
   nodeId: string | null;
   edgeId: string | null;
@@ -284,5 +290,9 @@ function toTranscriptGraphEvidence(source: {
     startSec: source.startSec,
     endSec: source.endSec,
   };
-  return { ...source, ...coordinates, anchor: evidenceAnchor(coordinates) };
+  return {
+    ...serializeEvidenceAuthority(source),
+    ...coordinates,
+    anchor: evidenceAnchor(coordinates),
+  };
 }

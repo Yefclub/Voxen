@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, FileText, Loader2, Network, Search } from '@/components/ui/icons';
 import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import type { SourceEvidenceAuthority } from '../../../shared/source-evidence';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { KnowledgeGraphCanvas } from '../graph/knowledge-graph-canvas';
 import { useFetch } from '../../lib/hooks';
@@ -18,6 +20,7 @@ type TranscriptGraphScope = 'content' | 'connections';
 type TranscriptGraphState = 'NOT_INDEXED' | 'INDEXING' | 'PARTIAL' | 'FAILED' | 'READY';
 
 interface TranscriptGraphEvidence {
+  authority?: SourceEvidenceAuthority;
   id: string;
   nodeId: string | null;
   edgeId: string | null;
@@ -413,6 +416,11 @@ function GraphInspector({
               <div className="divide-y divide-[var(--color-app-border)]">
                 {evidence.map((item) => (
                   <div key={item.id} className="py-3 first:pt-0">
+                    {item.authority && (
+                      <Badge variant="muted" className="mb-2">
+                        {t(`organization.authority.${item.authority}`)}
+                      </Badge>
+                    )}
                     {item.excerpt && (
                       <blockquote className="break-words text-xs leading-relaxed text-[var(--color-app-subtle)]">
                         {item.excerpt}

@@ -96,6 +96,19 @@ carrega imagens remotas nem HTML cru. `plainText` (FTS) inclui a transcrição o
 o conteúdo, a descrição (quando aparece) e as descrições de imagens e quadros,
 mas não os comentários.
 
+Captures also store a versioned evidence-span manifest in database source
+metadata. Its SHA-256 binds eligible original text, transcript and description
+offsets to the exact canonical Markdown. Generated summary/key points, visual
+descriptions and audience comments are excluded. This adds no markup to the
+canonical document. Organization maps eligible spans through corrections with
+bounded line comparison, retains their source lineage, and records captured,
+user-corrected or prepared-document authority with each published excerpt.
+Older captures without a valid manifest require explicit reprocessing before
+source-grounded organization; canonical reads and existing retrieval still work.
+New captured source objects use `sources/v<version>-<canonical-sha256>.md`,
+preventing a late duplicate publication from overwriting the committed bytes.
+Existing stored paths remain valid and are retained in source-version records.
+
 ### Campos obrigatórios
 
 - `id`, `workspace_id`, `source`, `url`, `title`, `duration_sec`, `language`, `transcription_method`, `transcribed_at`
