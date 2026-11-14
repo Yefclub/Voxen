@@ -271,6 +271,36 @@ suite('authenticated organization consent, history and cancellation API', () => 
       await db.organizationRun.findFirstOrThrow({ where: { id: completed.id, userId: users[0] } }),
     ).toEqual(completed);
   });
+  test('rejects oversized source text explicitly without creating work or changing the source', async () => {
+    const id = randomUUID(),
+      mdPath = `workspaces/${users[0]}/oversized-${id}.md`;
+    const markdown = 'x'.repeat(48_000 * 24 + 1);
+    await storagePut({ key: mdPath, body: markdown, contentType: 'text/markdown' });
+    const source = await db.transcript.create({
+      data: {
+        id,
+        userId: users[0]!,
+        title: 'Oversized organization source',
+        source: 'WEB',
+        url: `https://example.test/${id}`,
+        language: 'en',
+        durationSec: 0,
+        transcriptionMethod: 'SCRAPE',
+        mdPath,
+        plainText: 'Original remains available.',
+        frontmatter: {},
+      },
+    });
+    const response = await call(`/documents/${id}`, 'POST', { requestKey: randomUUID() });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: 'TEXT_TOO_LARGE' });
+    expect(await db.organizationRun.count({ where: { userId: users[0], transcriptId: id } })).toBe(
+      0,
+    );
+    expect(await db.transcript.findFirstOrThrow({ where: { id, userId: users[0] } })).toEqual(
+      source,
+    );
+  });
   test('allows opt-out without credentials and rate-limits authenticated mutations', async () => {
     await setUserSetting(users[0]!, 'ai_provider_key:anthropic', '');
     expect((await call('/preferences', 'PUT', { mode: 'OFF' })).status).toBe(200);

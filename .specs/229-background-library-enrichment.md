@@ -193,9 +193,15 @@ were verified. This does not establish the accuracy of live research models.
   consumers, the system shall retain its recorded captured, corrected or
   prepared authority. Legacy evidence without authority shall not be promoted
   to a verified captured-source classification.
+- Where the assistant reads organization relationships, the system shall return
+  at most 12 active owned relationships with at most two classified excerpts
+  per relationship from one consistent source snapshot, without automatically
+  verifying the resulting document reference.
 
 ### Unwanted behavior
 
+- If a requested source exceeds the organization text capacity, then the API
+  shall reject it with HTTP 413 and `TEXT_TOO_LARGE` before creating a run.
 - If a model invents an excerpt, references an unknown endpoint or supplies a
   relationship whose excerpt does not contain both endpoint names, then the
   system shall omit that item and report the unsupported output.

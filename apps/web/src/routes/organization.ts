@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { AiError } from '../lib/ai/errors';
+import { CaptureError } from '../lib/capture/errors';
 import { resolveRoleChain } from '../lib/ai/client';
 import { rateLimit } from '../lib/rate-limit';
 import { structuredDiagnostic } from '../lib/structured-log';
@@ -43,6 +44,8 @@ organizationRoutes.use('*', async (c, next) => {
   return next();
 });
 organizationRoutes.onError((error, c) => {
+  if (error instanceof CaptureError && error.code === 'TEXT_TOO_LARGE')
+    return c.json({ error: error.code }, 413);
   if (error instanceof OrganizationError)
     return c.json(
       { error: error.code },
