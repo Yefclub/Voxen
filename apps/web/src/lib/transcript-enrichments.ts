@@ -17,6 +17,7 @@ export type NormalizedTranscriptEnrichmentCitation = {
   url: string;
   title: string;
   excerpt: string;
+  retrievedAt?: string;
 };
 
 export function normalizeTranscriptEnrichmentCitations(
@@ -34,7 +35,12 @@ export function normalizeTranscriptEnrichmentCitations(
       if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !title || !excerpt) {
         return [];
       }
-      return [{ url, title, excerpt }];
+      const retrievedAt =
+        typeof citation.retrievedAt === 'string' &&
+        Number.isFinite(Date.parse(citation.retrievedAt))
+          ? new Date(citation.retrievedAt).toISOString()
+          : undefined;
+      return [{ url, title, excerpt, ...(retrievedAt ? { retrievedAt } : {}) }];
     } catch {
       return [];
     }
@@ -57,15 +63,18 @@ export function getTranscriptEnrichmentStaleReason(
   return null;
 }
 
-export async function refreshTranscriptEnrichmentFreshness(input: {
-  userId: string;
-  transcriptId: string;
-  sourceVersion: number;
-  sourceChecksum: string | null;
-  now?: Date;
-}): Promise<string[]> {
+export async function refreshTranscriptEnrichmentFreshness(
+  input: {
+    userId: string;
+    transcriptId: string;
+    sourceVersion: number;
+    sourceChecksum: string | null;
+    now?: Date;
+  },
+  client: Prisma.TransactionClient = db,
+): Promise<string[]> {
   const now = input.now ?? new Date();
-  await db.transcriptEnrichment.updateMany({
+  await client.transcriptEnrichment.updateMany({
     where: {
       userId: input.userId,
       transcriptId: input.transcriptId,
@@ -77,18 +86,28 @@ export async function refreshTranscriptEnrichmentFreshness(input: {
           : [{ sourceChecksum: { not: input.sourceChecksum } }, { sourceChecksum: null }]),
       ],
     },
-    data: { staleReason: 'source-version-changed' },
+    data: {
+      staleReason: 'source-version-changed',
+      revision: { increment: 1 },
+      brainProjectionPending: true,
+      brainProjectionNextAttemptAt: null,
+    },
   });
-  await db.transcriptEnrichment.updateMany({
+  await client.transcriptEnrichment.updateMany({
     where: {
       userId: input.userId,
       transcriptId: input.transcriptId,
       staleReason: null,
       expiresAt: { lt: now },
     },
-    data: { staleReason: 'research-expired' },
+    data: {
+      staleReason: 'research-expired',
+      revision: { increment: 1 },
+      brainProjectionPending: true,
+      brainProjectionNextAttemptAt: null,
+    },
   });
-  const acceptedStale = await db.transcriptEnrichment.findMany({
+  const acceptedStale = await client.transcriptEnrichment.findMany({
     where: {
       userId: input.userId,
       transcriptId: input.transcriptId,

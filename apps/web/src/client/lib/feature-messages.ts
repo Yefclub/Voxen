@@ -15,6 +15,7 @@ import {
   ptBrPersonalInterestMessages,
 } from './personal-interest-signals-i18n';
 import { enPersonalGuideMessages, ptBrPersonalGuideMessages } from './personal-guide-i18n';
+import { enResearchMessages, ptBrResearchMessages } from './research-i18n';
 
 export const ptBrFeatureMessages = {
   ...ptBrKnowledgeFeatureMessages,
@@ -22,6 +23,7 @@ export const ptBrFeatureMessages = {
   ...ptBrTranscriptLocalGraphMessages,
   ...ptBrPersonalInterestMessages,
   ...ptBrPersonalGuideMessages,
+  ...ptBrResearchMessages,
 } as const;
 
 export const enFeatureMessages: Record<keyof typeof ptBrFeatureMessages, string> = {
@@ -30,4 +32,5 @@ export const enFeatureMessages: Record<keyof typeof ptBrFeatureMessages, string>
   ...enTranscriptLocalGraphMessages,
   ...enPersonalInterestMessages,
   ...enPersonalGuideMessages,
+  ...enResearchMessages,
 };

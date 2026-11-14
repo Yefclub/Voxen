@@ -32,6 +32,38 @@ export type AssistantReference = {
   verified?: boolean;
   retrievedAt?: string;
 };
+const TextWindowSchema = z.object({
+  id: z.string().max(128),
+  offset: z.number().int().min(0).max(100_000_000).default(0),
+  limit: z.number().int().min(128).max(16_000).default(16_000),
+  expectedRevision: z.number().int().positive().optional(),
+});
+function textWindow(
+  content: string,
+  revision: number,
+  offset: number,
+  limit: number,
+  expectedRevision?: number,
+) {
+  if (offset > 0 && expectedRevision === undefined) return { error: 'REVISION_REQUIRED' };
+  if (expectedRevision !== undefined && revision !== expectedRevision)
+    return { error: 'STALE_REVISION', currentRevision: revision };
+  if (offset > content.length) return { error: 'INVALID_OFFSET' };
+  const low = (value: number) => value >= 0xdc00 && value <= 0xdfff;
+  const high = (value: number) => value >= 0xd800 && value <= 0xdbff;
+  if (offset && low(content.charCodeAt(offset)) && high(content.charCodeAt(offset - 1)))
+    return { error: 'INVALID_OFFSET' };
+  let end = Math.min(content.length, offset + limit);
+  if (high(content.charCodeAt(end - 1)) && low(content.charCodeAt(end))) end--;
+  return {
+    content: content.slice(offset, end),
+    offset,
+    nextOffset: end < content.length ? end : null,
+    totalCharacters: content.length,
+    truncated: offset > 0 || end < content.length,
+  };
+}
+
 export async function buildAssistantTools(
   run: ClaimedAssistantRun,
   signal: AbortSignal,
@@ -183,12 +215,7 @@ export async function buildAssistantTools(
     read_note: tool({
       description:
         'Read an owned note in bounded UTF-16 character windows. Follow nextOffset using the returned revision as expectedRevision to avoid mixing revisions.',
-      inputSchema: z.object({
-        id: z.string().max(128),
-        offset: z.number().int().min(0).max(100_000_000).default(0),
-        limit: z.number().int().min(128).max(16_000).default(16_000),
-        expectedRevision: z.number().int().positive().optional(),
-      }),
+      inputSchema: TextWindowSchema,
       execute: ({ id, offset = 0, limit = 16_000, expectedRevision }) =>
         guarded(async () => {
           const note = await db.note.findFirst({
@@ -196,36 +223,20 @@ export async function buildAssistantTools(
             select: { id: true, title: true, content: true, revision: true },
           });
           if (!note) return { error: 'NOT_FOUND' };
-          if (offset > 0 && expectedRevision === undefined) return { error: 'REVISION_REQUIRED' };
-          if (expectedRevision !== undefined && note.revision !== expectedRevision)
-            return { error: 'STALE_REVISION', currentRevision: note.revision };
-          if (offset > note.content.length) return { error: 'INVALID_OFFSET' };
-          const low = (value: number) => value >= 0xdc00 && value <= 0xdfff;
-          const high = (value: number) => value >= 0xd800 && value <= 0xdbff;
-          if (
-            offset &&
-            low(note.content.charCodeAt(offset)) &&
-            high(note.content.charCodeAt(offset - 1))
-          )
-            return { error: 'INVALID_OFFSET' };
-          let end = Math.min(note.content.length, offset + limit);
-          if (high(note.content.charCodeAt(end - 1)) && low(note.content.charCodeAt(end))) end--;
+          const window = textWindow(note.content, note.revision, offset, limit, expectedRevision);
+          if ('error' in window) return window;
           remember({ id, title: note.title, href: `/notas/${id}`, source: 'library' });
           return {
             ...note,
-            content: note.content.slice(offset, end),
-            offset,
-            nextOffset: end < note.content.length ? end : null,
-            totalCharacters: note.content.length,
-            truncated: offset > 0 || end < note.content.length,
+            ...window,
           };
         }),
     }),
     read_enrichment: tool({
       description:
-        'Read accepted, current external context from an owned library document. Its claims come from external sources, not the original document.',
-      inputSchema: z.object({ id: z.string().max(128) }),
-      execute: ({ id }) =>
+        'Read accepted, current external context in bounded UTF-16 windows. Follow nextOffset with expectedRevision. External claims are separate from the original source.',
+      inputSchema: TextWindowSchema,
+      execute: ({ id, offset = 0, limit = 16_000, expectedRevision }) =>
         guarded(async () => {
           const enrichment = await db.transcriptEnrichment.findFirst({
             where: {
@@ -239,15 +250,23 @@ export async function buildAssistantTools(
           });
           if (!enrichment || getTranscriptEnrichmentStaleReason(enrichment, enrichment.transcript))
             return { error: 'NOT_FOUND' };
+          const window = textWindow(
+            enrichment.content,
+            enrichment.revision,
+            offset,
+            limit,
+            expectedRevision,
+          );
+          if ('error' in window) return window;
           const href = `/transcricoes/${enrichment.transcriptId}#additional-context-${id}`;
           remember({ id, title: enrichment.title, href, source: 'library' });
           return {
             id,
             title: enrichment.title,
-            content: enrichment.content.slice(0, 16_000),
-            truncated: enrichment.content.length > 16_000,
+            revision: enrichment.revision,
+            ...window,
             citations: normalizeTranscriptEnrichmentCitations(enrichment.citations),
-            authority: 'external-derived',
+            authority: enrichment.editedAt ? 'external-curated' : 'external-derived',
           };
         }),
     }),

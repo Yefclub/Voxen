@@ -6,6 +6,7 @@ import {
   safeExternalCitationUrl,
   type TranscriptEnrichment,
 } from '../src/client/components/library/additional-context-block';
+import { ResearchEditor } from '../src/client/components/library/research-editor';
 import { I18nProvider, type TranslateFn } from '../src/client/lib/i18n';
 
 Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
@@ -87,6 +88,37 @@ describe('AdditionalContextBlock', () => {
     expect(safeExternalCitationUrl('http://example.org/source')).toBe('http://example.org/source');
     expect(safeExternalCitationUrl('javascript:alert(1)')).toBeNull();
     expect(safeExternalCitationUrl('not-a-url')).toBeNull();
+  });
+
+  test('distinguishes an archived source from temporary queue unavailability', async () => {
+    for (const archived of [false, true]) {
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(
+          <I18nProvider>
+            <AdditionalContextBlock
+              enrichments={[]}
+              researchMode="MANUAL"
+              loading={false}
+              queueDisabled={true}
+              archived={archived}
+              locale="en"
+              onQueue={() => undefined}
+              onUpdate={async () => undefined}
+              onDelete={async () => undefined}
+              t={t}
+            />
+          </I18nProvider>,
+        );
+      });
+      const archiveNotices = renderer.root.findAll(
+        (node) => node.type === 'p' && node.children.includes('research.archived'),
+      );
+      expect(archiveNotices).toHaveLength(archived ? 1 : 0);
+      await act(async () => {
+        renderer.unmount();
+      });
+    }
   });
 
   test('renders review actions and omits unsafe citation links', async () => {
@@ -184,7 +216,7 @@ describe('AdditionalContextBlock', () => {
       button('notes.edit').props.onClick();
     });
     await act(async () => {
-      renderer.root.findByType('textarea').props.onChange({ target: { value: 'Unsaved draft' } });
+      renderer.root.findByType(ResearchEditor).props.setContent('Unsaved draft');
     });
     await act(async () => {
       renderer.update(
@@ -192,7 +224,7 @@ describe('AdditionalContextBlock', () => {
       );
     });
     await act(async () => {
-      button('common.save').props.onClick();
+      renderer.root.findByType(ResearchEditor).props.onSave();
     });
     expect(sent).toMatchObject({
       action: 'edit',
@@ -200,10 +232,10 @@ describe('AdditionalContextBlock', () => {
       expectedChecksum: 'a'.repeat(64),
       content: 'Unsaved draft',
     });
-    expect(renderer.root.findByType('textarea').props.value).toBe('Unsaved draft');
+    expect(renderer.root.findByType(ResearchEditor).props.content).toBe('Unsaved draft');
     reject = false;
     await act(async () => {
-      button('common.cancel').props.onClick();
+      renderer.root.findByType(ResearchEditor).props.onClose();
     });
     await act(async () => {
       button('library.additionalContextAccept').props.onClick();

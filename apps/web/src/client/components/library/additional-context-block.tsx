@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Check, ExternalLink, Globe, Loader2, Trash2 } from '@/components/ui/icons';
+import { Check, Globe, Loader2, Trash2 } from '@/components/ui/icons';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Card, CardContent } from '../ui/card';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { Markdown } from '../ui/markdown';
 import { Skeleton } from '../ui/skeleton';
 import { formatDateTime } from '../../lib/format';
 import type { Locale, TranslateFn } from '../../lib/i18n';
+import { ResearchEditor } from './research-editor';
+import { ResearchEvidence } from './research-evidence';
 
 export type TranscriptEnrichmentStatus =
   | 'PENDING'
@@ -33,13 +34,23 @@ export interface TranscriptEnrichment {
   trigger: 'AUTO' | 'MANUAL' | 'MCP';
   title: string;
   content: string;
-  citations: Array<{ url: string; title: string; excerpt: string }>;
+  citations: Array<{ url: string; title: string; excerpt: string; retrievedAt?: string }>;
   queries: string[];
   rationale: string | null;
   noResearchReason: string | null;
   model: string | null;
   staleReason: string | null;
   lastError: string | null;
+  deletionPending?: boolean;
+  costUsd?: number | null;
+  tokensIn?: number;
+  tokensOut?: number;
+  searchCallCount?: number;
+  fetchCallCount?: number;
+  warnings?: string[];
+  editedAt?: string | null;
+  generatedAt?: string | null;
+  expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,6 +58,7 @@ export interface TranscriptEnrichment {
 export interface TranscriptEnrichmentsResponse {
   enrichments: TranscriptEnrichment[];
   researchMode: 'OFF' | 'MANUAL' | 'AUTO';
+  nextCursor: string | null;
 }
 
 export function safeExternalCitationUrl(value: string): string | null {
@@ -68,10 +80,25 @@ const STATUS_KEYS: Record<TranscriptEnrichmentStatus, Parameters<TranslateFn>[0]
   CANCELLED: 'library.additionalContextStatus.cancelled',
 };
 
+export function enrichmentStatusText(item: TranscriptEnrichment, t: TranslateFn): string {
+  const ready = item.status === 'READY';
+  return item.deletionPending
+    ? t('research.deleting')
+    : item.staleReason
+      ? t('library.additionalContextStale')
+      : ready && item.reviewState === 'ACCEPTED'
+        ? t('research.accepted')
+        : ready && item.reviewState === 'DISMISSED'
+          ? t('research.dismissed')
+          : t(STATUS_KEYS[item.status]);
+}
+
 export function AdditionalContextBlock({
   enrichments,
   researchMode,
   loading,
+  queueDisabled = false,
+  archived = false,
   locale,
   onQueue,
   onUpdate,
@@ -81,320 +108,259 @@ export function AdditionalContextBlock({
   enrichments: TranscriptEnrichment[];
   researchMode: 'OFF' | 'MANUAL' | 'AUTO';
   loading: boolean;
+  queueDisabled?: boolean;
+  archived?: boolean;
   locale: Locale;
   onQueue: () => void;
   onUpdate: (id: string, body: Record<string, unknown>) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onDelete: (id: string, body: Record<string, unknown>) => Promise<void>;
   t: TranslateFn;
 }): React.ReactElement {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editSnapshot, setEditSnapshot] = useState<{
-    expectedRevision: number;
-    expectedChecksum: string;
-  } | null>(null);
+  const [editing, setEditing] = useState<TranscriptEnrichment | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
+  const [editError, setEditError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TranscriptEnrichment | null>(null);
-
-  async function mutate(id: string, body: Record<string, unknown>): Promise<void> {
-    setBusyId(id);
+  async function mutate(item: TranscriptEnrichment, body: Record<string, unknown>): Promise<void> {
+    setBusyId(item.id);
+    setEditError('');
     try {
-      const current = enrichments.find((item) => item.id === id);
-      if (!current) return;
-      const snapshot =
-        body.action === 'edit'
-          ? editSnapshot
-          : { expectedRevision: current.revision, expectedChecksum: current.checksum };
-      if (!snapshot) return;
-      await onUpdate(id, { ...body, ...snapshot });
-      if (body.action === 'edit') setEditingId(null);
-    } catch {
-      // The page reports the error; preserve the editing snapshot and unsaved draft.
+      await onUpdate(item.id, {
+        ...body,
+        expectedRevision: item.revision,
+        expectedChecksum: item.checksum,
+      });
+      if (body.action === 'edit') setEditing(null);
+    } catch (error) {
+      // The parent reports safe public errors; retain the observed revision and draft.
+      if (body.action === 'edit')
+        setEditError(error instanceof Error ? error.message : t('research.error.generic'));
     } finally {
       setBusyId(null);
     }
   }
-
   const active = enrichments.some((item) => ['PENDING', 'RUNNING', 'RETRY'].includes(item.status));
   return (
-    <section className="space-y-3" aria-labelledby="additional-context-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <section className="space-y-5" aria-labelledby="additional-context-title">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-56">
           <h2
             id="additional-context-title"
-            className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg"
+            className="font-display text-xl font-semibold tracking-tight"
           >
             {t('library.additionalContext')}
           </h2>
-          <p className="mt-1 text-xs text-[var(--color-app-muted)]">
+          <p className="mt-2 max-w-[65ch] text-sm leading-6 text-[var(--color-app-muted)]">
             {t('library.additionalContextDescription')}
           </p>
         </div>
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          disabled={researchMode === 'OFF' || active}
+          disabled={loading || queueDisabled || archived || researchMode === 'OFF' || active}
           onClick={onQueue}
         >
           {active ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
           ) : (
-            <Globe className="h-3.5 w-3.5" />
+            <Globe className="h-4 w-4" />
           )}
           {active ? t('library.additionalContextRunning') : t('library.additionalContextResearch')}
         </Button>
       </div>
       {researchMode === 'OFF' && (
-        <p className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-2 text-xs text-[var(--color-app-muted)]">
+        <p className="text-sm leading-6 text-[var(--color-app-muted)]">
           {t('library.additionalContextDisabled')}
         </p>
       )}
-      {loading && <Skeleton className="h-24 w-full rounded-xl" />}
+      {archived && (
+        <p className="text-sm text-[var(--color-app-muted)]">{t('research.archived')}</p>
+      )}
+      {loading && <Skeleton className="h-24 w-full" />}
       {!loading && enrichments.length === 0 && researchMode !== 'OFF' && (
-        <p className="rounded-xl border border-dashed border-[var(--color-app-border)] px-4 py-5 text-center text-xs text-[var(--color-app-muted)]">
+        <p className="py-4 text-sm text-[var(--color-app-muted)]">
           {t('library.additionalContextEmpty')}
         </p>
       )}
       {enrichments.map((item) => {
-        const terminalWithContent = item.status === 'READY';
-        const editing = editingId === item.id;
+        const ready = item.status === 'READY';
         const busy = busyId === item.id;
+        const pending = ['PENDING', 'RUNNING', 'RETRY'].includes(item.status);
+        const unavailable = busy || Boolean(item.deletionPending);
+        const status = enrichmentStatusText(item, t);
         return (
-          <Card
+          <article
             key={item.id}
             id={`additional-context-${item.id}`}
-            elevated
-            className="overflow-hidden scroll-mt-24"
+            tabIndex={-1}
+            className="scroll-mt-8 space-y-5 border-t border-[var(--color-app-border)] pt-6"
           >
-            <CardContent className="space-y-4 px-4 py-4 sm:px-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant={
-                      item.staleReason
-                        ? 'warning'
-                        : item.reviewState === 'ACCEPTED'
-                          ? 'success'
-                          : item.status === 'FAILED'
-                            ? 'danger'
-                            : 'muted'
-                    }
-                  >
-                    {item.staleReason
-                      ? t('library.additionalContextStale')
-                      : t(STATUS_KEYS[item.status])}
-                  </Badge>
-                  {item.projection.state === 'PENDING' && (
-                    <Badge variant="warning" role="status">
-                      {t(
-                        item.projection.errorCode
-                          ? 'library.additionalContextProjectionRetry'
-                          : 'library.additionalContextProjectionPending',
-                      )}
-                    </Badge>
-                  )}
-                  <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]">
-                    {item.trigger} · {formatDateTime(new Date(item.createdAt), locale)}
-                  </span>
-                </div>
-                {item.model && (
-                  <span className="max-w-60 truncate font-mono text-[10px] text-[var(--color-app-muted)]">
-                    {item.model}
-                  </span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <Badge
+                variant={
+                  item.staleReason
+                    ? 'warning'
+                    : item.reviewState === 'ACCEPTED'
+                      ? 'success'
+                      : item.status === 'FAILED'
+                        ? 'danger'
+                        : 'muted'
+                }
+              >
+                {status}
+              </Badge>
+              {item.editedAt && (
+                <span className="text-xs text-[var(--color-app-subtle)]">
+                  {t('research.curated')}
+                </span>
+              )}
+              <time dateTime={item.createdAt} className="text-xs text-[var(--color-app-muted)]">
+                {formatDateTime(new Date(item.createdAt), locale)}
+              </time>
+            </div>
+            {item.projection.state === 'PENDING' && (
+              <p className="text-xs text-[var(--color-app-muted)]">
+                {t(
+                  item.projection.errorCode
+                    ? 'library.additionalContextProjectionRetry'
+                    : 'library.additionalContextProjectionPending',
                 )}
+              </p>
+            )}
+            {item.staleReason && (
+              <p className="text-sm text-[var(--color-app-muted)]">{t('research.error.stale')}</p>
+            )}
+            {item.status === 'NO_RESEARCH_NEEDED' && (
+              <p className="text-sm leading-6 text-[var(--color-app-subtle)]">
+                {item.noResearchReason || t('library.additionalContextNoResearch')}
+              </p>
+            )}
+            {item.status === 'FAILED' && (
+              <p className="text-sm leading-6 text-[var(--color-app-muted)]">
+                {t(
+                  item.lastError === 'OPENROUTER_CREDITS_EXHAUSTED'
+                    ? 'library.additionalContextCreditsExhausted'
+                    : 'library.additionalContextFailed',
+                )}
+              </p>
+            )}
+            {pending && (
+              <p className="flex items-start gap-2 text-sm leading-6 text-[var(--color-app-muted)]">
+                <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />
+                {t('library.additionalContextRunningDescription')}
+              </p>
+            )}
+            {ready && (
+              <div className="max-w-[75ch] space-y-3">
+                <h3 className="font-display text-lg font-semibold">{item.title}</h3>
+                <Markdown headingOffset={2} className="text-base leading-7">
+                  {item.content}
+                </Markdown>
               </div>
-
-              {item.status === 'NO_RESEARCH_NEEDED' && (
-                <p className="text-sm leading-relaxed text-[var(--color-app-subtle)]">
-                  {item.noResearchReason || t('library.additionalContextNoResearch')}
-                </p>
-              )}
-              {item.status === 'FAILED' && (
-                <p className="text-sm text-[var(--color-app-muted)]">
-                  {item.lastError === 'OPENROUTER_CREDITS_EXHAUSTED'
-                    ? t('library.additionalContextCreditsExhausted')
-                    : t('library.additionalContextFailed')}
-                </p>
-              )}
-              {['PENDING', 'RUNNING', 'RETRY'].includes(item.status) && (
-                <div className="flex items-center gap-2 text-sm text-[var(--color-app-muted)]">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('library.additionalContextRunningDescription')}
-                </div>
-              )}
-
-              {terminalWithContent && editing ? (
-                <div className="space-y-2">
-                  <input
-                    value={draftTitle}
-                    onChange={(event) => setDraftTitle(event.target.value)}
-                    maxLength={300}
-                    className="h-10 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-sm"
-                  />
-                  <textarea
-                    value={draftContent}
-                    onChange={(event) => setDraftContent(event.target.value)}
-                    maxLength={200_000}
-                    className="min-h-48 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-sm"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
-                      {t('common.cancel')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={!draftTitle.trim() || !draftContent.trim() || busy}
-                      onClick={() =>
-                        void mutate(item.id, {
-                          action: 'edit',
-                          title: draftTitle,
-                          content: draftContent,
-                        })
-                      }
-                    >
-                      {t('common.save')}
-                    </Button>
-                  </div>
-                </div>
-              ) : terminalWithContent ? (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-display text-base font-semibold text-[var(--color-app-fg)]">
-                      {item.title}
-                    </h3>
-                    <div className="mt-2 text-sm">
-                      <Markdown>{item.content}</Markdown>
-                    </div>
-                  </div>
-                  {item.rationale && (
-                    <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 px-3 py-2 text-xs text-[var(--color-app-muted)]">
-                      <strong className="text-[var(--color-app-subtle)]">
-                        {t('library.additionalContextWhy')}
-                      </strong>{' '}
-                      {item.rationale}
-                    </div>
-                  )}
-                  {item.queries.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {item.queries.map((query) => (
-                        <span
-                          key={query}
-                          className="rounded-full border border-[var(--color-app-border)] px-2 py-1 text-[10px] text-[var(--color-app-muted)]"
-                        >
-                          {query}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-[var(--color-app-subtle)]">
-                      {t('library.additionalContextSources')}
-                    </p>
-                    {item.citations.flatMap((citation, index) => {
-                      const href = safeExternalCitationUrl(citation.url);
-                      if (!href) return [];
-                      return (
-                        <a
-                          key={`${href}-${index}`}
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block rounded-lg border border-[var(--color-app-border)] px-3 py-2 transition-colors hover:bg-[var(--color-app-surface)]"
-                        >
-                          <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent-primary)]">
-                            {citation.title}
-                            <ExternalLink className="h-3 w-3" />
-                          </span>
-                          <span className="mt-1 line-clamp-2 block text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                            {citation.excerpt}
-                          </span>
-                        </a>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--color-app-border)] pt-3">
-                {['PENDING', 'RUNNING', 'RETRY'].includes(item.status) && (
+            )}
+            {(ready || item.model || item.costUsd != null) && (
+              <ResearchEvidence item={item} locale={locale} t={t} />
+            )}
+            {!item.deletionPending && (
+              <div className="flex flex-wrap items-center gap-2">
+                {pending && (
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant="outline"
                     disabled={busy}
-                    onClick={() => void mutate(item.id, { action: 'cancel' })}
+                    onClick={() => void mutate(item, { action: 'cancel' })}
                   >
                     {t('common.cancel')}
                   </Button>
                 )}
-                {terminalWithContent && (
+                {ready && (
+                  <>
+                    {item.reviewState !== 'ACCEPTED' && (
+                      <Button
+                        disabled={unavailable || Boolean(item.staleReason)}
+                        onClick={() => void mutate(item, { action: 'accept' })}
+                      >
+                        <Check className="h-4 w-4" />
+                        {t('library.additionalContextAccept')}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      disabled={unavailable || editing !== null}
+                      onClick={() => {
+                        setEditing(item);
+                        setDraftTitle(item.title);
+                        setDraftContent(item.content);
+                        setEditError('');
+                      }}
+                    >
+                      {t('notes.edit')}
+                    </Button>
+                    {item.reviewState !== 'DISMISSED' && (
+                      <Button
+                        variant="ghost"
+                        disabled={unavailable}
+                        onClick={() => void mutate(item, { action: 'dismiss' })}
+                      >
+                        {t('library.additionalContextDismiss')}
+                      </Button>
+                    )}
+                  </>
+                )}
+                {!pending && (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    disabled={busy || editing}
-                    onClick={() => {
-                      setEditingId(item.id);
-                      setEditSnapshot({
-                        expectedRevision: item.revision,
-                        expectedChecksum: item.checksum,
-                      });
-                      setDraftTitle(item.title);
-                      setDraftContent(item.content);
-                    }}
+                    disabled={unavailable}
+                    onClick={() => setDeleteTarget(item)}
                   >
-                    {t('notes.edit')}
-                  </Button>
-                )}
-                {terminalWithContent && item.reviewState !== 'ACCEPTED' && (
-                  <Button
-                    size="sm"
-                    disabled={busy || Boolean(item.staleReason)}
-                    onClick={() => void mutate(item.id, { action: 'accept' })}
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    {t('library.additionalContextAccept')}
-                  </Button>
-                )}
-                {terminalWithContent && item.reviewState !== 'DISMISSED' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void mutate(item.id, { action: 'dismiss' })}
-                  >
-                    {t('library.additionalContextDismiss')}
-                  </Button>
-                )}
-                {!['PENDING', 'RUNNING', 'RETRY'].includes(item.status) && (
-                  <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(item)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                     {t('common.delete')}
                   </Button>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </article>
         );
       })}
+      <ResearchEditor
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={draftTitle}
+        content={draftContent}
+        setTitle={setDraftTitle}
+        setContent={setDraftContent}
+        busy={editing !== null && busyId === editing.id}
+        error={editError}
+        onSave={() => {
+          if (editing)
+            void mutate(editing, { action: 'edit', title: draftTitle, content: draftContent });
+        }}
+        t={t}
+      />
       <ConfirmDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
         title={t('library.additionalContextDeleteTitle')}
         description={t('library.additionalContextDeleteDescription')}
         confirmLabel={t('common.delete')}
+        variant="destructive"
+        loading={deleteTarget !== null && busyId === deleteTarget.id}
         onConfirm={async () => {
           if (!deleteTarget) return;
           setBusyId(deleteTarget.id);
           try {
-            await onDelete(deleteTarget.id);
-            setDeleteTarget(null);
+            await onDelete(deleteTarget.id, {
+              expectedRevision: deleteTarget.revision,
+              expectedChecksum: deleteTarget.checksum,
+            });
+          } catch {
+            /* The parent reports the failed deletion without hiding the source. */
           } finally {
             setBusyId(null);
           }
         }}
-        loading={deleteTarget !== null && busyId === deleteTarget.id}
-        variant="destructive"
       />
     </section>
   );

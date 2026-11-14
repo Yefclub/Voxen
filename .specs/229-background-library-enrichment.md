@@ -22,6 +22,9 @@ and freshness principles retained from spec 175.
 
 - When capture publishes a document, the system shall enqueue enabled derived
   work independently of capture completion.
+- When recovering automatic research after interruption, the system shall
+  schedule only captures collected since the current automatic consent began,
+  including refreshed documents, without duplicating a source revision.
 - When organizing, the system shall reuse existing topic and entity identities,
   add supported relationships and preserve manually selected organization.
 - When research is enabled, the system shall determine whether additional
@@ -33,6 +36,11 @@ and freshness principles retained from spec 175.
   shall invalidate affected external context and search/graph projections.
 - When the user reviews external context, the system shall support accepting,
   dismissing, deleting and requesting refreshed research.
+- When editing or reviewing external context, the system shall reject obsolete
+  revision/checksum guards and identify edited context as manually curated,
+  requiring renewed acceptance without altering original evidence records.
+- When accepting refreshed context, the system shall supersede previously
+  accepted context for that document in the same transaction.
 
 ### State-driven
 
@@ -51,6 +59,16 @@ and freshness principles retained from spec 175.
 
 - Where automatic organization or research is enabled, the system shall enforce
   bounded concurrency, attempts, duration and search calls per execution.
+- Where external research is enabled by a user, the system shall support manual
+  research or automatic research of new captures, with at most three discovery
+  calls, four page fetches, three execution attempts and ten minutes per run.
+- Where external research has not been enabled, the system shall perform no
+  background research calls.
+- While research is executing, the system shall permit at most one valid
+  execution lease across web processes, renew it during provider calls and
+  enforce ten minutes from the first claim across retries, excluding queue time.
+- Where research uses corrected source text, the system shall bind its settings
+  snapshot to that correction revision and invalidate it when the source changes.
 
 ### Unwanted behavior
 
@@ -75,7 +93,8 @@ and freshness principles retained from spec 175.
 
 1. Complete long-source capture analysis, including bounded synthesis, Unicode
    boundaries, cancellation and the cost of completed sections before a retry.
-2. Independent organization/research scheduling, review and lifecycle controls.
+2. Independent external research scheduling, review and lifecycle controls.
+3. Source-grounded background organization and entity relationships.
 
 Increment 1 does not claim to implement background research or its review UI.
 
@@ -83,3 +102,21 @@ Increment 1 does not claim to implement background research or its review UI.
 
 Unbounded crawling, automatic acceptance of external claims, rewriting original
 source claims, paid-user quotas and arbitrary code execution.
+
+## Increment 2 review interface
+
+- The document reader keeps external research after the original source, with
+  owner-scoped history pages and direct links to older results.
+- An always-mounted polite status region announces queue, cancellation,
+  completion and review transitions. Failures expose safe recovery actions.
+- Sources, verified excerpts, retrieval dates, queries, model usage and costs
+  are available in a disclosure. Unknown provider cost is identified explicitly.
+- Context editing uses a desktop dialog or a mobile sheet. It preserves the
+  observed revision/checksum and draft through polling and conflicts.
+- Accepted external context supports bounded assistant continuation reads with
+  a required revision after the initial window and safe Unicode boundaries.
+- Native keyboard, installation and screen-reader speech require physical
+  device validation; browser viewport emulation is not evidence of those.
+
+Local implementation and review evidence do not by themselves establish CI or
+production delivery. Increment 3 organization and spec 230 remain separate.

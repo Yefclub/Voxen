@@ -185,4 +185,81 @@ suite('assistant knowledge tools', () => {
       ),
     ).toMatchObject({ error: 'STALE_REVISION', currentRevision: 2 });
   });
+  test('reads accepted external context progressively without mixing revisions or ownership', async () => {
+    const source = await db.transcript.findUniqueOrThrow({ where: { id: docs[0]! } });
+    const context = await db.transcriptEnrichment.create({
+      data: {
+        userId: users[0]!,
+        transcriptId: source.id,
+        runKey: randomUUID(),
+        status: 'READY',
+        reviewState: 'ACCEPTED',
+        trigger: 'MANUAL',
+        title: 'Long curated context',
+        content: 'a'.repeat(15_999) + '😀 The distinctive external passage.',
+        sourceVersion: source.sourceVersion,
+        sourceChecksum: source.sourceChecksum,
+        editedAt: new Date(),
+        citations: [
+          {
+            url: 'https://example.org/evidence',
+            title: 'Evidence',
+            excerpt: 'A verified supporting passage.',
+            retrievedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    const first = (await tools.read_enrichment!.execute!({ id: context.id }, options)) as {
+      content: string;
+      nextOffset: number;
+      revision: number;
+    };
+    expect(first.content).toHaveLength(15_999);
+    expect(first).toMatchObject({ revision: context.revision, authority: 'external-curated' });
+    expect(
+      await tools.read_enrichment!.execute!({ id: context.id, offset: first.nextOffset }, options),
+    ).toMatchObject({ error: 'REVISION_REQUIRED' });
+    expect(
+      await tools.read_enrichment!.execute!(
+        { id: context.id, offset: first.nextOffset, expectedRevision: first.revision },
+        options,
+      ),
+    ).toMatchObject({ content: '😀 The distinctive external passage.', nextOffset: null });
+    const changed = await db.transcriptEnrichment.update({
+      where: { id: context.id },
+      data: { content: 'Revised context', revision: { increment: 1 } },
+    });
+    expect(
+      await tools.read_enrichment!.execute!(
+        { id: context.id, offset: first.nextOffset, expectedRevision: first.revision },
+        options,
+      ),
+    ).toMatchObject({ error: 'STALE_REVISION', currentRevision: changed.revision });
+    await db.transcriptEnrichment.update({
+      where: { id: context.id },
+      data: { reviewState: 'SUGGESTED' },
+    });
+    expect(await tools.read_enrichment!.execute!({ id: context.id }, options)).toEqual({
+      error: 'NOT_FOUND',
+    });
+    const foreign = await db.transcript.findUniqueOrThrow({ where: { id: docs[1]! } });
+    const other = await db.transcriptEnrichment.create({
+      data: {
+        userId: users[1]!,
+        transcriptId: foreign.id,
+        runKey: randomUUID(),
+        status: 'READY',
+        reviewState: 'ACCEPTED',
+        trigger: 'MANUAL',
+        title: 'Private context',
+        content: 'Private',
+        sourceVersion: foreign.sourceVersion,
+        sourceChecksum: foreign.sourceChecksum,
+      },
+    });
+    expect(await tools.read_enrichment!.execute!({ id: other.id }, options)).toEqual({
+      error: 'NOT_FOUND',
+    });
+  });
 });

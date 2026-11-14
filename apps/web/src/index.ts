@@ -34,7 +34,9 @@ import { MAX_MEDIA_UPLOAD_REQUEST_BYTES } from './lib/media-upload';
 import { requestLogging } from './lib/request-logging';
 import { captureRoutes } from './routes/captures';
 import { assistantRoutes } from './routes/assistant';
+import { researchRoutes } from './routes/research';
 import { shareTargetRoutes } from './routes/share-target';
+import { startResearchRuntime } from './lib/research/runtime';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -184,6 +186,7 @@ app.route('/api/notes', notesRoutes);
 app.route('/api/library', libraryRoutes);
 app.route('/api/captures', captureRoutes);
 app.route('/api/chat', assistantRoutes);
+app.route('/api/research', researchRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
@@ -400,6 +403,7 @@ if (process.env.NODE_ENV === 'production') {
 // reclaims expired leases and backoff-delayed retries. Runs in production and
 // local development (Compose forces NODE_ENV=development); never under tests.
 if (process.env.NODE_ENV !== 'test') {
+  startResearchRuntime();
   void import('./lib/assistant/runner')
     .then(({ drainAssistantRuns }) => {
       const drain = () => {

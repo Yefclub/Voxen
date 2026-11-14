@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
+import { scheduleResearchAfterCapture } from '../research/schedule';
 import { publishJobEvent } from '../job-events';
 import { storageDeletePrefix } from '../storage';
 import { artifactFromWorker, captureArtifactPrefix, loadArtifact, saveArtifact } from './artifact';
@@ -252,6 +253,7 @@ export async function runCaptureJob(job: ClaimedCaptureJob, deps: CaptureDeps): 
       },
     });
     if (updated.count === 1) {
+      await scheduleResearchAfterCapture(job.userId, outcome.transcriptId);
       await publishJobEvent(job.userId, {
         jobId: job.id,
         stage: outcome.status === 'DONE' ? 'done' : 'completed_with_warnings',
