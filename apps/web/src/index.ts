@@ -37,6 +37,7 @@ import { assistantRoutes } from './routes/assistant';
 import { researchRoutes } from './routes/research';
 import { shareTargetRoutes } from './routes/share-target';
 import { startResearchRuntime } from './lib/research/runtime';
+import { startOrganizationRuntime } from './lib/organization/runtime';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -404,6 +405,7 @@ if (process.env.NODE_ENV === 'production') {
 // local development (Compose forces NODE_ENV=development); never under tests.
 if (process.env.NODE_ENV !== 'test') {
   startResearchRuntime();
+  startOrganizationRuntime();
   void import('./lib/assistant/runner')
     .then(({ drainAssistantRuns }) => {
       const drain = () => {
