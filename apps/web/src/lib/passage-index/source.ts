@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
-import { storageReadText } from '../storage';
+import { readPassageObject } from './object';
 import { organizationEvidenceSpans } from '../organization/provenance';
 import { sourceEvidenceStamp, SourceProvenanceError } from '../source-provenance';
 import { PassageBuildError, type PassageRegion, type PassageSource } from './build';
@@ -143,8 +143,9 @@ export async function loadPassageSource(identity: PassageIdentity) {
   if (record.type === 'transcript') {
     let canonical: string;
     try {
-      canonical = await storageReadText(record.data.mdPath);
-    } catch {
+      canonical = await readPassageObject(record.data.mdPath);
+    } catch (error) {
+      if (error instanceof PassageBuildError) throw error;
       throw new PassageSourceError('UNAVAILABLE_SOURCE');
     }
     if (!canonical) throw new PassageSourceError('UNAVAILABLE_SOURCE');

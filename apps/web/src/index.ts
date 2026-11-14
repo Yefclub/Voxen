@@ -39,6 +39,7 @@ import { organizationRoutes } from './routes/organization';
 import { shareTargetRoutes } from './routes/share-target';
 import { startResearchRuntime } from './lib/research/runtime';
 import { startOrganizationRuntime } from './lib/organization/runtime';
+import { startPassageIndexRuntime } from './lib/passage-index/runtime';
 import { structuredDiagnostic, validCorrelationId } from './lib/structured-log';
 
 const app = new Hono();
@@ -408,6 +409,7 @@ if (process.env.NODE_ENV === 'production') {
 if (process.env.NODE_ENV !== 'test') {
   startResearchRuntime();
   startOrganizationRuntime();
+  startPassageIndexRuntime();
   void import('./lib/assistant/runner')
     .then(({ drainAssistantRuns }) => {
       const drain = () => {

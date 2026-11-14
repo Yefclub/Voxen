@@ -245,7 +245,12 @@ function toWebBody(body: unknown): ReadableStream<Uint8Array> {
   return Readable.toWeb(body as never) as unknown as ReadableStream<Uint8Array>;
 }
 
-async function localGet(key: string, range?: StorageRange): Promise<StorageObject> {
+async function localGet(
+  key: string,
+  range?: StorageRange,
+  signal?: AbortSignal,
+): Promise<StorageObject> {
+  signal?.throwIfAborted();
   const { root, target } = localTarget(key);
   await rejectSymlinks(root, target, true);
   const metadata = await stat(target);
@@ -259,7 +264,7 @@ async function localGet(key: string, range?: StorageRange): Promise<StorageObjec
       totalSize: metadata.size,
     });
   }
-  const stream = createReadStream(target, { start, end });
+  const stream = createReadStream(target, { start, end, signal });
   return {
     body: Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>,
     contentLength: end - start + 1,
@@ -269,13 +274,18 @@ async function localGet(key: string, range?: StorageRange): Promise<StorageObjec
   };
 }
 
-async function s3Get(key: string, range?: StorageRange): Promise<StorageObject> {
+async function s3Get(
+  key: string,
+  range?: StorageRange,
+  signal?: AbortSignal,
+): Promise<StorageObject> {
   const response = await s3Client().send(
     new GetObjectCommand({
       Bucket: s3Bucket(),
       Key: normalizeStorageKey(key),
       Range: range ? `bytes=${range.start}-${range.end}` : undefined,
     }),
+    signal ? { abortSignal: signal } : undefined,
   );
   if (!response.Body) throw new Error('Storage object has no body');
   const contentLength = Number(response.ContentLength ?? 0);
@@ -291,8 +301,14 @@ async function s3Get(key: string, range?: StorageRange): Promise<StorageObject> 
   };
 }
 
-export async function storageGet(key: string, range?: StorageRange): Promise<StorageObject> {
-  return resolveStorageDriver() === 'local' ? localGet(key, range) : s3Get(key, range);
+export async function storageGet(
+  key: string,
+  range?: StorageRange,
+  signal?: AbortSignal,
+): Promise<StorageObject> {
+  return resolveStorageDriver() === 'local'
+    ? localGet(key, range, signal)
+    : s3Get(key, range, signal);
 }
 
 export async function storageReadText(key: string): Promise<string> {
