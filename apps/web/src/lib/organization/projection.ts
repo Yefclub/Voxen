@@ -178,7 +178,7 @@ export async function publishOrganizationSection(input: {
     ).md;
   } catch (error) {
     if (error instanceof TranscriptReadError)
-      throw new OrganizationError(error.code === 'NOT_FOUND' ? 'NOT_FOUND' : 'STALE_SOURCE');
+      throw new OrganizationError(error.code === 'STALE_REVISION' ? 'STALE_SOURCE' : error.code);
     throw error;
   }
   if (currentMarkdown !== source.markdown) throw new OrganizationError('STALE_SOURCE');

@@ -371,4 +371,16 @@ suite('atomic source-grounded graph organization', () => {
     );
     expect(await db.brainEdge.count({ where: { userId: { in: users } } })).toBe(0);
   });
+
+  test('reports unavailable canonical storage separately from an obsolete source revision', async () => {
+    const f = await fixture();
+    await db.transcript.update({
+      where: { id: f.row.id },
+      data: { correctionState: 'STALE', correctedMarkdown: null },
+    });
+    await expect(
+      publishOrganizationSection({ ...f.input, source: { ...f.source, correctionState: 'STALE' } }),
+    ).rejects.toThrow('UNAVAILABLE_SOURCE');
+    expect(await db.brainEdge.count({ where: { userId: users[0]! } })).toBe(0);
+  });
 });
