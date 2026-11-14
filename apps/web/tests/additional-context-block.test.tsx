@@ -6,6 +6,7 @@ import {
   safeExternalCitationUrl,
   type TranscriptEnrichment,
 } from '../src/client/components/library/additional-context-block';
+import { ResearchEditor } from '../src/client/components/library/research-editor';
 import { I18nProvider, type TranslateFn } from '../src/client/lib/i18n';
 
 Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
@@ -184,7 +185,7 @@ describe('AdditionalContextBlock', () => {
       button('notes.edit').props.onClick();
     });
     await act(async () => {
-      renderer.root.findByType('textarea').props.onChange({ target: { value: 'Unsaved draft' } });
+      renderer.root.findByType(ResearchEditor).props.setContent('Unsaved draft');
     });
     await act(async () => {
       renderer.update(
@@ -192,7 +193,7 @@ describe('AdditionalContextBlock', () => {
       );
     });
     await act(async () => {
-      button('common.save').props.onClick();
+      renderer.root.findByType(ResearchEditor).props.onSave();
     });
     expect(sent).toMatchObject({
       action: 'edit',
@@ -200,10 +201,10 @@ describe('AdditionalContextBlock', () => {
       expectedChecksum: 'a'.repeat(64),
       content: 'Unsaved draft',
     });
-    expect(renderer.root.findByType('textarea').props.value).toBe('Unsaved draft');
+    expect(renderer.root.findByType(ResearchEditor).props.content).toBe('Unsaved draft');
     reject = false;
     await act(async () => {
-      button('common.cancel').props.onClick();
+      renderer.root.findByType(ResearchEditor).props.onClose();
     });
     await act(async () => {
       button('library.additionalContextAccept').props.onClick();

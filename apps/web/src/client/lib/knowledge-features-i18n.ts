@@ -7,7 +7,7 @@ export const ptBrKnowledgeFeatureMessages = {
   'library.additionalContextRunningDescription':
     'A pesquisa ocorre em segundo plano e não bloqueia o conteúdo.',
   'library.additionalContextDisabled':
-    'A pesquisa adicional está desativada na configuração da instância.',
+    'Ative a pesquisa nas suas preferências de IA quando quiser explorar fontes externas.',
   'library.additionalContextEmpty': 'Nenhum contexto externo foi pesquisado ainda.',
   'library.additionalContextQueued': 'Pesquisa de contexto adicionada à fila.',
   'library.additionalContextError': 'Não foi possível atualizar o contexto adicional.',
@@ -25,7 +25,7 @@ export const ptBrKnowledgeFeatureMessages = {
   'library.additionalContextFailed':
     'A pesquisa falhou sem afetar a transcrição ou o resumo. Você pode solicitar outra execução.',
   'library.additionalContextCreditsExhausted':
-    'A conta da OpenRouter está sem créditos. O admin precisa recarregar o saldo ou configurar outro provedor antes de repetir a pesquisa.',
+    'Sua conta da OpenRouter está sem créditos. Recarregue o saldo ou configure outro provedor nas preferências de IA antes de repetir.',
   'library.additionalContextWhy': 'Por que foi pesquisado:',
   'library.additionalContextSources': 'Fontes externas',
   'library.additionalContextAccept': 'Aceitar contexto',
@@ -45,7 +45,7 @@ export const enKnowledgeFeatureMessages: Record<keyof typeof ptBrKnowledgeFeatur
     'library.additionalContextRunningDescription':
       'Research runs in the background and does not block the content.',
     'library.additionalContextDisabled':
-      'Additional research is disabled in the instance configuration.',
+      'Enable research in your AI preferences when you want to explore external sources.',
     'library.additionalContextEmpty': 'No external context has been researched yet.',
     'library.additionalContextQueued': 'Context research was queued.',
     'library.additionalContextError': 'Could not update the additional context.',
@@ -63,7 +63,7 @@ export const enKnowledgeFeatureMessages: Record<keyof typeof ptBrKnowledgeFeatur
     'library.additionalContextFailed':
       'Research failed without affecting the transcript or summary. You can request another run.',
     'library.additionalContextCreditsExhausted':
-      'The OpenRouter account is out of credits. An admin must add credits or configure another provider before retrying research.',
+      'Your OpenRouter account is out of credits. Add credits or configure another provider in AI preferences before retrying.',
     'library.additionalContextWhy': 'Why it was researched:',
     'library.additionalContextSources': 'External sources',
     'library.additionalContextAccept': 'Accept context',

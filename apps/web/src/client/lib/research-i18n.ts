@@ -1,4 +1,35 @@
 export const ptBrResearchMessages = {
+  'research.retry': 'Tentar novamente',
+  'research.evidence': 'Fontes e execução',
+  'research.sourceOne': '1 fonte',
+  'research.sourceCount': '{count} fontes',
+  'research.retrieved': 'Consultada em {date}',
+  'research.queries': 'Consultas realizadas',
+  'research.cost': 'Custo do modelo',
+  'research.costUnknown': 'Não informado pelo provedor',
+  'research.tokens': 'Tokens de entrada / saída',
+  'research.calls': 'Pesquisa / páginas',
+  'research.callCounts': '{search} consultas · {fetch} páginas',
+  'research.model': 'Modelo',
+  'research.expires': 'Revisar após',
+  'research.partial':
+    'Algumas fontes não puderam ser usadas. A pesquisa inclui apenas evidências verificadas.',
+  'research.accepted': 'Aceito na biblioteca',
+  'research.dismissed': 'Dispensado',
+  'research.curated': 'Editado por você',
+  'research.deleting': 'Exclusão agendada',
+  'research.archived': 'Restaure o documento arquivado para solicitar uma nova pesquisa.',
+  'research.updated': 'Contexto atualizado.',
+  'research.history': 'Histórico da pesquisa',
+  'research.newer': 'Mais recentes',
+  'research.older': 'Mais antigas',
+  'research.edit.title': 'Editar contexto adicional',
+  'research.edit.description':
+    'A edição fica identificada como sua e exige novo aceite. Os registros de evidência e o documento original são preservados.',
+  'research.edit.heading': 'Título do contexto',
+  'research.edit.content': 'Texto do contexto',
+  'research.edit.status': 'Estado da edição',
+
   'research.settings.title': 'Pesquisa da biblioteca',
   'research.settings.description':
     'Encontre contexto externo com fontes verificáveis. Você decide o que incorporar à base.',
@@ -44,6 +75,37 @@ export const ptBrResearchMessages = {
 } as const;
 
 export const enResearchMessages: Record<keyof typeof ptBrResearchMessages, string> = {
+  'research.retry': 'Try again',
+  'research.evidence': 'Sources and execution',
+  'research.sourceOne': '1 source',
+  'research.sourceCount': '{count} sources',
+  'research.retrieved': 'Retrieved {date}',
+  'research.queries': 'Search queries',
+  'research.cost': 'Model cost',
+  'research.costUnknown': 'Not reported by the provider',
+  'research.tokens': 'Input / output tokens',
+  'research.calls': 'Search / pages',
+  'research.callCounts': '{search} searches · {fetch} pages',
+  'research.model': 'Model',
+  'research.expires': 'Review after',
+  'research.partial':
+    'Some sources could not be used. This research includes only verified evidence.',
+  'research.accepted': 'Accepted in library',
+  'research.dismissed': 'Dismissed',
+  'research.curated': 'Edited by you',
+  'research.deleting': 'Deletion scheduled',
+  'research.archived': 'Restore the archived document to request fresh research.',
+  'research.updated': 'Context updated.',
+  'research.history': 'Research history',
+  'research.newer': 'Newer',
+  'research.older': 'Older',
+  'research.edit.title': 'Edit additional context',
+  'research.edit.description':
+    'Edits are attributed to you and require renewed acceptance. Evidence records and the original document are preserved.',
+  'research.edit.heading': 'Context title',
+  'research.edit.content': 'Context text',
+  'research.edit.status': 'Editing status',
+
   'research.settings.title': 'Library research',
   'research.settings.description':
     'Find external context with verifiable sources. You decide what becomes part of your library.',
