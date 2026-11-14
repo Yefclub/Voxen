@@ -11,6 +11,7 @@ import { readCurrentGraphCache } from '../src/lib/graph-cached-read';
 import { readGraphSlice } from '../src/lib/graph-read-model';
 import { enqueueKnowledgeDeletion } from '../src/lib/knowledge-deletion';
 import { runKnowledgeDeletionJob } from '../src/lib/knowledge-deletion-executor';
+import { applyTranscriptLifecycle } from '../src/lib/brain-grounded-lifecycle';
 import { enqueueOrganization } from '../src/lib/organization/queue';
 import { claimOrganization } from '../src/lib/organization/lease';
 import { saveOrganizationPreferences } from '../src/lib/organization/preferences';
@@ -461,6 +462,94 @@ suite('organization source lifecycle and current graph visibility', () => {
     expect(
       await db.organizationRun.findFirstOrThrow({ where: { id: run.id, userId: users[0] } }),
     ).toMatchObject({ status: 'COMPLETED', warnings: ['INACTIVE_RELATIONSHIP'] });
+  });
+  test('the application archive/restore service preserves manual organization archives', async () => {
+    const f = await published();
+    const node = await db.brainNode.findFirstOrThrow({
+      where: { userId: users[0], label: 'Orion', type: 'ENTITY' },
+    });
+    const edge = await db.brainEdge.findFirstOrThrow({
+      where: { userId: users[0], kind: 'PART_OF', method: 'llm-grounded-organization' },
+    });
+    await db.brainNode.update({ where: { id: node.id }, data: { status: 'ARCHIVED' } });
+    await db.brainEdge.update({ where: { id: edge.id }, data: { status: 'ARCHIVED' } });
+    for (const status of ['ARCHIVED', 'ACTIVE'] as const) {
+      expect(await applyTranscriptLifecycle(users[0]!, f.source.id, status)).not.toBeNull();
+      expect(
+        await db.brainNode.findFirstOrThrow({ where: { id: node.id, userId: users[0] } }),
+      ).toMatchObject({ status: 'ARCHIVED' });
+      expect(
+        await db.brainEdge.findFirstOrThrow({ where: { id: edge.id, userId: users[0] } }),
+      ).toMatchObject({ status: 'ARCHIVED' });
+    }
+  });
+  test('keyless reindex preserves a reused alias identity and manually named topic', async () => {
+    const f = await queued();
+    await db.transcript.update({
+      where: { id: f.source.id },
+      data: {
+        title: 'Orion Project',
+        summaryMd: 'Orion Orion Orion is explicitly part of Vega.',
+      },
+    });
+    const identity = await db.brainNode.create({
+      data: {
+        userId: users[0]!,
+        key: 'ENTITY:orion-project',
+        type: 'ENTITY',
+        label: 'Orion Project',
+        description: 'Preserve this identity.',
+        metadata: { method: 'llm-grounded', entityType: 'PRODUCT' },
+      },
+    });
+    await db.brainEntityAlias.create({
+      data: {
+        userId: users[0]!,
+        entityNodeId: identity.id,
+        alias: 'Orion',
+        normalizedAlias: 'orion',
+        entityType: 'PRODUCT',
+        sourceType: 'TRANSCRIPT',
+        sourceId: f.source.id,
+        evidenceKey: randomUUID(),
+      },
+    });
+    const topic = await db.brainNode.create({
+      data: {
+        userId: users[0]!,
+        key: 'TOPIC:orion',
+        type: 'TOPIC',
+        label: 'My Orion topic',
+        description: 'My own topic description.',
+        metadata: { method: 'manual' },
+        status: 'ARCHIVED',
+      },
+    });
+    const run = (await enqueueOrganization(users[0]!, f.source.id, 'MANUAL', randomUUID()))!;
+    await executeOrganization(users[0]!, run.id, deps);
+    expect(
+      await db.brainEdge.count({
+        where: {
+          userId: users[0],
+          kind: 'PART_OF',
+          fromNodeId: identity.id,
+          method: 'llm-grounded-organization',
+        },
+      }),
+    ).toBe(1);
+    await db.brainNode.update({ where: { id: identity.id }, data: { status: 'ARCHIVED' } });
+    for (const status of ['ARCHIVED', 'ACTIVE'] as const) {
+      expect(await applyTranscriptLifecycle(users[0]!, f.source.id, status)).not.toBeNull();
+      for (const original of [identity, topic])
+        expect(
+          await db.brainNode.findFirstOrThrow({ where: { id: original.id, userId: users[0] } }),
+        ).toMatchObject({
+          status: 'ARCHIVED',
+          label: original.label,
+          description: original.description,
+          metadata: original.metadata,
+        });
+    }
   });
   test('actual deletion removes owned runs and keys while preserving another source and foreign evidence', async () => {
     const one = await published(),

@@ -13,6 +13,8 @@ type TranscriptListItem = Prisma.TranscriptGetPayload<{ select: typeof TRANSCRIP
  * Projects source lifecycle into the navigable graph without deleting the
  * temporal ledger. A grounded edge is current only while at least one of its
  * non-invalidated transcript sources is ACTIVE.
+ * Organization source triggers own its lifecycle markers and manual archives;
+ * this legacy pass must not overwrite those decisions.
  */
 export async function reconcileGroundedBrainLifecycle(
   userId: string,
@@ -36,6 +38,7 @@ export async function reconcileGroundedBrainLifecycle(
       FROM "BrainEdge" edge
       WHERE edge."userId" = ${userId}
         AND edge.method LIKE 'llm-grounded%'
+        AND edge.method <> 'llm-grounded-organization'
         AND edge.status <> 'TRASH'::"ContentStatus"
     )
     UPDATE "BrainEdge" edge
@@ -60,6 +63,12 @@ export async function reconcileGroundedBrainLifecycle(
         AND node.metadata->>'method' = 'llm-grounded'
         AND node."sourceType" IS NULL
         AND node.status <> 'TRASH'::"ContentStatus"
+        AND NOT EXISTS (
+          SELECT 1 FROM "BrainEdge" organization
+          WHERE organization."userId" = node."userId"
+            AND organization.method = 'llm-grounded-organization'
+            AND (organization."fromNodeId" = node.id OR organization."toNodeId" = node.id)
+        )
     )
     UPDATE "BrainNode" node
     SET status = desired.status,
