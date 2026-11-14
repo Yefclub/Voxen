@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1794639236 — 2026-11-14 · Dev
+
+### ✨ Connect library concepts using source passages
+
+Enable optional library organization in AI provider preferences, then request
+analysis from a document or choose automatic organization for new captures.
+The Standard model connects concepts using eligible source passages while
+preserving the original text, folders, tags and manual graph choices.
+
+Follow progress and expandable execution history, stop unfinished work and
+review confirmed or unknown provider costs. Graph evidence, MCP and chat retain
+the distinction between captured passages, corrected text and prepared
+documents. Retries reuse completed analysis; source changes fence stale work.
+Older captures without recorded passage provenance need reprocessing first.
+
 ## v0.15.1-dev.1794617842 — 2026-11-13 · Dev
 
 ### ✨ Review cited research alongside your saved sources

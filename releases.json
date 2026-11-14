@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794639236",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Connect library concepts using source passages",
+    "body": "Enable optional library organization in AI provider preferences, then request\nanalysis from a document or choose automatic organization for new captures.\nThe Standard model connects concepts using eligible source passages while\npreserving the original text, folders, tags and manual graph choices.\n\nFollow progress and expandable execution history, stop unfinished work and\nreview confirmed or unknown provider costs. Graph evidence, MCP and chat retain\nthe distinction between captured passages, corrected text and prepared\ndocuments. Retries reuse completed analysis; source changes fence stale work.\nOlder captures without recorded passage provenance need reprocessing first.",
+    "pr": 1099,
+    "author": "Kalyel",
+    "date": "2026-11-14T03:53:44-03:00",
+    "translations": {
+      "en": {
+        "title": "Connect library concepts using source passages",
+        "body": "Enable optional library organization in AI provider preferences, then request\nanalysis from a document or choose automatic organization for new captures.\nThe Standard model connects concepts using eligible source passages while\npreserving the original text, folders, tags and manual graph choices.\n\nFollow progress and expandable execution history, stop unfinished work and\nreview confirmed or unknown provider costs. Graph evidence, MCP and chat retain\nthe distinction between captured passages, corrected text and prepared\ndocuments. Retries reuse completed analysis; source changes fence stale work.\nOlder captures without recorded passage provenance need reprocessing first."
+      },
+      "pt-BR": {
+        "title": "Conecte conceitos da biblioteca com trechos da fonte",
+        "body": "Ative a organização opcional nas preferências dos provedores de IA e solicite\na análise dentro de um conteúdo ou escolha organizar novas capturas. O modelo\nPadrão conecta conceitos usando trechos elegíveis da fonte, preservando o texto\noriginal, as pastas, as tags e suas escolhas manuais no grafo.\n\nAcompanhe o progresso e o histórico expansível, interrompa análises pendentes\ne confira custos confirmados ou desconhecidos do provedor. As evidências no\ngrafo, no MCP e no chat distinguem trechos capturados, texto corrigido e\ndocumentos publicados. Novas tentativas reutilizam análises concluídas;\nalterações na fonte impedem a publicação de resultados desatualizados. Capturas\nantigas sem origem dos trechos registrada precisam ser reprocessadas primeiro."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1099"
+  },
+  {
     "version": "0.15.1-dev.1794617842",
     "channel": "dev",
     "type": "feat",
