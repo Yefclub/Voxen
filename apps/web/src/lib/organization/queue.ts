@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { Prisma } from '../../../prisma-generated/client';
+import type { OrganizationRun, Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { storageReadText } from '../storage';
 import { sourceEvidenceStamp } from '../source-provenance';
@@ -160,15 +160,23 @@ export async function enqueueOrganization(
       trigger === 'MANUAL'
         ? `manual:${requestKey}`
         : `auto:${organizationHash(JSON.stringify(settings))}`;
-    const previous = await tx.organizationRun.findUnique({
-      where: { userId_transcriptId_runKey: { userId, transcriptId, runKey } },
+    const previous = await tx.organizationRequest.findFirst({
+      where: { userId, transcriptId, key: runKey, run: { userId, transcriptId } },
+      include: { run: true },
     });
-    if (previous) return previous;
+    if (previous) return previous.run;
+    const accept = async (run: OrganizationRun) => {
+      await tx.organizationRequest.create({
+        data: { userId, transcriptId, key: runKey, runId: run.id },
+      });
+      return run;
+    };
     const active = await tx.organizationRun.findFirst({
       where: { userId, transcriptId, status: { in: [...ACTIVE_ORGANIZATION_STATUSES] } },
       orderBy: { createdAt: 'desc' },
     });
-    if (active && matchesOrganizationRecord(active.generationSettings, record)) return active;
+    if (active && matchesOrganizationRecord(active.generationSettings, record))
+      return accept(active);
     if (active)
       await tx.organizationRun.updateMany({
         where: { userId, transcriptId, status: { in: [...ACTIVE_ORGANIZATION_STATUSES] } },
@@ -182,23 +190,25 @@ export async function enqueueOrganization(
           revision: { increment: 1 },
         },
       });
-    return tx.organizationRun.create({
-      data: {
-        userId,
-        transcriptId,
-        runKey,
-        trigger,
-        generationSettings: settings,
-        totalSections: sections.length,
-        sections: {
-          create: sections.map((section, ordinal) => ({
-            sectionKey: section.key,
-            ordinal,
-            startLine: section.startLine,
-            endLine: section.endLine,
-          })),
+    return accept(
+      await tx.organizationRun.create({
+        data: {
+          userId,
+          transcriptId,
+          runKey,
+          trigger,
+          generationSettings: settings,
+          totalSections: sections.length,
+          sections: {
+            create: sections.map((section, ordinal) => ({
+              sectionKey: section.key,
+              ordinal,
+              startLine: section.startLine,
+              endLine: section.endLine,
+            })),
+          },
         },
-      },
-    });
+      }),
+    );
   });
 }

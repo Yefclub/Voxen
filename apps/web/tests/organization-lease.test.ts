@@ -239,4 +239,26 @@ suite('organization execution lease and publication fencing', () => {
     ).toMatchObject({ status: 'COMPLETED', leaseOwner: null });
     await expect(renewOrganizationLease(run)).rejects.toThrow('LEASE_LOST');
   });
+  test('retains unknown usage when an interrupted provider call is recovered after its deadline', async () => {
+    const fixture = await queued();
+    const run = (await claimOrganization(users[0]!, fixture.run.id))!;
+    await db.organizationSection.updateMany({
+      where: { runId: run.id, run: { userId: users[0] } },
+      data: { status: 'RUNNING', attempts: 1, callPending: true },
+    });
+    await db.organizationRun.updateMany({
+      where: { id: run.id, userId: users[0] },
+      data: {
+        costUsd: 0,
+        startedAt: new Date(Date.now() - 16 * 60_000),
+        leaseExpiresAt: new Date(0),
+      },
+    });
+    expect(await claimOrganization(users[0]!, run.id)).toBeNull();
+    const failed = await db.organizationRun.findFirstOrThrow({
+      where: { id: run.id, userId: users[0] },
+    });
+    expect(failed).toMatchObject({ status: 'FAILED', lastError: 'TIMEOUT', costUsd: null });
+    expect(failed.warnings).toContain('UNCONFIRMED_USAGE');
+  });
 });

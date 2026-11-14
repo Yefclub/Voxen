@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { OrganizationError } from './source';
+import { unconfirmedOrganizationUsage } from './usage';
 import { lockOrganizationUser, readOrganizationPreferences } from './preferences';
 import {
   lockOrganizationSource,
@@ -111,6 +112,7 @@ export async function claimOrganization(
       await tx.organizationRun.updateMany({
         where: { id, userId, status: { in: ['PENDING', 'RUNNING', 'RETRY'] } },
         data: {
+          ...(await unconfirmedOrganizationUsage(tx, userId, id)),
           status,
           lastError,
           finishedAt: now,
@@ -147,12 +149,6 @@ export async function claimOrganization(
       return reject('CANCELLED', 'SOURCE_CHANGED');
     if (row.startedAt && now.getTime() - row.startedAt.getTime() >= ORGANIZATION_DEADLINE_MS)
       return reject('FAILED', 'TIMEOUT');
-    const uncertain = await tx.organizationSection.count({
-      where: { runId: id, run: { userId }, callPending: true },
-    });
-    const warnings = Array.isArray(row.warnings)
-      ? row.warnings.filter((value): value is string => typeof value === 'string')
-      : [];
     const claimed = await tx.organizationRun.update({
       where: { id, userId },
       data: {
@@ -165,9 +161,7 @@ export async function claimOrganization(
         attempt: { increment: 1 },
         revision: { increment: 1 },
         ...(row.attempt === 0 ? { costUsd: 0 } : {}),
-        ...(uncertain
-          ? { costUsd: null, warnings: [...new Set([...warnings, 'UNCONFIRMED_USAGE'])] }
-          : {}),
+        ...(await unconfirmedOrganizationUsage(tx, userId, id)),
       },
     });
     return { ...claimed, leaseOwner: owner };

@@ -1017,6 +1017,7 @@ model OrganizationRun {
   user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript         Transcript                  @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
   sections           OrganizationSection[]
+  requests           OrganizationRequest[]
 
   @@unique([userId, transcriptId, runKey])
   @@index([userId, transcriptId, createdAt(sort: Desc)])
@@ -1045,6 +1046,18 @@ model OrganizationSection {
 
   @@unique([runId, sectionKey])
   @@unique([runId, ordinal])
+}
+
+model OrganizationRequest {
+  userId       String
+  transcriptId String
+  key          String
+  runId        String
+  createdAt    DateTime        @default(now())
+  run          OrganizationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@id([userId, transcriptId, key])
+  @@index([runId])
 }
 
 // ============================================================================

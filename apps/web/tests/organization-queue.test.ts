@@ -108,14 +108,32 @@ suite('owner-bound organization consent and queue', () => {
       role: 'standard',
       snapshot: { sourceVersion: 1, capturedSource: false },
     });
-    expect((await enqueueOrganization(users[0]!, source.id, 'MANUAL', randomUUID()))!.id).toBe(
+    const secondKey = randomUUID();
+    expect((await enqueueOrganization(users[0]!, source.id, 'MANUAL', secondKey))!.id).toBe(
       runs[0]!.id,
     );
     await db.organizationRun.update({ where: { id: runs[0]!.id }, data: { status: 'COMPLETED' } });
     expect((await enqueueOrganization(users[0]!, source.id, 'MANUAL', key))!.id).toBe(runs[0]!.id);
+    expect((await enqueueOrganization(users[0]!, source.id, 'MANUAL', secondKey))!.id).toBe(
+      runs[0]!.id,
+    );
+    expect(
+      await db.organizationRun.count({ where: { userId: users[0]!, transcriptId: source.id } }),
+    ).toBe(1);
     expect((await enqueueOrganization(users[0]!, source.id, 'MANUAL', randomUUID()))!.id).not.toBe(
       runs[0]!.id,
     );
+  });
+  test('retains an automatic request coalesced into an active manual run', async () => {
+    await saveOrganizationPreferences(users[0]!, 'AUTO');
+    const source = await document(users[0], true);
+    const manual = (await enqueueOrganization(users[0]!, source.id, 'MANUAL', randomUUID()))!;
+    expect((await enqueueOrganization(users[0]!, source.id, 'AUTO'))!.id).toBe(manual.id);
+    await db.organizationRun.update({ where: { id: manual.id }, data: { status: 'COMPLETED' } });
+    expect((await enqueueOrganization(users[0]!, source.id, 'AUTO'))!.id).toBe(manual.id);
+    expect(
+      await db.organizationRun.count({ where: { userId: users[0]!, transcriptId: source.id } }),
+    ).toBe(1);
   });
   test('automatic work accepts only captures collected since the current consent', async () => {
     const before = await document(users[0], true, new Date(0));
