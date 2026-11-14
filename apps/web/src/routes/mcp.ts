@@ -18,6 +18,7 @@ import { registerDiscoveryTools } from './mcp-discovery-tools';
 import { registerTranscriptTools } from './mcp-transcript-discovery-tools';
 import { registerNoteTools } from './mcp-note-tools';
 import { registerBrainTools } from './mcp-graph-tools';
+import { registerMcpPassageTools } from './mcp-passage-tools';
 import { registerMcpCaptureReadTools, registerMcpCaptureWriteTools } from './mcp-capture-tools';
 
 // Owner-scoped MCP tools served through the official v2 Web Standard transport.
@@ -40,7 +41,10 @@ const VOXEN_INSTRUCTIONS = [
   'criam conteúdo.',
   '',
   'Fluxo de leitura PROGRESSIVA (recupere só o necessário, sem embeddings):',
-  '1. Busque primeiro por termos/títulos/tópicos com voxen_search_knowledge:',
+  '1. Para evidência factual, comece com voxen_search_passages e valide key/revision com voxen_read_passage.',
+  '   Preserve a origem: ORIGINAL, SOURCE_DERIVED e EXTERNAL_ACCEPTED. Nomes semelhantes são apenas pistas.',
+  '   Se limitations indicar índice incompleto, continue com busca e leitura canônica; isso não prova ausência de evidência.',
+  '   Use voxen_search_knowledge para termos/títulos/tópicos e filtros adicionais:',
   '   ela consulta notas e transcrições, retornando trechos curtos + fonte. Use',
   '   voxen_search_transcripts / voxen_search_notes / voxen_brain_search para aprofundar.',
   '2. Antes de abrir conteúdo, veja a ESTRUTURA: voxen_outline (seções, linhas, timestamps).',
@@ -181,6 +185,7 @@ function buildVoxenMcpServer(
     registerMcpJobStatusTool(server, userId);
     registerDiscoveryTools(server, userId, publicOrigin);
     registerTranscriptTools(server, userId, publicOrigin);
+    registerMcpPassageTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
     registerMcpPersonalContextTool(server, userId, publicOrigin);
     registerBrainTools(server, userId);

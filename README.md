@@ -104,8 +104,17 @@ Ambiguous aliases are not merged. Older captures without a provenance manifest
 need reprocessing before this additional analysis; keyless search stays usable.
 Organization allows at most 24 sections of 48,000 UTF-16 units, three execution
 claims and fifteen minutes from the first claim. Paid completed analyses survive
-retries; an interrupted unconfirmed call is reported as unknown cost. Passage
-indexing is a separate increment.
+retries; an interrupted unconfirmed call is reported as unknown cost.
+
+Keyless passage indexing runs incrementally for documents, notes and accepted
+external research. Chat can search Portuguese/English passages and verify a
+current source revision before quoting. MCP adds `voxen_search_passages` and
+`voxen_read_passage`; existing search/read contracts remain available. Results
+include origin, section, lines and available timestamps, while similar title/
+entity names are only discovery leads. Edits, archive and deletion hide old
+passages immediately. During backfill or an index failure, responses identify
+the limitation and preserve the existing lexical search. See
+[passage retrieval and measured limits](docs/PASSAGE-RETRIEVAL.md).
 
 ## Stack
 

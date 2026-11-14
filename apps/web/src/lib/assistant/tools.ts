@@ -17,6 +17,7 @@ import { json, withAssistantLease, type ClaimedAssistantRun } from './store';
 import { getAssistantPreferences } from './preferences';
 import { fetchWebPage, searchWeb } from './web';
 import { readDocumentRelationships } from './organization-evidence';
+import { assistantPassageTools } from './passage-tools';
 import {
   authorizeAddition,
   CaptureAdditionSchema,
@@ -146,6 +147,7 @@ export async function buildAssistantTools(
     return result;
   };
   const tools: ToolSet = {
+    ...assistantPassageTools(run.userId, guarded, remember),
     recent_content: tool({
       description: 'List recently saved owned documents before reading their relevant passages.',
       inputSchema: z.object({ days: z.number().int().min(1).max(365).default(30) }),

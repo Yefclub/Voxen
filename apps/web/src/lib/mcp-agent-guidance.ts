@@ -32,8 +32,8 @@ export function mcpAgentGuidance(origin: string, locale: unknown): string {
     write,
     '',
     en
-      ? 'Start with voxen_search_knowledge, tags and summaries; inspect voxen_outline and read specific lines/sections/timespans. Full-document reads are a last resort.'
-      : 'Comece por voxen_search_knowledge, tags e resumos; use voxen_outline e leia linhas, seções ou tempos específicos. Leia o documento completo como último recurso.',
+      ? 'Start with voxen_search_passages and validate key/revision using voxen_read_passage. Preserve provenance; similar names are discovery leads, not verified evidence. If indexing is incomplete, use voxen_search_knowledge, tags and summaries, then voxen_outline and specific lines/sections/timespans. Full-document reads are a last resort.'
+      : 'Comece por voxen_search_passages e valide key/revision com voxen_read_passage. Preserve a origem; nomes semelhantes são pistas, não evidência verificada. Se o índice estiver incompleto, use voxen_search_knowledge, tags e resumos, depois voxen_outline e linhas, seções ou tempos específicos. Leia o documento completo como último recurso.',
     en
       ? 'voxen_get_job_status is READ. Monitor queued jobs until completion before relying on their content.'
       : 'voxen_get_job_status é READ. Acompanhe os jobs enfileirados até concluírem antes de usar seu conteúdo.',

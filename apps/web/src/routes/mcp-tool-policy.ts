@@ -31,6 +31,8 @@ export const MCP_TOOL_SCOPES = {
   voxen_read_transcript_correction: 'READ',
   voxen_related: 'READ',
   voxen_search_knowledge: 'READ',
+  voxen_search_passages: 'READ',
+  voxen_read_passage: 'READ',
   voxen_search_note_content: 'READ',
   voxen_search_notes: 'READ',
   voxen_search_transcript_content: 'READ',

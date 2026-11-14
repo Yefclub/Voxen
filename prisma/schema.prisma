@@ -98,6 +98,7 @@ model User {
   assistantMemories             AssistantMemory[]
   assistantActions              AssistantAction[]
   assistantProposals            AssistantProposal[]
+  passageIndexes                PassageIndexSource[]
 
   @@index([status])
   @@index([role])
@@ -740,6 +741,60 @@ model Chunk {
   transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
 
   @@index([transcriptId, startSec])
+}
+
+// Spec 230: a source generation fences derived text independently of AI jobs.
+model PassageIndexSource {
+  userId            String
+  sourceType        String
+  sourceId          String
+  generation        BigInt                   @default(1)
+  indexedGeneration BigInt?
+  status            String                   @default("PENDING")
+  attempt           Int                      @default(0)
+  leaseToken        String?
+  leaseExpiresAt    DateTime?
+  nextAttemptAt     DateTime?
+  revision          String?
+  snapshot          String?
+  checksum          String?
+  title             String                   @default("")
+  searchVector      Unsupported("tsvector")?
+  limitations       String[]                 @default([])
+  passageCount      Int                      @default(0)
+  errorCode         String?
+  indexedAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @default(now()) @updatedAt
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  passages          RetrievalPassage[]
+
+  @@id([userId, sourceType, sourceId])
+  @@index([searchVector(ops: raw("tsvector_ops"))], type: Gin, map: "PassageIndexSource_searchVector_idx")
+  @@index([status, nextAttemptAt, leaseExpiresAt, updatedAt], map: "PassageIndexSource_due_idx")
+}
+
+model RetrievalPassage {
+  key          String                   @id
+  userId       String
+  sourceType   String
+  sourceId     String
+  checksum     String
+  text         String                   @db.Text
+  kind         String
+  authority    String?
+  section      String?
+  startOffset  Int
+  endOffset    Int
+  startLine    Int
+  endLine      Int
+  startSec     Int?
+  endSec       Int?
+  searchVector Unsupported("tsvector")?
+  source       PassageIndexSource       @relation(fields: [userId, sourceType, sourceId], references: [userId, sourceType, sourceId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, sourceType, sourceId, startOffset])
+  @@index([searchVector(ops: raw("tsvector_ops"))], type: Gin, map: "RetrievalPassage_searchVector_idx")
 }
 
 // ============================================================================
