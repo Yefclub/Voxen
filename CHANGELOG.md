@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.15.1-dev.1794695148 — 2026-11-14 · Dev
+
+### ✨ Find and verify relevant library passages
+
+Chat and MCP can find bounded passages in Portuguese and English, retain exact
+identifiers and check the current source revision before quoting. Results keep
+original text, derived context and accepted external research distinct, with
+section, line and available timestamp references. Similar titles and entity
+names help discovery without becoming verified evidence.
+
+The keyless index updates in the background. Edits, archive and deletion hide
+older passages immediately. While indexing is incomplete or unavailable, the
+existing library search remains available with an explicit limitation. MCP
+adds `voxen_search_passages` and `voxen_read_passage` without changing the
+existing search and reading contracts.
+
 ## v0.15.1-dev.1794639236 — 2026-11-14 · Dev
 
 ### ✨ Connect library concepts using source passages

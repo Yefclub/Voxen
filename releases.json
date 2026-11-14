@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794695148",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Find and verify relevant library passages",
+    "body": "Chat and MCP can find bounded passages in Portuguese and English, retain exact\nidentifiers and check the current source revision before quoting. Results keep\noriginal text, derived context and accepted external research distinct, with\nsection, line and available timestamp references. Similar titles and entity\nnames help discovery without becoming verified evidence.\n\nThe keyless index updates in the background. Edits, archive and deletion hide\nolder passages immediately. While indexing is incomplete or unavailable, the\nexisting library search remains available with an explicit limitation. MCP\nadds `voxen_search_passages` and `voxen_read_passage` without changing the\nexisting search and reading contracts.",
+    "pr": 1101,
+    "author": "Kalyel",
+    "date": "2026-11-14T19:25:36-03:00",
+    "translations": {
+      "en": {
+        "title": "Find and verify relevant library passages",
+        "body": "Chat and MCP can find bounded passages in Portuguese and English, retain exact\nidentifiers and check the current source revision before quoting. Results keep\noriginal text, derived context and accepted external research distinct, with\nsection, line and available timestamp references. Similar titles and entity\nnames help discovery without becoming verified evidence.\n\nThe keyless index updates in the background. Edits, archive and deletion hide\nolder passages immediately. While indexing is incomplete or unavailable, the\nexisting library search remains available with an explicit limitation. MCP\nadds `voxen_search_passages` and `voxen_read_passage` without changing the\nexisting search and reading contracts."
+      },
+      "pt-BR": {
+        "title": "Encontre e confira passagens relevantes da biblioteca",
+        "body": "O chat e o MCP podem encontrar passagens curtas em português e inglês, preservar\nidentificadores exatos e conferir a revisão atual da fonte antes de citar.\nOs resultados separam texto original, contexto derivado e pesquisa externa\naceita, com seção, linhas e horários disponíveis. Títulos e nomes de entidades\nsemelhantes ajudam a encontrar conteúdos sem virar evidência verificada.\n\nO índice funciona em segundo plano sem exigir chaves de IA. Edição,\narquivamento e exclusão escondem imediatamente as passagens antigas. Durante\na indexação ou uma indisponibilidade, a busca existente continua disponível\ncom uma indicação da limitação. O MCP ganha `voxen_search_passages` e\n`voxen_read_passage`, preservando os contratos anteriores de busca e leitura."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1101"
+  },
+  {
     "version": "0.15.1-dev.1794639236",
     "channel": "dev",
     "type": "feat",
