@@ -185,6 +185,14 @@ were verified. This does not establish the accuracy of live research models.
 - Where organization is enabled, the interface shall disclose its use of the
   configured Standard model, progress, cost or unknown cost, cancellation and
   safe failures in both supported locales.
+- Where organization controls appear in the reader, the interface shall keep
+  the original content first, provide compact expandable execution history and
+  stable links to older runs, and announce progress through a mounted status
+  region. Temporary submission or read failures shall not imply an archive.
+- Where a current organization excerpt is returned to graph, MCP or assistant
+  consumers, the system shall retain its recorded captured, corrected or
+  prepared authority. Legacy evidence without authority shall not be promoted
+  to a verified captured-source classification.
 
 ### Unwanted behavior
 
