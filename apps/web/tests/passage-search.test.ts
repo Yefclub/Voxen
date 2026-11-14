@@ -134,6 +134,15 @@ suite('current, owner-bound passage retrieval', () => {
     expect(result.coverage).toMatchObject({ total: 1, indexed: 0 });
     expect(result.baseline.some((p) => p.id === row.id && p.sourceType === 'note')).toBe(true);
   });
+  test('rejects altered provenance or anchors in a derived row instead of verifying invented metadata', async () => {
+    await note('A literal note passage about provenance.');
+    const hit = (await searchPassages(users[0]!, { query: 'literal note passage' })).results[0]!;
+    await db.retrievalPassage.update({
+      where: { key: hit.key },
+      data: { authority: 'CAPTURED_SOURCE', startLine: 99 },
+    });
+    await expect(readPassage(users[0]!, hit.key, hit.revision)).rejects.toThrow('STALE_REVISION');
+  });
   test('reports index unavailability while canonical lexical search and reads remain usable', async () => {
     const row = await note('A baseline recovery observation.');
     await db.$executeRawUnsafe(

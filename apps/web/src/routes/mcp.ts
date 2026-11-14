@@ -18,6 +18,7 @@ import { registerDiscoveryTools } from './mcp-discovery-tools';
 import { registerTranscriptTools } from './mcp-transcript-discovery-tools';
 import { registerNoteTools } from './mcp-note-tools';
 import { registerBrainTools } from './mcp-graph-tools';
+import { registerMcpPassageTools } from './mcp-passage-tools';
 import { registerMcpCaptureReadTools, registerMcpCaptureWriteTools } from './mcp-capture-tools';
 
 // Owner-scoped MCP tools served through the official v2 Web Standard transport.
@@ -181,6 +182,7 @@ function buildVoxenMcpServer(
     registerMcpJobStatusTool(server, userId);
     registerDiscoveryTools(server, userId, publicOrigin);
     registerTranscriptTools(server, userId, publicOrigin);
+    registerMcpPassageTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
     registerMcpPersonalContextTool(server, userId, publicOrigin);
     registerBrainTools(server, userId);

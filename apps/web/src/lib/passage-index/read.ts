@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '../db';
+import { buildPassages, type Passage } from './build';
 import {
   loadPassageSource,
   readPassageRecord,
@@ -8,7 +8,6 @@ import {
   type PassageIdentity,
 } from './source';
 
-const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 const referencePart = z.string().regex(/^[a-f0-9]{64}$/);
 
 /** A search lead becomes verified text only after this canonical revision check. */
@@ -29,15 +28,16 @@ export async function readPassage(userId: string, key: string, revision: string)
     row.source.revision === revision &&
     source.revision === revision;
   if (!current()) throw new PassageSourceError('STALE_REVISION');
-  const text = source.text.slice(row.startOffset, row.endOffset);
+  const built = buildPassages(source),
+    passage = built.passages.find((p) => p.key === key);
   if (
-    row.source.checksum !== digest(source.text) ||
-    text !== row.text ||
-    digest(text) !== row.checksum ||
-    key !== digest(`${row.source.snapshot}:${row.startOffset}:${row.endOffset}`)
+    !passage ||
+    row.source.checksum !== built.checksum ||
+    row.source.snapshot !== built.snapshot ||
+    (Object.keys(passage) as Array<keyof Passage>).some((field) => passage[field] !== row[field])
   )
     throw new PassageSourceError('STALE_REVISION');
-  await db.$transaction(
+  const record = await db.$transaction(
     async (tx) => {
       const record = await readPassageRecord(identity, tx);
       const head = await tx.passageIndexSource.findFirst({
@@ -52,6 +52,7 @@ export async function readPassage(userId: string, key: string, revision: string)
         },
       });
       if (!head || record.revision !== revision) throw new PassageSourceError('STALE_REVISION');
+      return record;
     },
     { isolationLevel: 'RepeatableRead' },
   );
@@ -60,19 +61,25 @@ export async function readPassage(userId: string, key: string, revision: string)
     sourceType: row.sourceType,
     sourceId: row.sourceId,
     title: source.title,
+    href:
+      record.type === 'transcript'
+        ? `/transcricoes/${row.sourceId}`
+        : record.type === 'note'
+          ? `/notas/${row.sourceId}`
+          : `/transcricoes/${record.data.transcriptId}#additional-context-${row.sourceId}`,
     revision,
     documentChecksum: row.source.checksum!,
     passageChecksum: row.checksum,
-    text,
-    kind: row.kind,
-    authority: row.authority,
-    section: row.section,
-    startOffset: row.startOffset,
-    endOffset: row.endOffset,
-    startLine: row.startLine,
-    endLine: row.endLine,
-    startSec: row.startSec,
-    endSec: row.endSec,
+    text: passage.text,
+    kind: passage.kind,
+    authority: passage.authority,
+    section: passage.section,
+    startOffset: passage.startOffset,
+    endOffset: passage.endOffset,
+    startLine: passage.startLine,
+    endLine: passage.endLine,
+    startSec: passage.startSec,
+    endSec: passage.endSec,
     limitations: loaded.limitations,
   };
 }
