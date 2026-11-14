@@ -141,6 +141,37 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
   if (compatible.length > 1) return { node: null, warning: 'AMBIGUOUS_IDENTITY' };
   if (compatible[0]) return { node: compatible[0], warning: null };
   const existing = await tx.brainNode.findUnique({ where: { userId_key: { userId, key } } });
+  const metadata = existing?.metadata;
+  if (
+    existing?.status === 'ARCHIVED' &&
+    existing.type === type &&
+    sameName(existing) &&
+    existing.sourceType === null &&
+    metadata &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata) &&
+    metadata.method === 'llm-grounded' &&
+    metadata.organizationLifecycleArchived === true &&
+    (type === 'TOPIC' || sameKind(metadata, node.kind))
+  ) {
+    const restoredMetadata = { ...metadata };
+    delete restoredMetadata.organizationLifecycleArchived;
+    const restored = await tx.brainNode.updateMany({
+      where: {
+        id: existing.id,
+        userId,
+        status: 'ARCHIVED',
+        updatedAt: existing.updatedAt,
+        metadata: { equals: metadata },
+      },
+      data: { status: 'ACTIVE', metadata: restoredMetadata },
+    });
+    if (restored.count !== 1) return { node: null, warning: 'INACTIVE_IDENTITY' };
+    return {
+      node: await tx.brainNode.findFirstOrThrow({ where: { id: existing.id, userId } }),
+      warning: null,
+    };
+  }
   if (
     existing &&
     (existing.type !== type ||
@@ -212,6 +243,7 @@ export async function publishOrganizationSection(input: {
           ) !== JSON.stringify(organizationSnapshot(source))
         )
           throw new OrganizationError('STALE_SOURCE');
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:organization:projection:${source.userId}`}))`;
         await assertGraphLease();
         const content = await tx.brainNode.upsert({
           where: { userId_key: { userId: source.userId, key: `TRANSCRIPT:${source.id}` } },
@@ -241,30 +273,47 @@ export async function publishOrganizationSection(input: {
           evidence: OrganizationEvidence,
           nodeId: string | null,
         ) => {
-          if (fromNodeId === toNodeId) return;
+          if (fromNodeId === toNodeId) return false;
           if ((kind === 'RELATED_TO' || kind === 'CONTRADICTS') && fromNodeId > toNodeId)
             [fromNodeId, toNodeId] = [toNodeId, fromNodeId];
           await assertGraphLease();
-          const edge = await tx.brainEdge.upsert({
-            where: {
-              userId_fromNodeId_toNodeId_kind_method: {
-                userId: source.userId,
-                fromNodeId,
-                toNodeId,
-                kind,
-                method: METHOD,
-              },
-            },
-            update: { status: 'ACTIVE' },
-            create: {
-              userId: source.userId,
-              fromNodeId,
-              toNodeId,
-              kind,
-              method: METHOD,
-              metadata: { organizationVersion: 1 },
-            },
+          const identity = { userId: source.userId, fromNodeId, toNodeId, kind, method: METHOD };
+          let edge = await tx.brainEdge.findUnique({
+            where: { userId_fromNodeId_toNodeId_kind_method: identity },
           });
+          if (edge) {
+            const metadata =
+              edge.metadata && typeof edge.metadata === 'object' && !Array.isArray(edge.metadata)
+                ? edge.metadata
+                : {};
+            if (
+              edge.status !== 'ACTIVE' &&
+              !(edge.status === 'ARCHIVED' && metadata.organizationLifecycleArchived === true)
+            ) {
+              warnings.add('INACTIVE_RELATIONSHIP');
+              return false;
+            }
+            const restoredMetadata = { ...metadata };
+            delete restoredMetadata.organizationLifecycleArchived;
+            const changed = await tx.brainEdge.updateMany({
+              where: {
+                id: edge.id,
+                userId: source.userId,
+                status: edge.status,
+                updatedAt: edge.updatedAt,
+              },
+              data: {
+                status: 'ACTIVE',
+                ...(metadata.organizationLifecycleArchived === true
+                  ? { metadata: restoredMetadata }
+                  : {}),
+              },
+            });
+            if (changed.count !== 1) throw new OrganizationError('GRAPH_BUSY');
+          } else
+            edge = await tx.brainEdge.create({
+              data: { ...identity, metadata: { organizationVersion: 1 } },
+            });
           const evidenceKey = `organization:${organizationHash(JSON.stringify([source.userId, source.id, segmentKey, edge.id, nodeId, evidence]))}`;
           await tx.brainSource.upsert({
             where: { userId_evidenceKey: { userId: source.userId, evidenceKey } },
@@ -283,6 +332,7 @@ export async function publishOrganizationSection(input: {
               endLine: evidence.endLine,
             },
           });
+          return true;
         };
         for (const node of analysis.nodes) {
           const resolved = await resolveNode(tx, source.userId, node);
@@ -302,8 +352,7 @@ export async function publishOrganizationSection(input: {
           const from = ids.get(row.from),
             to = ids.get(row.to);
           if (!from || !to || from === to) continue;
-          await writeEdge(from, to, row.kind, row.evidence, null);
-          relationships++;
+          if (await writeEdge(from, to, row.kind, row.evidence, null)) relationships++;
         }
         const publication = { nodes: ids.size, relationships, warnings: [...warnings] };
         await input.commit(tx, publication);

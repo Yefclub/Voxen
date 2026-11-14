@@ -159,6 +159,9 @@ were verified. This does not establish the accuracy of live research models.
   generated evidence before it can be used as current knowledge.
 - When a user disables organization or cancels a run, the system shall fence
   late publications without removing already valid source evidence.
+- When fresh evidence supports organization hidden by a source lifecycle
+  change, the system shall reuse its prior identities and relationships while
+  preserving explicit manual archives and deletions.
 
 ### State-driven
 
