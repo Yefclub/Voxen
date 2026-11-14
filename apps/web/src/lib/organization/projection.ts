@@ -111,7 +111,9 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
       WHERE alias."userId" = ${userId} AND alias."sourceType" = 'TRANSCRIPT'
         AND alias."normalizedAlias" = ${normalized} AND alias."invalidatedAt" IS NULL
         AND alias."entityType" IN (${node.kind}, 'OTHER')
-        AND entity.type = 'ENTITY' AND entity.status = 'ACTIVE' AND source.status = 'ACTIVE'
+        AND entity.type = 'ENTITY' AND source.status = 'ACTIVE'
+        AND (entity.status = 'ACTIVE' OR (entity.status = 'ARCHIVED'
+          AND entity.metadata @> '{"method":"llm-grounded","organizationLifecycleArchived":true}'::jsonb))
       ORDER BY entity.id, alias.alias LIMIT 65
     `
       : [];
@@ -122,7 +124,20 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
       userId,
       type,
       sourceType: null,
-      status: 'ACTIVE',
+      AND: [
+        {
+          OR: [
+            { status: 'ACTIVE' },
+            {
+              status: 'ARCHIVED',
+              AND: [
+                { metadata: { path: ['method'], equals: 'llm-grounded' } },
+                { metadata: { path: ['organizationLifecycleArchived'], equals: true } },
+              ],
+            },
+          ],
+        },
+      ],
       OR: [
         { key },
         { label: { equals: node.name, mode: 'insensitive' } },
@@ -139,13 +154,14 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
       (type === 'TOPIC' || sameKind(row.metadata, node.kind)),
   );
   if (compatible.length > 1) return { node: null, warning: 'AMBIGUOUS_IDENTITY' };
-  if (compatible[0]) return { node: compatible[0], warning: null };
-  const existing = await tx.brainNode.findUnique({ where: { userId_key: { userId, key } } });
+  if (compatible[0]?.status === 'ACTIVE') return { node: compatible[0], warning: null };
+  const existing =
+    compatible[0] ?? (await tx.brainNode.findUnique({ where: { userId_key: { userId, key } } }));
   const metadata = existing?.metadata;
   if (
     existing?.status === 'ARCHIVED' &&
     existing.type === type &&
-    sameName(existing) &&
+    (sameName(existing) || exactAliases.some((alias) => alias.id === existing.id)) &&
     existing.sourceType === null &&
     metadata &&
     typeof metadata === 'object' &&
@@ -317,7 +333,7 @@ export async function publishOrganizationSection(input: {
           const evidenceKey = `organization:${organizationHash(JSON.stringify([source.userId, source.id, segmentKey, edge.id, nodeId, evidence]))}`;
           await tx.brainSource.upsert({
             where: { userId_evidenceKey: { userId: source.userId, evidenceKey } },
-            update: {},
+            update: { invalidatedAt: null },
             create: {
               userId: source.userId,
               edgeId: edge.id,

@@ -318,6 +318,96 @@ suite('organization source lifecycle and current graph visibility', () => {
       }),
     ).toBe(3);
   });
+  test('republishing a source that returns to its original title restores current evidence', async () => {
+    const f = await published();
+    const evidence = await db.brainSource.findMany({
+      where: { userId: users[0], sourceId: f.source.id },
+      orderBy: { id: 'asc' },
+    });
+    const edgeIds = evidence.map((row) => row.edgeId).sort();
+    await db.transcript.update({ where: { id: f.source.id }, data: { title: 'Title B' } });
+    await db.transcript.update({ where: { id: f.source.id }, data: { title: f.source.title } });
+    expect(
+      await db.brainSource.count({
+        where: { userId: users[0], sourceId: f.source.id, invalidatedAt: null },
+      }),
+    ).toBe(0);
+    const run = (await enqueueOrganization(users[0]!, f.source.id, 'MANUAL', randomUUID()))!;
+    await executeOrganization(users[0]!, run.id, deps);
+    const current = await db.brainSource.findMany({
+      where: { userId: users[0], sourceId: f.source.id, invalidatedAt: null },
+      orderBy: { id: 'asc' },
+    });
+    expect(current.map((row) => row.id)).toEqual(evidence.map((row) => row.id));
+    for (const status of ['ARCHIVED', 'ACTIVE'] as const) {
+      await db.transcript.update({ where: { id: f.source.id }, data: { status } });
+      const edges = await db.brainEdge.findMany({
+        where: { userId: users[0], method: 'llm-grounded-organization', status },
+      });
+      expect(edges.map((row) => row.id).sort()).toEqual(edgeIds);
+    }
+    expect(
+      await db.organizationRun.findFirstOrThrow({
+        where: { id: run.id, userId: users[0] },
+      }),
+    ).toMatchObject({ status: 'COMPLETED', completedSections: 1 });
+  });
+  test('fresh organization restores lifecycle-archived alias identities and their relationships', async () => {
+    const f = await queued(),
+      aliasSource = await queued();
+    const identity = await db.brainNode.create({
+      data: {
+        userId: users[0]!,
+        key: 'ENTITY:product:canonical-orion',
+        type: 'ENTITY',
+        label: 'Orion Project',
+        description: 'Preserve the canonical identity.',
+        metadata: { method: 'llm-grounded', entityType: 'PRODUCT' },
+      },
+    });
+    await db.brainEntityAlias.create({
+      data: {
+        userId: users[0]!,
+        entityNodeId: identity.id,
+        alias: 'Orion',
+        normalizedAlias: 'orion',
+        entityType: 'PRODUCT',
+        sourceType: 'TRANSCRIPT',
+        sourceId: aliasSource.source.id,
+        evidenceKey: randomUUID(),
+      },
+    });
+    await executeOrganization(users[0]!, f.run.id, deps);
+    const original = await db.brainEdge.findFirstOrThrow({
+      where: { userId: users[0], kind: 'PART_OF', fromNodeId: identity.id },
+    });
+    const nodes = await db.brainNode.findMany({ where: { userId: users[0], type: 'ENTITY' } });
+    await db.transcript.update({ where: { id: f.source.id }, data: { title: 'Revised title' } });
+    expect(
+      await db.brainNode.findFirstOrThrow({
+        where: { id: identity.id, userId: users[0] },
+      }),
+    ).toMatchObject({ status: 'ARCHIVED', metadata: { organizationLifecycleArchived: true } });
+    const run = (await enqueueOrganization(users[0]!, f.source.id, 'MANUAL', randomUUID()))!;
+    await executeOrganization(users[0]!, run.id, deps);
+    expect(
+      await db.brainNode.findFirstOrThrow({
+        where: { id: identity.id, userId: users[0] },
+      }),
+    ).toMatchObject({ status: 'ACTIVE', label: identity.label, description: identity.description });
+    const current = await db.brainNode.findMany({ where: { userId: users[0], type: 'ENTITY' } });
+    expect(current.map((row) => row.id).sort()).toEqual(nodes.map((row) => row.id).sort());
+    expect(
+      await db.brainEdge.findFirstOrThrow({
+        where: { id: original.id, userId: users[0] },
+      }),
+    ).toMatchObject({ status: 'ACTIVE' });
+    expect(
+      await db.brainSource.count({
+        where: { userId: users[0], edgeId: original.id, invalidatedAt: null },
+      }),
+    ).toBe(1);
+  });
   test('does not reactivate an identity archived by an explicit manual choice', async () => {
     const f = await published();
     const node = await db.brainNode.findFirstOrThrow({

@@ -161,7 +161,11 @@ were verified. This does not establish the accuracy of live research models.
   late publications without removing already valid source evidence.
 - When fresh evidence supports organization hidden by a source lifecycle
   change, the system shall reuse its prior identities and relationships while
-  preserving explicit manual archives and deletions.
+  preserving explicit manual archives and deletions, including identities
+  previously resolved through unambiguous eligible aliases.
+- When a source returns to a previously analyzed snapshot and fresh analysis
+  verifies that snapshot, the system shall restore the matching evidence's
+  validity and retain it through unchanged archive/restore transitions.
 
 ### State-driven
 
