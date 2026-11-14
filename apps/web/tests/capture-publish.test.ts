@@ -231,4 +231,134 @@ describeIfDb('capture publication (contract v2 DOCUMENT)', () => {
       await pending;
     }
   });
+
+  it.each(['same job', 'different job'] as const)(
+    'preserves the committed refresh when a late %s resumes from its old baseline',
+    async (scenario) => {
+      const initialJob = await db.job.create({
+        data: {
+          userId,
+          type: 'CAPTURE_LINK',
+          status: 'DONE',
+          sourceUrl: `https://example.test/${scenario}/initial`,
+        },
+      });
+      const initial = await publishCapturedDocument(
+        baseInput(userId, initialJob.id, 'The original source before either refresh attempt.'),
+      );
+      const lateJob = await db.job.create({
+        data: {
+          userId,
+          type: 'CAPTURE_LINK',
+          status: 'RUNNING',
+          sourceUrl: `https://example.test/${scenario}/late`,
+          refreshTranscriptId: initial.transcriptId,
+        },
+      });
+      const winnerJob =
+        scenario === 'same job'
+          ? lateJob
+          : await db.job.create({
+              data: {
+                userId,
+                type: 'CAPTURE_LINK',
+                status: 'RUNNING',
+                sourceUrl: `https://example.test/${scenario}/winner`,
+                refreshTranscriptId: initial.transcriptId,
+              },
+            });
+      const winnerInput = {
+        ...baseInput(userId, winnerJob.id, 'The source committed by the winning refresh attempt.'),
+        refreshTranscriptId: initial.transcriptId,
+      };
+      winnerInput.interpretation.title = 'Winning refresh';
+      winnerInput.artifact.segments = [
+        { startSec: 0, endSec: 5, text: 'A chunk from the winning refresh.' },
+      ];
+      const lateInput = {
+        ...baseInput(
+          userId,
+          lateJob.id,
+          'The different source rendered by the late refresh attempt.',
+        ),
+        refreshTranscriptId: initial.transcriptId,
+      };
+      lateInput.interpretation.title = 'Late refresh';
+      lateInput.artifact.segments = [
+        { startSec: 0, endSec: 5, text: 'A chunk from the late refresh.' },
+      ];
+      const storage = await import('../src/lib/storage');
+      const realPut = storage.storagePut;
+      let entered!: () => void, release!: () => void;
+      const paused = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const write = spyOn(storage, 'storagePut').mockImplementation(async (input) => {
+        if (typeof input.body === 'string' && input.body.includes('title: "Late refresh"')) {
+          entered();
+          await barrier;
+        }
+        return realPut(input);
+      });
+      const pending = publishCapturedDocument(lateInput);
+      try {
+        await paused;
+        await publishCapturedDocument(winnerInput);
+        const where = { id: initial.transcriptId, userId };
+        const committed = await db.transcript.findFirstOrThrow({ where });
+        const snapshots = await db.sourceContentVersion.findMany({
+          where: { transcriptId: initial.transcriptId, userId },
+        });
+        const chunks = await db.chunk.findMany({ where: { transcriptId: initial.transcriptId } });
+        expect(committed.sourceVersion).toBe(2);
+        expect(snapshots).toHaveLength(1);
+        release();
+        if (scenario === 'same job')
+          expect(await pending).toEqual({
+            transcriptId: initial.transcriptId,
+            created: false,
+            changed: false,
+          });
+        else await expect(pending).rejects.toMatchObject({ code: 'STALE_REVISION' });
+        expect(await db.transcript.findFirstOrThrow({ where })).toEqual(committed);
+        expect(
+          await db.sourceContentVersion.findMany({
+            where: { transcriptId: initial.transcriptId, userId },
+          }),
+        ).toEqual(snapshots);
+        expect(await db.chunk.findMany({ where: { transcriptId: initial.transcriptId } })).toEqual(
+          chunks,
+        );
+        const markdown = await storageReadText(committed.mdPath);
+        const { readSourceEvidenceManifest } = await import('../src/lib/source-provenance');
+        expect(
+          readSourceEvidenceManifest(
+            markdown,
+            (committed.sourceMetadata as { evidenceManifest: unknown }).evidenceManifest,
+          ).spans.length,
+        ).toBeGreaterThan(0);
+        expect(markdown).toContain('# Winning refresh');
+        if (scenario === 'different job') {
+          await publishCapturedDocument(lateInput);
+          expect((await db.transcript.findFirstOrThrow({ where })).sourceVersion).toBe(3);
+          expect(
+            await db.sourceContentVersion.findFirstOrThrow({
+              where: { transcriptId: initial.transcriptId, userId, version: 2 },
+            }),
+          ).toMatchObject({
+            mdPath: committed.mdPath,
+            metadata: committed.sourceMetadata,
+            checksum: committed.sourceChecksum,
+          });
+        }
+      } finally {
+        release();
+        write.mockRestore();
+        await Promise.allSettled([pending]);
+      }
+    },
+  );
 });

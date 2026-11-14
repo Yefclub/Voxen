@@ -189,6 +189,10 @@ were verified. This does not establish the accuracy of live research models.
 - If a duplicate capture publishes after another attempt has committed, then
   the system shall preserve the committed canonical object and its evidence
   manifest rather than overwrite them with the duplicate's rendering.
+- If refresh publications race, then the system shall revalidate the owned
+  source under its publication lock, preserve an already committed same-job
+  result, and reject a different changed baseline before modifying source
+  snapshots, chunks or the current document.
 - If a library already contains unfinished compilation records from the retired
   executor, then the new executor shall not run them without current consent
   and an explicit current-version execution snapshot.
