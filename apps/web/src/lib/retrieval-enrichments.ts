@@ -1,31 +1,19 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import type { KnowledgeSearchResult } from './retrieval';
-import { assertTranscriptSearchFilters, type TranscriptSearchFilters } from './search-filters';
+import { assertKnowledgeSearchFilters, type KnowledgeSearchFilters } from './search-filters';
 
 export async function ftsSearchTranscriptEnrichments(
   userId: string,
   query: string,
   limit: number,
-  filters: Pick<
-    TranscriptSearchFilters,
-    | 'sources'
-    | 'language'
-    | 'publishedAfter'
-    | 'publishedBefore'
-    | 'createdAfter'
-    | 'createdBefore'
-    | 'tags'
-    | 'folderId'
-    | 'transcriptIds'
-    | 'includeArchived'
-  > = {},
+  filters: KnowledgeSearchFilters = {},
 ): Promise<KnowledgeSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
   // Max 26: sonda take+1 da página (ver search.ts searchKnowledgeBasePage).
   const take = Math.max(1, Math.min(26, Math.trunc(Number.isFinite(limit) ? limit : 8)));
-  assertTranscriptSearchFilters(filters);
+  assertKnowledgeSearchFilters(filters);
   const tconds: Prisma.Sql[] = [];
   if (filters.sources?.length) {
     tconds.push(Prisma.sql`t.source = ANY(${[...filters.sources]}::"TranscriptSource"[])`);
@@ -41,6 +29,9 @@ export async function ftsSearchTranscriptEnrichments(
   if (filters.folderId) tconds.push(Prisma.sql`t."folderId" = ${filters.folderId}`);
   if (filters.transcriptIds?.length) {
     tconds.push(Prisma.sql`e."transcriptId" = ANY(${[...filters.transcriptIds]}::text[])`);
+  }
+  if (filters.enrichmentIds?.length) {
+    tconds.push(Prisma.sql`e.id = ANY(${[...filters.enrichmentIds]}::text[])`);
   }
   if (filters.tags?.length) {
     const names = [...new Set(filters.tags.map((tag) => tag.trim().toLowerCase()))];

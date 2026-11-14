@@ -28,6 +28,8 @@ export type NoteSearchFilters = {
 export type KnowledgeSearchFilters = TranscriptSearchFilters &
   NoteSearchFilters & {
     sourceTypes?: readonly ('transcript' | 'note' | 'external_enrichment')[];
+    /** Internal narrowing for passage-index fallback; existing MCP inputs stay unchanged. */
+    enrichmentIds?: readonly string[];
   };
 
 export class SearchFilterError extends Error {
@@ -131,6 +133,13 @@ export function assertNoteSearchFilters(filters: NoteSearchFilters): void {
 export function assertKnowledgeSearchFilters(filters: KnowledgeSearchFilters): void {
   assertTranscriptSearchFilters(filters);
   assertNoteSearchFilters(filters);
+  if (
+    filters.enrichmentIds !== undefined &&
+    (!filters.enrichmentIds.length ||
+      filters.enrichmentIds.length > MAX_FILTER_IDS ||
+      filters.enrichmentIds.some((id) => typeof id !== 'string' || !id))
+  )
+    throw new SearchFilterError('Invalid enrichment IDs.');
   if (filters.sourceTypes !== undefined) {
     if (filters.sourceTypes.length === 0 || filters.sourceTypes.length > 3) {
       throw new SearchFilterError('Filtro source_types inválido: 1-3 valores.');
