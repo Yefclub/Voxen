@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedWorkspace, cleanupWorkspace, type WorkspaceSeed } from './workspace-seed';
-import { setUserSetting } from '../src/lib/settings';
+import { setSetting, setUserSetting } from '../src/lib/settings';
 import { saveResearchPreferences } from '../src/lib/research/preferences';
 import { db } from '../src/lib/db';
 
@@ -14,6 +14,7 @@ test.describe('opted-in library research', () => {
     workspace = await seedWorkspace(page, 'research');
   });
   test.afterEach(async () => {
+    await setSetting('app_language', 'pt-BR');
     if (workspace) await cleanupWorkspace(workspace.userId);
     expect(pageErrors).toEqual([]);
   });
@@ -329,5 +330,54 @@ test.describe('opted-in library research', () => {
     await expect(
       page.getByRole('region', { name: 'Pesquisa da biblioteca', exact: true }),
     ).toBeVisible();
+  });
+  test('recovers a failed research read and reflows English preferences in Light appearance', async ({
+    page,
+  }) => {
+    await db.user.update({ where: { id: workspace!.userId }, data: { theme: 'light' } });
+    await page.addInitScript(() => {
+      localStorage.setItem('voxen:locale', 'en');
+      localStorage.setItem('voxen:theme', 'light');
+    });
+    await setSetting('app_language', 'en');
+    let recover = false;
+    await page.route(`**/api/research/documents/${workspace!.transcriptId}`, async (route) => {
+      if (!recover) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'PRIVATE_INTERNAL_DETAIL_NOT_FOR_UI' }),
+        });
+      } else await route.continue();
+    });
+    await page.goto(`/transcricoes/${workspace!.transcriptId}`);
+    await expect(
+      page.getByText(
+        'Could not update research. Try again; the original document remains available.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText('PRIVATE_INTERNAL_DETAIL_NOT_FOR_UI', { exact: false }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Matrix source', exact: true })).toBeVisible();
+    recover = true;
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await expect(page.getByText('Could not update research.', { exact: false })).toHaveCount(0);
+    await page.getByRole('link', { name: 'Configure research', exact: true }).click();
+    const settings = page.getByRole('region', { name: 'Library research', exact: true });
+    await expect(settings).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await settings.scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await expect(
+        settings.getByRole('combobox', { name: 'When to research', exact: true }),
+      ).toHaveValue('OFF');
+      await page.screenshot({ path: `/tmp/voxen-research-settings-en-light-${width}.png` });
+    }
   });
 });

@@ -73,6 +73,22 @@ calls, with guidance to submit smaller parts. Completed section calls and
 failed billed attempts contribute to retry costs. The original captured text
 remains complete; derived synthesis does not replace it.
 
+Optional library research is off by default. In **AI providers → Library
+research**, configure the Standard model role and a Brave Search API key, then
+choose manual research or research on new captures. This shares the discovery
+key with chat, but has independent consent. Automatic research starts with
+captures collected after activation; it does not backfill the existing library.
+
+Research appears after the original text under **Additional context**. Review
+its cited excerpts, retrieval dates and execution costs before accepting it.
+Suggestions stay out of factual search and the graph. Editing marks context as
+curated and requires renewed acceptance; refreshed accepted context supersedes
+the earlier accepted result. Cancelling or deleting research preserves the
+original document. Source changes and expiry invalidate affected context.
+Discovery is bounded to three searches, four page fetches and three attempts
+within ten minutes from the first claim. These cloud calls can incur provider
+costs. Background organization and passage indexing are separate increments.
+
 ## Stack
 
 - **Web/API:** Bun, Hono, Vite, React, Tailwind CSS v4, and shadcn/ui

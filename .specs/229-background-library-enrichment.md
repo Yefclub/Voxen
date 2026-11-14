@@ -102,3 +102,21 @@ Increment 1 does not claim to implement background research or its review UI.
 
 Unbounded crawling, automatic acceptance of external claims, rewriting original
 source claims, paid-user quotas and arbitrary code execution.
+
+## Increment 2 review interface
+
+- The document reader keeps external research after the original source, with
+  owner-scoped history pages and direct links to older results.
+- An always-mounted polite status region announces queue, cancellation,
+  completion and review transitions. Failures expose safe recovery actions.
+- Sources, verified excerpts, retrieval dates, queries, model usage and costs
+  are available in a disclosure. Unknown provider cost is identified explicitly.
+- Context editing uses a desktop dialog or a mobile sheet. It preserves the
+  observed revision/checksum and draft through polling and conflicts.
+- Accepted external context supports bounded assistant continuation reads with
+  a required revision after the initial window and safe Unicode boundaries.
+- Native keyboard, installation and screen-reader speech require physical
+  device validation; browser viewport emulation is not evidence of those.
+
+Local implementation and review evidence do not by themselves establish CI or
+production delivery. Increment 3 organization and spec 230 remain separate.
