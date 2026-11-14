@@ -57,6 +57,8 @@ export const assistantCopy = {
     tools: {
       recent_content: 'Consultando conteúdos recentes',
       search_knowledge: 'Buscando na sua base',
+      search_passages: 'Encontrando passagens relevantes',
+      read_passage: 'Conferindo passagem na fonte',
       read_document: 'Lendo documento',
       document_relationships: 'Lendo relações com evidências',
       read_note: 'Lendo nota',
@@ -157,6 +159,8 @@ export const assistantCopy = {
     tools: {
       recent_content: 'Reviewing recent content',
       search_knowledge: 'Searching your knowledge base',
+      search_passages: 'Finding relevant passages',
+      read_passage: 'Checking a passage against its source',
       read_document: 'Reading a document',
       document_relationships: 'Reading source-backed relationships',
       read_note: 'Reading a note',
