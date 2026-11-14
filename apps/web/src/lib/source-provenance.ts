@@ -16,7 +16,7 @@ export const SourceEvidenceManifestSchema = z
   .strict();
 export type SourceEvidenceManifest = z.infer<typeof SourceEvidenceManifestSchema>;
 export type SourceEvidenceSpan = SourceEvidenceManifest['spans'][number];
-export type SourceEvidenceAuthority = 'CAPTURED_SOURCE' | 'USER_CORRECTED' | 'PREPARED_DOCUMENT';
+export type { SourceEvidenceAuthority } from '../shared/source-evidence';
 
 export class SourceProvenanceError extends Error {
   constructor(readonly code: 'SOURCE_PROVENANCE_UNAVAILABLE' | 'SOURCE_MAPPING_UNAVAILABLE') {

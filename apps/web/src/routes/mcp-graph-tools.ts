@@ -1,6 +1,7 @@
 import { mcpHubsQuery } from './mcp-hubs-query';
 import { withMcpReadDeadline } from './mcp-read-deadline';
 import { z } from 'zod';
+import { serializeEvidenceAuthority } from '../shared/source-evidence';
 import { type McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { searchBrainNodes } from '../lib/brain-search';
@@ -184,6 +185,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
           startSec: true,
           endSec: true,
           excerpt: true,
+          authority: true,
           fact: {
             select: {
               factKey: true,
@@ -227,6 +229,7 @@ export function registerBrainTools(server: McpServer, userId: string): void {
                   startSec: true,
                   endSec: true,
                   excerpt: true,
+                  authority: true,
                 },
               }),
             ),
@@ -240,10 +243,10 @@ export function registerBrainTools(server: McpServer, userId: string): void {
       ]);
       return ok({
         sources: currentSources.map((source) => ({
-          ...source,
+          ...serializeEvidenceAuthority(source),
           fact: source.fact ? { ...source.fact, confidence: Number(source.fact.confidence) } : null,
         })),
-        conflicting_sources: currentConflicts,
+        conflicting_sources: currentConflicts.map(serializeEvidenceAuthority),
         truncated: sources.length > limit || conflictingOverflow,
       });
     },
