@@ -8,6 +8,11 @@ import type {
   CaptureInterpretation,
   CaptureSegment,
 } from './types';
+import {
+  createSourceEvidenceManifest,
+  type SourceEvidenceManifest,
+  type SourceEvidenceSpan,
+} from '../source-provenance';
 
 export type CaptureMarkdownInput = {
   id: string;
@@ -159,6 +164,7 @@ export function commentsMarkdown(comments: CaptureComment[]): string[] {
 export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
   markdown: string;
   plainText: string;
+  evidenceManifest: SourceEvidenceManifest;
 } {
   const { artifact, interpretation } = input;
   const front: Array<[string, string | number | null]> = [
@@ -181,6 +187,13 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     ['producer', 'voxen-capture'],
   ];
   const lines: string[] = ['---'];
+  const sourceSpans: SourceEvidenceSpan[] = [];
+  const pushSource = (body: string[]) => {
+    const text = body.join('\n').trimEnd();
+    const start = lines.join('\n').length + 1;
+    lines.push(...body);
+    if (text) sourceSpans.push({ start, end: start + text.length + 1 });
+  };
   for (const [key, value] of front) {
     if (value === null && key !== 'cost_usd') continue;
     lines.push(`${key}: ${yamlValue(value)}`);
@@ -234,25 +247,33 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     artifact.segments.length > 0 || artifact.textKind === 'stt' || artifact.textKind === 'captions';
   const description = transcript ? capturedBody(artifact.description) : '';
   const showDescription = description !== '';
-  if (showDescription) lines.push('## Descrição', '', description, '');
+  if (showDescription) {
+    lines.push('## Descrição', '');
+    pushSource([description, '']);
+  }
 
   let plainText: string;
   if (artifact.segments.length > 0) {
     lines.push('## Transcrição', '');
+    const transcriptLines: string[] = [];
     for (const segment of artifact.segments) {
       const text = escapeInline(segment.text);
       if (!text) continue;
-      lines.push(
+      transcriptLines.push(
         `[${formatTimestamp(segment.startSec)}](${timestampLink(input, segment.startSec)}) ${text}`,
         '',
       );
     }
+    pushSource(transcriptLines);
     plainText = segmentsToPlainText(artifact.segments);
   } else {
     // Captured page Markdown keeps its links but never auto-loads remote
     // images (tracking pixels) or raw HTML when the document is rendered.
     const body = capturedBody(artifact.text);
-    if (body) lines.push('## Conteúdo', '', body, '');
+    if (body) {
+      lines.push('## Conteúdo', '');
+      pushSource([body, '']);
+    }
     plainText = bodyPlainText(body);
   }
   lines.push(...commentsMarkdown(artifact.comments ?? []));
@@ -265,5 +286,10 @@ export function buildCaptureMarkdown(input: CaptureMarkdownInput): {
     .filter(Boolean)
     .join(' ');
 
-  return { markdown: `${lines.join('\n').trimEnd()}\n`, plainText };
+  const markdown = `${lines.join('\n').trimEnd()}\n`;
+  return {
+    markdown,
+    plainText,
+    evidenceManifest: createSourceEvidenceManifest(markdown, sourceSpans),
+  };
 }

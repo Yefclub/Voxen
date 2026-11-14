@@ -71,33 +71,37 @@ suite('atomic source-grounded graph organization', () => {
         transcripts: { create: { transcriptId: row.id } },
       },
     });
-    const source: OrganizationSource = { ...row, markdown: body };
-    let analysis!: OrganizationAnalysis;
-    await generateOrganization({
-      source,
-      language: 'en',
-      signal: new AbortController().signal,
-      checkpoint: async () => {},
-      usage: { costUsd: 0, tokensIn: 0, tokensOut: 0, models: new Set() },
-      generate: async (input) => ({
-        output: input.schema.parse({
-          reason: 'An explicit project relationship.',
-          nodes: [
-            { id: 'orion', name: names[0], kind: 'PRODUCT', quote: passage },
-            { id: 'vega', name: names[1], kind: 'PRODUCT', quote: passage },
-          ],
-          relationships: [{ from: 'orion', to: 'vega', kind: 'PART_OF', quote: passage }],
+    const source: OrganizationSource = { ...row, markdown: body, canonicalMarkdown: null };
+    async function analyze(analysisSource: OrganizationSource = source) {
+      let analysis!: OrganizationAnalysis;
+      await generateOrganization({
+        source: analysisSource,
+        language: 'en',
+        signal: new AbortController().signal,
+        checkpoint: async () => {},
+        usage: { costUsd: 0, tokensIn: 0, tokensOut: 0, models: new Set() },
+        generate: async (input) => ({
+          output: input.schema.parse({
+            reason: 'An explicit project relationship.',
+            nodes: [
+              { id: 'orion', name: names[0], kind: 'PRODUCT', quote: passage },
+              { id: 'vega', name: names[1], kind: 'PRODUCT', quote: passage },
+            ],
+            relationships: [{ from: 'orion', to: 'vega', kind: 'PART_OF', quote: passage }],
+          }),
+          modelRef: 'fixture:model',
+          usage: { inputTokens: 0, outputTokens: 0 },
+          costUsd: 0,
         }),
-        modelRef: 'fixture:model',
-        usage: { inputTokens: 0, outputTokens: 0 },
-        costUsd: 0,
-      }),
-      onSection: async (result) => {
-        analysis = result;
-      },
-    });
+        onSection: async (result) => {
+          analysis = result;
+        },
+      });
+      return analysis;
+    }
+    const analysis = await analyze();
     const input = { source, analysis, assertCurrent: async () => {}, commit: async () => {} };
-    return { row, tag, folder, source, analysis, input };
+    return { row, tag, folder, source, analysis, input, analyze };
   }
 
   test('publishes verified relationships idempotently and preserves manually named identities and organization', async () => {
@@ -146,6 +150,7 @@ suite('atomic source-grounded graph organization', () => {
       excerpt: quote,
       startLine: 3,
       endLine: 3,
+      authority: 'USER_CORRECTED',
     });
     expect(relation.sources[0]?.segmentKey).toContain('source:2:correction:1:');
     expect(await db.brainNode.findUniqueOrThrow({ where: { id: manual.id } })).toMatchObject({
@@ -285,6 +290,42 @@ suite('atomic source-grounded graph organization', () => {
     expect(await db.brainNode.count({ where: { userId: users[0]!, type: 'ENTITY' } })).toBe(2);
   });
 
+  test('does not resolve C# through an existing C++ alias with the same normalized spelling', async () => {
+    const f = await fixture('C# is part of the Vega project and documents its release process.', [
+      'C#',
+      'Vega',
+    ]);
+    const cpp = await db.brainNode.create({
+      data: {
+        userId: users[0]!,
+        key: 'ENTITY:product:c',
+        type: 'ENTITY',
+        label: 'C++',
+        metadata: { entityType: 'PRODUCT' },
+      },
+    });
+    await db.brainEntityAlias.create({
+      data: {
+        userId: users[0]!,
+        entityNodeId: cpp.id,
+        alias: 'C++',
+        normalizedAlias: 'c',
+        entityType: 'PRODUCT',
+        sourceType: 'TRANSCRIPT',
+        sourceId: f.row.id,
+        evidenceKey: randomUUID(),
+      },
+    });
+    await publishOrganizationSection(f.input);
+    const relation = await db.brainEdge.findFirstOrThrow({
+      where: { userId: users[0]!, kind: 'PART_OF' },
+    });
+    expect(relation.fromNodeId).not.toBe(cpp.id);
+    expect(
+      await db.brainNode.findUniqueOrThrow({ where: { id: relation.fromNodeId } }),
+    ).toMatchObject({ label: 'C#' });
+  });
+
   test('keeps one symmetric relationship when another source reverses its endpoints', async () => {
     const f = await fixture();
     f.analysis.relationships[0]!.kind = 'RELATED_TO';
@@ -378,9 +419,11 @@ suite('atomic source-grounded graph organization', () => {
       where: { id: f.row.id },
       data: { correctionState: 'STALE', correctedMarkdown: null },
     });
-    await expect(
-      publishOrganizationSection({ ...f.input, source: { ...f.source, correctionState: 'STALE' } }),
-    ).rejects.toThrow('UNAVAILABLE_SOURCE');
+    const source = { ...f.source, correctionState: 'STALE' as const };
+    const analysis = await f.analyze(source);
+    await expect(publishOrganizationSection({ ...f.input, source, analysis })).rejects.toThrow(
+      'UNAVAILABLE_SOURCE',
+    );
     expect(await db.brainEdge.count({ where: { userId: users[0]! } })).toBe(0);
   });
 });

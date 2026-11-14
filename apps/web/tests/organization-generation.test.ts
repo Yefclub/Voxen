@@ -29,6 +29,8 @@ function fixture(markdown = `# Release process\n\n${quote}\n`) {
     correctionState: 'ACTIVE' as const,
     correctedChecksum: 'corrected-checksum',
     markdown,
+    canonicalMarkdown: null,
+    sourceMetadata: {},
   };
   const usage: OrganizationUsage = {
     costUsd: 0,
@@ -142,19 +144,16 @@ describe('source-grounded organization generation', () => {
       startLine: prefix.split('\n').length,
       endLine: prefix.split('\n').length + 1,
     });
+    const actualInputs = f.calls.map(
+      (call) => JSON.parse((call.untrusted[0] as { text: string }).text).source as string,
+    );
+    expect(actualInputs.join('')).toBe(f.source.markdown);
     expect(
-      f.calls
-        .map((call) => call.untrusted)
-        .flat()
-        .every(
-          (part) =>
-            !('text' in part) ||
-            !/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(
-              part.text,
-            ),
-        ),
+      actualInputs.every(
+        (text) =>
+          !/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(text),
+      ),
     ).toBeTrue();
-    expect(f.published).toHaveLength(organizationSections(f.source.markdown).length);
   });
 
   test('validates the complete source capacity before any model call', async () => {
@@ -162,6 +161,24 @@ describe('source-grounded organization generation', () => {
     await expect(generateOrganization(f.input)).rejects.toMatchObject({ code: 'TEXT_TOO_LARGE' });
     expect(f.calls).toEqual([]);
     expect(f.published).toEqual([]);
+  });
+
+  test('bounds actual 48,001–60,000 unit inputs and never splits Unicode pairs', async () => {
+    const text = `${'x'.repeat(47_999)}😀${quote}${'y'.repeat(3000)}`;
+    const f = fixture(text);
+    await generateOrganization(f.input);
+    const inputs = f.calls.map(
+      (call) => JSON.parse((call.untrusted[0] as { text: string }).text).source as string,
+    );
+    expect(inputs).toHaveLength(2);
+    expect(inputs.every((input) => input.length <= 48_000)).toBeTrue();
+    expect(inputs.join('')).toBe(text);
+    expect(
+      inputs.every(
+        (input) =>
+          !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(input),
+      ),
+    ).toBeTrue();
   });
 
   test('stops after cancellation and never publishes an answer after lease loss', async () => {
@@ -188,7 +205,7 @@ describe('source-grounded organization generation', () => {
 
   test('reuses durable completed sections and retains billed failure cost', async () => {
     const f = fixture(`${'opening\n'.repeat(8000)}${quote}\n`);
-    const sections = organizationSections(f.source.markdown);
+    const sections = organizationSections(f.source);
     await generateOrganization({ ...f.input, completed: new Set([sections[0]!.key]) });
     expect(f.published.map((row) => row.sectionKey)).toEqual(
       sections.slice(1).map((section) => section.key),

@@ -2,6 +2,7 @@ import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { runWithBrainIndexLease } from '../brain-index-lease';
 import { normalizeEntityAlias } from '../brain-temporal';
+import { organizationRangeAuthority } from './provenance';
 import { loadEffectiveTranscriptMarkdown, TranscriptReadError } from '../transcript-content';
 import type { OrganizationAnalysis, OrganizationNode } from './generate';
 import {
@@ -19,9 +20,7 @@ export type OrganizationPublication = { nodes: number; relationships: number; wa
 type Tx = Prisma.TransactionClient;
 
 function validateEvidence(source: OrganizationSource, analysis: OrganizationAnalysis): void {
-  const section = organizationSections(source.markdown).find(
-    (row) => row.key === analysis.sectionKey,
-  );
+  const section = organizationSections(source).find((row) => row.key === analysis.sectionKey);
   if (!section || analysis.nodes.length > 16 || analysis.relationships.length > 20)
     throw new OrganizationError('INVALID_EVIDENCE');
   const valid = (evidence: OrganizationEvidence) => {
@@ -33,6 +32,7 @@ function validateEvidence(source: OrganizationSource, analysis: OrganizationAnal
       endOffset <= section.offset + section.text.length &&
       excerpt.length >= 20 &&
       excerpt.length <= 1600 &&
+      evidence.authority === organizationRangeAuthority(section.spans, startOffset, endOffset) &&
       source.markdown.slice(startOffset, endOffset) === excerpt &&
       startLine === 1 + (source.markdown.slice(0, startOffset).match(/\n/g)?.length ?? 0) &&
       endLine === startLine + (excerpt.match(/\n/g)?.length ?? 0)
@@ -101,8 +101,8 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
       : baseKey;
   const aliases =
     type === 'ENTITY' && normalized
-      ? await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT DISTINCT entity.id
+      ? await tx.$queryRaw<Array<{ id: string; alias: string }>>`
+      SELECT DISTINCT entity.id, alias.alias
       FROM "BrainEntityAlias" alias
       JOIN "BrainNode" entity ON entity.id = alias."entityNodeId" AND entity."userId" = alias."userId"
       JOIN "Transcript" source ON source.id = alias."sourceId" AND source."userId" = alias."userId"
@@ -110,9 +110,11 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
         AND alias."normalizedAlias" = ${normalized} AND alias."invalidatedAt" IS NULL
         AND alias."entityType" IN (${node.kind}, 'OTHER')
         AND entity.type = 'ENTITY' AND entity.status = 'ACTIVE' AND source.status = 'ACTIVE'
-      ORDER BY entity.id LIMIT 2
+      ORDER BY entity.id, alias.alias LIMIT 65
     `
       : [];
+  if (aliases.length === 65) return { node: null, warning: 'AMBIGUOUS_IDENTITY' };
+  const exactAliases = aliases.filter((alias) => identityName(alias.alias) === identity);
   const candidates = await tx.brainNode.findMany({
     where: {
       userId,
@@ -122,7 +124,7 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
       OR: [
         { key },
         { label: { equals: node.name, mode: 'insensitive' } },
-        ...(aliases.length ? [{ id: { in: aliases.map((row) => row.id) } }] : []),
+        ...(exactAliases.length ? [{ id: { in: exactAliases.map((row) => row.id) } }] : []),
       ],
     },
     orderBy: { id: 'asc' },
@@ -131,7 +133,7 @@ async function resolveNode(tx: Tx, userId: string, node: OrganizationNode) {
   if (candidates.length === 32) return { node: null, warning: 'AMBIGUOUS_IDENTITY' };
   const compatible = candidates.filter(
     (row) =>
-      (sameName(row) || aliases.some((alias) => alias.id === row.id)) &&
+      (sameName(row) || exactAliases.some((alias) => alias.id === row.id)) &&
       (type === 'TOPIC' || sameKind(row.metadata, node.kind)),
   );
   if (compatible.length > 1) return { node: null, warning: 'AMBIGUOUS_IDENTITY' };
@@ -199,8 +201,13 @@ export async function publishOrganizationSection(input: {
           where: { id: source.id, userId: source.userId },
         });
         if (
-          JSON.stringify(organizationSnapshot({ ...current, markdown: currentMarkdown })) !==
-          JSON.stringify(organizationSnapshot(source))
+          JSON.stringify(
+            organizationSnapshot({
+              ...current,
+              markdown: currentMarkdown,
+              canonicalMarkdown: source.canonicalMarkdown,
+            }),
+          ) !== JSON.stringify(organizationSnapshot(source))
         )
           throw new OrganizationError('STALE_SOURCE');
         await assertGraphLease();
@@ -269,6 +276,7 @@ export async function publishOrganizationSection(input: {
               segmentKey,
               evidenceKey,
               excerpt: evidence.excerpt,
+              authority: evidence.authority,
               startLine: evidence.startLine,
               endLine: evidence.endLine,
             },

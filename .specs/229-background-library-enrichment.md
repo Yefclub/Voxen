@@ -135,6 +135,10 @@ were verified. This does not establish the accuracy of live research models.
 - The system shall attach verified source excerpts and current source/correction
   revisions to each generated relationship; matching a name alone shall not
   establish a relationship.
+- The system shall distinguish captured source, user-corrected source and
+  externally prepared documents in persisted organization evidence. Generated
+  summaries, visual descriptions and audience comments shall not independently
+  substantiate captured-source relationships.
 - The system shall reuse unambiguous owned topic/entity identities and shall
   preserve distinct identities when aliases are ambiguous.
 
@@ -145,6 +149,12 @@ were verified. This does not establish the accuracy of live research models.
   since automatic consent began, independently of capture completion.
 - When analyzing a long source, the system shall analyze every bounded section
   and retain completed section results and usage through retries.
+- When extracting organization evidence from a captured document, the system
+  shall use source spans recorded during publication and bound to the canonical
+  Markdown checksum, retaining the actual Markdown offsets and line anchors.
+- When a captured source has corrections, the system shall preserve unchanged
+  source provenance and mark eligible edited source spans as user-corrected;
+  edits to generated or audience sections shall not promote them to source.
 - When a source or correction changes, the system shall invalidate its old
   generated evidence before it can be used as current knowledge.
 - When a user disables organization or cancels a run, the system shall fence
@@ -155,6 +165,8 @@ were verified. This does not establish the accuracy of live research models.
 - While organization is executing, the system shall allow one valid execution
   lease across web processes, at most three attempts per section, and at most
   fifteen minutes from the first claim across retries.
+- While organizing source text, the system shall use at most 24 sections of at
+  most 48,000 UTF-16 units each, including sources between 48,001 and 60,000 units.
 - While organization is pending or fails, the original document, manual graph
   and keyless lexical retrieval shall remain usable.
 
@@ -174,9 +186,17 @@ were verified. This does not establish the accuracy of live research models.
   system shall omit that item and report the unsupported output.
 - If an owner, execution lease, consent or source snapshot no longer matches,
   then the system shall reject publication atomically.
+- If a duplicate capture publishes after another attempt has committed, then
+  the system shall preserve the committed canonical object and its evidence
+  manifest rather than overwrite them with the duplicate's rendering.
 - If a library already contains unfinished compilation records from the retired
   executor, then the new executor shall not run them without current consent
   and an explicit current-version execution snapshot.
+- If captured-source provenance is absent, corrupted or cannot be mapped to an
+  edited source within bounded work, then the system shall reject organization
+  with an explicit provenance error before model calls. Older captures without
+  a publication span manifest require reprocessing; their original content,
+  existing organization and keyless retrieval remain available.
 
 ### Acceptance
 

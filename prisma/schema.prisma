@@ -786,6 +786,12 @@ enum BrainCompilationStatus {
   SKIPPED
 }
 
+enum BrainEvidenceAuthority {
+  CAPTURED_SOURCE
+  USER_CORRECTED
+  PREPARED_DOCUMENT
+}
+
 model BrainNode {
   id            String             @id @default(cuid())
   userId        String
@@ -838,7 +844,7 @@ model BrainEdge {
 }
 
 model BrainSource {
-  id            String          @id @default(cuid())
+  id            String                  @id @default(cuid())
   userId        String
   nodeId        String?
   edgeId        String?
@@ -852,13 +858,14 @@ model BrainSource {
   endSec        Int?
   segmentKey    String?
   evidenceKey   String?
-  excerpt       String?         @db.Text
-  invalidatedAt DateTime?       @db.Timestamptz(3)
-  createdAt     DateTime        @default(now())
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  node          BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  edge          BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
-  fact          BrainFact?      @relation(fields: [factId], references: [id], onDelete: Cascade)
+  excerpt       String?                 @db.Text
+  authority     BrainEvidenceAuthority?
+  invalidatedAt DateTime?               @db.Timestamptz(3)
+  createdAt     DateTime                @default(now())
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node          BrainNode?              @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  edge          BrainEdge?              @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  fact          BrainFact?              @relation(fields: [factId], references: [id], onDelete: Cascade)
 
   @@unique([userId, evidenceKey])
   @@index([userId, sourceType, sourceId])

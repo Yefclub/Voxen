@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const storageRoot = mkdtempSync(join(tmpdir(), 'voxen-capture-publish-'));
 process.env.STORAGE_DRIVER = 'local';
@@ -120,6 +121,14 @@ describeIfDb('capture publication (contract v2 DOCUMENT)', () => {
     expect(markdown).toContain('## Conteúdo');
     expect(markdown).not.toContain('evil.example');
     expect(markdown).not.toContain('track.example');
+    const { readSourceEvidenceManifest } = await import('../src/lib/source-provenance');
+    const manifest = readSourceEvidenceManifest(
+      markdown,
+      (doc.sourceMetadata as { evidenceManifest: unknown }).evidenceManifest,
+    );
+    expect(manifest.spans.map((span) => markdown.slice(span.start, span.end).trim())).toEqual([
+      text,
+    ]);
 
     const hits = await db.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM "Transcript"
@@ -151,9 +160,75 @@ describeIfDb('capture publication (contract v2 DOCUMENT)', () => {
     const doc = await db.transcript.findUniqueOrThrow({ where: { id: transcriptId } });
     expect(doc.sourceVersion).toBe(2);
     expect(doc.plainText).toContain('pg_trgm');
-    expect(doc.mdPath).toEndWith('/sources/v2.md');
+    const canonicalChecksum = createHash('sha256')
+      .update(await storageReadText(doc.mdPath))
+      .digest('hex');
+    expect(doc.mdPath).toBe(
+      `workspaces/${userId}/transcripts/${transcriptId}/sources/v2-${canonicalChecksum}.md`,
+    );
     const versions = await db.sourceContentVersion.findMany({ where: { transcriptId } });
     expect(versions.map((v) => v.version)).toEqual([1]);
     expect(versions[0]?.plainText).toContain('tsvector');
+  });
+
+  it('keeps the winning canonical object and span manifest consistent during a late duplicate publication', async () => {
+    const job = await db.job.create({
+      data: {
+        userId,
+        type: 'CAPTURE_LINK',
+        status: 'RUNNING',
+        sourceUrl: 'https://example.test/concurrent',
+      },
+    });
+    const first = baseInput(
+      userId,
+      job.id,
+      'A complete source body shared by both publication attempts.',
+    );
+    first.interpretation.title = 'First publication';
+    const late = {
+      ...first,
+      interpretation: { ...first.interpretation, title: 'Late publication' },
+    };
+    const storage = await import('../src/lib/storage');
+    const realPut = storage.storagePut;
+    let entered!: () => void, release!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = spyOn(storage, 'storagePut').mockImplementation(async (input) => {
+      if (typeof input.body === 'string' && input.body.includes('title: "Late publication"')) {
+        entered();
+        await barrier;
+      }
+      return realPut(input);
+    });
+    const pending = publishCapturedDocument(late);
+    try {
+      await paused;
+      const winner = await publishCapturedDocument(first);
+      release();
+      expect((await pending).created).toBe(false);
+      const doc = await db.transcript.findFirstOrThrow({
+        where: { id: winner.transcriptId, userId },
+      });
+      const markdown = await storageReadText(doc.mdPath);
+      const { readSourceEvidenceManifest } = await import('../src/lib/source-provenance');
+      expect(
+        readSourceEvidenceManifest(
+          markdown,
+          (doc.sourceMetadata as { evidenceManifest: unknown }).evidenceManifest,
+        ).spans.length,
+      ).toBeGreaterThan(0);
+      expect(markdown).toContain('# First publication');
+      expect(markdown).not.toContain('# Late publication');
+    } finally {
+      release();
+      write.mockRestore();
+      await pending;
+    }
   });
 });
