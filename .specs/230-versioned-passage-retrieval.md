@@ -72,6 +72,23 @@ retrieval must improve evidence selection without requiring provider keys.
   filters, limits and continuation semantics. Passage-specific reads shall be
   additive and read-only.
 
+## Evaluation gate
+
+- While evaluating the candidate, the system shall use an isolated synthetic
+  corpus of at least 400 owned sources, plus foreign and inaccessible controls,
+  with Portuguese, English, literal identifiers, long-source middle facts,
+  accepted external context and misspelled names.
+- The system shall report source recall, literal-passage recall, verified
+  citation validity, warm p50/p95 latency, indexing time and index/storage bytes
+  for both strategies where those measurements apply.
+- If candidate source or passage recall is below baseline, any candidate
+  citation fails canonical validation, or any inaccessible control is returned,
+  then the system shall not activate the candidate.
+- If candidate warm p95 exceeds 250 ms on the recorded evaluation host, then
+  the system shall retain the baseline as the default strategy.
+- The system shall distinguish typo discovery leads from matching passages and
+  shall never count a name-similarity score as verified passage evidence.
+
 > 2026-11-14: Clarified bounded passage integrity and compatibility for the
 > owner-authorized implementation; PostgreSQL extensions remain subject to the
 > isolated compatibility and retrieval benchmark before adoption.

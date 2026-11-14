@@ -759,6 +759,7 @@ model PassageIndexSource {
   snapshot          String?
   checksum          String?
   title             String             @default("")
+  searchVector      Unsupported("tsvector")?
   limitations       String[]           @default([])
   passageCount      Int                @default(0)
   errorCode         String?

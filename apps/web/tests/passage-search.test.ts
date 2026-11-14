@@ -94,6 +94,13 @@ suite('current, owner-bound passage retrieval', () => {
       readPassage(users[1]!, '0'.repeat(64), first.results[0]!.revision),
     ).rejects.toThrow('NOT_FOUND');
   });
+  test('finds exact title identifiers without merging punctuation-distinct titles', async () => {
+    const cpp = await note('An overview of a programming language.', 'C++ reference');
+    await note('Another programming overview.', 'C# reference');
+    const result = await searchPassages(users[0]!, { query: 'C++' });
+    expect(result.results.map((p) => p.sourceId)).toEqual([cpp.id]);
+    expect(result.results[0]?.matchedBy).toBe('title');
+  });
   test('hides stale text immediately before indexing and rejects old references after edit, folder conversion or deletion', async () => {
     const row = await note('A distinct previous observation.');
     const hit = (await searchPassages(users[0]!, { query: 'previous observation' })).results[0]!;

@@ -78,33 +78,48 @@ function excerpt(row: PassageRow, query: string) {
   };
 }
 
-export async function queryPassages(userId: string, input: z.output<typeof PassageSearchSchema>) {
+export function passageSearchSql(userId: string, input: z.output<typeof PassageSearchSchema>) {
   const q = passageQuery(input.query),
     literal = passageLiteral(input.query);
   const exact = Prisma.sql`p.text ILIKE ${literal} ESCAPE '\\'`;
-  const title = Prisma.sql`to_tsvector('pg_catalog.simple', v.title) @@ ${q}`;
+  const title = Prisma.sql`v."titleVector" @@ ${q}`;
   const lexical = Prisma.sql`p."searchVector" @@ ${q}`;
   const match = exactIdentifier(input.query)
-    ? exact
-    : Prisma.sql`(${exact} OR ${lexical} OR ${title})`;
+    ? Prisma.sql`(${lexical} OR numnode(${q}) = 0) AND ${exact}`
+    : lexical;
+  const titleMatch = exactIdentifier(input.query)
+    ? Prisma.sql`v.title ILIKE ${literal} ESCAPE '\\'`
+    : title;
   const rank = Prisma.sql`(CASE WHEN ${exact} THEN 100 ELSE 0 END
     + ts_rank(p."searchVector", ${q}) + CASE WHEN ${title} THEN 0.5 ELSE 0 END)`;
-  return db.$queryRaw<PassageRow[]>(Prisma.sql`
-    WITH visible AS (${visiblePassageSources(userId, input)}), matches AS (
-      SELECT p.key, p."sourceType", p."sourceId", v.title, v.href, s.revision,
-        s.checksum AS "documentChecksum", p.checksum AS "passageChecksum", p.text,
-        p.kind, p.authority, p.section, p."startOffset", p."endOffset", p."startLine", p."endLine",
-        p."startSec", p."endSec", s.limitations, ${rank} AS rank,
-        CASE WHEN ${exact} THEN 'exact' WHEN ${lexical} THEN 'lexical' ELSE 'title' END AS "matchedBy",
-        row_number() OVER (PARTITION BY p."sourceType", p."sourceId" ORDER BY ${rank} DESC, p."startOffset", p.key) AS "sourceRank"
+  return Prisma.sql`
+    WITH visible AS (${visiblePassageSources(userId, input)}), eligible AS (
+      SELECT v.*, s.revision, s.checksum, s.limitations, s."searchVector" AS "titleVector"
       FROM visible v JOIN "PassageIndexSource" s
         ON s."userId" = v."userId" AND s."sourceType" = v."sourceType" AND s."sourceId" = v."sourceId"
         AND s.status = 'READY' AND s."indexedGeneration" = s.generation
-      JOIN "RetrievalPassage" p ON p."userId" = s."userId" AND p."sourceType" = s."sourceType" AND p."sourceId" = s."sourceId"
-      WHERE ${match}
+    ), keys AS (
+      SELECT p.key FROM "RetrievalPassage" p JOIN eligible v
+        ON p."userId" = v."userId" AND p."sourceType" = v."sourceType" AND p."sourceId" = v."sourceId"
+        WHERE p."userId" = ${userId} AND ${match}
+      UNION
+      SELECT first.key FROM eligible v CROSS JOIN LATERAL (
+        SELECT p.key FROM "RetrievalPassage" p
+        WHERE p."userId" = v."userId" AND p."sourceType" = v."sourceType" AND p."sourceId" = v."sourceId"
+        ORDER BY p."startOffset", p.key LIMIT 2
+      ) first WHERE ${titleMatch}
+    ), matches AS (
+      SELECT p.key, p."sourceType", p."sourceId", v.title, v.href, v.revision,
+        v.checksum AS "documentChecksum", p.checksum AS "passageChecksum", p.text,
+        p.kind, p.authority, p.section, p."startOffset", p."endOffset", p."startLine", p."endLine",
+        p."startSec", p."endSec", v.limitations, ${rank} AS rank,
+        CASE WHEN ${exact} THEN 'exact' WHEN ${lexical} THEN 'lexical' ELSE 'title' END AS "matchedBy",
+        row_number() OVER (PARTITION BY p."sourceType", p."sourceId" ORDER BY ${rank} DESC, p."startOffset", p.key) AS "sourceRank"
+      FROM keys k JOIN "RetrievalPassage" p ON p.key = k.key JOIN eligible v
+        ON p."userId" = v."userId" AND p."sourceType" = v."sourceType" AND p."sourceId" = v."sourceId"
     ) SELECT * FROM matches WHERE "sourceRank" <= 2
       ORDER BY rank DESC, "sourceType", "sourceId", "startOffset", key LIMIT ${input.limit + 1}
-  `);
+  `;
 }
 
 export async function passageCoverage(
@@ -161,7 +176,7 @@ export async function searchPassages(userId: string, raw: PassageSearchInput) {
     coverage: Coverage | null = null;
   try {
     [rows, coverage] = await Promise.all([
-      queryPassages(userId, input),
+      db.$queryRaw<PassageRow[]>(passageSearchSql(userId, input)),
       passageCoverage(userId, input),
     ]);
     if (coverage.indexed < coverage.total) limitations.add('PARTIAL_INDEX');
