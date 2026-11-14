@@ -210,3 +210,16 @@ were verified. This does not establish the accuracy of live research models.
 - [ ] Consent, deduplication, retry usage and restart recovery are tested.
 - [ ] Cancellation, corrections, refresh, archive and deletion fence stale work.
 - [ ] Localized controls and mobile sheets are validated before delivery.
+
+### Durable execution boundary
+
+- The system shall store new organization runs and section receipts separately
+  from retired compilation records, preserving run history and completed
+  publications when a conversation or preference changes.
+- When queueing, the system shall bind the current owned source, canonical
+  provenance and consent to the run and deduplicate retries by request key.
+- When retrying, the system shall preserve the Standard model identifiers and
+  reasoning settings, resolve credentials only for the current owner, and skip
+  section receipts already committed with their graph effects.
+- If a provider call was reserved but its usage cannot be confirmed after a
+  restart, then the system shall disclose unknown cost rather than report zero.
