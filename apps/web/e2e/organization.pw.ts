@@ -330,6 +330,16 @@ test.describe('source-grounded library organization', () => {
       }),
     ).toBe(1);
     await page.screenshot({ path: '/tmp/voxen-organization-completed-1280.png' });
+    await page.reload();
+    const graph = page.getByTestId('transcript-knowledge-graph');
+    await graph.locator('[data-node-id]').filter({ hasText: workspace.topicLabel }).click();
+    const captured = graph.getByText('Trecho capturado', { exact: true }).locator('..');
+    await captured.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: '/tmp/voxen-organization-graph-authority-1280.png' });
+    await expect(graph.getByText('Trecho capturado', { exact: true })).toBeVisible();
+    await expect(captured.getByText(quote, { exact: true })).toBeVisible();
+    await captured.getByRole('button', { name: 'Ir para a passagem', exact: true }).click();
+    await expect(page).toHaveURL(/#l=\d+-\d+$/);
   });
   test('recovers an active-source read failure without displaying archive guidance', async ({
     page,

@@ -1,4 +1,7 @@
 export const ptBrOrganizationMessages = {
+  'organization.authority.CAPTURED_SOURCE': 'Trecho capturado',
+  'organization.authority.USER_CORRECTED': 'Trecho corrigido',
+  'organization.authority.PREPARED_DOCUMENT': 'Documento publicado',
   'organization.title': 'Conexões com IA',
   'organization.description':
     'Encontre relações entre conceitos com trechos deste conteúdo. O original e suas escolhas manuais são preservados.',
@@ -81,6 +84,9 @@ export const ptBrOrganizationMessages = {
 } as const;
 
 export const enOrganizationMessages: Record<keyof typeof ptBrOrganizationMessages, string> = {
+  'organization.authority.CAPTURED_SOURCE': 'Captured passage',
+  'organization.authority.USER_CORRECTED': 'Corrected passage',
+  'organization.authority.PREPARED_DOCUMENT': 'Published document',
   'organization.title': 'AI connections',
   'organization.description':
     'Connect concepts using passages from this document. The original and your manual choices are preserved.',
