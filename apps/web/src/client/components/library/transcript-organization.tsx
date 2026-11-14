@@ -301,7 +301,13 @@ function OrganizationRunRow({ row }: { row: OrganizationRun }): React.ReactEleme
         <dl className="grid gap-x-5 gap-y-2 text-xs leading-5 sm:grid-cols-2">
           <div>
             <dt className="text-[var(--color-app-muted)]">
-              {t(organizationActive(row) ? 'organization.costSoFar' : 'organization.cost')}
+              {t(
+                row.costUsd === null
+                  ? 'organization.costLabel'
+                  : organizationActive(row)
+                    ? 'organization.costSoFar'
+                    : 'organization.cost',
+              )}
             </dt>
             <dd className="tabular-nums text-[var(--color-app-subtle)]">
               {row.costUsd === null ? t('organization.unknownCost') : currency.format(row.costUsd)}
@@ -314,7 +320,13 @@ function OrganizationRunRow({ row }: { row: OrganizationRun }): React.ReactEleme
             </div>
           )}
           <div>
-            <dt className="text-[var(--color-app-muted)]">{t('organization.tokens')}</dt>
+            <dt className="text-[var(--color-app-muted)]">
+              {t(
+                row.warnings.includes('UNCONFIRMED_USAGE')
+                  ? 'organization.confirmedTokens'
+                  : 'organization.tokens',
+              )}
+            </dt>
             <dd className="tabular-nums text-[var(--color-app-subtle)]">
               {row.tokensIn.toLocaleString(locale)} / {row.tokensOut.toLocaleString(locale)}
             </dd>

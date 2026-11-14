@@ -208,6 +208,11 @@ test.describe('source-grounded library organization', () => {
     const row = section.locator(`#organization-${oldestId}`);
     await expect(row).toBeVisible();
     await expect(row.getByText('Custo não confirmado', { exact: true })).toBeVisible();
+    await expect(row.getByText('Custo', { exact: true })).toBeVisible();
+    await expect(row.getByText('Custo confirmado', { exact: true })).toHaveCount(0);
+    await expect(
+      row.getByText('Tokens confirmados: entrada / saída', { exact: true }),
+    ).toBeVisible();
     await expect(
       row.getByText(
         'O uso de uma chamada interrompida não foi confirmado. O custo total é desconhecido.',
@@ -453,6 +458,17 @@ test.describe('source-grounded library organization', () => {
       ).toBeGreaterThanOrEqual(44);
       await page.screenshot({ path: `/tmp/voxen-organization-reader-en-light-${width}.png` });
     }
+    await db.organizationRun.updateMany({
+      where: { userId: workspace.userId, transcriptId: workspace.transcriptId },
+      data: { costUsd: null, warnings: ['UNCONFIRMED_USAGE'] },
+    });
+    await page.reload();
+    await section.getByText('Organization history', { exact: true }).click();
+    await expect(section.getByText('Cost', { exact: true })).toBeVisible();
+    await expect(section.getByText('Confirmed cost', { exact: true })).toHaveCount(0);
+    await expect(
+      section.getByText('Confirmed tokens: input / output', { exact: true }),
+    ).toBeVisible();
     await section.getByRole('link', { name: 'Configure organization', exact: true }).click();
     const settings = page.getByRole('region', { name: 'Library organization', exact: true });
     await expect(settings.getByRole('combobox', { name: 'When to organize' })).toHaveValue(
