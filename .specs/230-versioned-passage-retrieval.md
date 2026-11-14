@@ -52,6 +52,30 @@ retrieval must improve evidence selection without requiring provider keys.
 - [ ] Backfill, incremental indexing and restart recovery are tested.
 - [ ] A measured PostgreSQL benchmark compares candidate retrieval to baseline.
 
+## Passage integrity and delivery bounds
+
+- The system shall preserve exact source text and Unicode boundaries in each
+  passage, including individual lines longer than the passage window.
+- The system shall use passages of at most 4,000 UTF-16 units, with at most 240
+  units of overlap, and shall never overlap across provenance boundaries.
+- The system shall accept at most 4,000,000 UTF-16 source units and 4,096
+  passages or section markers per source. If this capacity is exceeded, then
+  indexing shall fail explicitly before publication and retain baseline reads.
+- The system shall derive passage identities deterministically from the owner,
+  source, revision, provenance and exact text, so retries cannot duplicate them.
+- The system shall obtain provenance from recorded source spans rather than
+  heading names. Captured text without a valid provenance record shall not be
+  classified as original captured evidence.
+- Where source text is a curated note, the system shall identify the note as
+  its original document, without assigning captured-media authority.
+- The system shall retain all existing public MCP tool schemas, output shapes,
+  filters, limits and continuation semantics. Passage-specific reads shall be
+  additive and read-only.
+
+> 2026-11-14: Clarified bounded passage integrity and compatibility for the
+> owner-authorized implementation; PostgreSQL extensions remain subject to the
+> isolated compatibility and retrieval benchmark before adoption.
+
 ## Out of scope
 
 Mandatory external search clusters, local inference, embeddings, automatic

@@ -534,3 +534,20 @@ worker without exposing a shell to AI.
 References: [AI SDK](https://ai-sdk.dev/docs/agents/loop-control),
 [resumption](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-resume-streams),
 [contextual retrieval](https://www.anthropic.com/research/contextual-retrieval).
+
+### Passage-index implementation proof (spec 230)
+
+Passage construction preserves literal source windows and provenance boundaries;
+it does not generate contextual prose. The candidate uses bounded versioned
+windows before full-text indexing because PostgreSQL limits vector size and
+position ranges. Portuguese, English and exact-token retrieval will be compared
+against the existing lexical baseline on an isolated corpus before activation.
+See the [PostgreSQL full-text limits](https://www.postgresql.org/docs/17/textsearch-limitations.html)
+and [query/ranking controls](https://www.postgresql.org/docs/17/textsearch-controls.html).
+
+Trigram discovery is a candidate for bounded title/entity typo recovery, not
+evidence verification or identity merging. `pg_trgm` ignores non-word characters,
+so punctuation-distinct identifiers require an exact-literal path. Its extension,
+index cost and query plans must pass the isolated proof before a production
+migration adopts it; no database image change is authorized by this increment.
+See the [official pg_trgm documentation](https://www.postgresql.org/docs/17/pgtrgm.html).
