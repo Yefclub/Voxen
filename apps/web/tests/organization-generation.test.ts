@@ -3,6 +3,7 @@ import { AiError } from '../src/lib/ai/errors';
 import type { GenerateStructuredInput } from '../src/lib/ai/client';
 import {
   generateOrganization,
+  OrganizationAnalysisSchema,
   type OrganizationAnalysis,
   type OrganizationUsage,
 } from '../src/lib/organization/generate';
@@ -72,6 +73,50 @@ function fixture(markdown = `# Release process\n\n${quote}\n`) {
 }
 
 describe('source-grounded organization generation', () => {
+  test('validates persisted analysis shape and requires an eligible evidence authority', async () => {
+    const f = fixture();
+    await generateOrganization(f.input);
+    const saved: OrganizationAnalysis = OrganizationAnalysisSchema.parse(f.published[0]);
+    expect(saved).toEqual(f.published[0]!);
+    expect(
+      OrganizationAnalysisSchema.safeParse({
+        ...saved,
+        nodes: saved.nodes.map((node) => ({
+          ...node,
+          evidence: { ...node.evidence, authority: null },
+        })),
+      }).success,
+    ).toBe(false);
+    expect(
+      OrganizationAnalysisSchema.safeParse({ ...saved, sectionKey: 'unversioned' }).success,
+    ).toBe(false);
+  });
+  test('reserves a section before the provider call and stops when reservation is rejected', async () => {
+    const f = fixture();
+    let reserved = false;
+    await generateOrganization({
+      ...f.input,
+      onSectionStart: async () => {
+        reserved = true;
+      },
+      generate: async (input) => {
+        expect(reserved).toBe(true);
+        return f.input.generate(input);
+      },
+    });
+    expect(f.calls).toHaveLength(1);
+    const rejected = fixture();
+    await expect(
+      generateOrganization({
+        ...rejected.input,
+        onSectionStart: async () => {
+          throw new Error('SECTION_ATTEMPTS_EXHAUSTED');
+        },
+      }),
+    ).rejects.toThrow('SECTION_ATTEMPTS_EXHAUSTED');
+    expect(rejected.calls).toHaveLength(0);
+    expect(rejected.published).toHaveLength(0);
+  });
   test('publishes source excerpts and actual source line anchors without tools', async () => {
     const f = fixture();
     await generateOrganization(f.input);

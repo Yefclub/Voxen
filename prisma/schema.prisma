@@ -1034,6 +1034,7 @@ model OrganizationSection {
   status            OrganizationRunStatus @default(PENDING)
   attempts          Int                   @default(0)
   callPending       Boolean               @default(false)
+  analysis          Json?
   nodeCount         Int                   @default(0)
   relationshipCount Int                   @default(0)
   reason            String?               @db.Text

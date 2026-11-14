@@ -54,6 +54,35 @@ export type OrganizationAnalysis = {
   relationships: OrganizationRelationship[];
   warnings: string[];
 };
+const EvidenceSchema = z.object({
+  excerpt: z.string().min(20).max(1600),
+  startOffset: z.number().int().nonnegative(),
+  endOffset: z.number().int().positive(),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  authority: z.enum(['CAPTURED_SOURCE', 'USER_CORRECTED', 'PREPARED_DOCUMENT']),
+});
+export const OrganizationAnalysisSchema = z
+  .object({
+    sectionKey: z.string().regex(/^[a-f0-9]{64}$/),
+    reason: z.string().max(3200),
+    nodes: z
+      .array(
+        OrganizationSchema.shape.nodes.element
+          .omit({ quote: true })
+          .extend({ evidence: EvidenceSchema }),
+      )
+      .max(16),
+    relationships: z
+      .array(
+        OrganizationSchema.shape.relationships.element
+          .omit({ quote: true })
+          .extend({ evidence: EvidenceSchema }),
+      )
+      .max(20),
+    warnings: z.array(z.enum(['UNSUPPORTED_NODE', 'UNSUPPORTED_RELATIONSHIP'])).max(2),
+  })
+  .strict();
 export type OrganizationUsage = {
   costUsd: number | null;
   tokensIn: number;
@@ -69,6 +98,7 @@ export async function generateOrganization(input: {
   usage: OrganizationUsage;
   generate?: typeof generateStructured;
   completed?: ReadonlySet<string>;
+  onSectionStart?: (sectionKey: string) => Promise<void>;
   onSection: (result: OrganizationAnalysis) => Promise<void>;
 }): Promise<void> {
   const sections = organizationSections(input.source);
@@ -79,6 +109,8 @@ export async function generateOrganization(input: {
   for (let index = 0; index < sections.length; index++) {
     const section = sections[index]!;
     if (input.completed?.has(section.key)) continue;
+    await before();
+    await input.onSectionStart?.(section.key);
     await before();
     let output: z.infer<typeof OrganizationSchema>;
     try {
