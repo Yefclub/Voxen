@@ -4,6 +4,7 @@ import { db } from '../db';
 import { decrypt } from '../crypto';
 import { getMasterKey } from '../master-key';
 import { getUserSetting, setUserSetting } from '../settings';
+import { unconfirmedOrganizationUsage } from './usage';
 
 export const OrganizationModeSchema = z.enum(['OFF', 'MANUAL', 'AUTO']);
 export const OrganizationPreferencesSchema = z.object({
@@ -48,6 +49,19 @@ export async function saveOrganizationPreferences(
       automaticSince: mode === 'AUTO' ? new Date().toISOString() : null,
     };
     await setUserSetting(userId, KEY, JSON.stringify(next), tx);
+    const interrupted = await tx.organizationRun.findMany({
+      where: {
+        userId,
+        status: { in: [...ACTIVE_ORGANIZATION_STATUSES] },
+        sections: { some: { callPending: true } },
+      },
+      select: { id: true },
+    });
+    for (const run of interrupted)
+      await tx.organizationRun.updateMany({
+        where: { id: run.id, userId, status: { in: [...ACTIVE_ORGANIZATION_STATUSES] } },
+        data: await unconfirmedOrganizationUsage(tx, userId, run.id),
+      });
     await tx.organizationRun.updateMany({
       where: { userId, status: { in: [...ACTIVE_ORGANIZATION_STATUSES] } },
       data: {

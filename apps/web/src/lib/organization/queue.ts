@@ -4,6 +4,7 @@ import type { OrganizationRun, Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
 import { storageReadText } from '../storage';
 import { sourceEvidenceStamp } from '../source-provenance';
+import { unconfirmedOrganizationUsage } from './usage';
 import {
   ACTIVE_ORGANIZATION_STATUSES,
   getOrganizationPreferences,
@@ -181,6 +182,7 @@ export async function enqueueOrganization(
       await tx.organizationRun.updateMany({
         where: { userId, transcriptId, status: { in: [...ACTIVE_ORGANIZATION_STATUSES] } },
         data: {
+          ...(await unconfirmedOrganizationUsage(tx, userId, active.id)),
           status: 'CANCELLED',
           cancelRequestedAt: new Date(),
           finishedAt: new Date(),

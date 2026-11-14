@@ -13,6 +13,7 @@ import {
 export const ORGANIZATION_LEASE_MS = 90_000;
 export const ORGANIZATION_DEADLINE_MS = 15 * 60_000;
 export const ORGANIZATION_SECTION_ATTEMPTS = 3;
+export const ORGANIZATION_EXECUTION_ATTEMPTS = 3;
 export type OrganizationLease = { id: string; userId: string; leaseOwner: string; attempt: number };
 function lockExecution(tx: Prisma.TransactionClient) {
   return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('voxen:organization:execution', 0))`;
@@ -149,6 +150,8 @@ export async function claimOrganization(
       return reject('CANCELLED', 'SOURCE_CHANGED');
     if (row.startedAt && now.getTime() - row.startedAt.getTime() >= ORGANIZATION_DEADLINE_MS)
       return reject('FAILED', 'TIMEOUT');
+    if (row.attempt >= ORGANIZATION_EXECUTION_ATTEMPTS)
+      return reject('FAILED', 'ATTEMPTS_EXHAUSTED');
     const claimed = await tx.organizationRun.update({
       where: { id, userId },
       data: {

@@ -221,5 +221,11 @@ were verified. This does not establish the accuracy of live research models.
 - When retrying, the system shall preserve the Standard model identifiers and
   reasoning settings, resolve credentials only for the current owner, and skip
   section receipts already committed with their graph effects.
+- When a section analysis completes, the system shall persist its validated
+  result and usage before graph projection; retries of that saved analysis
+  shall revalidate its evidence without another provider dispatch.
+- While executing a run, the system shall permit at most three execution claims
+  within the original fifteen-minute deadline, preserving completed section
+  receipts and cached analyses across those attempts.
 - If a provider call was reserved but its usage cannot be confirmed after a
   restart, then the system shall disclose unknown cost rather than report zero.
