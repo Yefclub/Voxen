@@ -4,11 +4,13 @@ import app from '../src/index';
 import { db } from '../src/lib/db';
 import { createMcpToken } from '../src/lib/mcp-tokens';
 import { executePassageIndex } from '../src/lib/passage-index/runner';
+import { storageDelete, storagePut } from '../src/lib/storage';
 
 const suite = process.env.DATABASE_URL ? describe : describe.skip;
 suite('additive read-only MCP passage tools', () => {
   const users: string[] = [],
-    tokens: string[] = [];
+    tokens: string[] = [],
+    storageKeys: string[] = [];
   let sourceId = '',
     writeToken = '';
   async function rpc(method: string, params: object, token = tokens[0]!) {
@@ -37,6 +39,8 @@ suite('additive read-only MCP passage tools', () => {
           href: string;
           kind: string;
           authority: string | null;
+          dataChunk?: string;
+          _mcp?: { nextCursor: string | null; resultChecksum: string };
         };
       };
       error?: unknown;
@@ -83,6 +87,7 @@ suite('additive read-only MCP passage tools', () => {
   });
   afterAll(async () => {
     await db.user.deleteMany({ where: { id: { in: users } } });
+    for (const key of storageKeys) await storageDelete(key);
   });
   test('advertises complete output contracts and read-only scope without expanding WRITE access', async () => {
     const response = await rpc('tools/list', {});
@@ -192,4 +197,93 @@ suite('additive read-only MCP passage tools', () => {
       ].sort(),
     );
   });
+  for (const change of ['edit', 'archive', 'delete', 'dismiss'] as const)
+    test(`recomputes passage continuations and rejects stale evidence after ${change}`, async () => {
+      const sourceType =
+        change === 'archive' ? 'transcript' : change === 'dismiss' ? 'external_enrichment' : 'note';
+      const ids: string[] = [];
+      // Valid bounded Unicode fields make the real HTTP result exceed the wire budget.
+      const content = 'continuationproof ' + '界'.repeat(1800);
+      for (let i = 0; i < 20; i++) {
+        const title = '界'.repeat(600) + i;
+        if (sourceType === 'note') {
+          ids.push((await db.note.create({ data: { userId: users[0]!, title, content } })).id);
+        } else {
+          const mdPath = `workspaces/${users[0]}/passage-continuation-${randomUUID()}.md`;
+          storageKeys.push(mdPath);
+          await storagePut({ key: mdPath, body: content, contentType: 'text/markdown' });
+          const document = await db.transcript.create({
+            data: {
+              userId: users[0]!,
+              title,
+              source: 'WEB',
+              url: 'https://example.test/continuation',
+              durationSec: 0,
+              language: 'en',
+              transcriptionMethod: 'SCRAPE',
+              mdPath,
+              frontmatter: {},
+              plainText: content,
+              sourceVersion: 1,
+              sourceChecksum: 'continuation-source',
+            },
+          });
+          ids.push(
+            sourceType === 'transcript'
+              ? document.id
+              : (
+                  await db.transcriptEnrichment.create({
+                    data: {
+                      userId: users[0]!,
+                      transcriptId: document.id,
+                      runKey: randomUUID(),
+                      trigger: 'MANUAL',
+                      status: 'READY',
+                      reviewState: 'ACCEPTED',
+                      title,
+                      content,
+                      sourceVersion: 1,
+                      sourceChecksum: document.sourceChecksum,
+                    },
+                  })
+                ).id,
+          );
+        }
+        expect(
+          await executePassageIndex({ userId: users[0]!, type: sourceType, id: ids.at(-1)! }),
+        ).toBe(true);
+      }
+      const args = {
+        query: 'continuationproof',
+        limit: 20,
+        source_types: [sourceType],
+        source_ids: ids,
+      };
+      const first = (await call('voxen_search_passages', args)).result!;
+      expect(first.isError).not.toBe(true);
+      const page = first.structuredContent;
+      expect(page.dataChunk).toBeDefined();
+      expect(page._mcp?.nextCursor).toBeString();
+      const continuation = { ...args, content_cursor: page._mcp!.nextCursor! };
+      const unchanged = (await call('voxen_search_passages', continuation)).result!;
+      expect(unchanged.isError).not.toBe(true);
+      expect(unchanged.structuredContent.dataChunk).toBeDefined();
+      expect(unchanged.structuredContent._mcp?.resultChecksum).toBe(page._mcp!.resultChecksum);
+      const id = ids[0]!;
+      if (change === 'edit')
+        await db.note.update({ where: { id }, data: { content: 'Replacement.', revision: 2 } });
+      else if (change === 'delete') await db.note.delete({ where: { id } });
+      else if (change === 'archive')
+        await db.transcript.update({ where: { id }, data: { status: 'ARCHIVED' } });
+      else
+        await db.transcriptEnrichment.update({
+          where: { id },
+          data: { reviewState: 'DISMISSED', revision: { increment: 1 } },
+        });
+      const stale = (await call('voxen_search_passages', continuation)).result!;
+      expect(stale.isError).toBe(true);
+      expect(stale.content[0]?.text).toContain('MCP_CONTENT_CHANGED');
+      expect(stale.structuredContent).toBeUndefined();
+      expect(JSON.stringify(stale)).not.toContain('continuationproof');
+    });
 });
