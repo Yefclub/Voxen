@@ -12,6 +12,8 @@ Windows never bridge provenance boundaries. Recorded capture spans distinguish
 original captured text from generated/contextual prose. Missing or invalid
 capture provenance is explicitly unclassified source-derived context. Curated
 notes and accepted external research retain distinct source types.
+Timestamp carry-forward is confined to the same provenance region; a generated
+description cannot assign a time anchor to an untimed original passage.
 
 Canonical source triggers advance only affected generations. Search joins the
 current owner, visibility and accepted-context state before applying its result

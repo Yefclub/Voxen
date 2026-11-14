@@ -53,6 +53,7 @@ test.describe('current passage chat workflow', () => {
         .getByRole('textbox', { name: 'Mensagem' })
         .fill('Encontre ORION-PASSAGE-73 nas minhas notas e confira a fonte.');
       await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible();
       const run = await db.assistantRun.findFirstOrThrow({ where: { userId, status: 'QUEUED' } });
       let step = 0,
         release!: () => void,
@@ -120,16 +121,14 @@ test.describe('current passage chat workflow', () => {
         await started;
         const progress = page.locator('[data-chat-progress]');
         await expect(progress).toBeVisible();
-        await progress.getByRole('button').first().click();
-        await expect(
-          page.getByText('Encontrando passagens relevantes', { exact: true }),
-        ).toBeVisible();
+        await progress.locator('summary').click();
+        await expect(progress.getByText(/Encontrando passagens relevantes/)).toBeVisible();
       } finally {
         release();
         await execution;
       }
       const completed = await db.assistantRun.findUniqueOrThrow({ where: { id: run.id } });
-      expect(completed.status).toBe('COMPLETED');
+      expect(completed.status).toBe('DONE');
       const message = await db.assistantMessage.findUniqueOrThrow({
         where: { id: completed.outputMessageId! },
       });
@@ -145,8 +144,15 @@ test.describe('current passage chat workflow', () => {
       const evidence = `${process.env.PASSAGE_BROWSER_EVIDENCE ?? '/tmp/voxen-passage-browser'}`;
       await mkdir(evidence, { recursive: true });
       await page.screenshot({ path: `${evidence}/chat-${width}.png`, fullPage: true });
-      await page.getByRole('link', { name: 'Fonte de teste', exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/notas/${note.id}$`));
-      await expect(page.getByRole('heading', { name: note.title, exact: true })).toBeVisible();
+      const [sourcePage] = await Promise.all([
+        page.waitForEvent('popup'),
+        page.getByRole('link', { name: 'Fonte de teste', exact: true }).click(),
+      ]);
+      await expect(sourcePage).toHaveURL(new RegExp(`/notas/${note.id}$`));
+      await expect(
+        sourcePage.getByRole('heading', { name: note.title, exact: true }),
+      ).toBeVisible();
+      await expect(page).toHaveURL(/\/chat$/);
+      await sourcePage.close();
     });
 });

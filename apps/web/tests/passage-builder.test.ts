@@ -175,4 +175,25 @@ describe('versioned literal passage construction', () => {
       endSec: null,
     });
   });
+  test('never carries a generated timestamp across an original-source provenance boundary', () => {
+    const generated = '[00:05:00] A generated description.\n';
+    const original = 'The captured source contains no timestamp.\n';
+    const source = fixture(generated + original, {
+      regions: [
+        { start: 0, end: generated.length, kind: 'SOURCE_DERIVED', authority: null },
+        {
+          start: generated.length,
+          end: generated.length + original.length,
+          kind: 'ORIGINAL',
+          authority: 'CAPTURED_SOURCE',
+        },
+      ],
+    });
+    expect(buildPassages(source).passages[1]).toMatchObject({
+      text: original,
+      startLine: 2,
+      startSec: null,
+      endSec: null,
+    });
+  });
 });

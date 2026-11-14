@@ -137,9 +137,14 @@ function before<T>(items: T[], offset: number, position: (item: T) => number): n
   return left - 1;
 }
 
-function timeRange(times: Array<{ offset: number; seconds: number }>, start: number, end: number) {
+function timeRange(
+  times: Array<{ offset: number; seconds: number }>,
+  start: number,
+  end: number,
+  regionStart: number,
+) {
   const first = Math.max(
-    0,
+    before(times, regionStart - 1, (item) => item.offset) + 1,
     before(times, start, (item) => item.offset),
   );
   const last = before(times, end - 1, (item) => item.offset);
@@ -199,7 +204,7 @@ export function buildPassages(source: PassageSource) {
           endOffset: end,
           startLine: before(lines, start, (value) => value) + 1,
           endLine: before(lines, end - 1, (value) => value) + 1,
-          ...timeRange(times, start, end),
+          ...timeRange(times, start, end, region.start),
         });
         if (passages.length > MAX_PASSAGES) throw new PassageBuildError('INDEX_CAPACITY');
         if (end === boundary) break;
