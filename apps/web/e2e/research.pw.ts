@@ -210,7 +210,33 @@ test.describe('opted-in library research', () => {
     const section = page.getByRole('region', { name: 'Contexto adicional', exact: true });
     const status = page.getByRole('status', { name: 'Estado da pesquisa', exact: true });
     const announcement = await status.elementHandle();
+    let releaseSubmission!: () => void;
+    const heldSubmission = new Promise<void>((resolve) => {
+      releaseSubmission = resolve;
+    });
+    let submissionStarted = false;
+    await page.route(`**/api/research/documents/${workspace!.transcriptId}`, async (route) => {
+      if (route.request().method() === 'POST') {
+        submissionStarted = true;
+        await heldSubmission;
+      }
+      await route.continue();
+    });
     await section.getByRole('button', { name: 'Pesquisar contexto', exact: true }).click();
+    try {
+      await expect.poll(() => submissionStarted).toBe(true);
+      await expect(
+        section.getByRole('button', { name: 'Pesquisar contexto', exact: true }),
+      ).toBeDisabled();
+      await expect(
+        section.getByText('Restaure o documento arquivado para solicitar uma nova pesquisa.', {
+          exact: true,
+        }),
+      ).toHaveCount(0);
+    } finally {
+      releaseSubmission();
+    }
+
     await expect(status).toContainText('Pendente');
     expect(await db.transcriptEnrichment.count({ where: { userId: workspace!.userId } })).toBe(1);
     await section.getByRole('button', { name: 'Cancelar', exact: true }).click();
@@ -359,6 +385,9 @@ test.describe('opted-in library research', () => {
     ).toBeVisible();
     await expect(
       page.getByText('PRIVATE_INTERNAL_DETAIL_NOT_FOR_UI', { exact: false }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText('Restore the archived document to request fresh research.', { exact: true }),
     ).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Matrix source', exact: true })).toBeVisible();
     recover = true;

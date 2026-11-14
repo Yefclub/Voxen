@@ -98,6 +98,7 @@ export function AdditionalContextBlock({
   researchMode,
   loading,
   queueDisabled = false,
+  archived = false,
   locale,
   onQueue,
   onUpdate,
@@ -108,6 +109,7 @@ export function AdditionalContextBlock({
   researchMode: 'OFF' | 'MANUAL' | 'AUTO';
   loading: boolean;
   queueDisabled?: boolean;
+  archived?: boolean;
   locale: Locale;
   onQueue: () => void;
   onUpdate: (id: string, body: Record<string, unknown>) => Promise<void>;
@@ -156,7 +158,7 @@ export function AdditionalContextBlock({
         <Button
           type="button"
           variant="outline"
-          disabled={loading || queueDisabled || researchMode === 'OFF' || active}
+          disabled={loading || queueDisabled || archived || researchMode === 'OFF' || active}
           onClick={onQueue}
         >
           {active ? (
@@ -172,7 +174,7 @@ export function AdditionalContextBlock({
           {t('library.additionalContextDisabled')}
         </p>
       )}
-      {queueDisabled && (
+      {archived && (
         <p className="text-sm text-[var(--color-app-muted)]">{t('research.archived')}</p>
       )}
       {loading && <Skeleton className="h-24 w-full" />}

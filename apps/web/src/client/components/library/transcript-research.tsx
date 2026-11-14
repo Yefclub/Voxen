@@ -101,7 +101,8 @@ export function TranscriptResearch({
         enrichments={rows}
         researchMode={data?.researchMode ?? 'OFF'}
         loading={!data && page.loading}
-        queueDisabled={submitting || !sourceActive || Boolean(page.error)}
+        queueDisabled={submitting || Boolean(page.error)}
+        archived={!sourceActive}
         locale={locale}
         t={t}
         onQueue={() => void queue()}

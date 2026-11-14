@@ -90,6 +90,37 @@ describe('AdditionalContextBlock', () => {
     expect(safeExternalCitationUrl('not-a-url')).toBeNull();
   });
 
+  test('distinguishes an archived source from temporary queue unavailability', async () => {
+    for (const archived of [false, true]) {
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(
+          <I18nProvider>
+            <AdditionalContextBlock
+              enrichments={[]}
+              researchMode="MANUAL"
+              loading={false}
+              queueDisabled={true}
+              archived={archived}
+              locale="en"
+              onQueue={() => undefined}
+              onUpdate={async () => undefined}
+              onDelete={async () => undefined}
+              t={t}
+            />
+          </I18nProvider>,
+        );
+      });
+      const archiveNotices = renderer.root.findAll(
+        (node) => node.type === 'p' && node.children.includes('research.archived'),
+      );
+      expect(archiveNotices).toHaveLength(archived ? 1 : 0);
+      await act(async () => {
+        renderer.unmount();
+      });
+    }
+  });
+
   test('renders review actions and omits unsafe citation links', async () => {
     let renderer!: ReactTestRenderer;
     await act(async () => {
