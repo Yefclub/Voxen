@@ -56,7 +56,11 @@ export async function readPassageRecord(
       select: transcriptSelect,
     });
     if (!data) throw new PassageSourceError('NOT_FOUND');
-    return { type, data, revision: digest(data) } as const;
+    return {
+      type,
+      data,
+      revision: digest({ ...data, sourceMetadata: sourceEvidenceStamp(data.sourceMetadata) }),
+    } as const;
   }
   if (type === 'note') {
     const data = await client.note.findFirst({
