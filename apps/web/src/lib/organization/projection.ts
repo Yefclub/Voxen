@@ -25,14 +25,16 @@ function validateEvidence(source: OrganizationSource, analysis: OrganizationAnal
     throw new OrganizationError('INVALID_EVIDENCE');
   const valid = (evidence: OrganizationEvidence) => {
     const { startOffset, endOffset, excerpt, startLine, endLine } = evidence;
+    const authority = organizationRangeAuthority(section.spans, startOffset, endOffset);
     return (
+      authority !== null &&
       Number.isInteger(startOffset) &&
       Number.isInteger(endOffset) &&
       startOffset >= section.offset &&
       endOffset <= section.offset + section.text.length &&
       excerpt.length >= 20 &&
       excerpt.length <= 1600 &&
-      evidence.authority === organizationRangeAuthority(section.spans, startOffset, endOffset) &&
+      evidence.authority === authority &&
       source.markdown.slice(startOffset, endOffset) === excerpt &&
       startLine === 1 + (source.markdown.slice(0, startOffset).match(/\n/g)?.length ?? 0) &&
       endLine === startLine + (excerpt.match(/\n/g)?.length ?? 0)

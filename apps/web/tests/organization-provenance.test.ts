@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { randomUUID } from 'node:crypto';
 import { buildCaptureMarkdown } from '../src/lib/capture/markdown';
 import { generateOrganization, type OrganizationAnalysis } from '../src/lib/organization/generate';
-import { organizationHash } from '../src/lib/organization/source';
+import { organizationHash, type OrganizationEvidence } from '../src/lib/organization/source';
 import type { GenerateStructuredInput } from '../src/lib/ai/client';
 import { db } from '../src/lib/db';
 import { publishOrganizationSection } from '../src/lib/organization/projection';
@@ -245,8 +245,8 @@ databaseSuite('persisted organization evidence authority', () => {
   afterAll(async () => {
     await db.user.delete({ where: { id: userId } });
   });
-  async function savedFixture() {
-    const f = fixture(relationship);
+  async function savedFixture(text = relationship) {
+    const f = fixture(text);
     f.source.id = `authority-${randomUUID()}`;
     f.source.userId = userId;
     f.source.correctionRevision = 1;
@@ -328,6 +328,40 @@ databaseSuite('persisted organization evidence authority', () => {
     await generateOrganization(f.input);
     const analysis = f.published[0]!;
     analysis.nodes[0]!.evidence.authority = 'PREPARED_DOCUMENT';
+    await expect(
+      publishOrganizationSection({
+        source: f.source,
+        analysis,
+        assertCurrent: async () => {},
+        commit: async () => {},
+      }),
+    ).rejects.toThrow('INVALID_EVIDENCE');
+    expect(await db.brainSource.count({ where: { userId } })).toBe(0);
+  });
+
+  test('does not treat absent authority as verification of an ineligible generated-summary excerpt', async () => {
+    const f = await savedFixture(neutral);
+    await generateOrganization(f.input);
+    const startOffset = f.source.markdown.indexOf(relationship);
+    const startLine = f.source.markdown.slice(0, startOffset).split('\n').length;
+    const evidence: OrganizationEvidence = {
+      excerpt: relationship,
+      startOffset,
+      endOffset: startOffset + relationship.length,
+      startLine,
+      endLine: startLine,
+      authority: null as unknown as OrganizationEvidence['authority'],
+    };
+    const analysis: OrganizationAnalysis = {
+      sectionKey: f.published[0]!.sectionKey,
+      reason: 'Malformed replay payload',
+      warnings: [],
+      nodes: [
+        { id: 'orion', name: 'Orion', kind: 'PRODUCT', evidence },
+        { id: 'vega', name: 'Vega', kind: 'PRODUCT', evidence },
+      ],
+      relationships: [{ from: 'orion', to: 'vega', kind: 'PART_OF', evidence }],
+    };
     await expect(
       publishOrganizationSection({
         source: f.source,
