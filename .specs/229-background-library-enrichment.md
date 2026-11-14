@@ -120,3 +120,69 @@ source claims, paid-user quotas and arbitrary code execution.
 
 Local implementation and review evidence do not by themselves establish CI or
 production delivery. Increment 3 organization and spec 230 remain separate.
+
+Increment 2 was delivered through PR #1097 at merge `b224f3be` on 2026-11-14.
+Its forward migration, deployed revision, health and synthetic review flows
+were verified. This does not establish the accuracy of live research models.
+
+## Increment 3 — source-grounded organization
+
+### Ubiquitous
+
+- The system shall keep source-grounded graph organization separate from
+  external research, preserve the existing folders and tags, and never replace
+  manually named nodes, relationships or organization choices.
+- The system shall attach verified source excerpts and current source/correction
+  revisions to each generated relationship; matching a name alone shall not
+  establish a relationship.
+- The system shall reuse unambiguous owned topic/entity identities and shall
+  preserve distinct identities when aliases are ambiguous.
+
+### Event-driven
+
+- When organization is enabled, the system shall support an explicit request
+  for an active document or automatic organization of new captures collected
+  since automatic consent began, independently of capture completion.
+- When analyzing a long source, the system shall analyze every bounded section
+  and retain completed section results and usage through retries.
+- When a source or correction changes, the system shall invalidate its old
+  generated evidence before it can be used as current knowledge.
+- When a user disables organization or cancels a run, the system shall fence
+  late publications without removing already valid source evidence.
+
+### State-driven
+
+- While organization is executing, the system shall allow one valid execution
+  lease across web processes, at most three attempts per section, and at most
+  fifteen minutes from the first claim across retries.
+- While organization is pending or fails, the original document, manual graph
+  and keyless lexical retrieval shall remain usable.
+
+### Optional
+
+- Where organization has not been enabled, the system shall make no additional
+  organization model calls. Capture interpretation and keyless graph indexing
+  shall retain their existing behavior.
+- Where organization is enabled, the interface shall disclose its use of the
+  configured Standard model, progress, cost or unknown cost, cancellation and
+  safe failures in both supported locales.
+
+### Unwanted behavior
+
+- If a model invents an excerpt, references an unknown endpoint or supplies a
+  relationship whose excerpt does not contain both endpoint names, then the
+  system shall omit that item and report the unsupported output.
+- If an owner, execution lease, consent or source snapshot no longer matches,
+  then the system shall reject publication atomically.
+- If a library already contains unfinished compilation records from the retired
+  executor, then the new executor shall not run them without current consent
+  and an explicit current-version execution snapshot.
+
+### Acceptance
+
+- [ ] Complete source analysis produces verified excerpts with line anchors.
+- [ ] Owned identities are reused without merging ambiguous aliases.
+- [ ] Atomic publication preserves manual graph, folders, tags and source text.
+- [ ] Consent, deduplication, retry usage and restart recovery are tested.
+- [ ] Cancellation, corrections, refresh, archive and deletion fence stale work.
+- [ ] Localized controls and mobile sheets are validated before delivery.
