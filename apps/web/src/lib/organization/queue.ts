@@ -108,7 +108,7 @@ export async function enqueueOrganization(
   userId: string,
   transcriptId: string,
   trigger: 'AUTO' | 'MANUAL',
-  requestKey = randomUUID(),
+  requestKey: string = randomUUID(),
 ) {
   if (trigger === 'MANUAL') z.string().uuid().parse(requestKey);
   const policy = await getOrganizationPreferences(userId);
