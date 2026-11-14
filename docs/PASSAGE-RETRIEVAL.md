@@ -28,10 +28,25 @@ batch by default and persists every accepted source independently of process
 memory. Failed or missing indexes retain canonical reads and explicit lexical
 fallback results.
 
+Maintenance runs every five seconds, backfills at most 50 missing ledgers and
+selects at most 16 due sources per tick, with four executions at a time. Object
+reads have a 30-second deadline, a 16 MB byte ceiling and the 4,000,000-unit
+text ceiling; malformed UTF-8 is rejected without replacement text. Local and
+S3 streams receive cancellation, and a stalled header/body cannot hold the
+drain indefinitely.
+
 A passage reference contains its key, source identity, revision and document/
 passage checksums. Reading it checks the current canonical text and revision;
 an old search result is not itself verification. Original/source-derived/
 accepted-external labels describe provenance, not factual truth.
+
+`voxen_search_passages` and `voxen_read_passage` are additive READ-scoped MCP
+tools. Chat uses the same query/verification services through its existing
+lease and tool-call budgets. Search references remain unverified until a
+canonical read succeeds. Existing public MCP schemas, filters and progressive
+reading contracts are retained. One regression kills a real claimed worker
+with SIGKILL and recovers it in a fresh process; the test advances its stored
+lease expiry explicitly and does not assert real-time timer accuracy.
 
 ## PostgreSQL strategy
 

@@ -45,12 +45,18 @@ retrieval must improve evidence selection without requiring provider keys.
 
 ## Acceptance criteria
 
-- [ ] Passages and accepted external context have maintained text indexes.
-- [ ] Search returns matching passages with section/line/time provenance.
-- [ ] Typo, mixed-language, exact-ID and long-source cases are covered.
-- [ ] Updates, corrections, archival and deletion cannot return stale evidence.
-- [ ] Backfill, incremental indexing and restart recovery are tested.
-- [ ] A measured PostgreSQL benchmark compares candidate retrieval to baseline.
+- [x] Passages and accepted external context have maintained text indexes.
+- [x] Search returns matching passages with section/line/time provenance.
+- [x] Typo, mixed-language, exact-ID and long-source cases are covered.
+- [x] Updates, corrections, archival and deletion cannot return stale evidence.
+- [x] Backfill, incremental indexing and restart recovery are tested.
+- [x] A measured PostgreSQL benchmark compares candidate retrieval to baseline.
+
+Local acceptance evidence is recorded in `docs/PASSAGE-RETRIEVAL.md` and the
+passage/MCP/assistant test suites. Recovery includes an actual worker SIGKILL
+and a fresh process, with explicit test-only lease expiry rather than a claim
+about two-minute wall-clock accuracy. Independent final review, remote CI and
+deployment remain delivery gates.
 
 ## Passage integrity and delivery bounds
 
