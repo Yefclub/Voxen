@@ -48,3 +48,20 @@ appearances; retained phone drawer, bottom navigation and sheets. Own synthetic
 QA data only. This is a shell composition change, not a new visual identity;
 global tokens remain unchanged. DESIGN.md and its sidecar record the approved
 desktop and chat changes through a targeted merge.
+
+### Sidebar geometry and motion refinement — spec 233
+
+THESIS: keep the continuous workspace and grouped navigation while correcting
+collapsed control alignment. OWN-WORLD: preserve the existing emerald tokens,
+type and 264/64 px sidebar. STORY: an icon cell stays 44 px while labels fade,
+the available-release region folds, and the workspace follows the same 200 ms
+transition. FIRST VIEWPORT: capture, navigation, toggle and avatar share the
+rail axis. FORM: incumbent refinement, `seed:386810c868ac3e64` inherited from the
+approved direction; no new identity or composition.
+
+Verification includes real transition samples and reversals, menu anchors,
+short admin/user navigation, Light/Dark and both locales, retained phone
+drawers, composer/attachment/source/scroll/progress feedback, and reduced
+motion. CSS phone and density emulation do not establish physical-device
+behavior or hardware frame rate. DESIGN.md and its sidecar remain applicable
+without a new design-system merge.

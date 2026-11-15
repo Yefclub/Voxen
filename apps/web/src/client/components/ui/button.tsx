@@ -11,7 +11,7 @@ const buttonVariants = cva(
     'transition-[transform,background-color,border-color,color] duration-200 ease-out',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg)]',
     'disabled:pointer-events-none disabled:opacity-50',
-    'active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none',
+    'active:scale-[0.98] motion-reduce:active:scale-100 motion-reduce:transform-none motion-reduce:transition-none',
   ].join(' '),
   {
     variants: {
