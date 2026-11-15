@@ -75,6 +75,10 @@ test.describe('chat interaction details', () => {
       }
       const width = side.getBoundingClientRect().width;
       const itemWidth = side.querySelector('[aria-current="page"]')!.getBoundingClientRect().width;
+      const navigation = side.querySelector('#desktop-sidebar-navigation')!;
+      const padding = getComputedStyle(navigation);
+      const availableWidth =
+        navigation.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
       const main = document.querySelector('[data-app-surface]')!;
       for (const a of main.getAnimations()) {
         a.pause();
@@ -82,13 +86,13 @@ test.describe('chat interaction details', () => {
       }
       const left = main.getBoundingClientRect().left;
       for (const a of [...animations, ...main.getAnimations()]) a.play();
-      return { animations: animations.length, width, left, itemWidth };
+      return { animations: animations.length, width, left, itemWidth, availableWidth };
     });
     expect(sample.animations).toBeGreaterThan(0);
     expect(sample.width).toBeGreaterThan(64);
     expect(sample.width).toBeLessThan(264);
     expect(Math.abs(sample.width - sample.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(sample.width - 21 - sample.itemWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sample.availableWidth - sample.itemWidth)).toBeLessThanOrEqual(1);
     await page.getByRole('button', { name: 'Expandir menu', exact: true }).click();
     await expect
       .poll(() => page.locator('#desktop-sidebar').evaluate((n) => n.getBoundingClientRect().width))

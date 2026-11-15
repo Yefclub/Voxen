@@ -62,14 +62,22 @@ export function DesktopSidebarNavigation({
             )}
           </IconButton>
         </div>
-        <Button variant="primary" asChild className="desktop-new-capture">
+        <Button
+          variant="primary"
+          asChild
+          className="desktop-new-capture h-11 min-h-11 justify-start gap-0 p-0"
+        >
           <WorkspaceLink
             href="/capturar"
             aria-label={t('capture.new')}
             title={collapsed ? t('capture.new') : undefined}
           >
-            <Plus isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
-            <span aria-hidden={collapsed || undefined}>{t('capture.new')}</span>
+            <span className="desktop-nav-icon" aria-hidden="true">
+              <Plus isAnimated={false} className="h-[18px] w-[18px]" />
+            </span>
+            <span className="desktop-nav-text" aria-hidden={collapsed || undefined}>
+              {t('capture.new')}
+            </span>
           </WorkspaceLink>
         </Button>
       </SidebarHeader>
@@ -101,8 +109,13 @@ export function DesktopSidebarNavigation({
                           aria-current={isNavItemActive(pathname, to) ? 'page' : undefined}
                           aria-label={t(labelKey)}
                         >
-                          <Icon isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
-                          <span className="truncate" aria-hidden={collapsed || undefined}>
+                          <span className="desktop-nav-icon" aria-hidden="true">
+                            <Icon isAnimated={false} className="h-[18px] w-[18px]" />
+                          </span>
+                          <span
+                            className="desktop-nav-text truncate"
+                            aria-hidden={collapsed || undefined}
+                          >
                             {t(labelKey)}
                           </span>
                         </WorkspaceLink>
@@ -117,23 +130,40 @@ export function DesktopSidebarNavigation({
         })}
       </SidebarContent>
       <SidebarFooter className="desktop-nav-footer">
-        {!collapsed && <SidebarReleaseUpdateButton />}
+        <div
+          className="desktop-release-region"
+          aria-hidden={collapsed || undefined}
+          inert={collapsed ? true : undefined}
+        >
+          <div>
+            <SidebarReleaseUpdateButton />
+          </div>
+        </div>
         <WorkspaceLink
           href="/novidades"
           className="desktop-nav-item"
           aria-label={t('shell.nav.changelog')}
           title={collapsed ? t('shell.nav.changelog') : undefined}
         >
-          <Sparkles isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
-          <span aria-hidden={collapsed || undefined}>{t('shell.nav.changelog')}</span>
+          <span className="desktop-nav-icon" aria-hidden="true">
+            <Sparkles isAnimated={false} className="h-[18px] w-[18px]" />
+          </span>
+          <span className="desktop-nav-text" aria-hidden={collapsed || undefined}>
+            {t('shell.nav.changelog')}
+          </span>
         </WorkspaceLink>
         <div className="desktop-appearance-row">
-          {!collapsed && (
-            <span className="text-xs text-[var(--color-app-muted)]">{t('theme.appearance')}</span>
-          )}
+          <span
+            className="desktop-nav-text text-xs text-[var(--color-app-muted)]"
+            aria-hidden={collapsed || undefined}
+          >
+            {t('theme.appearance')}
+          </span>
           <AppearanceMenu compact={collapsed} />
         </div>
-        <AccountMenu user={user} sidebar compact={collapsed} />
+        <div className="desktop-account-row">
+          <AccountMenu user={user} sidebar compact={collapsed} />
+        </div>
       </SidebarFooter>
     </div>
   );

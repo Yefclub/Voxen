@@ -271,7 +271,8 @@
 
     .assistant-progress-chevron,
     .assistant-composer > div,
-    .assistant-message-actions {
+    .assistant-message-actions,
+    .assistant-message[data-sender='user'] .assistant-message-actions {
       transition: none;
     }
   }

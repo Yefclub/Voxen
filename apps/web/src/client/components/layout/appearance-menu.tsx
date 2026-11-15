@@ -21,14 +21,26 @@ export function AppearanceMenu({ compact = false }: { compact?: boolean }): Reac
   const light = theme === 'light';
 
   return (
-    <div role="group" aria-label={t('theme.appearance')} className="flex items-center gap-1">
+    <div
+      role="group"
+      aria-label={t('theme.appearance')}
+      className={cn(
+        'flex items-center transition-[gap] duration-200 motion-reduce:transition-none',
+        compact ? 'gap-0' : 'gap-1',
+      )}
+    >
       <SegmentedControl
         label={t('theme.label')}
         value={theme}
         onChange={(mode) => {
           if (mode === 'light' || mode === 'dark') void setTheme(mode);
         }}
-        className={cn('voxen-appearance-segments hidden md:flex', compact && 'md:hidden')}
+        aria-hidden={compact || undefined}
+        inert={compact ? true : undefined}
+        className={cn(
+          'voxen-appearance-segments hidden min-w-0 max-w-[72px] overflow-hidden transition-[max-width,opacity,padding] duration-200 motion-reduce:transition-none md:flex',
+          compact && 'max-w-0 px-0 opacity-0',
+        )}
       >
         <SegmentedControlItem
           value="light"
@@ -95,7 +107,11 @@ export function AppearanceMenu({ compact = false }: { compact?: boolean }): Reac
             type="button"
             {...triggerProps}
             label={t('theme.appearance')}
-            className={chromeControlClass}
+            className={cn(
+              chromeControlClass,
+              'transition-[width,height,background-color,color] duration-200 motion-reduce:transition-none',
+              compact && 'md:h-11 md:w-11',
+            )}
           >
             <span aria-hidden className={compact ? 'inline-flex' : 'md:hidden'}>
               {light ? (

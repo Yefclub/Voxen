@@ -76,29 +76,36 @@ export function AccountMenu({
             chromeControlClass,
             'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]',
             sidebar &&
-              'h-12 w-full justify-start gap-3 rounded-lg px-2 hover:bg-[var(--color-app-surface)]',
-            compact && 'h-11 w-11 justify-center px-0',
+              'h-11 w-full justify-start gap-0 rounded-lg p-0 hover:bg-[var(--color-app-surface)]',
+            compact && !sidebar && 'h-11 w-11 justify-center px-0',
           )}
           aria-label={`${t('shell.userMenu')}: ${initials(user.name)} ${user.name}`}
         >
-          <Avatar aria-hidden="true" className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
-            {user.image && (
-              <AvatarPrimitive.Image
-                src={user.image}
-                alt={user.name}
-                className="h-full w-full object-cover"
-              />
-            )}
-            <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
-              {initials(user.name)}
-            </AvatarFallback>
-          </Avatar>
-          {sidebar && !compact && (
+          <span className={sidebar ? 'desktop-nav-icon' : 'contents'} aria-hidden="true">
+            <Avatar className="h-8 w-8 bg-[var(--color-accent-primary-soft)]">
+              {user.image && (
+                <AvatarPrimitive.Image
+                  src={user.image}
+                  alt={user.name}
+                  className="h-full w-full object-cover"
+                />
+              )}
+              <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
+                {initials(user.name)}
+              </AvatarFallback>
+            </Avatar>
+          </span>
+          {sidebar && (
             <>
-              <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+              <span
+                className="desktop-nav-text truncate text-left text-sm font-medium"
+                aria-hidden={compact || undefined}
+              >
                 {user.name}
               </span>
-              <ChevronDown aria-hidden="true" isAnimated={false} className="h-3.5 w-3.5 shrink-0" />
+              <span className="desktop-account-chevron" aria-hidden="true">
+                <ChevronDown isAnimated={false} className="h-3.5 w-3.5" />
+              </span>
             </>
           )}
         </button>

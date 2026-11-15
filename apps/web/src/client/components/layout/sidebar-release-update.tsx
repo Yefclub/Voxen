@@ -30,7 +30,7 @@ export function SidebarReleaseUpdateButton(): React.ReactElement | null {
         href={status.releaseUrl}
         target="_blank"
         rel="noreferrer noopener"
-        className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-accent-violet-soft)] px-3 py-2 text-left text-[var(--color-accent-violet)] transition-[filter,transform] hover:brightness-110 active:scale-[0.99]"
+        className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-accent-violet-soft)] px-3 py-2 text-left text-[var(--color-accent-violet)] transition-[filter,transform] hover:brightness-110 active:scale-[0.99] motion-reduce:active:scale-100 motion-reduce:transition-none"
       >
         <ArrowUp className="h-4 w-4 shrink-0" />
         <span className="min-w-0">
