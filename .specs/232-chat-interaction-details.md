@@ -28,6 +28,9 @@ the continuous conversation and existing authorization/publication contracts.
   shall stage a named, sized preview with a remove action before any upload or
   capture job is created. Images shall have a local thumbnail; other formats
   shall have an identifiable file presentation.
+- Image thumbnails shall use decoded raster pixels encoded as a bounded PNG,
+  preserving aspect ratio. Vector and unreadable files shall retain a named,
+  removable file presentation without loading the original file as a URL.
 - When the user sends a staged attachment, the system shall upload it through
   the existing owner-scoped capture endpoint and include its job reference in
   the submitted message, supporting attachment-only messages.

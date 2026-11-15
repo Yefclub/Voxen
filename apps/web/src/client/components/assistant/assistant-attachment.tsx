@@ -21,13 +21,33 @@ export function AssistantAttachment({
   const copy = assistantCopy[locale];
   const [preview, setPreview] = useState<string | null>(null);
   useEffect(() => {
-    if (!value.file.type.startsWith('image/')) {
-      setPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(value.file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
+    setPreview(null);
+    if (!/^image\/(?:png|jpeg|webp|gif|avif|bmp)$/i.test(value.file.type)) return;
+    let cancelled = false;
+    // Decode pixels and encode a bounded PNG; never expose the original file as a URL.
+    void createImageBitmap(value.file)
+      .then((bitmap) => {
+        try {
+          if (cancelled) return;
+          const scale = Math.min(1, 96 / Math.max(bitmap.width, bitmap.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+          canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+          const context = canvas.getContext('2d');
+          if (!context) return;
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          setPreview(canvas.toDataURL('image/png'));
+        } finally {
+          bitmap.close();
+        }
+      })
+      .catch(() => {
+        // Unreadable images retain the named, removable file presentation.
+        if (!cancelled) setPreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [value.file]);
   const size = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(
     value.file.size / (value.file.size >= 1_048_576 ? 1_048_576 : 1024),

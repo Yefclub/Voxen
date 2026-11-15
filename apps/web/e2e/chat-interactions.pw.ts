@@ -128,12 +128,67 @@ test.describe('chat interaction details', () => {
       name: 'image.png',
       mimeType: 'image/png',
       buffer: Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXZsAAAAASUVORK5CYII=',
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNwmFDwHwAElAJAd61mMQAAAABJRU5ErkJggg==',
         'base64',
       ),
     });
     await expect(preview.getByRole('img', { name: 'image.png' })).toBeVisible();
     await preview.getByRole('button', { name: 'Remover arquivo' }).click();
+    expect(uploads).toBe(0);
+    expect(
+      await db.job.count({ where: { userId: workspace.userId, type: 'CAPTURE_UPLOAD' } }),
+    ).toBe(0);
+  });
+
+  test('decodes raster previews and leaves vector or invalid images removable', async ({
+    page,
+  }) => {
+    let uploads = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().endsWith('/api/captures/upload')) uploads++;
+    });
+    const input = page.locator('.assistant-composer input[type=file]');
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 240;
+      canvas.height = 120;
+      canvas.getContext('2d')!.fillRect(0, 0, 240, 120);
+      return canvas.toDataURL('image/png');
+    });
+    await input.setInputFiles({
+      name: 'decoded.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(png.split(',')[1]!, 'base64'),
+    });
+    const preview = page.getByRole('group', { name: 'Arquivo anexado' });
+    const image = preview.getByRole('img', { name: 'decoded.png' });
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect
+      .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+      .toBe(96);
+    expect(await image.evaluate((node) => (node as HTMLImageElement).naturalHeight)).toBe(48);
+    await preview.getByRole('button', { name: 'Remover arquivo' }).click();
+    for (const file of [
+      {
+        name: 'vector.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" onload="window.previewExecuted=true"/>',
+        ),
+      },
+      {
+        name: 'invalid.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('<html><script>window.previewExecuted=true</script></html>'),
+      },
+    ]) {
+      await input.setInputFiles(file);
+      await expect(preview).toContainText(file.name);
+      await expect(preview.locator('img')).toHaveCount(0);
+      await preview.getByRole('button', { name: 'Remover arquivo' }).click();
+      await expect(preview).toHaveCount(0);
+    }
+    expect(await page.evaluate(() => Reflect.get(window, 'previewExecuted'))).toBeUndefined();
     expect(uploads).toBe(0);
     expect(
       await db.job.count({ where: { userId: workspace.userId, type: 'CAPTURE_UPLOAD' } }),
