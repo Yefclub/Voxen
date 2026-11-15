@@ -106,6 +106,19 @@ test.describe('flat desktop workspace (spec 231)', () => {
       }
       await page.goto('/chat');
       const input = page.getByRole('textbox', { name: 'Mensagem' });
+      const expandedAccount = page
+        .locator('#desktop-sidebar')
+        .getByRole('button', { name: /^Menu do usuário:/ });
+      const expandedAccountBox = (await expandedAccount.boundingBox())!;
+      expect(expandedAccountBox.width).toBeGreaterThanOrEqual(220);
+      expect(expandedAccountBox.height).toBeGreaterThanOrEqual(44);
+      const userName = (await expandedAccount
+        .getByText('Workspace Matrix E2E', { exact: true })
+        .boundingBox())!;
+      expect(userName.width).toBeGreaterThan(100);
+      expect(userName.x + userName.width).toBeLessThan(
+        expandedAccountBox.x + expandedAccountBox.width,
+      );
       await input.fill('Meu rascunho continua ao recolher a navegação.');
       const identity = await input.elementHandle();
       await page.locator('#desktop-sidebar-close').click();
@@ -125,6 +138,12 @@ test.describe('flat desktop workspace (spec 231)', () => {
       await capture(page, `shell-appearance-${theme}-1280`);
       await page.keyboard.press('Escape');
       const account = sidebar.getByRole('button', { name: /^Menu do usuário:/ });
+      const accountBox = (await account.boundingBox())!;
+      expect(accountBox.width).toBeGreaterThanOrEqual(44);
+      expect(accountBox.height).toBeGreaterThanOrEqual(44);
+      const initials = (await account.getByText('WM', { exact: true }).boundingBox())!;
+      expect(initials.x).toBeGreaterThanOrEqual(accountBox.x);
+      expect(initials.x + initials.width).toBeLessThanOrEqual(accountBox.x + accountBox.width);
       await account.click();
       await expect(page.getByRole('menu')).toBeVisible();
       await expect(page.getByRole('menuitem', { name: 'Perfil', exact: true })).toBeVisible();

@@ -25,7 +25,7 @@ function initials(name: string): string {
 }
 
 const chromeControlClass =
-  'inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)] md:h-8 md:w-8';
+  'inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]';
 
 export function AccountMenu({
   user,
@@ -92,20 +92,15 @@ export function AccountMenu({
             <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
               {initials(user.name)}
             </AvatarFallback>
-          </Avatar>{' '}
-          <span
-            className={cn(
-              'min-w-0 flex-1 truncate text-left text-sm font-medium',
-              (!sidebar || compact) && 'hidden',
-            )}
-          >
-            {user.name}
-          </span>
-          <ChevronDown
-            aria-hidden="true"
-            isAnimated={false}
-            className={cn('h-3.5 w-3.5 shrink-0', (!sidebar || compact) && 'hidden')}
-          />
+          </Avatar>
+          {sidebar && !compact && (
+            <>
+              <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+                {user.name}
+              </span>
+              <ChevronDown aria-hidden="true" isAnimated={false} className="h-3.5 w-3.5 shrink-0" />
+            </>
+          )}
         </button>
       )}
     >

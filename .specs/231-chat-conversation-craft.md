@@ -44,6 +44,15 @@ Voxen colors, type, navigation destinations and mobile chrome remain authoritati
   expanded, active and mobile states, without replacing the draft.
 - The attachment action shall use a centered unfilled plus glyph with an intact
   44px target and theme-responsive hover/focus treatment.
+- The initial 3D overview shall retain Voxen's complete framing after the renderer
+  finishes initialization; its library shall not replace that frame with a
+  competing automatic fit. Selection and theme changes shall preserve the camera.
+
+The desktop regression sweep exposed this last pre-existing defect on the exact
+base and candidate with the same three-node fixture: the renderer's asynchronous
+automatic fit overwrites Voxen's complete fit, while the manual Fit action restores
+it. The scoped correction preserves the existing graph contract and is covered
+by actual canvas evidence rather than only simulated camera controls.
 
 ### Event-driven
 
