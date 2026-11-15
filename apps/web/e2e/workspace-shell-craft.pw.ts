@@ -86,6 +86,7 @@ test.describe('flat desktop workspace (spec 231)', () => {
         if (name === 'graph') {
           await page.getByRole('button', { name: '3D', exact: true }).click();
           await expect(page.locator('canvas').first()).toBeVisible();
+          await page.getByText('Matrix source', { exact: true }).first().click();
           // A mounted WebGL canvas can precede its first actual graph paint.
           await expect
             .poll(
@@ -105,6 +106,18 @@ test.describe('flat desktop workspace (spec 231)', () => {
                     bitmap.close();
                     let painted = 0;
                     let clippedLabelInk = 0;
+                    let foregroundInk = 0;
+                    const stride = surface.width + 1;
+                    const colorArea = new Uint32Array(stride * (surface.height + 1));
+                    for (let y = 0; y < surface.height; y++) {
+                      let row = 0;
+                      for (let x = 0; x < surface.width; x++) {
+                        const i = (y * surface.width + x) * 4;
+                        const channels = [data[i]!, data[i + 1]!, data[i + 2]!];
+                        if (Math.max(...channels) - Math.min(...channels) > 40) row++;
+                        colorArea[(y + 1) * stride + x + 1] = colorArea[y * stride + x + 1]! + row;
+                      }
+                    }
                     for (let i = 0; i < data.length; i += 4) {
                       const channels = [data[i]!, data[i + 1]!, data[i + 2]!];
                       const low = Math.min(...channels);
@@ -113,21 +126,35 @@ test.describe('flat desktop workspace (spec 231)', () => {
                       const pixel = i / 4;
                       const x = pixel % surface.width;
                       const y = Math.floor(pixel / surface.width);
-                      if (
-                        (x < 8 || x >= surface.width - 8) &&
-                        y > 28 &&
-                        y < surface.height - 28 &&
+                      const ink =
                         high - low < 35 &&
-                        (document.documentElement.dataset.theme === 'light' ? high < 90 : low > 190)
-                      )
-                        clippedLabelInk++;
+                        (document.documentElement.dataset.theme === 'light'
+                          ? high < 90
+                          : low > 190);
+                      if (ink) {
+                        if ((x < 8 || x >= surface.width - 8) && y > 28 && y < surface.height - 28)
+                          clippedLabelInk++;
+                        const left = Math.max(0, x - 24),
+                          right = Math.min(surface.width, x + 25);
+                        const top = Math.max(0, y - 24),
+                          bottom = Math.min(surface.height, y + 25);
+                        const nearbyColor =
+                          colorArea[bottom * stride + right]! -
+                          colorArea[top * stride + right]! -
+                          colorArea[bottom * stride + left]! +
+                          colorArea[top * stride + left]!;
+                        // Specular node highlights are neutral too. Wait for contrasting
+                        // detail outside node geometry; visual review checks the labels.
+                        if (nearbyColor === 0) foregroundInk++;
+                      }
                     }
                     // Three small nodes must be painted and initially framed,
                     // rather than captured during the oversized first camera frame.
                     return (
                       painted > 20 &&
                       painted < surface.width * surface.height * 0.05 &&
-                      clippedLabelInk === 0
+                      clippedLabelInk === 0 &&
+                      foregroundInk > 20
                     );
                   },
                   [...png],
