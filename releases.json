@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794772804",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Aligned sidebar controls and consistent reduced motion",
+    "body": "The collapsed sidebar aligns the new-capture action and other controls on one\naxis with 44 px targets. Opening and closing preserve icon alignment, footer\nposition, and the conversation draft. Message actions and buttons also respect\nthe reduced-motion preference.",
+    "pr": 1107,
+    "author": "Kalyel",
+    "date": "2026-11-15T16:59:54-03:00",
+    "translations": {
+      "en": {
+        "title": "Aligned sidebar controls and consistent reduced motion",
+        "body": "The collapsed sidebar aligns the new-capture action and other controls on one\naxis with 44 px targets. Opening and closing preserve icon alignment, footer\nposition, and the conversation draft. Message actions and buttons also respect\nthe reduced-motion preference."
+      },
+      "pt-BR": {
+        "title": "Controles da sidebar alinhados e movimento reduzido consistente",
+        "body": "A sidebar recolhida mantém o botão de nova captura e os demais controles no\nmesmo eixo, com alvos de 44 px. A abertura e o fechamento preservam o alinhamento\ndos ícones, a posição do rodapé e o rascunho da conversa. Ações de mensagem e\nbotões também respeitam a preferência por movimento reduzido."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1107"
+  },
+  {
     "version": "0.15.1-dev.1794767042",
     "channel": "dev",
     "type": "ui",

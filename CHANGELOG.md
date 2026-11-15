@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.1-dev.1794772804 — 2026-11-15 · Dev
+
+### 🐛 Aligned sidebar controls and consistent reduced motion
+
+The collapsed sidebar aligns the new-capture action and other controls on one
+axis with 44 px targets. Opening and closing preserve icon alignment, footer
+position, and the conversation draft. Message actions and buttons also respect
+the reduced-motion preference.
+
 ## v0.15.1-dev.1794767042 — 2026-11-15 · Dev
 
 ### 🎨 Smoother navigation and clearer chat attachments and sources
