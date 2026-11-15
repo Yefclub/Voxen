@@ -371,7 +371,7 @@ The interface is precise and restrained. Flat surfaces and tonal layers organize
 - Self-hosted display, interface, and code typography.
 - Flat content surfaces, soft overlay depth, and mobile sheets.
 
-Recorded from source revision `15531ca0be10a281d6dc65fa41ca881b9ef328ce`. Qualitative authority is [PRODUCT.md](PRODUCT.md) and the [committed surface brief](apps/web/.impeccable/surfaces/apps-web-src-client-app-tsx.md). Values come from [index.css](apps/web/src/client/index.css), the shared [UI components](apps/web/src/client/components/ui), [layout components](apps/web/src/client/components/layout), and the reader, notes, and graph implementations cited below. This records the implemented visual system; it does not approve code, CI, or deployment.
+Base system recorded from source revision `15531ca0be10a281d6dc65fa41ca881b9ef328ce`; desktop navigation and continuous-conversation guidance reconciled with `9dfae761efd70b0f674c5fdc016ca19616fa3f48`. Qualitative authority is [PRODUCT.md](PRODUCT.md) and the [committed surface brief](apps/web/.impeccable/surfaces/apps-web-src-client-app-tsx.md). Values come from [index.css](apps/web/src/client/index.css), the shared [UI components](apps/web/src/client/components/ui), [layout components](apps/web/src/client/components/layout), and the reader, notes, and graph implementations cited below. This records the implemented visual system; it does not approve code, CI, or deployment.
 
 Frontmatter is normative. Unsuffixed appearance-dependent color and component entries describe the default Dark appearance; their `-light` siblings describe the Light override. This flattening fits the portable token schema without inventing a second theme mechanism. At runtime, use the existing semantic CSS properties and `html[data-theme='light' | 'dark']`; do not select literal palette entries inside components. The sidecar extends these tokens with motion, depth, breakpoints, and framework-free component samples. No synthetic tonal ramps are introduced: the source defines role pairs, not an authored eight-step ramp.
 
@@ -439,7 +439,7 @@ The shared [PageShell and PageHeader](apps/web/src/client/components/ui/page-she
 
 PageShell uses compact horizontal/vertical padding (1.25rem / 1.5rem), then increases both at the small breakpoint (2rem), with wider horizontal padding at the extra-large breakpoint (2.5rem). Section separation steps from the `7` spacing token to `8`. Headers stack actions beneath the title on small screens, then align them in a wrapping row. Widths are maximums, not minimums: child content must be able to shrink and wrap.
 
-At the medium breakpoint, the application mounts the Astryx SideNav in a 264px rail and TopNav in a 4rem header. Raised chrome surrounds a page-ground content surface with a 1px rule, 16px corners, and 12px outer inset. Sidebar collapse moves the surface while returning focus to the available toggle, without remounting page content. On mobile, the approved bottom navigation and accessible contextual drawer remain in place. Four content destinations plus profile share the bottom bar (4rem high, plus bottom safe area). Main content reserves space for it; routes with their own chrome follow the shell's existing navigation policy.
+At the medium breakpoint, the workspace uses a full-height 264px sidebar and a flat page ground reaching the viewport edges. A single vertical rule separates navigation from content; there is no inset outer frame or reserved desktop topbar. The sidebar groups scroll independently between fixed brand/capture actions and account/appearance controls. Collapse retains accessible destination icons in a 64px rail and returns focus to the available toggle without remounting route content. On mobile, the persistent topbar, approved bottom navigation and contextual drawer remain in place. Four content destinations plus profile share the bottom bar (4rem high, plus bottom safe area). Main content reserves space for it; routes with their own chrome follow the shell's existing navigation policy.
 
 Desktop Library hover and focus treatments extend 16px beyond the aligned content on each side, with 12px corners. The thumbnail, title, and metadata do not move. The separator remains aligned with the content rather than the expanded hover boundary.
 
@@ -478,8 +478,9 @@ Mobile overlays round their top corners using the `2xl` step. Desktop dialogs ro
 
 ### Shared Astryx behavior
 
-Desktop SideNav and TopNav own the workspace navigation structure. Account actions
-use DropdownMenu and the appearance control uses SegmentedControl plus Popover.
+Desktop navigation composes the existing controls into a grouped sidebar; the
+phone topbar retains its section context. Account actions use DropdownMenu and
+the appearance control uses SegmentedControl plus Popover.
 The shared LinkProvider routes native component links through WorkspaceLink so
 ordinary navigation stays in the SPA while modified clicks retain browser behavior.
 InternationalizationProvider follows the current Voxen locale, including native
@@ -521,9 +522,9 @@ Clear boundaries with a quiet raised ground. [Input](apps/web/src/client/compone
 
 ### Navigation
 
-Stable destinations with quiet grouping. The [sidebar](apps/web/src/client/components/layout/sidebar.tsx) uses small Inter labels and thin spatial grouping; active items gain an emerald wash, foreground text, and an emerald icon. Inactive items use muted ink and strengthen on hover. The sidecar's navigation sample shows the same current-page state without requiring a router.
+Stable destinations with quiet grouping. The [sidebar](apps/web/src/client/components/layout/sidebar.tsx) uses small Inter labels and thin spatial grouping; active items gain an emerald wash, foreground text, and an emerald icon. Desktop destinations use supporting ink, gain a surface on hover, and retain an inset focus ring; the phone drawer keeps muted inactive labels. The sidecar's navigation sample shows the desktop groups, current-page state, and footer in expanded and collapsed snapshots without requiring a router.
 
-The [topbar](apps/web/src/client/components/layout/topbar.tsx) provides section context and compact account/appearance controls on the raised ground. Mobile [bottom navigation](apps/web/src/client/components/layout/mobile-bottom-nav.tsx) keeps four task destinations and profile reachable, with an emerald icon wash for the active destination. Contextual destinations stay in the drawer/profile sheet. Focus, back, and close controls remain available without requiring a gesture.
+On desktop, appearance and account controls belong to the sidebar footer: a full-width account control with a readable, truncatable name when expanded, and a centered 44px avatar control when collapsed. The [topbar](apps/web/src/client/components/layout/topbar.tsx) remains phone-only, preserving its section context, appearance and contextual account controls. Mobile [bottom navigation](apps/web/src/client/components/layout/mobile-bottom-nav.tsx) keeps four task destinations and profile reachable, with an emerald icon wash for the active destination. Contextual destinations stay in the drawer/profile sheet. Focus, back, and close controls remain available without requiring a gesture.
 
 ### Dialogs and Sheets
 
@@ -547,21 +548,11 @@ The [graph palette](apps/web/src/client/lib/graph-model.ts), [2D renderer](apps/
 
 ### Continuous conversation
 
-The chat retains the workspace destination in navigation and an accessible page
-heading; it does not repeat a visible title. Preferences occupy the upper trailing
-workspace corner independently of the 46rem transcript/composer measure. The native
-Astryx composer uses a single growing row: 44px attachment and send targets surround
-the input, with a 60px empty footprint and bounded editor scrolling. The input stays
-mounted when the first answer arrives. Empty-state suggestions disappear while a
-draft or phone keyboard is present.
+The chat retains its navigation destination and accessible page heading without repeating a visible title. One 46rem column aligns the assistant's left prose boundary, user bubbles' right boundary and composer, including scrollbar space. Body text uses 16px/26px; an opening response heading uses 24px/32px and section headings 20px/28px. Voxen keeps its own fonts and appearances while adopting the owner-selected Grok writing behavior and ChatGPT reading hierarchy.
 
-Assistant prose remains open on the page ground; user messages use the existing
-tonal bubble. Message actions sit beneath content, appear on hover/focus for fine
-pointers, and remain visible for touch. Source and usage disclosures stay subordinate.
-One expandable activity line exposes localized received tool activity and model
-information; it does not imply completed work from a tool-start event. Its subtle
-rotation becomes static under reduced motion. Streamed Markdown appears progressively
-without replaying block entrances. Phone preferences and checkpoint edits retain sheets.
+The native Astryx composer starts as a 60px capsule with a 30px radius. Short drafts remain inline. Wrap or newline moves the same mounted editor above the action row; the expanded 28px corner shape remains until the draft is cleared. Six visible 24px lines cap the editor, followed by internal scrolling; available visual-viewport height can reduce that cap above a phone keyboard. Attachment, preferences and send/stop controls retain 44px targets. The plus has no separate painted background; preferences sit beside send within the composer. Drafts and focus survive the first answer and docking. Suggestions hide during nonblank drafts or an open phone keyboard.
+
+Assistant prose remains open on the ground; user messages use tonal bubbles. Quiet actions below answers provide complete-text copy, checkpoint controls and source/usage disclosures. User-message actions appear on hover or focus for fine pointers and remain visible for touch. Copy outcomes announce without replacing drafts. Source links open separately and retain the conversation. One expandable activity line exposes received tool activity and model information without inventing success; reduced motion makes its rotation static. Streamed Markdown stays incremental. Reading older content preserves scroll position and offers an explicit return to the latest response. Phone preferences and checkpoint edits retain sheets.
 
 ## Do's and Don'ts
 

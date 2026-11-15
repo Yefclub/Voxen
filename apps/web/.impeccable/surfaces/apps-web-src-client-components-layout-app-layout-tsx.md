@@ -46,4 +46,5 @@ notes, reader, settings, administration, 2D/3D graph and chat; expanded/collapse
 sidebar, account/appearance menus, keyboard focus, hover and long names; both
 appearances; retained phone drawer, bottom navigation and sheets. Own synthetic
 QA data only. This is a shell composition change, not a new visual identity;
-global tokens and DESIGN.md remain unchanged.
+global tokens remain unchanged. DESIGN.md and its sidecar record the approved
+desktop and chat changes through a targeted merge.
