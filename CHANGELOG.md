@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.1-dev.1794767042 — 2026-11-15 · Dev
+
+### 🎨 Smoother navigation and clearer chat attachments and sources
+
+The desktop sidebar and workspace now open and close together, preserving your
+draft. Files selected in chat appear as removable previews before submission;
+images include thumbnails. Failed chat submissions reuse an already uploaded
+capture when retried.
+
+Sources open beside the conversation on desktop and in a sheet on smaller
+screens. A compact floating arrow returns to the latest response without adding
+a background strip. Library hover highlights now leave equal space from their
+separators.
+
 ## v0.15.1-dev.1794725274 — 2026-11-15 · Dev
 
 ### 🎨 A clearer conversation and continuous desktop workspace
