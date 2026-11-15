@@ -28,6 +28,26 @@ test.describe('flat desktop workspace (spec 231)', () => {
     test.setTimeout(90_000);
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    // Stable graph identities make the sparse initial label projection reproducible.
+    await page.route('**/api/graph?*', async (route) => {
+      const response = await route.fetch();
+      const graph = await response.json();
+      const ids = new Map<string, string>(
+        graph.nodes.map((node: { id: string; label: string }) => [node.id, `sparse-${node.label}`]),
+      );
+      await route.fulfill({
+        response,
+        json: {
+          ...graph,
+          nodes: graph.nodes.map((node: { id: string }) => ({ ...node, id: ids.get(node.id) })),
+          edges: graph.edges.map((edge: { from: string; to: string }) => ({
+            ...edge,
+            from: ids.get(edge.from),
+            to: ids.get(edge.to),
+          })),
+        },
+      });
+    });
     for (const theme of ['light', 'dark']) {
       expect(
         (
@@ -84,16 +104,31 @@ test.describe('flat desktop workspace (spec 231)', () => {
                     const { data } = context.getImageData(0, 0, surface.width, surface.height);
                     bitmap.close();
                     let painted = 0;
-                    for (let i = 0; i < data.length; i += 4)
+                    let clippedLabelInk = 0;
+                    for (let i = 0; i < data.length; i += 4) {
+                      const channels = [data[i]!, data[i + 1]!, data[i + 2]!];
+                      const low = Math.min(...channels);
+                      const high = Math.max(...channels);
+                      if (high - low > 40) painted++;
+                      const pixel = i / 4;
+                      const x = pixel % surface.width;
+                      const y = Math.floor(pixel / surface.width);
                       if (
-                        Math.max(data[i]!, data[i + 1]!, data[i + 2]!) -
-                          Math.min(data[i]!, data[i + 1]!, data[i + 2]!) >
-                        40
+                        (x < 8 || x >= surface.width - 8) &&
+                        y > 28 &&
+                        y < surface.height - 28 &&
+                        high - low < 35 &&
+                        (document.documentElement.dataset.theme === 'light' ? high < 90 : low > 190)
                       )
-                        painted++;
+                        clippedLabelInk++;
+                    }
                     // Three small nodes must be painted and initially framed,
                     // rather than captured during the oversized first camera frame.
-                    return painted > 20 && painted < surface.width * surface.height * 0.05;
+                    return (
+                      painted > 20 &&
+                      painted < surface.width * surface.height * 0.05 &&
+                      clippedLabelInk === 0
+                    );
                   },
                   [...png],
                 );

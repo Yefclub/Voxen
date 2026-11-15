@@ -47,6 +47,8 @@ Voxen colors, type, navigation destinations and mobile chrome remain authoritati
 - The initial 3D overview shall retain Voxen's complete framing after the renderer
   finishes initialization; its library shall not replace that frame with a
   competing automatic fit. Selection and theme changes shall preserve the camera.
+- Sparse 3D scenes shall scale their labels to the scene extent without shrinking
+  their existing node markers; representative text shall remain inside the canvas.
 
 The desktop regression sweep exposed this last pre-existing defect on the exact
 base and candidate with the same three-node fixture: the renderer's asynchronous

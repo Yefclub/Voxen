@@ -1,3 +1,11 @@
+---
+version: 1
+slug: 'apps-web-src-client-components-layout-app-layout-tsx'
+primary_target: 'apps/web/src/client/components/layout/app-layout.tsx'
+related_targets:
+  ['apps/web/src/client/components/layout/sidebar.tsx', 'apps/web/src/client/desktop-chrome.css']
+---
+
 # Desktop workspace — flat navigation frame
 
 Mode: Operate. Build path: code-led, precise owner-requested shell replacement
