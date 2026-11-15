@@ -259,6 +259,7 @@ test.describe('continuous assistant workspace', () => {
     await expect(announcement).toHaveText('');
     await page.getByText('Fontes consultadas', { exact: true }).click();
     await expect(page.getByRole('link', { name: 'Matrix source', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Fechar fontes', exact: true }).click();
     for (const theme of ['dark', 'light']) {
       if (theme === 'light')
         await page.getByRole('radio', { name: 'Mudar para tema claro' }).click();
@@ -363,11 +364,24 @@ test.describe('continuous assistant workspace', () => {
       mimeType: 'text/plain',
       buffer: Buffer.from('An owned attachment for capture.'),
     });
-    await expect(page.getByRole('textbox', { name: 'Mensagem' })).toContainText('capture_job_id=');
+    await expect(page.getByRole('group', { name: 'Arquivo anexado' })).toContainText(
+      'research-note.txt',
+    );
+    expect(
+      await db.job.count({ where: { userId: workspace!.userId, type: 'CAPTURE_UPLOAD' } }),
+    ).toBe(0);
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+    await expect(page.getByRole('group', { name: 'Arquivo anexado' })).toHaveCount(0);
     const job = await db.job.findFirstOrThrow({
       where: { userId: workspace!.userId, type: 'CAPTURE_UPLOAD' },
     });
-    await expect(page.getByRole('textbox', { name: 'Mensagem' })).toContainText(job.id);
+    expect(
+      (
+        await db.assistantMessage.findFirstOrThrow({
+          where: { userId: workspace!.userId, role: 'user' },
+        })
+      ).text,
+    ).toContain(`capture_job_id=${job.id}`);
   });
 
   test('confirms or dismisses exact additions in the conversation without a mode', async ({

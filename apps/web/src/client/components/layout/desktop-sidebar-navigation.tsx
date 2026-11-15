@@ -11,6 +11,7 @@ import { WorkspaceLink } from './workspace-link';
 import { AccountMenu } from './account-menu';
 import { AppearanceMenu } from './appearance-menu';
 import { SidebarReleaseUpdateButton } from './sidebar-release-update';
+import { SidebarHeader, SidebarContent, SidebarFooter } from '../ui/sidebar';
 
 export function DesktopSidebarNavigation({
   user,
@@ -26,23 +27,24 @@ export function DesktopSidebarNavigation({
   const items = NAV.filter((item) => !item.adminOnly || user.role === 'ADMIN');
   return (
     <div className="desktop-navigation">
-      <div className="desktop-nav-header">
+      <SidebarHeader className="desktop-nav-header">
         <div className="desktop-brand-row">
-          {!collapsed && (
-            <WorkspaceLink href="/transcricoes" className="desktop-brand-link">
-              <span aria-hidden="true">
-                <Logo size={32} withWordmark={false} />
+          <WorkspaceLink
+            href="/transcricoes"
+            className="desktop-brand-link"
+            tabIndex={collapsed ? -1 : undefined}
+            aria-hidden={collapsed || undefined}
+          >
+            <span aria-hidden="true">
+              <Logo size={32} withWordmark={false} />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-heading text-lg font-semibold tracking-tight">Voxen</span>
+              <span className="block text-xs text-[var(--color-app-muted)]">
+                {t('shell.knowledgeBase')}
               </span>
-              <span className="min-w-0">
-                <span className="block font-heading text-lg font-semibold tracking-tight">
-                  Voxen
-                </span>
-                <span className="block text-xs text-[var(--color-app-muted)]">
-                  {t('shell.knowledgeBase')}
-                </span>
-              </span>
-            </WorkspaceLink>
-          )}
+            </span>
+          </WorkspaceLink>
           <IconButton
             id={collapsed ? 'desktop-sidebar-open' : 'desktop-sidebar-close'}
             data-sidebar-toggle={collapsed ? '' : undefined}
@@ -67,11 +69,11 @@ export function DesktopSidebarNavigation({
             title={collapsed ? t('capture.new') : undefined}
           >
             <Plus isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && <span>{t('capture.new')}</span>}
+            <span aria-hidden={collapsed || undefined}>{t('capture.new')}</span>
           </WorkspaceLink>
         </Button>
-      </div>
-      <nav
+      </SidebarHeader>
+      <SidebarContent
         id="desktop-sidebar-navigation"
         aria-label={t('shell.knowledgeBase')}
         className="desktop-nav-content"
@@ -85,7 +87,9 @@ export function DesktopSidebarNavigation({
               className="desktop-nav-section"
               aria-label={t(NAV_SCOPE_LABELS[scope])}
             >
-              {!collapsed && <h2 className="desktop-nav-label">{t(NAV_SCOPE_LABELS[scope])}</h2>}
+              <h2 className="desktop-nav-label" aria-hidden={collapsed || undefined}>
+                {t(NAV_SCOPE_LABELS[scope])}
+              </h2>
               <ul>
                 {destinations.map(({ to, labelKey, Icon }) => (
                   <li key={to}>
@@ -98,7 +102,9 @@ export function DesktopSidebarNavigation({
                           aria-label={t(labelKey)}
                         >
                           <Icon isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
-                          {!collapsed && <span className="truncate">{t(labelKey)}</span>}
+                          <span className="truncate" aria-hidden={collapsed || undefined}>
+                            {t(labelKey)}
+                          </span>
                         </WorkspaceLink>
                       </TooltipTrigger>
                       {collapsed && <TooltipContent side="right">{t(labelKey)}</TooltipContent>}
@@ -109,8 +115,8 @@ export function DesktopSidebarNavigation({
             </section>
           );
         })}
-      </nav>
-      <div className="desktop-nav-footer">
+      </SidebarContent>
+      <SidebarFooter className="desktop-nav-footer">
         {!collapsed && <SidebarReleaseUpdateButton />}
         <WorkspaceLink
           href="/novidades"
@@ -119,7 +125,7 @@ export function DesktopSidebarNavigation({
           title={collapsed ? t('shell.nav.changelog') : undefined}
         >
           <Sparkles isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
-          {!collapsed && <span>{t('shell.nav.changelog')}</span>}
+          <span aria-hidden={collapsed || undefined}>{t('shell.nav.changelog')}</span>
         </WorkspaceLink>
         <div className="desktop-appearance-row">
           {!collapsed && (
@@ -128,7 +134,7 @@ export function DesktopSidebarNavigation({
           <AppearanceMenu compact={collapsed} />
         </div>
         <AccountMenu user={user} sidebar compact={collapsed} />
-      </div>
+      </SidebarFooter>
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { Button } from '../ui/button';
 import { Plus, Settings, Square } from '../ui/icons';
 import { useI18n } from '../../lib/i18n';
 import { assistantCopy } from '../../lib/assistant-i18n';
+import { CAPTURE_FILE_ACCEPT } from '../../lib/capture-state';
+import { AssistantAttachment, type AssistantAttachmentValue } from './assistant-attachment';
 
 type Props = {
   value: string;
@@ -15,6 +17,8 @@ type Props = {
   active: boolean;
   ready: boolean;
   onPreferences: () => void;
+  attachment: AssistantAttachmentValue | null;
+  onRemoveAttachment: () => void;
 };
 
 export function AssistantComposer(props: Props) {
@@ -48,7 +52,7 @@ export function AssistantComposer(props: Props) {
       !props.ready ||
       props.busy ||
       props.active ||
-      !props.value.trim() ||
+      (!props.value.trim() && !props.attachment) ||
       props.value.length > 16_000
     )
       return;
@@ -60,6 +64,7 @@ export function AssistantComposer(props: Props) {
         ref={composer}
         className="assistant-composer"
         data-expanded={expanded ? 'true' : 'false'}
+        data-has-attachment={props.attachment ? 'true' : 'false'}
         density="compact"
         elevation="none"
         value={props.value}
@@ -68,6 +73,18 @@ export function AssistantComposer(props: Props) {
         isDisabled={props.busy}
         isStopShown={props.active}
         onStop={props.onStop}
+        drawer={
+          props.attachment && (
+            <AssistantAttachment
+              value={props.attachment}
+              busy={props.busy}
+              onRemove={() => {
+                props.onRemoveAttachment();
+                composer.current?.querySelector<HTMLElement>('[contenteditable="true"]')?.focus();
+              }}
+            />
+          )
+        }
         input={
           <ChatComposerInput
             label={copy.message}
@@ -104,6 +121,7 @@ export function AssistantComposer(props: Props) {
             <input
               ref={input}
               type="file"
+              accept={CAPTURE_FILE_ACCEPT}
               className="sr-only"
               tabIndex={-1}
               onChange={(event) => {
@@ -143,7 +161,10 @@ export function AssistantComposer(props: Props) {
               onStop={props.onStop}
               isDisabled={
                 !props.active &&
-                (!props.ready || !props.value.trim() || props.value.length > 16_000 || props.busy)
+                (!props.ready ||
+                  (!props.value.trim() && !props.attachment) ||
+                  props.value.length > 16_000 ||
+                  props.busy)
               }
               sendIcon={
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">

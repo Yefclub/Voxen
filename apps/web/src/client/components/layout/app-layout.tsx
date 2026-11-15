@@ -1,7 +1,8 @@
 import { Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useOutlet } from 'react-router-dom';
-import { motion, useMotionValue, useReducedMotion } from 'motion/react';
-import { Sidebar, SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from './sidebar';
+import { useMotionValue } from 'motion/react';
+import { Sidebar } from './sidebar';
+import { SidebarInset, SidebarProvider } from '../ui/sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
@@ -20,12 +21,9 @@ import {
 } from '../../lib/mobile-nav';
 import { TooltipProvider } from '../ui/tooltip';
 import { SessionUnavailable } from '../session-unavailable';
-import { useSidebarCollapsed } from '../../lib/sidebar-state';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading, error, refresh } = useMe();
-  const { collapsed } = useSidebarCollapsed();
-  const reduceMotion = useReducedMotion();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   // Navegação mobile (<md): o Topbar flutuante não hospeda navegação — quem
@@ -128,7 +126,7 @@ export function AppLayout(): React.ReactElement {
   return (
     <TooltipProvider delayDuration={350}>
       <UpdateModal monitor={versionMonitor} />
-      <div
+      <SidebarProvider
         data-interface-mode="focus"
         className="flex h-[var(--visual-viewport-height,100dvh)] overflow-hidden bg-[var(--color-app-bg)] md:bg-[var(--color-app-bg-elevated)]"
       >
@@ -140,19 +138,7 @@ export function AppLayout(): React.ReactElement {
           onClose={() => setMobileNavOpen(false)}
           onPresenceChange={setMobileNavPresent}
         />
-        <motion.div
-          data-app-surface
-          initial={false}
-          animate={{
-            marginLeft: isDesktop ? (collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH) : 0,
-          }}
-          transition={{
-            duration: reduceMotion || !isDesktop ? 0 : 0.22,
-            ease: [0.4, 0, 0.2, 1],
-          }}
-          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden"
-          inert={mobileNavPresent ? true : undefined}
-        >
+        <SidebarInset data-app-surface inert={mobileNavPresent ? true : undefined}>
           <Topbar
             user={data.user}
             showBack={showBack}
@@ -163,8 +149,8 @@ export function AppLayout(): React.ReactElement {
             <AnimatedOutlet />
           </main>
           {!hideBottomNav && <MobileBottomNav user={data.user} />}
-        </motion.div>
-      </div>
+        </SidebarInset>
+      </SidebarProvider>
     </TooltipProvider>
   );
 }

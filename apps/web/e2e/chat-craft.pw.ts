@@ -230,6 +230,10 @@ test.describe('focused conversation craft', () => {
     ]);
     await expect(source).toHaveURL(new RegExp(`/transcricoes/${workspace.transcriptId}$`));
     await source.close();
+    await page
+      .getByRole('dialog', { name: 'Fontes consultadas', exact: true })
+      .getByRole('button', { name: 'Fechar', exact: true })
+      .click();
     await expect(editor).toHaveText('Meu rascunho junto das fontes');
     await page.getByRole('button', { name: 'Modelo e uso', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Modelo e uso', exact: true })).toContainText(
