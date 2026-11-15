@@ -21,17 +21,20 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/transcricoes');
       const sidebar = page.locator('#desktop-sidebar');
-      await expect(sidebar.locator('.astryx-side-nav')).toBeVisible();
-      await expect(page.locator('[data-app-header] .astryx-top-nav')).toBeVisible();
-      expect((await page.locator('[data-app-header]').boundingBox())!.height).toBe(64);
+      await expect(sidebar.getByRole('navigation')).toBeVisible();
+      await expect(page.locator('[data-app-header]')).toHaveCount(0);
+      const surface = page.locator('[data-app-surface]');
+      const frame = (await surface.boundingBox())!;
+      expect(frame.y).toBe(0);
+      expect(frame.x + frame.width).toBe(width);
+      expect(frame.height).toBe(900);
+      expect(await surface.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('0px');
       await expect(
         sidebar.getByRole('link', { name: /Voxen.*Base de conhecimento/i }),
       ).toBeVisible();
+      await expect(sidebar.getByRole('button', { name: /Workspace Matrix E2E/ })).toBeVisible();
       await expect(
-        page.locator('[data-app-header]').getByRole('button', { name: /Workspace Matrix E2E/ }),
-      ).toBeVisible();
-      await expect(
-        page.locator('[data-app-header]').getByRole('button', { name: /Workspace Matrix E2E/ }),
+        sidebar.getByRole('button', { name: /Workspace Matrix E2E/ }),
       ).toMatchAriaSnapshot(
         `- 'button "Menu do usuário: WM Workspace Matrix E2E"': Workspace Matrix E2E`,
       );
@@ -56,7 +59,9 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
             left: parseFloat(style.paddingLeft),
             right: parseFloat(style.paddingRight),
             radius: parseFloat(style.borderRadius),
-            border: parseFloat(getComputedStyle(surface).borderLeftWidth),
+            border: parseFloat(
+              getComputedStyle(document.querySelector('#desktop-sidebar')!).borderRightWidth,
+            ),
             main: getComputedStyle(surface).backgroundColor,
             chrome: getComputedStyle(document.querySelector('#desktop-sidebar')!).backgroundColor,
           };
@@ -74,7 +79,8 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
       const search = page.getByRole('searchbox');
       await search.fill('Matrix');
       await page.locator('#desktop-sidebar-close').click();
-      await expect(sidebar).toHaveAttribute('inert', '');
+      await expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+      await expect(sidebar.getByRole('link', { name: 'Biblioteca', exact: true })).toBeVisible();
       await expect(page.locator('[data-sidebar-toggle]')).toBeFocused();
       await expect(search).toHaveValue('Matrix');
       await page.locator('[data-sidebar-toggle]').click();
@@ -84,7 +90,7 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
     }
   });
 
-  test('centers sidebar and appearance glyphs on the desktop header axis', async ({
+  test('centers sidebar and appearance glyphs within their controls without a desktop header', async ({
     page,
   }, testInfo) => {
     const centeredGlyph = async (button: ReturnType<typeof page.getByRole>): Promise<number> => {
@@ -114,14 +120,7 @@ test.describe('desktop chrome and portrait phone use (spec 226)', () => {
         const toggle = page.locator('[data-sidebar-toggle]');
         await expect(toggle).toBeFocused();
         expect(Math.abs(await centeredGlyph(toggle))).toBeLessThanOrEqual(0.5);
-        const axisDelta = await toggle.evaluate((element) => {
-          const control = element.getBoundingClientRect();
-          const breadcrumb = document
-            .querySelector('.desktop-breadcrumbs')!
-            .getBoundingClientRect();
-          return control.y + control.height / 2 - (breadcrumb.y + breadcrumb.height / 2);
-        });
-        expect(Math.abs(axisDelta)).toBeLessThanOrEqual(0.5);
+        await expect(page.locator('[data-app-header]')).toHaveCount(0);
         expect(
           Math.abs(
             await centeredGlyph(page.getByRole('button', { name: 'Aparência', exact: true })),

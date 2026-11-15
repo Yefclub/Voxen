@@ -12,13 +12,15 @@ describe('chrome de navegação mobile compacto', () => {
     expect(source).toContain('data-app-header');
     expect(source).toContain('h-[calc(3.5rem+env(safe-area-inset-top))]');
     expect(source).toContain("aria-label={t('shell.currentSection')}");
-    expect(source).toContain('data-sidebar-toggle');
-    expect(source).toContain('aria-controls="desktop-sidebar"');
+    const sidebar = readClientSource('components/layout/desktop-sidebar-navigation.tsx');
+    expect(sidebar).toContain('data-sidebar-toggle');
+    expect(sidebar).toContain('aria-controls="desktop-sidebar-navigation"');
     expect(source).toContain('<AppearanceMenu />');
-    expect(source).toContain('theme.appearance');
+    const appearance = readClientSource('components/layout/appearance-menu.tsx');
+    expect(appearance).toContain('theme.appearance');
     expect(source).not.toContain('toggleAppearance()');
-    expect(source).toContain('h-10 w-10');
-    expect(source).toContain('md:h-8 md:w-8');
+    expect(appearance).toContain('h-10 w-10');
+    expect(appearance).toContain('md:h-8 md:w-8');
   });
 
   test('mobile navigation controls occupy the header flow and keep touch targets', () => {

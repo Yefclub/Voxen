@@ -3,11 +3,11 @@ import type { NodeRenderer, Theme, Sphere as GraphSphere, Label as GraphLabel } 
 import { toOpaqueGraphColor, type GraphPalette, type SigmaGraphModel } from './graph-model';
 
 /** Keep the overview's marks and type proportional to its world-space extent. */
-export function graph3DScale(model: SigmaGraphModel | null): number {
+export function graph3DScale(model: SigmaGraphModel | null, minimum = 1): number {
   const points = [...(model?.positions3d.values() ?? [])];
-  if (!points.length) return 1;
+  if (!points.length) return minimum;
   return Math.max(
-    1,
+    minimum,
     ...(['x', 'y', 'z'] as const).map(
       (axis) =>
         (Math.max(...points.map((point) => point[axis])) -
@@ -24,7 +24,9 @@ export function createGraph3DNodeRenderer(
   palette: GraphPalette,
   coarsePointer: boolean,
 ): NodeRenderer {
-  const fontSize = (coarsePointer ? 60 : 40) * graph3DScale(model);
+  // Small scenes keep the existing touchable markers, but their labels must
+  // follow the actual extent instead of inheriting the marker's minimum scale.
+  const fontSize = (coarsePointer ? 60 : 40) * graph3DScale(model, 0.25);
   const xs = [...model.positions3d.values()].map((point) => point.x);
   const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
   const extentX = Math.max(...xs) - Math.min(...xs);

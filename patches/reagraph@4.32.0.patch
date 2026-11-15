@@ -1,8 +1,22 @@
 diff --git a/dist/index.js b/dist/index.js
-index 0117259db955318a0f68428fbe89c33dcfe4f2f4..962adfe8e84ac46b4bfa8f308f6ce6ab5789d365 100644
+index 0117259db955318a0f68428fbe89c33dcfe4f2f4..51432ef4eaf6833febfc1c92662a1ebb0ee00b4e 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -2315,11 +2315,16 @@ var Edge = ({ animated, arrowPlacement = "end", contextMenu, disabled, labelPlac
+@@ -1256,6 +1256,13 @@ var useCenterGraph = ({ animated, disabled, layoutType }) => {
+ 		async function load() {
+ 			if (controls && nodes?.length) {
+ 				if (!mounted.current) {
++					// A custom layout owns its complete camera framing. Expose the scene
++					// without a second asynchronous fit replacing the application's view.
++					if (layoutType === "custom") {
++						mounted.current = true;
++						setIsCentered(true);
++						return;
++					}
+ 					await centerNodes(nodes, { animated: false });
+ 					await fitNodesInView(nodes, { animated: false });
+ 					mounted.current = true;
+@@ -2315,11 +2322,16 @@ var Edge = ({ animated, arrowPlacement = "end", contextMenu, disabled, labelPlac
  };
  //#endregion
  //#region src/symbols/edges/Edge.tsx
@@ -23,7 +37,7 @@ index 0117259db955318a0f68428fbe89c33dcfe4f2f4..962adfe8e84ac46b4bfa8f308f6ce6ab
  	const isDragging = useStore$1((state) => state.draggingIds.length > 0);
  	const labelOffset = useMemo(() => (size + theme.edge.label.fontSize) / 2, [size, theme.edge.label.fontSize]);
  	const midPoint = useMemo(() => getMidPoint(from.position, to.position, getLabelOffsetByType(labelOffset, labelPlacement)), [
-@@ -5297,8 +5302,8 @@ var GraphCanvas = forwardRef(({ cameraMode = "pan", layoutType = "forceDirected2
+@@ -5297,8 +5309,8 @@ var GraphCanvas = forwardRef(({ cameraMode = "pan", layoutType = "forceDirected2
  	const { selections, actives, collapsedNodeIds } = rest;
  	const finalAnimated = edges.length + nodes.length > 400 ? false : animated;
  	const gl = useMemo(() => ({

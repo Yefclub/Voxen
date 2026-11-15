@@ -86,13 +86,14 @@ describe('Voxen visual foundation', () => {
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
     expect(sidebar).toContain('const SIDEBAR_WIDTH = 264');
-    expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
+    expect(sidebar).toContain('collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH');
     expect(sidebar).toContain('id="desktop-sidebar"');
-    expect(sidebar).toContain('aria-hidden');
+    expect(sidebar).toContain('data-collapsed');
     expect(sidebar).not.toContain('SidebarRail');
     expect(sidebar).not.toContain('SidebarSpacer');
     expect(appLayout).toContain('marginLeft');
-    expect(appLayout).toContain('md:rounded-2xl');
+    expect(appLayout).not.toContain('md:rounded-2xl');
+    expect(appLayout).not.toContain('md:my-3');
     expect(drawer).toContain('fica preparada fora da tela');
     expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
     expect(drawer).toContain('inert={present ? undefined : true}');

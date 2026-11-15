@@ -1,120 +1,124 @@
 @layer components {
   .desktop-navigation {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
     min-height: 0;
-    background: var(--color-app-bg-elevated);
     color: var(--color-app-fg);
   }
-
-  .desktop-navigation > div:first-child {
-    gap: 24px;
-    padding: 20px 16px 24px;
-    border: 0;
+  .desktop-nav-header {
+    flex-shrink: 0;
+    padding: 12px 12px 20px;
   }
-
-  .desktop-navigation > div:nth-child(2) {
-    padding-inline: 12px;
-  }
-
-  .desktop-navigation > div:last-child {
-    padding: 8px 12px 12px;
-  }
-
   .desktop-brand-row,
   .desktop-brand-link {
     display: flex;
     align-items: center;
   }
-
   .desktop-brand-row {
-    gap: 8px;
+    gap: 4px;
     min-width: 0;
     justify-content: space-between;
+    margin-bottom: 20px;
   }
-
   .desktop-brand-link {
     gap: 10px;
     min-width: 0;
+    padding-left: 4px;
     border-radius: var(--radius-lg);
   }
-
   .desktop-brand-link:focus-visible {
     outline: 2px solid var(--theme-focus);
     outline-offset: 4px;
   }
-
-  .desktop-nav-section {
-    margin-bottom: 24px;
-    padding: 0;
+  .desktop-new-capture {
+    display: flex;
+    width: 100%;
+    height: 44px;
+    justify-content: flex-start;
+    gap: 12px;
+    padding-inline: 12px;
   }
-
-  .desktop-nav-section > :first-child {
-    margin-bottom: 8px;
+  .desktop-nav-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 12px 12px;
+    scrollbar-width: thin;
+  }
+  .desktop-nav-section + .desktop-nav-section {
+    margin-top: 24px;
+  }
+  .desktop-nav-label {
+    margin-bottom: 6px;
     padding-inline: 12px;
     color: var(--color-app-muted);
     font-size: 12px;
     font-weight: 500;
   }
-
   .desktop-nav-item {
+    display: flex;
+    align-items: center;
     min-height: 44px;
-    margin-block: 3px;
-    padding: 10px 12px;
     gap: 12px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
+    padding: 10px 12px;
+    border-radius: var(--radius-lg);
     color: var(--color-app-subtle);
-    font-family: var(--font-sans);
     font-size: 14px;
     font-weight: 500;
     transition:
       background-color 160ms var(--ease-out),
       color 160ms var(--ease-out);
   }
-
   .desktop-nav-item:hover {
     background: var(--color-app-surface);
     color: var(--color-app-fg);
   }
-
-  .desktop-nav-item[data-selected='selected'] {
-    border-color: color-mix(in srgb, var(--color-accent-primary) 25%, transparent);
+  .desktop-nav-item:focus-visible {
+    outline: 2px solid var(--theme-focus);
+    outline-offset: -2px;
+  }
+  .desktop-nav-item[aria-current='page'] {
     background: var(--color-accent-primary-soft);
     color: var(--color-app-fg);
   }
-
-  .desktop-nav-item[data-selected='selected'] svg {
+  .desktop-nav-item[aria-current='page'] svg {
     color: var(--color-accent-primary);
   }
-
+  .desktop-nav-footer {
+    flex-shrink: 0;
+    padding: 8px 12px 12px;
+    border-top: 1px solid var(--color-app-border);
+  }
   .desktop-nav-footer > div {
     padding-inline: 0;
   }
-
-  .desktop-topnav {
-    width: 100%;
-    min-width: 0;
-    padding: 0;
-    background: transparent;
+  .desktop-appearance-row {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 12px;
   }
-
-  .desktop-breadcrumbs {
-    min-width: 0;
-    color: var(--color-app-muted);
-    font-family: var(--font-sans);
-    font-size: 13px;
+  [data-collapsed='true'] .desktop-nav-header {
+    padding: 12px 10px 20px;
   }
-
-  .desktop-breadcrumbs [aria-current='page'] {
-    overflow: hidden;
-    color: var(--color-app-fg);
-    font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  [data-collapsed='true'] .desktop-nav-content {
+    padding-inline: 10px;
   }
-
+  [data-collapsed='true'] .desktop-nav-footer {
+    padding-inline: 10px;
+  }
+  [data-collapsed='true'] .desktop-nav-item,
+  [data-collapsed='true'] .desktop-new-capture {
+    width: 44px;
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-collapsed='true'] .desktop-appearance-row {
+    justify-content: center;
+  }
   .library-result-row {
     position: relative;
   }
