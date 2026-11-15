@@ -258,6 +258,29 @@ test.describe('focused conversation craft', () => {
     await capture(page, 'copied-dark-320');
   });
 
+  test('preserves the reading hierarchy for top-level Markdown response headings', async ({
+    page,
+  }) => {
+    await populate(
+      page,
+      answer.replace('## Síntese', '# Síntese') + '\n\n## Próxima etapa\n\nLeia a evidência.',
+    );
+    const lead = page.getByRole('heading', { name: 'Síntese de validação', exact: true });
+    expect(await lead.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))).toBe(24);
+    expect(
+      await page
+        .getByRole('heading', { name: 'Próxima etapa', exact: true })
+        .evaluate((e) => parseFloat(getComputedStyle(e).fontSize)),
+    ).toBe(20);
+    expect(
+      await page
+        .locator('.assistant-answer strong')
+        .first()
+        .evaluate((e) => getComputedStyle(e).fontWeight),
+    ).toBe('600');
+    await capture(page, 'response-heading-hierarchy-desktop');
+  });
+
   test('keeps the answer and draft when clipboard access is unavailable', async ({ page }) => {
     await populate(page);
     await page.evaluate(() => {

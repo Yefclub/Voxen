@@ -180,28 +180,6 @@
     line-height: 1.5;
   }
 
-  .assistant-answer :is(h2, h3, h4, h5, h6) {
-    margin-block: 1.5rem 0.5rem;
-    font-family: var(--font-heading);
-    font-size: 1.25rem;
-    font-weight: 600;
-    line-height: 1.4;
-    letter-spacing: -0.02em;
-  }
-
-  .assistant-answer > div > :first-child:is(h2, h3, h4, h5, h6) {
-    font-size: 1.5rem;
-    line-height: 1.3334;
-  }
-
-  .assistant-answer strong {
-    font-weight: 600;
-  }
-
-  .assistant-answer > div > :first-child {
-    margin-top: 0;
-  }
-
   .assistant-suggestions > button {
     min-height: 44px;
     justify-content: flex-start;
@@ -301,5 +279,30 @@
 
   html[data-keyboard='open'] .assistant-dock {
     padding-block: 0.5rem max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Chat typography overrides the shared Markdown renderer's utility defaults. */
+@layer utilities {
+  [data-assistant-workspace] .assistant-answer :is(h2, h3, h4, h5, h6) {
+    margin-block: 1.5rem 0.5rem;
+    font-family: var(--font-heading);
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.02em;
+  }
+
+  [data-assistant-workspace] .assistant-answer > div > :first-child:is(h2, h3, h4, h5, h6) {
+    font-size: 1.5rem;
+    line-height: 1.3334;
+  }
+
+  [data-assistant-workspace] .assistant-answer strong {
+    font-weight: 600;
+  }
+
+  [data-assistant-workspace] .assistant-answer > div > :first-child {
+    margin-top: 0;
   }
 }
