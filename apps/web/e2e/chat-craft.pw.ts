@@ -46,15 +46,14 @@ test.describe('focused conversation craft', () => {
     await page.evaluate(() => document.fonts.ready);
   }
 
-  test('keeps the compact writing surface aligned and grows without losing its controls', async ({
-    page,
-  }) => {
-    await page.goto('/chat');
-    const input = page.getByRole('textbox', { name: 'Mensagem' });
-    await expect(input).toBeVisible();
-    for (const width of [1536, 1280, 390, 320]) {
-      for (const theme of ['light', 'dark']) {
+  for (const width of [1536, 1280, 390, 320]) {
+    for (const theme of ['light', 'dark']) {
+      test(`keeps the writing surface aligned through draft growth at ${width}px in ${theme}`, async ({
+        page,
+      }) => {
+        const input = page.getByRole('textbox', { name: 'Mensagem' });
         await appearance(page, theme, width);
+        await expect(input).toBeVisible();
         const composer = page.locator('.assistant-composer');
         const body = composer.locator(':scope > div').first();
         expect(
@@ -107,9 +106,9 @@ test.describe('focused conversation craft', () => {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
           true,
         );
-      }
+      });
     }
-  });
+  }
 
   async function populate(
     page: Parameters<typeof seedWorkspace>[0],
