@@ -10,14 +10,20 @@ export function AssistantMessageFooter({
   message,
   onEdit,
   onRewind,
+  onSources,
+  sourcesOpen,
+  sourcesPanelId,
 }: {
   message: AssistantMessage;
   onEdit: (message: AssistantMessage) => void;
   onRewind: (message: AssistantMessage) => void;
+  onSources: (message: AssistantMessage, trigger: HTMLButtonElement) => void;
+  sourcesOpen: boolean;
+  sourcesPanelId: string;
 }) {
   const { locale } = useI18n();
   const copy = assistantCopy[locale];
-  const [open, setOpen] = useState<'sources' | 'usage' | null>(null);
+  const [open, setOpen] = useState(false);
   const panel = useId();
   return (
     <div className="assistant-message-footer">
@@ -50,9 +56,12 @@ export function AssistantMessageFooter({
             variant="ghost"
             size="sm"
             aria-label={copy.sources}
-            aria-expanded={open === 'sources'}
-            aria-controls={panel}
-            onClick={() => setOpen(open === 'sources' ? null : 'sources')}
+            aria-expanded={sourcesOpen}
+            aria-controls={sourcesPanelId}
+            onClick={(event) => {
+              setOpen(false);
+              onSources(message, event.currentTarget);
+            }}
             className="assistant-source-toggle"
           >
             <Library className="h-4 w-4" />
@@ -69,9 +78,9 @@ export function AssistantMessageFooter({
             size="icon"
             aria-label={copy.usage}
             title={copy.usage}
-            aria-expanded={open === 'usage'}
+            aria-expanded={open}
             aria-controls={panel}
-            onClick={() => setOpen(open === 'usage' ? null : 'usage')}
+            onClick={() => setOpen(!open)}
           >
             <AlertCircle isAnimated={false} className="h-4 w-4" />
           </Button>
@@ -81,29 +90,10 @@ export function AssistantMessageFooter({
         id={panel}
         hidden={!open}
         role="region"
-        aria-label={open === 'sources' ? copy.sources : copy.usage}
+        aria-label={copy.usage}
         className="assistant-message-panel"
       >
-        {open === 'sources' && (
-          <ul className="space-y-3">
-            {message.details.references?.map((reference) => (
-              <li key={reference.href} className="flex items-baseline gap-3">
-                <span className="shrink-0 text-xs text-[var(--color-app-muted)]">
-                  {reference.source === 'web' ? copy.web : copy.library}
-                </span>
-                <a
-                  className="min-w-0 break-words text-[var(--color-accent-primary)] underline underline-offset-4"
-                  href={reference.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {reference.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-        {open === 'usage' && (
+        {open && (
           <p className="break-words text-xs text-[var(--color-app-muted)]">
             {message.details.model}
             {message.details.costUsd ? ` · USD ${message.details.costUsd}` : ''}

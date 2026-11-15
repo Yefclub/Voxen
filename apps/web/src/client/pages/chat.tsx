@@ -5,8 +5,8 @@ import {
   useChatStreamScroll,
   useChatNewMessages,
 } from '@astryxdesign/core/Chat';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { Markdown } from '../components/ui/markdown';
@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
-import { Search, Link2 } from '../components/ui/icons';
+import { Search, Link2, ArrowRight } from '../components/ui/icons';
 import { AssistantComposer } from '../components/assistant/assistant-composer';
 import { AssistantProposalCard } from '../components/assistant/assistant-proposal';
 import { AssistantPreferences } from '../components/assistant/assistant-preferences';
@@ -26,19 +26,40 @@ import { AssistantMessageFooter } from '../components/assistant/assistant-messag
 import { useAssistant, type AssistantMessage } from '../lib/use-assistant';
 import { assistantCopy } from '../lib/assistant-i18n';
 import { useI18n } from '../lib/i18n';
+import type { AssistantAttachmentValue } from '../components/assistant/assistant-attachment';
+import { AssistantSourcesPanel } from '../components/assistant/assistant-sources-panel';
 
 export function ChatPage(): React.ReactElement {
   const { locale } = useI18n();
   const copy = assistantCopy[locale];
   const chat = useAssistant();
+  const location = useLocation();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sourcesId, setSourcesId] = useState<string | null>(null);
+  const sourcesPanelId = useId();
+  const sourcesTrigger = useRef<HTMLButtonElement | null>(null);
+  const closeSources = useCallback(() => {
+    setSourcesId(null);
+    requestAnimationFrame(() => {
+      if (sourcesTrigger.current?.isConnected)
+        sourcesTrigger.current.focus({ preventScroll: true });
+    });
+  }, []);
   const [editing, setEditing] = useState<{ message: AssistantMessage; text?: string } | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const nonce = useRef<{ text: string; id: string } | null>(null);
-  const uploading = useRef(false);
+  const [attachment, setAttachment] = useState<AssistantAttachmentValue | null>(null);
+  const submission = useRef<AbortController | null>(null);
+  useLayoutEffect(() => {
+    setBusy(false);
+    return () => {
+      submission.current?.abort();
+      submission.current = null;
+    };
+  }, [location.key]);
   const active = Boolean(chat.state?.activeRun);
   const messages = chat.state?.messages ?? [];
   const progressLabel = !chat.connected
@@ -64,6 +85,13 @@ export function ChatPage(): React.ReactElement {
     return () => observer.disconnect();
   }, [empty]);
   const scrollControl = useChatStreamScroll({ scrollRef: scroll });
+  useLayoutEffect(() => {
+    const viewport = scroll.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(() => scrollControl.scrollIfLocked());
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [empty, scrollControl.scrollIfLocked]);
   const newMessages = useChatNewMessages({
     isLocked: scrollControl.isLocked,
     onResize: scrollControl.scrollIfLocked,
@@ -81,8 +109,8 @@ export function ChatPage(): React.ReactElement {
     return copy.failed;
   }
   async function send() {
-    const value = text.trim();
-    if (!value || active || busy || !chat.state) return;
+    let value = text.trim();
+    if ((!value && !attachment) || active || busy || submission.current || !chat.state) return;
     if (value.length > 16_000) {
       setNotice(copy.tooLong);
       return;
@@ -90,16 +118,66 @@ export function ChatPage(): React.ReactElement {
     setBusy(true);
     setNotice('');
     jumpToEnd();
-    if (!nonce.current || nonce.current.text !== value)
-      nonce.current = { text: value, id: crypto.randomUUID() };
+    const controller = new AbortController();
+    submission.current = controller;
+    const journeyKey = location.key;
+    const ownsSubmission = () =>
+      submission.current === controller &&
+      !controller.signal.aborted &&
+      ((window.history.state as { key?: string } | null)?.key ?? 'default') === journeyKey;
     try {
+      if (attachment) {
+        let jobId = attachment.jobId;
+        if (!jobId) {
+          setNotice(copy.uploading);
+          const body = new FormData();
+          body.set('file', attachment.file);
+          let result: { job: { id: string } };
+          try {
+            const response = await fetch('/api/captures/upload', {
+              method: 'POST',
+              body,
+              credentials: 'include',
+              signal: controller.signal,
+            });
+            const value = (await response.json()) as { job?: { id?: string } };
+            if (!response.ok || typeof value.job?.id !== 'string') throw new Error('UPLOAD_FAILED');
+            result = { job: { id: value.job.id } };
+          } catch {
+            throw new Error('UPLOAD_FAILED');
+          }
+          if (!ownsSubmission()) return;
+          jobId = result.job.id;
+          setAttachment({ file: attachment.file, jobId });
+        }
+        value += `${value ? '\n\n' : ''}${copy.attachment}: ${attachment.file.name.slice(0, 200)}. capture_job_id=${jobId}`;
+      }
+      if (!ownsSubmission()) return;
+      if (value.length > 16_000) throw new Error('TOO_LONG');
+      setNotice('');
+      if (!nonce.current || nonce.current.text !== value)
+        nonce.current = { text: value, id: crypto.randomUUID() };
       await chat.send(value, nonce.current.id);
+      if (!ownsSubmission()) return;
       setText('');
+      setAttachment(null);
       nonce.current = null;
     } catch (error) {
-      setNotice(errorText(error instanceof Error ? error.message : ''));
+      if (ownsSubmission()) {
+        const code = error instanceof Error ? error.message : '';
+        setNotice(
+          code === 'UPLOAD_FAILED'
+            ? copy.fileError
+            : code === 'TOO_LONG'
+              ? copy.tooLong
+              : errorText(code),
+        );
+      }
     } finally {
-      setBusy(false);
+      if (submission.current === controller) {
+        submission.current = null;
+        setBusy(false);
+      }
     }
   }
   async function rewind() {
@@ -117,246 +195,253 @@ export function ChatPage(): React.ReactElement {
     }
   }
   async function attach(file: File) {
-    if (uploading.current) return;
-    uploading.current = true;
-    setBusy(true);
-    setNotice(copy.uploading);
-    try {
-      const body = new FormData();
-      body.set('file', file);
-      const response = await fetch('/api/captures/upload', {
-        method: 'POST',
-        body,
-        credentials: 'include',
-      });
-      const result = (await response.json()) as { job?: { id: string } };
-      if (!response.ok || !result.job) throw new Error('UPLOAD_FAILED');
-      setText(
-        (current) =>
-          `${current}${current ? '\n' : ''}${copy.attachment}: ${file.name.slice(0, 200)}. capture_job_id=${result.job!.id}`,
-      );
-      setNotice(copy.attachment);
-    } catch {
-      setNotice(copy.fileError);
-    } finally {
-      uploading.current = false;
-      setBusy(false);
-    }
+    if (submission.current || active) return;
+    setAttachment({ file });
+    setNotice('');
   }
 
   return (
-    <div data-assistant-workspace className="relative flex h-full min-h-0 flex-col">
-      <h1 className="sr-only">{copy.title}</h1>
-      <p
-        data-chat-announcement
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-      >
-        {progressLabel}
-      </p>
-      <section data-chat-stage data-empty={empty ? 'true' : 'false'} className="assistant-stage">
-        {empty && (
-          <div data-chat-welcome className="mx-auto w-full max-w-[46rem] text-center">
-            <h2 className="mx-auto max-w-[24ch] font-heading text-[28px] font-medium leading-tight tracking-tight">
-              {copy.empty}
-            </h2>
-            <p className="sr-only">{copy.hint}</p>
-          </div>
-        )}
-        <div
-          ref={scroll}
-          className={
-            empty
-              ? 'hidden'
-              : 'assistant-transcript min-h-0 flex-1 overflow-y-auto overscroll-contain'
-          }
+    <div data-assistant-workspace className="relative flex h-full min-h-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <h1 className="sr-only">{copy.title}</h1>
+        <p
+          data-chat-announcement
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
         >
-          <div ref={newMessages.contentRef}>
-            <ChatMessageList
-              align="top"
-              density="spacious"
-              isStreaming={active}
-              className="assistant-messages mx-auto w-full max-w-[46rem]"
-            >
-              {chat.state?.hasMore && (
-                <Button
-                  variant="ghost"
-                  className="my-3"
-                  onClick={() => {
-                    const before = scroll.current?.scrollHeight ?? 0;
-                    void chat.loadOlder().then(() =>
-                      requestAnimationFrame(() => {
-                        if (scroll.current)
-                          scroll.current.scrollTop += scroll.current.scrollHeight - before;
-                      }),
-                    );
-                  }}
-                >
-                  {copy.older}
-                </Button>
-              )}
-              {messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
-                  sender={message.role === 'user' ? 'user' : 'assistant'}
-                  density="spacious"
-                  className="assistant-message"
-                >
-                  <ChatMessageBubble
-                    className="assistant-bubble"
-                    variant={message.role === 'user' ? 'filled' : 'ghost'}
-                    width={message.role === 'user' ? undefined : '100%'}
-                    metadata={
-                      <AssistantMessageFooter
-                        message={message}
-                        onEdit={(message) => setEditing({ message, text: message.text })}
-                        onRewind={(message) => setEditing({ message })}
-                      />
-                    }
-                  >
-                    <h2 className="sr-only">
-                      {message.role === 'user' ? copy.user : copy.assistant}
-                    </h2>
-                    {message.text &&
-                      (message.role === 'user' ? (
-                        <p className="whitespace-pre-wrap break-words text-base leading-relaxed">
-                          {message.text}
-                        </p>
-                      ) : (
-                        <Markdown
-                          className="assistant-answer text-base leading-relaxed"
-                          headingOffset={2}
-                        >
-                          {message.text}
-                        </Markdown>
-                      ))}
-                    {message.details.error && (
-                      <p
-                        role="status"
-                        className="mt-4 text-sm leading-relaxed text-[var(--color-app-warning-fg)]"
-                      >
-                        {errorText(message.details.error)}
-                      </p>
-                    )}
-                    {message.details.stopped && (
-                      <p
-                        role="status"
-                        className="mt-4 text-sm leading-relaxed text-[var(--color-app-muted)]"
-                      >
-                        {copy.stopped}
-                      </p>
-                    )}
-                    {message.details.proposals?.map((proposal) => (
-                      <AssistantProposalCard
-                        key={proposal.id}
-                        proposal={proposal}
-                        revision={chat.state?.revision ?? 0}
-                        disabled={active}
-                        onDecision={chat.decide}
-                      />
-                    ))}
-                    {Boolean(message.details.actions?.length) && (
-                      <div className="mt-4 space-y-2 text-sm">
-                        <p className="font-medium">{copy.actions}</p>
-                        {message.details.actions?.map((action, index) => (
-                          <p key={`${action.name}-${index}`}>
-                            <Link
-                              className="text-[var(--color-accent-primary)] underline underline-offset-4"
-                              to={
-                                action.result.href ??
-                                (action.result.jobId
-                                  ? `/capturar?job=${encodeURIComponent(action.result.jobId)}`
-                                  : '/capturar')
-                              }
-                            >
-                              {action.result.title ??
-                                (action.name === 'create_note' ? copy.openNote : copy.openCapture)}
-                            </Link>
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </ChatMessageBubble>
-                </ChatMessage>
-              ))}
-              {(active || !chat.connected) && (
-                <AssistantProgress
-                  activity={chat.activity}
-                  connected={chat.connected}
-                  label={progressLabel}
-                  model={chat.state?.activeRun?.model ?? null}
-                />
-              )}
-            </ChatMessageList>
-          </div>
-        </div>
-        <div className="assistant-dock">
-          <div className="mx-auto w-full max-w-[46rem]">
-            {(scrollControl.isScrolledUp || newMessages.hasNewMessages) && (
-              <div className="mb-3 flex justify-center">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    newMessages.dismiss();
-                    scrollControl.scrollToBottom();
-                  }}
-                >
-                  {copy.jump}
-                </Button>
-              </div>
-            )}
-            {(notice || chat.error) && (
-              <p
-                role="status"
-                className="mb-3 text-sm leading-relaxed text-[var(--color-app-warning-fg)]"
+          {progressLabel}
+        </p>
+        <section data-chat-stage data-empty={empty ? 'true' : 'false'} className="assistant-stage">
+          {empty && (
+            <div data-chat-welcome className="mx-auto w-full max-w-[46rem] text-center">
+              <h2 className="mx-auto max-w-[24ch] font-heading text-[28px] font-medium leading-tight tracking-tight">
+                {copy.empty}
+              </h2>
+              <p className="sr-only">{copy.hint}</p>
+            </div>
+          )}
+          <div
+            ref={scroll}
+            className={
+              empty
+                ? 'hidden'
+                : 'assistant-transcript min-h-0 flex-1 overflow-y-auto overscroll-contain'
+            }
+          >
+            <div ref={newMessages.contentRef}>
+              <ChatMessageList
+                align="top"
+                density="spacious"
+                isStreaming={active}
+                className="assistant-messages mx-auto w-full max-w-[46rem]"
               >
-                {notice || errorText(chat.error ?? '')}{' '}
-                {(notice === copy.noKey || chat.error === 'AI_NOT_CONFIGURED') && (
-                  <Link className="underline underline-offset-4" to="/conta/ia">
-                    {copy.configure}
-                  </Link>
-                )}
-                {chat.error && (
-                  <Button variant="ghost" size="sm" onClick={() => void chat.refresh()}>
-                    {copy.retry}
+                {chat.state?.hasMore && (
+                  <Button
+                    variant="ghost"
+                    className="my-3"
+                    onClick={() => {
+                      const before = scroll.current?.scrollHeight ?? 0;
+                      void chat.loadOlder().then(() =>
+                        requestAnimationFrame(() => {
+                          if (scroll.current)
+                            scroll.current.scrollTop += scroll.current.scrollHeight - before;
+                        }),
+                      );
+                    }}
+                  >
+                    {copy.older}
                   </Button>
                 )}
-              </p>
-            )}
-            <AssistantComposer
-              value={text}
-              onChange={setText}
-              onSend={send}
-              onStop={() => {
-                void chat.stop().catch(() => setNotice(copy.failed));
-              }}
-              onFile={attach}
-              busy={busy}
-              active={active}
-              ready={Boolean(chat.state)}
-              onPreferences={() => setSettingsOpen(true)}
-            />
+                {messages.map((message) => (
+                  <ChatMessage
+                    key={message.id}
+                    sender={message.role === 'user' ? 'user' : 'assistant'}
+                    density="spacious"
+                    className="assistant-message"
+                  >
+                    <ChatMessageBubble
+                      className="assistant-bubble"
+                      variant={message.role === 'user' ? 'filled' : 'ghost'}
+                      width={message.role === 'user' ? undefined : '100%'}
+                      metadata={
+                        <AssistantMessageFooter
+                          message={message}
+                          sourcesOpen={sourcesId === message.id}
+                          sourcesPanelId={sourcesPanelId}
+                          onSources={(selected, trigger) => {
+                            sourcesTrigger.current = trigger;
+                            setSourcesId((current) =>
+                              current === selected.id ? null : selected.id,
+                            );
+                          }}
+                          onEdit={(message) => setEditing({ message, text: message.text })}
+                          onRewind={(message) => setEditing({ message })}
+                        />
+                      }
+                    >
+                      <h2 className="sr-only">
+                        {message.role === 'user' ? copy.user : copy.assistant}
+                      </h2>
+                      {message.text &&
+                        (message.role === 'user' ? (
+                          <p className="whitespace-pre-wrap break-words text-base leading-relaxed">
+                            {message.text}
+                          </p>
+                        ) : (
+                          <Markdown
+                            className="assistant-answer text-base leading-relaxed"
+                            headingOffset={2}
+                          >
+                            {message.text}
+                          </Markdown>
+                        ))}
+                      {message.details.error && (
+                        <p
+                          role="status"
+                          className="mt-4 text-sm leading-relaxed text-[var(--color-app-warning-fg)]"
+                        >
+                          {errorText(message.details.error)}
+                        </p>
+                      )}
+                      {message.details.stopped && (
+                        <p
+                          role="status"
+                          className="mt-4 text-sm leading-relaxed text-[var(--color-app-muted)]"
+                        >
+                          {copy.stopped}
+                        </p>
+                      )}
+                      {message.details.proposals?.map((proposal) => (
+                        <AssistantProposalCard
+                          key={proposal.id}
+                          proposal={proposal}
+                          revision={chat.state?.revision ?? 0}
+                          disabled={active}
+                          onDecision={chat.decide}
+                        />
+                      ))}
+                      {Boolean(message.details.actions?.length) && (
+                        <div className="mt-4 space-y-2 text-sm">
+                          <p className="font-medium">{copy.actions}</p>
+                          {message.details.actions?.map((action, index) => (
+                            <p key={`${action.name}-${index}`}>
+                              <Link
+                                className="text-[var(--color-accent-primary)] underline underline-offset-4"
+                                to={
+                                  action.result.href ??
+                                  (action.result.jobId
+                                    ? `/capturar?job=${encodeURIComponent(action.result.jobId)}`
+                                    : '/capturar')
+                                }
+                              >
+                                {action.result.title ??
+                                  (action.name === 'create_note'
+                                    ? copy.openNote
+                                    : copy.openCapture)}
+                              </Link>
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </ChatMessageBubble>
+                  </ChatMessage>
+                ))}
+                {(active || !chat.connected) && (
+                  <AssistantProgress
+                    activity={chat.activity}
+                    connected={chat.connected}
+                    label={progressLabel}
+                    model={chat.state?.activeRun?.model ?? null}
+                  />
+                )}
+              </ChatMessageList>
+            </div>
           </div>
-        </div>
-        {empty && !text.trim() && (
-          <div
-            data-chat-suggestions
-            className="assistant-suggestions mx-auto w-full max-w-[46rem] flex-col"
-          >
-            <Button variant="ghost" size="sm" onClick={() => setText(copy.recentPrompt)}>
-              <Search className="h-4 w-4 shrink-0" />
-              {copy.recentSuggestion}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setText(copy.connectPrompt)}>
-              <Link2 className="h-4 w-4 shrink-0" />
-              {copy.connectSuggestion}
-            </Button>
+          <div className="assistant-dock">
+            <div className="mx-auto w-full max-w-[46rem]">
+              {(scrollControl.isScrolledUp || newMessages.hasNewMessages) && (
+                <div className="assistant-jump">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-11 w-11 rounded-full"
+                    aria-label={copy.jump}
+                    title={copy.jump}
+                    onClick={() => {
+                      newMessages.dismiss();
+                      scrollControl.scrollToBottom();
+                    }}
+                  >
+                    <ArrowRight
+                      aria-hidden="true"
+                      isAnimated={false}
+                      className="h-5 w-5 rotate-90"
+                    />
+                  </Button>
+                </div>
+              )}
+              {(notice || chat.error) && (
+                <p
+                  role="status"
+                  className="mb-3 text-sm leading-relaxed text-[var(--color-app-warning-fg)]"
+                >
+                  {notice || errorText(chat.error ?? '')}{' '}
+                  {(notice === copy.noKey || chat.error === 'AI_NOT_CONFIGURED') && (
+                    <Link className="underline underline-offset-4" to="/conta/ia">
+                      {copy.configure}
+                    </Link>
+                  )}
+                  {chat.error && (
+                    <Button variant="ghost" size="sm" onClick={() => void chat.refresh()}>
+                      {copy.retry}
+                    </Button>
+                  )}
+                </p>
+              )}
+              <AssistantComposer
+                value={text}
+                onChange={setText}
+                onSend={send}
+                onStop={() => {
+                  void chat.stop().catch(() => setNotice(copy.failed));
+                }}
+                onFile={attach}
+                attachment={attachment}
+                onRemoveAttachment={() => {
+                  setAttachment(null);
+                  setNotice('');
+                }}
+                busy={busy}
+                active={active}
+                ready={Boolean(chat.state)}
+                onPreferences={() => setSettingsOpen(true)}
+              />
+            </div>
           </div>
-        )}
-      </section>
+          {empty && !text.trim() && !attachment && (
+            <div
+              data-chat-suggestions
+              className="assistant-suggestions mx-auto w-full max-w-[46rem] flex-col"
+            >
+              <Button variant="ghost" size="sm" onClick={() => setText(copy.recentPrompt)}>
+                <Search className="h-4 w-4 shrink-0" />
+                {copy.recentSuggestion}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setText(copy.connectPrompt)}>
+                <Link2 className="h-4 w-4 shrink-0" />
+                {copy.connectSuggestion}
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+      <AssistantSourcesPanel
+        id={sourcesPanelId}
+        message={messages.find((message) => message.id === sourcesId) ?? null}
+        onClose={closeSources}
+      />
       <AssistantPreferences open={settingsOpen} onOpenChange={setSettingsOpen} />
       <Dialog
         open={Boolean(editing)}

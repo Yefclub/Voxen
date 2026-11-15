@@ -637,7 +637,7 @@ export function TranscricoesPage(): React.ReactElement {
               <h2 className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
                 {t('library.capturedWeek', { date: formatCaptureWeek(week.start, locale) })}
               </h2>
-              <div className="space-y-1.5">
+              <div>
                 {week.items.map((transcript) => (
                   <TranscriptRow
                     key={transcript.id}
@@ -870,7 +870,7 @@ function TranscriptRow({
   return (
     <Link
       to={`/transcricoes/${t.id}`}
-      className="library-result-row group flex items-start gap-4 py-5 transition-colors hover:bg-[var(--color-app-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
+      className="library-result-row group flex items-start gap-4 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus)]"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[var(--color-app-bg-elevated)] sm:h-24 sm:w-36">
         <img

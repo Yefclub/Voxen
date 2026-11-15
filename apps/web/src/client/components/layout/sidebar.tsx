@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { LogOut, Sparkles } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
-import { useSidebarCollapsed } from '../../lib/sidebar-state';
+import { Sidebar as SidebarPrimitive, useSidebar } from '../ui/sidebar';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useI18n } from '../../lib/i18n';
 import {
@@ -24,8 +24,7 @@ export { NAV, isNavItemActive } from './sidebar-nav';
  * the bottom-nav profile menu. Keep top-level tabs aligned with
  * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
-export const SIDEBAR_WIDTH = 264;
-export const SIDEBAR_COLLAPSED_WIDTH = 64;
+export { SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '../ui/sidebar';
 
 /**
  * A cor vem de `--color-app-danger` e não de um tom fixo do Tailwind: o app
@@ -61,7 +60,7 @@ export function SidebarModeBody({
 }
 
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
-  const { collapsed, setCollapsed } = useSidebarCollapsed();
+  const { collapsed, setCollapsed } = useSidebar();
   const isDesktop = useIsDesktop();
   const previousCollapsed = useRef(collapsed);
   useLayoutEffect(() => {
@@ -81,18 +80,13 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 
   // Desktop collapse preserves labeled navigation instead of covering it.
   return (
-    <aside
-      id="desktop-sidebar"
-      data-collapsed={collapsed ? 'true' : 'false'}
-      className="fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] md:flex"
-      style={{ width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH }}
-    >
+    <SidebarPrimitive id="desktop-sidebar">
       <DesktopSidebarNavigation
         user={user}
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
       />
-    </aside>
+    </SidebarPrimitive>
   );
 }
 

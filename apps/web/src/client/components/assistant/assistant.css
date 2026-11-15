@@ -101,6 +101,31 @@
     white-space: nowrap;
   }
 
+  .assistant-composer[data-has-attachment='true'] {
+    border: 1px solid var(--color-app-border);
+    border-radius: 28px;
+    background: var(--color-app-surface);
+  }
+  .assistant-composer[data-has-attachment='true'] > div {
+    border: 0;
+    border-radius: 0 0 28px 28px;
+    background: transparent;
+  }
+  .assistant-attachments {
+    padding: 12px 12px 0;
+  }
+  .assistant-attachment {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: min(100%, 360px);
+    min-height: 72px;
+    padding: 8px 8px 8px 12px;
+    border: 1px solid var(--color-app-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-app-bg);
+  }
+
   .assistant-transcript {
     padding: 1rem 1.25rem 0;
     scrollbar-gutter: stable;
@@ -252,10 +277,29 @@
   }
 
   .assistant-dock {
+    position: relative;
     flex-shrink: 0;
     padding: 1rem 1.25rem max(1rem, env(safe-area-inset-bottom));
     padding-inline-end: calc(1.25rem + var(--assistant-scrollbar-width, 0px));
     background: var(--color-app-bg);
+  }
+
+  .assistant-jump {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translateX(-50%);
+  }
+  .assistant-sources-panel {
+    display: flex;
+    width: min(24rem, 32vw);
+    min-width: 0;
+    flex-shrink: 0;
+    flex-direction: column;
+    border-left: 1px solid var(--color-app-border);
+    background: var(--color-app-bg-elevated);
   }
 
   .assistant-stage[data-empty='true'] .assistant-dock {
@@ -282,8 +326,19 @@
   }
 }
 
-/* Chat typography overrides the shared Markdown renderer's utility defaults. */
+/* Preserve the shared typography and focus rules at the native component boundary. */
 @layer utilities {
+  [data-assistant-workspace] .assistant-composer[data-has-attachment='true'] > div {
+    box-shadow: none;
+    outline: none;
+  }
+
+  [data-assistant-workspace]
+    .assistant-composer[data-has-attachment='true']:has([contenteditable]:focus-visible) {
+    outline: 2px solid var(--theme-focus);
+    outline-offset: 2px;
+  }
+
   [data-assistant-workspace] .assistant-answer :is(h2, h3, h4, h5, h6) {
     margin-block: 1.5rem 0.5rem;
     font-family: var(--font-heading);

@@ -1,4 +1,17 @@
 @layer components {
+  .desktop-sidebar {
+    width: var(--sidebar-width);
+    transition: width 200ms var(--ease-out);
+  }
+  .desktop-sidebar-inset {
+    margin-left: 0;
+  }
+  @media (min-width: 768px) {
+    .desktop-sidebar-inset {
+      margin-left: var(--sidebar-width);
+      transition: margin-left 200ms var(--ease-out);
+    }
+  }
   .desktop-navigation {
     display: flex;
     flex-direction: column;
@@ -27,6 +40,12 @@
     min-width: 0;
     padding-left: 4px;
     border-radius: var(--radius-lg);
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 180px;
+    transition:
+      max-width 200ms var(--ease-out),
+      opacity 150ms var(--ease-out);
   }
   .desktop-brand-link:focus-visible {
     outline: 2px solid var(--theme-focus);
@@ -56,6 +75,12 @@
     color: var(--color-app-muted);
     font-size: 12px;
     font-weight: 500;
+    max-height: 20px;
+    overflow: hidden;
+    transition:
+      max-height 200ms var(--ease-out),
+      margin-bottom 200ms var(--ease-out),
+      opacity 150ms var(--ease-out);
   }
   .desktop-nav-item {
     display: flex;
@@ -67,6 +92,8 @@
     color: var(--color-app-subtle);
     font-size: 14px;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
     transition:
       background-color 160ms var(--ease-out),
       color 160ms var(--ease-out);
@@ -101,6 +128,29 @@
     justify-content: space-between;
     padding-inline: 12px;
   }
+  .desktop-nav-item > span,
+  .desktop-new-capture span {
+    transition: opacity 150ms var(--ease-out);
+  }
+  [data-collapsed='true'] .desktop-brand-link {
+    max-width: 0;
+    padding-left: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  [data-collapsed='true'] .desktop-brand-row {
+    gap: 0;
+  }
+  [data-collapsed='true'] .desktop-nav-label {
+    max-height: 0;
+    margin-bottom: 0;
+    opacity: 0;
+  }
+  [data-collapsed='true'] .desktop-nav-item > span,
+  [data-collapsed='true'] .desktop-new-capture span {
+    opacity: 0;
+    width: 0;
+  }
   [data-collapsed='true'] .desktop-nav-header {
     padding: 12px 10px 20px;
   }
@@ -112,15 +162,28 @@
   }
   [data-collapsed='true'] .desktop-nav-item,
   [data-collapsed='true'] .desktop-new-capture {
-    width: 44px;
-    justify-content: center;
-    padding-inline: 0;
+    gap: 0;
+    padding-inline: 13px;
   }
   [data-collapsed='true'] .desktop-appearance-row {
     justify-content: center;
   }
   .library-result-row {
     position: relative;
+    isolation: isolate;
+  }
+  .library-result-row::before {
+    position: absolute;
+    inset: 8px 0;
+    z-index: -1;
+    border-radius: inherit;
+    content: '';
+    pointer-events: none;
+    transition: background-color 160ms var(--ease-out);
+  }
+  .library-result-row:hover::before,
+  .library-result-row:focus-visible::before {
+    background: var(--color-app-surface);
   }
 
   .library-result-row::after {
@@ -147,7 +210,16 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .desktop-sidebar,
+    .desktop-sidebar-inset,
+    .desktop-brand-link,
+    .desktop-nav-label,
+    .desktop-nav-item > span,
+    .desktop-new-capture span,
     .desktop-nav-item {
+      transition: none;
+    }
+    .library-result-row::before {
       transition: none;
     }
   }

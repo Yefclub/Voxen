@@ -82,16 +82,20 @@ describe('Voxen visual foundation', () => {
 
   test('mantém sidebar estacionária, superfície e drawer mobile coerentes', () => {
     const sidebar = read('src/client/components/layout/sidebar.tsx');
+    const sidebarPrimitive = read('src/client/components/ui/sidebar.tsx');
+    const chrome = read('src/client/desktop-chrome.css');
     const appLayout = read('src/client/components/layout/app-layout.tsx');
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
-    expect(sidebar).toContain('const SIDEBAR_WIDTH = 264');
-    expect(sidebar).toContain('collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH');
+    expect(sidebarPrimitive).toContain('const SIDEBAR_WIDTH = 264');
+    expect(sidebarPrimitive).toContain('collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH');
     expect(sidebar).toContain('id="desktop-sidebar"');
-    expect(sidebar).toContain('data-collapsed');
+    expect(sidebarPrimitive).toContain('data-collapsed');
     expect(sidebar).not.toContain('SidebarRail');
     expect(sidebar).not.toContain('SidebarSpacer');
-    expect(appLayout).toContain('marginLeft');
+    expect(appLayout).toContain('<SidebarProvider');
+    expect(appLayout).toContain('<SidebarInset');
+    expect(chrome).toContain('margin-left: var(--sidebar-width)');
     expect(appLayout).not.toContain('md:rounded-2xl');
     expect(appLayout).not.toContain('md:my-3');
     expect(drawer).toContain('fica preparada fora da tela');
