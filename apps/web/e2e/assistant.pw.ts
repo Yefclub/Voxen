@@ -32,10 +32,11 @@ test.describe('continuous assistant workspace', () => {
       await page.setViewportSize({ width, height: 844 });
       const bounds = (await composer.boundingBox())!;
       expect(bounds.height).toBeLessThanOrEqual(72);
-      const workspace = (await page.locator('[data-assistant-workspace]').boundingBox())!;
       const corner = (await settings.boundingBox())!;
-      expect(workspace.x + workspace.width - corner.x - corner.width).toBeLessThanOrEqual(24);
-      expect(corner.y - workspace.y).toBeLessThanOrEqual(16);
+      expect(corner.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(corner.x + corner.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      expect(corner.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(corner.y + corner.height).toBeLessThanOrEqual(bounds.y + bounds.height);
       expect(corner.width).toBeGreaterThanOrEqual(44);
       const input = page.getByRole('textbox', { name: 'Mensagem' });
       await input.fill('A first line\nA second line\nA third line\nA fourth line');

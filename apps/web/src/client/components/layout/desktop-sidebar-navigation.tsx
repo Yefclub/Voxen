@@ -1,91 +1,134 @@
-import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
 import { useLocation } from 'react-router-dom';
-import type { ReactNode } from 'react';
-import { PanelLeftClose, Plus } from '@/components/ui/icons';
+import { PanelLeftClose, PanelLeftOpen, Plus, Sparkles } from '@/components/ui/icons';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Logo } from '../ui/logo';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
 import { NAV, NAV_SCOPES, NAV_SCOPE_LABELS, isNavItemActive } from './sidebar-nav';
 import { WorkspaceLink } from './workspace-link';
+import { AccountMenu } from './account-menu';
+import { AppearanceMenu } from './appearance-menu';
+import { SidebarReleaseUpdateButton } from './sidebar-release-update';
 
 export function DesktopSidebarNavigation({
   user,
-  onCollapse,
-  footer,
+  collapsed,
+  onToggle,
 }: {
   user: MeUser;
-  onCollapse: () => void;
-  footer: ReactNode;
+  collapsed: boolean;
+  onToggle: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const { pathname } = useLocation();
   const items = NAV.filter((item) => !item.adminOnly || user.role === 'ADMIN');
-
   return (
-    <SideNav
-      className="desktop-navigation"
-      aria-label={t('shell.knowledgeBase')}
-      header={
+    <div className="desktop-navigation">
+      <div className="desktop-nav-header">
         <div className="desktop-brand-row">
-          <WorkspaceLink href="/transcricoes" className="desktop-brand-link">
-            <div aria-hidden="true">
-              <Logo size={40} withWordmark={false} />
-            </div>
-            <span className="min-w-0">
-              <span className="block font-display text-[22px] font-semibold tracking-tight">
-                Voxen
+          {!collapsed && (
+            <WorkspaceLink href="/transcricoes" className="desktop-brand-link">
+              <span aria-hidden="true">
+                <Logo size={32} withWordmark={false} />
               </span>
-              <span className="block text-xs text-[var(--color-app-muted)]">
-                {t('shell.knowledgeBase')}
+              <span className="min-w-0">
+                <span className="block font-heading text-lg font-semibold tracking-tight">
+                  Voxen
+                </span>
+                <span className="block text-xs text-[var(--color-app-muted)]">
+                  {t('shell.knowledgeBase')}
+                </span>
               </span>
-            </span>
-          </WorkspaceLink>
+            </WorkspaceLink>
+          )}
           <IconButton
-            id="desktop-sidebar-close"
-            label={t('shell.collapse')}
+            id={collapsed ? 'desktop-sidebar-open' : 'desktop-sidebar-close'}
+            data-sidebar-toggle={collapsed ? '' : undefined}
+            label={t(collapsed ? 'shell.expandSidebar' : 'shell.collapse')}
+            aria-expanded={!collapsed}
+            aria-controls="desktop-sidebar-navigation"
             tooltipSide="right"
-            onClick={onCollapse}
-            className="h-8 w-8 shrink-0 rounded-lg"
+            onClick={onToggle}
+            className="h-11 w-11 shrink-0 rounded-lg"
           >
-            <PanelLeftClose className="h-4 w-4" />
+            {collapsed ? (
+              <PanelLeftOpen isAnimated={false} className="h-[18px] w-[18px]" />
+            ) : (
+              <PanelLeftClose isAnimated={false} className="h-[18px] w-[18px]" />
+            )}
           </IconButton>
         </div>
-      }
-      topContent={
-        <Button variant="primary" asChild className="w-full justify-start gap-2.5">
-          <WorkspaceLink href="/capturar">
-            <Plus className="h-4 w-4" />
-            {t('capture.new')}
+        <Button variant="primary" asChild className="desktop-new-capture">
+          <WorkspaceLink
+            href="/capturar"
+            aria-label={t('capture.new')}
+            title={collapsed ? t('capture.new') : undefined}
+          >
+            <Plus isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
+            {!collapsed && <span>{t('capture.new')}</span>}
           </WorkspaceLink>
         </Button>
-      }
-      footer={<div className="desktop-nav-footer">{footer}</div>}
-    >
-      {NAV_SCOPES.map((scope) => {
-        const destinations = items.filter((item) => item.scope === scope);
-        if (destinations.length === 0) return null;
-        return (
-          <SideNavSection
-            key={scope}
-            title={t(NAV_SCOPE_LABELS[scope])}
-            className="desktop-nav-section"
-          >
-            {destinations.map(({ to, labelKey, Icon }) => (
-              <SideNavItem
-                key={to}
-                as={WorkspaceLink}
-                href={to}
-                label={t(labelKey)}
-                icon={<Icon className="h-[18px] w-[18px]" />}
-                isSelected={isNavItemActive(pathname, to)}
-                className="desktop-nav-item"
-              />
-            ))}
-          </SideNavSection>
-        );
-      })}
-    </SideNav>
+      </div>
+      <nav
+        id="desktop-sidebar-navigation"
+        aria-label={t('shell.knowledgeBase')}
+        className="desktop-nav-content"
+      >
+        {NAV_SCOPES.map((scope) => {
+          const destinations = items.filter((item) => item.scope === scope);
+          if (!destinations.length) return null;
+          return (
+            <section
+              key={scope}
+              className="desktop-nav-section"
+              aria-label={t(NAV_SCOPE_LABELS[scope])}
+            >
+              {!collapsed && <h2 className="desktop-nav-label">{t(NAV_SCOPE_LABELS[scope])}</h2>}
+              <ul>
+                {destinations.map(({ to, labelKey, Icon }) => (
+                  <li key={to}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <WorkspaceLink
+                          href={to}
+                          className="desktop-nav-item"
+                          aria-current={isNavItemActive(pathname, to) ? 'page' : undefined}
+                          aria-label={t(labelKey)}
+                        >
+                          <Icon isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
+                          {!collapsed && <span className="truncate">{t(labelKey)}</span>}
+                        </WorkspaceLink>
+                      </TooltipTrigger>
+                      {collapsed && <TooltipContent side="right">{t(labelKey)}</TooltipContent>}
+                    </Tooltip>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </nav>
+      <div className="desktop-nav-footer">
+        {!collapsed && <SidebarReleaseUpdateButton />}
+        <WorkspaceLink
+          href="/novidades"
+          className="desktop-nav-item"
+          aria-label={t('shell.nav.changelog')}
+          title={collapsed ? t('shell.nav.changelog') : undefined}
+        >
+          <Sparkles isAnimated={false} className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span>{t('shell.nav.changelog')}</span>}
+        </WorkspaceLink>
+        <div className="desktop-appearance-row">
+          {!collapsed && (
+            <span className="text-xs text-[var(--color-app-muted)]">{t('theme.appearance')}</span>
+          )}
+          <AppearanceMenu compact={collapsed} />
+        </div>
+        <AccountMenu user={user} sidebar compact={collapsed} />
+      </div>
+    </div>
   );
 }

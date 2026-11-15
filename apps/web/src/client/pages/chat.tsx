@@ -5,7 +5,7 @@ import {
   useChatStreamScroll,
   useChatNewMessages,
 } from '@astryxdesign/core/Chat';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -17,11 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
-import { Pencil, Settings, RotateCcw } from '../components/ui/icons';
+import { Search, Link2 } from '../components/ui/icons';
 import { AssistantComposer } from '../components/assistant/assistant-composer';
 import { AssistantProposalCard } from '../components/assistant/assistant-proposal';
 import { AssistantPreferences } from '../components/assistant/assistant-preferences';
 import { AssistantProgress } from '../components/assistant/assistant-progress';
+import { AssistantMessageFooter } from '../components/assistant/assistant-message-footer';
 import { useAssistant, type AssistantMessage } from '../lib/use-assistant';
 import { assistantCopy } from '../lib/assistant-i18n';
 import { useI18n } from '../lib/i18n';
@@ -49,6 +50,19 @@ export function ChatPage(): React.ReactElement {
       : '';
 
   const empty = Boolean(chat.state && !messages.length);
+  useLayoutEffect(() => {
+    const viewport = scroll.current;
+    if (!viewport) return;
+    const measure = () =>
+      viewport.parentElement?.style.setProperty(
+        '--assistant-scrollbar-width',
+        `${viewport.offsetWidth - viewport.clientWidth}px`,
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [empty]);
   const scrollControl = useChatStreamScroll({ scrollRef: scroll });
   const newMessages = useChatNewMessages({
     isLocked: scrollControl.isLocked,
@@ -142,26 +156,13 @@ export function ChatPage(): React.ReactElement {
       >
         {progressLabel}
       </p>
-      <header className="flex shrink-0 justify-end px-4 py-2 sm:px-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 text-[var(--color-app-muted)]"
-          aria-label={copy.settings}
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings className="h-5 w-5" />
-        </Button>
-      </header>
       <section data-chat-stage data-empty={empty ? 'true' : 'false'} className="assistant-stage">
         {empty && (
           <div data-chat-welcome className="mx-auto w-full max-w-[46rem] text-center">
-            <h2 className="mx-auto max-w-[22ch] font-heading text-[28px] font-medium leading-[1.15] tracking-tight sm:text-[40px]">
+            <h2 className="mx-auto max-w-[24ch] font-heading text-[28px] font-medium leading-tight tracking-tight">
               {copy.empty}
             </h2>
-            <p className="mx-auto mt-3 max-w-[50ch] text-base leading-relaxed text-[var(--color-app-muted)]">
-              {copy.hint}
-            </p>
+            <p className="sr-only">{copy.hint}</p>
           </div>
         )}
         <div
@@ -204,38 +205,18 @@ export function ChatPage(): React.ReactElement {
                   className="assistant-message"
                 >
                   <ChatMessageBubble
+                    className="assistant-bubble"
                     variant={message.role === 'user' ? 'filled' : 'ghost'}
                     width={message.role === 'user' ? undefined : '100%'}
                     metadata={
-                      <div className="assistant-message-actions flex gap-1">
-                        {message.role === 'user' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={copy.edit}
-                            onClick={() => setEditing({ message, text: message.text })}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={copy.prune}
-                          onClick={() => setEditing({ message })}
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <AssistantMessageFooter
+                        message={message}
+                        onEdit={(message) => setEditing({ message, text: message.text })}
+                        onRewind={(message) => setEditing({ message })}
+                      />
                     }
                   >
-                    <h2
-                      className={
-                        message.role === 'user'
-                          ? 'sr-only'
-                          : 'mb-3 text-sm font-medium text-[var(--color-app-muted)]'
-                      }
-                    >
+                    <h2 className="sr-only">
                       {message.role === 'user' ? copy.user : copy.assistant}
                     </h2>
                     {message.text &&
@@ -244,7 +225,10 @@ export function ChatPage(): React.ReactElement {
                           {message.text}
                         </p>
                       ) : (
-                        <Markdown className="text-base leading-relaxed" headingOffset={2}>
+                        <Markdown
+                          className="assistant-answer text-base leading-relaxed"
+                          headingOffset={2}
+                        >
                           {message.text}
                         </Markdown>
                       ))}
@@ -273,31 +257,6 @@ export function ChatPage(): React.ReactElement {
                         onDecision={chat.decide}
                       />
                     ))}
-                    {Boolean(message.details.references?.length) && (
-                      <details className="mt-5 text-sm">
-                        <summary className="min-h-11 cursor-pointer py-3 text-[var(--color-app-subtle)]">
-                          {copy.sources}
-                        </summary>
-                        <ul className="space-y-2 pb-2">
-                          {message.details.references?.map((reference) => (
-                            <li key={reference.href} className="flex items-baseline gap-3">
-                              <span className="shrink-0 text-xs text-[var(--color-app-muted)]">
-                                {reference.source === 'web' ? copy.web : copy.library}
-                              </span>
-                              <a
-                                className="break-words text-[var(--color-accent-primary)] underline underline-offset-4"
-                                href={reference.href}
-                                {...(reference.source === 'web'
-                                  ? { target: '_blank', rel: 'noopener noreferrer' }
-                                  : {})}
-                              >
-                                {reference.title}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
                     {Boolean(message.details.actions?.length) && (
                       <div className="mt-4 space-y-2 text-sm">
                         <p className="font-medium">{copy.actions}</p>
@@ -318,15 +277,6 @@ export function ChatPage(): React.ReactElement {
                           </p>
                         ))}
                       </div>
-                    )}
-                    {message.details.model && (
-                      <details className="mt-3 text-xs text-[var(--color-app-muted)]">
-                        <summary className="min-h-11 cursor-pointer py-3">{copy.usage}</summary>
-                        <p className="break-words">
-                          {message.details.model}
-                          {message.details.costUsd ? ` · USD ${message.details.costUsd}` : ''}
-                        </p>
-                      </details>
                     )}
                   </ChatMessageBubble>
                 </ChatMessage>
@@ -387,18 +337,21 @@ export function ChatPage(): React.ReactElement {
               busy={busy}
               active={active}
               ready={Boolean(chat.state)}
+              onPreferences={() => setSettingsOpen(true)}
             />
           </div>
         </div>
         {empty && !text.trim() && (
           <div
             data-chat-suggestions
-            className="mx-auto max-w-[46rem] flex-wrap justify-center gap-2"
+            className="assistant-suggestions mx-auto w-full max-w-[46rem] flex-col"
           >
             <Button variant="ghost" size="sm" onClick={() => setText(copy.recentPrompt)}>
+              <Search className="h-4 w-4 shrink-0" />
               {copy.recentSuggestion}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setText(copy.connectPrompt)}>
+              <Link2 className="h-4 w-4 shrink-0" />
               {copy.connectSuggestion}
             </Button>
           </div>

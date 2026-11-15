@@ -1,7 +1,7 @@
 import { Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useOutlet } from 'react-router-dom';
 import { motion, useMotionValue, useReducedMotion } from 'motion/react';
-import { Sidebar, SIDEBAR_WIDTH } from './sidebar';
+import { Sidebar, SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
@@ -144,13 +144,13 @@ export function AppLayout(): React.ReactElement {
           data-app-surface
           initial={false}
           animate={{
-            marginLeft: isDesktop ? (collapsed ? 12 : SIDEBAR_WIDTH) : 0,
+            marginLeft: isDesktop ? (collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH) : 0,
           }}
           transition={{
             duration: reduceMotion || !isDesktop ? 0 : 0.22,
             ease: [0.4, 0, 0.2, 1],
           }}
-          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:my-3 md:mr-3 md:overflow-hidden md:rounded-2xl md:border md:border-[var(--color-app-border)]"
+          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-app-bg)] md:overflow-hidden"
           inert={mobileNavPresent ? true : undefined}
         >
           <Topbar

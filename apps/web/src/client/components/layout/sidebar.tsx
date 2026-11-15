@@ -1,4 +1,5 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useLayoutEffect, useRef } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { LogOut, Sparkles } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
@@ -14,7 +15,6 @@ import {
 } from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
-import { SidebarReleaseUpdateButton } from './sidebar-release-update';
 import { DesktopSidebarNavigation } from './desktop-sidebar-navigation';
 import { NAV, NAV_SCOPES, NAV_SCOPE_LABELS, isNavItemActive, type NavItem } from './sidebar-nav';
 export { NAV, isNavItemActive } from './sidebar-nav';
@@ -25,6 +25,7 @@ export { NAV, isNavItemActive } from './sidebar-nav';
  * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
 export const SIDEBAR_WIDTH = 264;
+export const SIDEBAR_COLLAPSED_WIDTH = 64;
 
 /**
  * A cor vem de `--color-app-danger` e não de um tom fixo do Tailwind: o app
@@ -62,6 +63,15 @@ export function SidebarModeBody({
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
+  const previousCollapsed = useRef(collapsed);
+  useLayoutEffect(() => {
+    if (previousCollapsed.current === collapsed) return;
+    previousCollapsed.current = collapsed;
+    if (isDesktop)
+      document
+        .getElementById(collapsed ? 'desktop-sidebar-open' : 'desktop-sidebar-close')
+        ?.focus({ preventScroll: true });
+  }, [collapsed, isDesktop]);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -69,29 +79,18 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   // leve (sem fetches nem árvore de notas viva por trás).
   if (!isDesktop) return null;
 
-  // Camada estacionária e montada: a página opaca acima revela/cobre a
-  // navegação; controles cobertos não recebem foco nem entrada.
+  // Desktop collapse preserves labeled navigation instead of covering it.
   return (
     <aside
       id="desktop-sidebar"
-      aria-hidden={collapsed}
-      inert={collapsed ? true : undefined}
-      className={cn(
-        'fixed inset-y-0 left-0 z-0 hidden flex-col overflow-hidden bg-[var(--color-app-bg-elevated)] md:flex',
-        collapsed && 'invisible',
-      )}
-      style={{ width: SIDEBAR_WIDTH }}
+      data-collapsed={collapsed ? 'true' : 'false'}
+      className="fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] md:flex"
+      style={{ width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH }}
     >
       <DesktopSidebarNavigation
         user={user}
-        onCollapse={() => setCollapsed(true)}
-        footer={
-          <>
-            <SidebarReleaseUpdateButton />
-            <SidebarChangelogButton />
-            <SidebarSignOut />
-          </>
-        }
+        collapsed={collapsed}
+        onToggle={() => setCollapsed(!collapsed)}
       />
     </aside>
   );
