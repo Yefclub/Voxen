@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1-dev.1794725274 — 2026-11-15 · Dev
+
+### 🎨 A clearer conversation and continuous desktop workspace
+
+The chat now shares one reading width with its growing message field. Short
+drafts stay compact; longer drafts expand above the attachment and send controls.
+Conversation preferences sit inside the field, and answers offer copy, sources
+and usage details without replacing your draft.
+
+On desktop, a flat workspace replaces the floating page frame. Grouped sidebar
+navigation collapses to icons, with appearance and account controls in its footer.
+The existing phone navigation and sheets remain available.
+The 3D graph also retains its complete initial overview instead of a competing
+renderer fit replacing it after startup, with proportionate labels in small graphs.
+
 ## v0.15.1-dev.1794695148 — 2026-11-14 · Dev
 
 ### ✨ Find and verify relevant library passages
