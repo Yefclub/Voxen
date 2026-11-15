@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.15.1-dev.1794767042",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Smoother navigation and clearer chat attachments and sources",
+    "body": "The desktop sidebar and workspace now open and close together, preserving your\ndraft. Files selected in chat appear as removable previews before submission;\nimages include thumbnails. Failed chat submissions reuse an already uploaded\ncapture when retried.\n\nSources open beside the conversation on desktop and in a sheet on smaller\nscreens. A compact floating arrow returns to the latest response without adding\na background strip. Library hover highlights now leave equal space from their\nseparators.",
+    "pr": 1105,
+    "author": "Kalyel",
+    "date": "2026-11-15T15:23:50-03:00",
+    "translations": {
+      "en": {
+        "title": "Smoother navigation and clearer chat attachments and sources",
+        "body": "The desktop sidebar and workspace now open and close together, preserving your\ndraft. Files selected in chat appear as removable previews before submission;\nimages include thumbnails. Failed chat submissions reuse an already uploaded\ncapture when retried.\n\nSources open beside the conversation on desktop and in a sheet on smaller\nscreens. A compact floating arrow returns to the latest response without adding\na background strip. Library hover highlights now leave equal space from their\nseparators."
+      },
+      "pt-BR": {
+        "title": "Navegação fluida, anexos visíveis e fontes ao lado da conversa",
+        "body": "A sidebar e o conteúdo agora abrem e fecham juntos no computador, preservando o\nrascunho. Arquivos selecionados no chat aparecem em um preview removível antes\ndo envio, com miniatura para imagens. Se o envio da mensagem falhar, uma nova\ntentativa reutiliza a captura já enviada.\n\nAs fontes abrem ao lado da conversa no computador e em uma sheet nas telas\nmenores. Uma seta flutuante leva à última resposta sem criar uma faixa de fundo.\nO destaque dos itens da biblioteca mantém o mesmo espaço das linhas divisórias."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/1105"
+  },
+  {
     "version": "0.15.1-dev.1794725274",
     "channel": "dev",
     "type": "ui",
