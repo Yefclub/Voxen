@@ -61,7 +61,7 @@ COPY packages ./packages
 
 FROM node:22.23.4-alpine AS node-runtime
 
-FROM oven/bun:1.4.4-alpine AS runtime
+FROM oven/bun:1.4.5-alpine AS runtime
 WORKDIR /app
 
 # Build args injetados pelo CI/Compose pra mostrar versão no /api/version e
